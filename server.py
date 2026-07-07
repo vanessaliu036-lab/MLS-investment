@@ -204,11 +204,21 @@ def scheduler_loop():
                 continue
 
             # ── 非交易時段:輕量更新畫面 ───────────────
-            state = engine.build_state(watchlist_codes=_watchlist_codes)
-            _last_full_state = _last_full_state or state
-            with LOCK:
-                STATE = {k: v for k, v in state.items()
-                         if not k.startswith("_")}
+            # 修盤後覆蓋 bug:盤中有資料時保留 _last_full_state,不讓空 STATE 蓋掉
+            if _last_full_state is not None:
+                # 用盤中最後一輪凍結的資料當 STATE,只在 is_market_hours 標記更新
+                with LOCK:
+                    STATE = {k: v for k, v in _last_full_state.items()
+                             if not k.startswith("_")}
+                    STATE["is_market_hours"] = False
+                    STATE["updated_at"] = datetime.now(TW_TZ).isoformat()
+            else:
+                # 冷啟動:還沒跑過盤中才 build_state
+                state = engine.build_state(watchlist_codes=_watchlist_codes)
+                _last_full_state = state
+                with LOCK:
+                    STATE = {k: v for k, v in state.items()
+                             if not k.startswith("_")}
             time.sleep(300)
 
         except Exception as e:

@@ -100,51 +100,49 @@
   .gpanel-row .lc{font-size:12px;font-weight:800;min-width:55px;text-align:right}
   .gpanel-row .gpn-ai{flex:2;font-size:11.5px;color:var(--ink2);font-style:italic;padding-left:10px;border-left:2px solid var(--line2)}
 
-  /* ── ③ 熱力卡片(按 action 群組) ── */
-  #heatCards{display:flex;flex-direction:column;gap:12px;padding:12px 16px;background:var(--surface)}
-  .hcard{background:var(--bg);border:1px solid var(--line2);border-radius:8px;overflow:hidden}
-  .hcard-head{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--surface);border-bottom:1px solid var(--line2)}
-  .hc-title{font-size:14px;font-weight:800}
-  .hc-cnt{font-size:11px;color:var(--ink2);font-weight:600;margin-left:auto}
-  /* 群組底色 */
-  .hcard.watch-bg{background:#fffbf2}
-  .hcard.obs-bg{background:var(--bg)}
-  .hcard.hold-bg{background:#eef5ff}
-  .hcard.sell-bg{background:#fef2f2;border-color:#f5c0c0}
-  /* 出場警示 header */
-  .hcard-head.sell-head{background:linear-gradient(90deg,#fbe1e1,#fff5f5);border-bottom:2px solid var(--down)}
-  .hcard-head.sell-head .hc-title{color:var(--down)}
-  .hcard-head.watch-head{background:linear-gradient(90deg,#fff8e6,#fffbf2);border-bottom:2px solid var(--gold)}
-  .hcard-head.hold-head{background:linear-gradient(90deg,#e6efff,#f5f9ff);border-bottom:2px solid #4a78d6}
-  .risk-banner{display:inline-block;background:var(--down);color:#fff;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:3px;margin-left:8px;letter-spacing:1px;animation:riskpulse 2s infinite}
-  @keyframes riskpulse{0%,100%{opacity:1}50%{opacity:.7}}
-  /* 個股 row */
-  .stk-row{padding:11px 14px;cursor:pointer;transition:background .15s;border-bottom:1px solid var(--line2)}
-  .stk-row:last-child{border-bottom:0}
-  .stk-row:hover{background:#fdf5e8}
-  .stk-row.risk-row{background:#fef6f6;border-left:4px solid var(--down);padding-left:10px}
-  .stk-row.risk-row:hover{background:#ffe8e8}
-  .stk-line1{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .stk-line1 .stk{font-size:15px;font-weight:800}
-  .stk-line1 .stk small{font-size:11px;color:var(--ink2);font-weight:500;margin-left:3px}
-  .stk-line1 .big{font-size:18px;font-weight:900;margin-left:auto}
-  .stk-line1 .lc{font-size:14px;font-weight:800;min-width:60px;text-align:right}
-  .stk-line1 .aiscore{font-size:11px;color:var(--ink2);background:var(--surface);padding:2px 7px;border-radius:3px}
-  .stk-line1 .aiscore b{font-size:13px;color:var(--gold);font-weight:900;margin-left:2px}
-  .risk-tag{background:var(--down);color:#fff;font-size:13px;font-weight:900;padding:1px 7px;border-radius:3px;letter-spacing:.5px}
-  .stk-line2{display:flex;align-items:center;gap:12px;margin-top:6px;font-size:11.5px;color:var(--ink2)}
-  .stk-line2 b{color:var(--ink);font-weight:700;margin-left:2px}
-  .stk-line2 b.down{color:var(--down)}
-  .stk-line2 .conf{padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;margin-left:auto}
-  .stk-line2 .conf.high{background:var(--up);color:#fff}
-  .stk-line2 .conf.mid{background:var(--gold);color:#fff}
-  .stk-line2 .conf.low{background:var(--line2);color:var(--ink2)}
-  .hc-advice{margin-top:8px;padding:7px 10px;background:var(--surface);border-left:3px solid var(--gold);
-    border-radius:0 4px 4px 0;font-size:12px;line-height:1.6;color:var(--ink)}
-  .hc-advice b{color:var(--gold)}
-  .hc-advice.risk{background:#fff0f0;border-left-color:var(--down);color:var(--down);font-weight:700}
-  .hc-advice.risk b{color:var(--down)}
-  .hc-detail{margin-top:6px;font-size:11.5px;color:var(--ink2);line-height:1.6;padding-left:8px;border-left:2px solid var(--line2)}
+  /* ── ③ 板塊展開:個股卡片(grid,每張一卡,資訊完整) ── */
+  .gpanel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;padding:8px}
+  .gstk-card{background:var(--surface);border:1px solid var(--line2);border-radius:6px;padding:10px 12px;
+    cursor:pointer;transition:all .15s;display:flex;flex-direction:column;gap:6px}
+  .gstk-card:hover{border-color:var(--gold);box-shadow:0 2px 6px rgba(184,134,11,.18);transform:translateY(-1px)}
+  .gstk-card.sell{border-color:#f5c0c0;background:#fef6f6}
+  .gstk-card.sell:hover{border-color:var(--down);box-shadow:0 2px 6px rgba(192,0,0,.18)}
+  .gstk-card.hold{background:#f5f9ff;border-color:#cad9f2}
+  .gstk-card.buy{background:#f5fbf2;border-color:#c8e0c8}
+  /* 卡片第一列:action chip + 名稱 + 龍頭 */
+  .gstk-l1{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .gstk-l1 .stkname{font-size:14px;font-weight:800;flex:1;min-width:0}
+  .gstk-l1 .stkname small{font-size:10.5px;color:var(--ink2);font-weight:500;margin-left:3px}
+  .gstk-l1 .ldrcap{color:var(--gold);font-size:13px;font-weight:900;margin-left:2px}
+  /* 第二列:價 + 漲跌 + AI 分 */
+  .gstk-l2{display:flex;align-items:baseline;gap:8px}
+  .gstk-l2 .big{font-size:17px;font-weight:900;margin-left:auto}
+  .gstk-l2 .lc{font-size:13px;font-weight:800;min-width:60px;text-align:right}
+  .gstk-l2 .aiscore{font-size:10.5px;color:var(--ink2);background:var(--bg);padding:2px 6px;border-radius:3px}
+  .gstk-l2 .aiscore b{color:var(--gold);font-size:12px;font-weight:900;margin-left:2px}
+  /* 第三列:量比 / 均價 / 停損 / 信心 */
+  .gstk-l3{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--ink2)}
+  .gstk-l3 b{color:var(--ink);font-weight:700;margin-left:2px}
+  .gstk-l3 b.down{color:var(--down)}
+  .gstk-l3 .conf{padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;margin-left:auto}
+  .gstk-l3 .conf.high{background:var(--up);color:#fff}
+  .gstk-l3 .conf.mid{background:var(--gold);color:#fff}
+  .gstk-l3 .conf.low{background:var(--line2);color:var(--ink2)}
+  /* 第四列:AI 一句話 */
+  .gstk-ai{margin-top:2px;padding:6px 9px;background:var(--bg);border-left:3px solid var(--gold);
+    border-radius:0 4px 4px 0;font-size:11.5px;line-height:1.55;color:var(--ink)}
+  .gstk-ai b{color:var(--gold)}
+  .gstk-card.sell .gstk-ai{background:#fff0f0;border-left-color:var(--down);color:var(--down);font-weight:700}
+  .gstk-card.sell .gstk-ai b{color:var(--down)}
+  .gstk-card.hold .gstk-ai{border-left-color:#4a78d6}
+  .gstk-card.hold .gstk-ai b{color:#4a78d6}
+  /* AI 詳細 */
+  .gstk-aidetail{margin-top:4px;font-size:10.5px;color:var(--ink2);line-height:1.55;padding-left:7px;border-left:2px solid var(--line2)}
+  /* 出場警示橫幅 */
+  .gpanel-warn{grid-column:1/-1;background:linear-gradient(90deg,#fbe1e1,#fff5f5);
+    border-left:4px solid var(--down);padding:8px 12px;font-size:12px;font-weight:700;color:var(--down);
+    border-radius:0 4px 4px 0;animation:riskpulse 2.5s infinite}
+  @keyframes riskpulse{0%,100%{opacity:1}50%{opacity:.85}}
 
   /* ── ②③④ 龍頭深度分析(三欄連續帶,同一條、無卡片) ── */
   .leaders{display:flex;background:var(--surface);border-bottom:1px solid var(--line);
@@ -192,6 +190,14 @@
   td.act.watch::before{background:var(--gold)} td.act.watch{color:var(--gold)}
   td.act.sell::before{background:var(--down)} td.act.sell{color:var(--down)}
   td.act.obs::before{background:var(--line)} td.act.obs{color:var(--ink2)}
+  /* span chip 樣式(板塊展開用) */
+  .act{display:inline-block;font-size:10.5px;font-weight:800;padding:2px 7px;border-radius:3px;
+    letter-spacing:.5px;color:#fff;line-height:1.4;flex-shrink:0}
+  .act.buy{background:var(--up)}
+  .act.watch{background:var(--gold)}
+  .act.sell{background:var(--down)}
+  .act.obs{background:var(--ink2)}
+  .act.hold{background:#4a78d6}
   .aiscore{font-size:17px;font-weight:800;color:var(--gold)}
   .stk{font-weight:700;font-size:15px} .stk small{font-size:11px;color:var(--ink2);font-weight:500;margin-left:5px}
   .grp-tag{font-size:9.5px;padding:1px 6px;border-radius:3px;font-weight:700;margin-left:6px}
@@ -277,9 +283,8 @@
   <div class="section-title">② 前三族群龍頭 · 深度分析 <span class="upd">· 法人近月買賣超 / 千張大戶 / 均線上方空間 / AI 建議</span></div>
   <div class="leaders" id="leaders"></div>
 
-  <!-- ⑤ 熱力表 -->
-  <div class="section-title">③ 個股熱力表 <span class="upd">· 卡片式 · 依族群資金流向排序 · 每族群 #1 展開</span></div>
-  <div id="heatCards"></div>
+  <!-- 板塊點擊展開已涵蓋全部訊號股個股卡片,不另設熱力表區 -->
+
   <div class="empty-note" id="emptyNote" style="display:none"></div>
 
   <div class="foot">
@@ -363,19 +368,40 @@ function render(d){
       +(s.locked?'<div class="glock">● 鎖定</div>':"")
       +(secStocks.length?'<div class="gcell-expand">▾ '+secStocks.length+' 檔點開</div>':'')
       +'</div>';
-    // 展開面板(預設收合)
+    // 展開面板(預設收合) — 卡片式 grid,每檔一個獨立卡片
+    var hasSell=secStocks.some(function(x){return x.action==="sell";});
     var panel='<div class="gcell-panel" id="gpanel-'+esc(s.name)+'" style="display:none">'
-      +(secStocks.length?secStocks.map(function(stk){
-          var L=(lastData.leaders||[]).find(function(x){return x.code===stk.code;})||{};
-          var one=aiOneLiner(stk,L);
-          return '<div class="gpanel-row" data-code="'+esc(stk.code)+'">'
-            +'<span class="act '+esc(stk.action)+'">'+ACT_LABEL[stk.action]+'</span>'
-            +'<span class="gpn-stk">'+esc(stk.name)+(stk.is_leader?' <span class="ldrcap">★</span>':'')+' <small>'+esc(stk.code)+'</small></span>'
-            +'<span class="big mono '+(stk.change_rate>=0?"up":"down")+'">'+(stk.price!=null?stk.price:"—")+'</span>'
-            +'<span class="lc '+(stk.change_rate>=0?"up":"down")+'">'+(stk.change_rate>0?"+":"")+stk.change_rate+'%</span>'
-            +'<span class="gpn-ai">'+esc(one)+'</span>'
-            +'</div>';
-        }).join(""):'<div class="empty-note" style="padding:14px">此族群無訊號股</div>')
+      +(secStocks.length?
+          '<div class="gpanel-grid">'
+          +(hasSell?'<div class="gpanel-warn">⚠ 本族群含出場訊號,請檢視風險</div>':'')
+          +secStocks.map(function(stk){
+              var L=(lastData.leaders||[]).find(function(x){return x.code===stk.code;})||{};
+              var one=aiOneLiner(stk,L);
+              var cardCls='gstk-card '+esc(stk.action);
+              var ldrMark=stk.is_leader?' <span class="ldrcap">★</span>':'';
+              var detail=(L.ai_advice && L.ai_advice!==one)?'<div class="gstk-aidetail">'+esc(L.ai_advice)+'</div>':'';
+              return '<div class="'+cardCls+'" data-code="'+esc(stk.code)+'">'
+                +'<div class="gstk-l1">'
+                  +'<span class="act '+esc(stk.action)+'">'+ACT_LABEL[stk.action]+'</span>'
+                  +'<span class="stkname">'+esc(stk.name)+ldrMark+' <small>'+esc(stk.code)+'</small></span>'
+                +'</div>'
+                +'<div class="gstk-l2">'
+                  +'<span class="big mono '+(stk.change_rate>=0?"up":"down")+'">'+(stk.price!=null?stk.price:"—")+'</span>'
+                  +'<span class="lc '+(stk.change_rate>=0?"up":"down")+'">'+(stk.change_rate>0?"+":"")+stk.change_rate+'%</span>'
+                  +'<span class="aiscore mono" title="0-100 分,越高越強">AI <b>'+(stk.ai_score||0)+'</b></span>'
+                +'</div>'
+                +'<div class="gstk-l3">'
+                  +'<span>量比 <b>'+(stk.volume_ratio!=null?stk.volume_ratio.toFixed(2):"—")+'</b></span>'
+                  +'<span>均價 <b>'+(stk.avg_price!=null?stk.avg_price:"—")+'</b></span>'
+                  +'<span>停損 <b class="down">'+(stk.suggested_stop!=null?stk.suggested_stop:"—")+'</b></span>'
+                  +'<span class="conf '+esc(stk.confidence_label)+'">'+CONF_LABEL[stk.confidence_label]+'</span>'
+                +'</div>'
+                +'<div class="gstk-ai"><b>AI 一句話：</b>'+esc(one)+'</div>'
+                +detail
+                +'</div>';
+            }).join("")
+          +'</div>'
+        :'<div class="empty-note" style="padding:14px">此族群無訊號股</div>')
       +'</div>';
     gr+=secCard+panel;
   });
@@ -404,8 +430,8 @@ function render(d){
       }
     });
   });
-  // 綁定展開面板內個股點擊 → modal
-  document.querySelectorAll(".gpanel-row").forEach(function(row){
+  // 綁定展開面板內個股卡片點擊 → modal
+  document.querySelectorAll(".gstk-card").forEach(function(row){
     row.addEventListener("click",function(){
       var code=row.getAttribute("data-code");
       var stock=(lastData.stocks||[]).find(function(x){return x.code===code;});
@@ -435,78 +461,7 @@ function render(d){
   });
   document.getElementById("leaders").innerHTML=lh||'<div class="empty-note">盤中將顯示前三族群龍頭分析</div>';
 
-  renderTable();
-}
-
-function renderHeatCards(){
-  if(!lastData) return;
-  var stocks=(lastData.stocks||[]).slice();
-  var secFlow={};
-  (lastData.sectors||[]).forEach(function(s){secFlow[s.name]=s.flow_score;});
-
-  // 依 action 分組(熱力表)
-  var byAction={buy:[],watch:[],obs:[],sell:[],hold:[]};
-  stocks.forEach(function(s){ (byAction[s.action]||byAction.obs).push(s); });
-  // 每組內按 score 排
-  Object.keys(byAction).forEach(function(k){
-    byAction[k].sort(function(a,b){return b.ai_score-a.ai_score;});
-  });
-
-  var html="";
-
-  // 進場區
-  if(byAction.buy.length){
-    html+=renderActionSection("buy", "▲ 進場訊號", byAction.buy, false);
-  }
-  // 觀察區
-  if(byAction.watch.length){
-    html+=renderActionSection("watch", "◆ 觀察", byAction.watch, false);
-  }
-  // 監控區
-  if(byAction.obs.length){
-    html+=renderActionSection("obs", "· 監控中", byAction.obs, false);
-  }
-  // 出場區(警示 UI)
-  if(byAction.sell.length){
-    html+=renderActionSection("sell", "▼ 出場 / 風險", byAction.sell, true);
-  }
-  if(byAction.hold.length){
-    html+=renderActionSection("hold", "◉ 持股中", byAction.hold, false);
-  }
-
-  document.getElementById("heatCards").innerHTML=html;
-  // 綁定卡片點擊
-  document.querySelectorAll(".hcard .stk-row").forEach(function(el){
-    el.addEventListener("click",function(){
-      var code=el.getAttribute("data-code");
-      var stock=stocks.find(function(x){return x.code===code;});
-      var leader=(lastData.leaders||[]).find(function(x){return x.code===code;});
-      showStockModal(stock,leader);
-    });
-  });
-  var note=document.getElementById("emptyNote");
-  if(!stocks.length){
-    note.style.display="block";
-    note.textContent=lastData.is_market_hours===false
-      ?"目前非台股盤中時段(09:00–13:35)。盤中將自動顯示 Shioaji 真實掃描結果。"
-      :"目前無符合 W 條件的標的";
-  } else note.style.display="none";
-}
-
-function renderActionSection(act, title, items, isRisk){
-  var actClass={buy:"watch-bg",watch:"watch-bg",obs:"obs-bg",sell:"sell-bg",hold:"hold-bg"}[act];
-  var headerBg=isRisk?"sell-head":"watch-head";
-  var warn=isRisk?'<span class="risk-banner">⚠ 風險警示 · 建議減碼或出場</span>':"";
-  var h="";
-  h+='<div class="hcard '+actClass+'">';
-  h+='<div class="hcard-head '+headerBg+'">'
-    +'<span class="hc-title">'+title+'</span>'
-    +'<span class="hc-cnt">'+items.length+' 檔</span>'
-    +warn
-    +'</div>';
-  items.forEach(function(s){ h+=renderStockCard(s, true, isRisk); });
-  h+='</div>';
-  return h;
+// ③ 熱力表已移除,板塊點擊展開涵蓋全部訊號股
 }
 
 function aiOneLiner(s,L){
@@ -519,39 +474,6 @@ function aiOneLiner(s,L){
   if(s.action==="obs") return "盤中監控中,目前無強烈訊號。";
   return "依規則持續追蹤。";
 }
-
-function renderStockCard(s, expanded, isRisk){
-  var L=(lastData.leaders||[]).find(function(x){return x.code===s.code;})||{};
-  var one=aiOneLiner(s,L);
-  var stk=esc(s.name)+(s.is_leader?' <span class="ldrcap">★龍頭</span>':'');
-  var riskTag=isRisk?'<span class="risk-tag">⚠</span>':"";
-  var advice='';
-  if(expanded){
-    advice='<div class="hc-advice'+(isRisk?" risk":"")+'"><b>AI 一句話：</b>'+esc(one)+'</div>';
-    if(L.ai_advice){
-      advice+='<div class="hc-detail">'+esc(L.ai_advice)+'</div>';
-    }
-  }
-  return '<div class="stk-row'+(isRisk?" risk-row":"")+'" data-code="'+esc(s.code)+'">'
-    +'<div class="stk-line1">'
-      +'<span class="act '+esc(s.action)+'">'+ACT_LABEL[s.action]+'</span>'
-      +'<span class="stk">'+stk+' <small>'+esc(s.code)+'</small></span>'
-      +riskTag
-      +'<span class="big mono '+(s.change_rate>=0?"up":"down")+'">'+(s.price!=null?s.price:"—")+'</span>'
-      +'<span class="lc '+(s.change_rate>=0?"up":"down")+'">'+(s.change_rate>0?"+":"")+s.change_rate+'%</span>'
-      +'<span class="aiscore mono" title="0-100 分,越高越強">AI <b>'+(s.ai_score||0)+'</b></span>'
-    +'</div>'
-    +'<div class="stk-line2">'
-      +'<span>量比 <b>'+(s.volume_ratio!=null?s.volume_ratio.toFixed(2):"—")+'</b></span>'
-      +'<span>均價 <b>'+(s.avg_price!=null?s.avg_price:"—")+'</b></span>'
-      +'<span>停損 <b class="down">'+(s.suggested_stop!=null?s.suggested_stop:"—")+'</b></span>'
-      +'<span class="conf '+esc(s.confidence_label)+'">'+CONF_LABEL[s.confidence_label]+'</span>'
-    +'</div>'
-    +advice
-    +'</div>';
-}
-
-function renderTable(){ renderHeatCards(); }
 
 function showStockModal(stock,leader){
   var m=document.getElementById("stockModal");
