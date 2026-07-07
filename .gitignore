@@ -1,0 +1,49 @@
+# ── Secrets & local config (絕不上版控) ────────────────
+.env
+.env.local
+.env.*.local
+positions.json
+mls.db
+mls.db-journal
+mls.db-wal
+mls.db-shm
+
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# ── Logs & runtime artifacts ─────────────────────────────
+*.log
+shioaji.log
+chips_cache.json
+
+# ── Backups / temp ───────────────────────────────────────
+*.bak
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── IDE ──────────────────────────────────────────────────
+.vscode/
+.idea/
+*.iml
+
+# ── Coverage / test ──────────────────────────────────────
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.mypy_cache/
