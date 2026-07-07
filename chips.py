@@ -68,8 +68,9 @@ def get_chips(code):
       inst_streak         外資連續買超天數(負值=連賣)
       big_holder_pct      千張大戶持股比例(%)
       big_holder_trend    大戶比例近4週變化(百分點)
-    查無資料時對應值為 None。結果快取至當日。
+      查無資料時對應值為 None。結果快取至當日。
     """
+    global _cache
     _load_disk()
     today = _today_key()
     if _cache.get("date") == today and code in _cache.get("stocks", {}):

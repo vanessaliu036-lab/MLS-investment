@@ -248,7 +248,7 @@ def _ai_advice(leader, ma_bias, high_space, ch):
 # ⑤ 規則引擎(其餘候選 → 熱力表)
 # ══════════════════════════════════════════════════════════
 def eval_stock(s, locked_sectors, *, sector_median=0.0, market_pct=0.0,
-               abab_a_day=False, mode="attack"):
+               abab_a_day=False, mode="attack", is_leader=False):
     rules, price, avgp = [], s["price"] or 0, s.get("avg_price") or 0
     if price and s["high"] and price >= s["high"] and s["change_rate"] > 0:
         rules.append("突破今高")
@@ -271,29 +271,49 @@ def eval_stock(s, locked_sectors, *, sector_median=0.0, market_pct=0.0,
         tnvr_val=tnvr_val, aflow_val=aflow, mode=mode)
 
     risk = []
+    caution = []  # 注意但不至於直接 sell(大跌盤普跌,避免誤觸)
     if avgp and price < avgp and s["change_rate"] < 0:
-        risk.append("跌破均價線")
+        caution.append("跌破均價線")
     if s.get("sector_type") == "attack" and s.get("sector") not in locked_sectors \
             and s["change_rate"] < -2:
-        risk.append("族群轉弱")
+        caution.append("族群轉弱")
+    # 強烈風險:假紅背離(出貨鐵律,個股層級)
+    strong_risk = []
     if div_flag == "fake_red":
-        risk.append("假紅背離")          # 假紅=風險事件,不只是扣分
+        strong_risk.append("假紅背離")
+    # 強烈風險:大跌(>5%) + 量縮(量比<0.8)+ 跌破均價 → 真的弱勢,出場
+    if s["change_rate"] < -5 and (s.get("volume_ratio") or 0) < 0.8 \
+            and avgp and price < avgp:
+        strong_risk.append("弱勢放量")
 
     entry_n = len(rules)
     is_engine_stock = s["code"] in getattr(C, "ENGINE_STOCKS", set())
-    if risk and s["change_rate"] < 0:
-        action, ec, rules = "sell", "risk", risk
+
+    # 龍頭特例:法人買超/外資連買是「進場理由」,跌破均價應是 watch(等回檔)
+    # 而不是 sell。只有當法人/外資翻負才走正常 sell 流程。
+    leader_chip_pos = (chip and
+                       ((chip.get("inst_net_20d_lots") or 0) > 0
+                        or (chip.get("inst_streak") or 0) >= 3))
+
+    if strong_risk and not (is_leader and leader_chip_pos):
+        action, ec, rules = "sell", "risk", strong_risk
     elif s.get("sector_type") == "engine" or is_engine_stock:
         action, ec = "obs", "monitor"          # 主引擎/引擎成員鐵則:只觀察
     elif div_flag == "pull_sell":
         action, ec = "watch", "potential"      # 邊拉邊賣:降級觀察,不給進場
         rules = rules + ["邊拉邊賣⚠"]
+    elif is_leader and leader_chip_pos:
+        # 龍頭 + 法人未斷 → 即使大跌盤也標 watch(等回檔),不賣
+        action, ec = "watch", "potential"
+        rules = rules + (caution if caution else ["龍頭回檔觀察"])
     elif entry_n >= 2 and score >= _entry_min() + 15:
         action, ec = "buy", "entry_high"
     elif entry_n >= 1 and score >= _entry_min():
         action, ec = "buy", "entry"
-    elif s["change_rate"] >= C.LONE_WOLF_PCT:
-        action, ec, rules = "watch", "potential", ["孤狼訊號"]
+    elif caution or s["change_rate"] >= C.LONE_WOLF_PCT:
+        # 注意訊號(普跌盤跌破均價/族群轉弱)→ 觀察而非直接 sell
+        action, ec = "watch", "potential"
+        rules = rules + (caution if caution else ["孤狼訊號"])
     else:
         action, ec = "obs", "monitor"
 
@@ -334,9 +354,10 @@ def build_state(watchlist_codes=None):
         codes = broker.market_scan_codes()
     snaps = broker.batch_snapshots(codes)
 
-    # 硬過濾:流動性
-    snaps = [s for s in snaps
-             if (s["total_volume"] or 0) >= C.MIN_VOLUME_LOTS * 1000]
+    # 硬過濾:流動性(只對全市場廣掃生效;固定觀察池是使用者定案,不過濾)
+    if not getattr(C, "USE_FIXED_UNIVERSE", False):
+        snaps = [s for s in snaps
+                 if (s["total_volume"] or 0) >= C.MIN_VOLUME_LOTS * 1000]
 
     # ① 資金流入板塊
     sectors = compute_sector_flow(snaps)
@@ -374,20 +395,25 @@ def build_state(watchlist_codes=None):
     _EC = {"strong": "entry_high", "hot": "entry", "warm": "potential",
            "neutral": "monitor", "cold": "risk"}
     for s in snaps:
-        if s["code"] in leader_codes or "sector" not in s:
+        if "sector" not in s:
             continue
         in_wl = s["code"] in watchlist_codes
-        # 固定池全數評估(50檔成本低;風險/假紅訊號絕不因W條件漏掉)
-        if True:
-            row = eval_stock(
-                s, locked,
-                sector_median=sec_median.get(s.get("sector"), 0.0),
-                market_pct=market_pct,
-                abab_a_day=s.get("sector") in abab_a,
-                mode=mode)
-            row["is_watchlist_hit"] = in_wl
-            row["event_class"] = _EC[row["heat_level"]]
-            table.append(row)
+        is_leader = s["code"] in leader_codes
+        # 龍頭股先評估(法人買超/外資連買是「進場理由」,
+        # 即使跌破均價也應是 watch 不是 sell)
+        row = eval_stock(
+            s, locked,
+            sector_median=sec_median.get(s.get("sector"), 0.0),
+            market_pct=market_pct,
+            abab_a_day=s.get("sector") in abab_a,
+            mode=mode,
+            is_leader=is_leader)
+        row["is_watchlist_hit"] = in_wl
+        row["is_leader"] = is_leader
+        row["event_class"] = _EC[row["heat_level"]]
+        table.append(row)
+        if is_leader:
+            continue   # 龍頭不入下面迴圈(避免重複)
     table.sort(key=lambda x: x["ai_score"], reverse=True)
 
     # 現金閘門(持股標記 hold + 滿手時進場降級)
