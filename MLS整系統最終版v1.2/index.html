@@ -598,6 +598,10 @@ function setConn(ok,msg){
 function poll(){
   fetch("/api/state").then(function(r){return r.json()}).then(function(d){
     if(d.error){setConn(false,"引擎錯誤");console.error(d.error);return;}
+    /* 2026-07-08:在任何 status 判斷前先呼叫新卡片渲染(即使 starting 也 show 板塊/觀察卡) */
+    if(typeof window.__mlsRenderCards === "function"){
+      try{ window.__mlsRenderCards(d); }catch(e){ console.error("mlsRenderCards:", e); }
+    }
     if(d.status==="starting"){setConn(true,"引擎啟動中…");return;}
     setConn(true,"Shioaji 已連線 "+(d.market&&d.market.time?d.market.time:""));
     render(d);
