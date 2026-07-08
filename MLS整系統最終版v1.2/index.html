@@ -547,6 +547,8 @@ function render(d){
       });
     });
   });
+  /* 2026-07-08:觸發新板塊卡 + 群組熱力表卡渲染 */
+  if(typeof window.__mlsRenderCards === "function") window.__mlsRenderCards(d);
 }
 
 function renderTable(){
@@ -1038,17 +1040,10 @@ if(location.hash){
     }
   });
 
-  /* 劫持既有 fetch 拿 data */
-  var origFetch = window.fetch;
-  window.fetch = function(){
-    return origFetch.apply(this, arguments).then(function(r){
-      var clone = r.clone();
-      clone.json().then(function(d){ data = d; render(); }).catch(function(){});
-      return r;
-    });
+  /* 既有 render() 完成後會呼叫 window.__mlsRenderCards(d) */
+  window.__mlsRenderCards = function(d){
+    data = d; render();
   };
-
-  /* 既有 render() 內已 fetch /api/state,我們劫持後自動 render */
 })();
 </script>
 </body>
