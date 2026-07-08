@@ -269,6 +269,14 @@ def api_review():
 
 @app.get("/")
 def home():
+    # 2026-07-08:首頁改為 sectors.html(全卡片板塊個股設計,取代舊 index.html 板塊+熱力表)
+    html = Path(__file__).with_name("sectors.html").read_text(encoding="utf-8")
+    return HTMLResponse(html)
+
+
+@app.get("/legacy")
+def legacy_index():
+    """舊版 index.html 保留作為備用(板塊+熱力表設計)"""
     html = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
     return HTMLResponse(html)
 
@@ -310,6 +318,45 @@ def api_nexora():
         return JSONResponse({"report": _P(files[-1]).read_text(encoding="utf-8"),
                              "file": files[-1]})
     except Exception as e:
+        return JSONResponse({"report": None, "error": str(e)})
+
+
+@app.get("/sectors")
+def sectors_page():
+    """板塊→個股卡片式 UI(2026-07-08 新增,外部頁面,不動主邏輯)。"""
+    try:
+        html = Path(__file__).with_name("sectors.html").read_text(encoding="utf-8")
+        return HTMLResponse(html)
+    except Exception as e:
+        return HTMLResponse(f"sectors.html 缺失:{e}", status_code=500)
+
+
+@app.get("/api/nexora-v2")
+def api_nexora_v2():
+    """NEXORA V2.0 獨立頁面用 API(2026-07-08 新增):
+    直接呼叫 nexora.run_report() 跑完整 12 節報告,
+    不動主邏輯,僅新增外部 endpoint + 頁面。"""
+    try:
+        watchlist_codes = _watchlist_codes
+        full_state = engine.build_state(watchlist_codes=watchlist_codes)
+        import nexora
+        # 傳空 rotation_reports(避免在 API 呼叫時觸發 after_hours 推播)
+        report = nexora.run_report(full_state, [])
+        return JSONResponse({"date": full_state.get("market", {}).get("time", ""),
+                             "report": report})
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"report": None, "error": str(e)}, status_code=500)
+
+
+@app.get("/nexora")
+def nexora_page():
+    """NEXORA V2.0 獨立頁面(2026-07-08 新增)。"""
+    try:
+        html = Path(__file__).with_name("nexora-v2.html").read_text(encoding="utf-8")
+        return HTMLResponse(html)
+    except Exception as e:
+        return HTMLResponse(f"nexora-v2.html 缺失:{e}", status_code=500)
         return JSONResponse({"report": None, "error": str(e)})
 
 

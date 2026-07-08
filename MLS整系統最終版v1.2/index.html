@@ -73,39 +73,40 @@
     padding:16px 20px 8px;display:flex;align-items:center;gap:10px}
   .section-title .upd{font-size:10px;color:var(--ink2);font-weight:400;letter-spacing:0}
 
-  /* ── ① 資金流入板塊排行(2026-07-08:從橫向滑動改兩列網格) ── */
-  .grouprow{display:grid;grid-template-rows:repeat(2,auto);grid-auto-flow:column;
-    grid-auto-columns:minmax(140px,1fr);gap:0;background:var(--surface);
-    border-top:1px solid var(--line2);border-bottom:1px solid var(--line);min-height:96px}
-  .grouprow::-webkit-scrollbar{display:none}
-  .gcell{flex:1 0 auto;min-width:158px;padding:11px 16px;border-right:1px solid var(--line2);
-    position:relative;cursor:pointer;transition:background .15s,border-color .15s}
-  .gcell:hover{background:var(--goldbg)}
-  .gcell.active{background:var(--goldbg);box-shadow:inset 0 -2px 0 var(--gold)}
-  .gcell:last-child{border-right:0}
-  /* 板塊卡片點擊展開的同族群個股列表 */
-  .gpanel-inline{width:100%;background:var(--bg);border-top:2px solid var(--gold);
+  /* ── ① 資金流入板塊排行(2026-07-08:正方形卡片 4 欄 grid) ── */
+  .grouprow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;
+    background:var(--surface);border-top:1px solid var(--line2);
+    border-bottom:1px solid var(--line);padding:12px 14px}
+  .gcell{background:var(--surface);border:1.5px solid var(--line);
+    border-radius:12px;cursor:pointer;overflow:hidden;aspect-ratio:1/1;
+    display:flex;flex-direction:column;padding:10px 8px;
+    transition:transform .12s,border-color .12s}
+  .gcell:hover{transform:translateY(-1px);border-color:var(--gold)}
+  .gcell.active{border-color:var(--gold);background:var(--goldbg)}
+  .gcell.top3{background:linear-gradient(180deg,#fdf7e8,var(--surface))}
+  .gcell.top3:hover{background:linear-gradient(180deg,#fcf0d5,#fdf7e8)}
+  .gcell .grank{font-size:10px;font-weight:800;color:var(--ink2)}
+  .gcell.top3 .grank{color:var(--gold)}
+  /* 2026-07-08:locked 變數 = 策略主做族群,改顯示「· 主做」避免誤讀為禁止 */
+  .gcell.lock .grank::after{content:" · 主做";color:var(--gold);font-weight:900;background:var(--goldbg);padding:1px 6px;border-radius:3px}
+  .gtype{font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;display:inline-block;margin-bottom:4px;align-self:flex-start}
+  .gtype.engine{background:var(--engine);color:var(--engine-t)}
+  .gtype.attack{background:var(--attack);color:var(--attack-t)}
+  .gcell .gname{font-size:13px;font-weight:800;line-height:1.2;
+    max-height:32px;overflow:hidden;margin-bottom:2px}
+  .gcell .gpct{font-size:18px;font-weight:800;text-align:center;margin:4px 0}
+  .gcell .gflowscore{font-size:10px;color:var(--ink2);text-align:center}
+  .gcell .gflowscore b{color:var(--in);font-size:12px}
+  .gbar{height:4px;background:var(--line2);border-radius:2px;overflow:hidden;margin-top:4px}
+  .gbar i{display:block;height:100%}
+  .gcell .gflow{font-size:10px;margin-top:4px;text-align:center;color:var(--ink2)}
+  /* 板塊卡片點擊展開的同族群個股列表(grid 內跨欄) */
+  .gpanel-inline{grid-column:1/-1;background:var(--bg);border-top:2px solid var(--gold);
     padding:8px 12px 12px;animation:slideDown .25s ease}
   @keyframes slideDown{from{opacity:0;max-height:0}to{opacity:1;max-height:800px}}
   .gpanel-inline-head{font-size:11px;font-weight:700;color:var(--gold);padding:4px 0 6px;
     letter-spacing:1px}
   .gpanel-inline .heattable{margin-top:4px;border:1px solid var(--line2);border-radius:4px}
-  .gcell.top3{background:linear-gradient(180deg,#fdf7e8,var(--surface))}
-  .gcell.top3:hover{background:linear-gradient(180deg,#fcf0d5,#fdf7e8)}
-  .gcell .grank{position:absolute;top:10px;right:12px;font-size:10px;font-weight:800;color:var(--ink2)}
-  .gcell.top3 .grank{color:var(--gold)}
-  /* 2026-07-08:locked 變數 = 策略主做族群,改顯示「· 主做」避免誤讀為禁止 */
-  .gcell.lock .grank::after{content:" · 主做";color:var(--gold);font-weight:900;background:var(--goldbg);padding:1px 6px;border-radius:3px}
-  .gtype{font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;display:inline-block;margin-bottom:6px}
-  .gtype.engine{background:var(--engine);color:var(--engine-t)}
-  .gtype.attack{background:var(--attack);color:var(--attack-t)}
-  .gcell .gname{font-size:14px;font-weight:700}
-  .gcell .growrow{display:flex;align-items:baseline;gap:8px;margin:2px 0 5px}
-  .gcell .gpct{font-size:18px;font-weight:800}
-  .gcell .gflowscore{font-size:10px;color:var(--ink2)} .gcell .gflowscore b{color:var(--in);font-size:12px}
-  .gbar{height:4px;background:var(--line2);border-radius:2px;overflow:hidden}
-  .gbar i{display:block;height:100%}
-  .gflow{font-size:10px;margin-top:5px}
 
   /* ── ②③④ 龍頭深度分析(三欄連續帶,同一條、無卡片) ── */
   .leaders{display:flex;background:var(--surface);border-bottom:1px solid var(--line);
@@ -247,12 +248,12 @@
   <div class="section-title">② 前三族群龍頭 · 深度分析 <span class="upd">· 法人近月買賣超 / 千張大戶 / 均線上方空間 / AI 建議</span></div>
   <div class="leaders" id="leaders"></div>
 
-  <!-- ⑤ 熱力表 -->
-  <div class="section-title">③ 其他訊號 · 個股熱力表 <span class="upd">· 進攻優先 W 條件 · 依 AI Score 排序</span></div>
+  <!-- ⑤ 熱力表(2026-07-08:拿掉 AI 分數欄,5 群分組:進場/觀察進場/監控/觀察出場/出場) -->
+  <div class="section-title">③ 其他訊號 · 個股熱力表 <span class="upd">· 觀察進場紅 / 觀察出場綠 · 5 群分組</span></div>
   <table class="heattable">
     <thead>
       <tr>
-        <th class="l">動作</th><th>AI</th><th class="l">代號 / 名稱</th>
+        <th class="l">動作</th><th class="l">代號 / 名稱</th>
         <th>現價</th><th>漲幅</th><th>量比</th>
         <th class="col-hide">均價線</th><th>停損</th><th>信心</th>
         <th class="l col-hide">觸發規則</th>
@@ -289,9 +290,16 @@
 
 <script>
 var POLL_SEC = 30, countdown = POLL_SEC, lastData = null;
-var ACT_LABEL = {buy:"進場", watch:"觀察", sell:"出場", obs:"監控"};
-var ACT_ORDER = {buy:0, watch:1, obs:2, sell:3};
-var GROUP_TITLE = {buy:"▲ 進場訊號", watch:"◆ 觀察", obs:"· 監控中", sell:"▼ 出場 / 風險"};
+var ACT_LABEL = {buy:"進場", watch_buy:"觀察進場", watch_exit:"觀察出場", sell:"出場", obs:"監控", watch:"觀察"};
+// 5 群獨立排序:進場 > 進場觀察(紅) > 監控 > 退場觀察(綠) > 出場
+var ACT_ORDER = {buy:0, watch_buy:1, obs:2, watch_exit:3, sell:4};
+var GROUP_TITLE = {
+  buy:       "▲ 進場訊號",
+  watch_buy: "◆ 觀察進場",
+  obs:       "· 監控中",
+  watch_exit:"◇ 觀察出場",
+  sell:      "▼ 出場 / 風險"
+};
 var CONF_LABEL = {high:"高", mid:"中", low:"—"};
 var STANCE_LABEL = {bullish:"偏多", neutral:"中性", caution:"謹慎"};
 
@@ -427,12 +435,13 @@ function renderTable(){
   stocks.forEach(function(s){
     if(s.action!==lastAct){
       var n=stocks.filter(function(x){return x.action===s.action}).length;
-      html+='<tr class="grouphead"><td colspan="10">'+GROUP_TITLE[s.action]+'　<span class="cnt">'+n+' 檔</span></td></tr>';
+      // 2026-07-08:9 欄(拿掉 AI 分數)
+      html+='<tr class="grouphead"><td colspan="9">'+GROUP_TITLE[s.action]+'　<span class="cnt">'+n+' 檔</span></td></tr>';
       lastAct=s.action;
     }
+    // 2026-07-08:拿掉 AI 分數欄,只剩 9 欄
     html+='<tr class="lv-'+esc(s.heat_level)+'">'
       +'<td class="act '+esc(s.action)+'">'+ACT_LABEL[s.action]+'</td>'
-      +'<td class="aiscore mono">'+s.ai_score+'</td>'
       +'<td class="l"><span class="stk">'+esc(s.name)+'<small>'+esc(s.code)+'</small></span>'
       +'<span class="grp-tag '+esc(s.sector_type)+'">'+esc(s.sector)+'</span></td>'
       +'<td class="big mono '+(s.change_rate>=0?"up":"down")+'">'+(s.price!=null?s.price:"—")+'</td>'

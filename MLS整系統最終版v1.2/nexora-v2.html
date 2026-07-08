@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXORA V2.0</title>
+<style>
+  :root{
+    --bg:#0e1014; --surface:#161a21; --surface2:#1c2129;
+    --ink:#e8e9ed; --ink2:#8a8f9a;
+    --line:#262c36;
+    --gold:#c9a227; --goldbg:#2a2410;
+    --up:#ef4444; --down:#22c55e;
+    --a:#2563c7; --b:#8b5cf6; --c:#06b6d4; --d:#f59e0b; --e:#ec4899;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);
+    font-family:-apple-system,"PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+    font-size:14px;padding:0 0 40px}
+  .top{position:sticky;top:0;z-index:20;background:rgba(14,16,20,.96);
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
+    padding:14px 18px;display:flex;align-items:center;gap:12px}
+  .top .lg{font-weight:800;color:var(--gold);font-size:17px;letter-spacing:.5px}
+  .top .sub{font-size:11px;color:var(--ink2)}
+  .top .btn{margin-left:auto;background:var(--gold);color:#1a1d23;
+    border:none;padding:7px 14px;border-radius:8px;font-weight:800;font-size:12px;cursor:pointer}
+  .container{max-width:920px;margin:0 auto;padding:14px 18px}
+  .card{background:var(--surface);border:1px solid var(--line);
+    border-radius:12px;padding:16px 18px;margin-bottom:12px}
+  .card .ttl{font-size:13px;font-weight:800;color:var(--gold);
+    text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;
+    display:flex;align-items:center;gap:8px}
+  .card .ttl .num{background:var(--goldbg);color:var(--gold);
+    border-radius:6px;padding:2px 8px;font-size:11px}
+  pre.md{white-space:pre-wrap;word-break:break-word;font-family:inherit;
+    font-size:13px;line-height:1.7;color:var(--ink)}
+  pre.md h1,h2{color:var(--gold);font-weight:800;margin:14px 0 8px}
+  pre.md h1{font-size:18px}
+  pre.md h2{font-size:15px;border-left:3px solid var(--gold);padding-left:10px}
+  pre.md ul{margin:6px 0 6px 18px}
+  pre.md li{margin:3px 0;color:var(--ink2)}
+  pre.md li b{color:var(--ink)}
+  pre.md b{color:var(--ink)}
+  .err{padding:30px;text-align:center;color:#ef4444;font-size:13px}
+  .loading{padding:40px;text-align:center;color:var(--ink2)}
+  .score-big{font-size:42px;font-weight:800;color:var(--gold);text-align:center;margin:6px 0}
+  .score-lab{font-size:12px;color:var(--ink2);text-align:center;margin-bottom:8px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .pill{background:var(--surface2);border-radius:8px;padding:8px 10px;text-align:center}
+  .pill .k{font-size:10px;color:var(--ink2);text-transform:uppercase}
+  .pill .v{font-size:14px;font-weight:800;margin-top:2px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:800}
+  .badge.red{background:#3a1a1a;color:var(--up)}
+  .badge.green{background:#1a2e22;color:var(--down)}
+  .badge.gold{background:var(--goldbg);color:var(--gold)}
+  .badge.gray{background:var(--surface2);color:var(--ink2)}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <span class="lg">NEXORA</span>
+  <span class="sub">V2.0 · Market Behavior Intelligence Engine</span>
+  <button class="btn" id="refresh">重新分析</button>
+</div>
+
+<div class="container" id="content">
+  <div class="loading">載入中…</div>
+</div>
+
+<script>
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+
+// 極簡 markdown → HTML(支援 # ## - **)
+function md2html(md){
+  if(!md) return "";
+  var lines=md.split("\n"), h="", inList=false;
+  for(var i=0;i<lines.length;i++){
+    var ln=lines[i];
+    if(/^# /.test(ln)){ if(inList){h+="</ul>";inList=false;} h+="<h1>"+esc(ln.slice(2))+"</h1>";}
+    else if(/^## /.test(ln)){ if(inList){h+="</ul>";inList=false;} h+="<h2>"+esc(ln.slice(3))+"</h2>";}
+    else if(/^- /.test(ln)){
+      if(!inList){h+="<ul>";inList=true;}
+      h+="<li>"+esc(ln.slice(2))+"</li>";
+    }
+    else if(ln.trim()===""){ if(inList){h+="</ul>";inList=false;} h+="";}
+    else{ if(inList){h+="</ul>";inList=false;} h+="<p style='margin:4px 0;color:var(--ink2)'>"+esc(ln)+"</p>";}
+  }
+  if(inList) h+="</ul>";
+  return h;
+}
+
+// 解析報告的 12 節,做卡片化呈現
+function renderCards(report, payload){
+  var c=document.getElementById("content");
+  if(!report){
+    c.innerHTML='<div class="err">報告生成失敗</div>';
+    return;
+  }
+  // 切 12 節
+  var sections=report.split(/^## /m);
+  var html="";
+
+  // 摘要卡:優先用 payload(已解析),fallback regex
+  var sms=payload&&payload.sms;
+  var structure=payload&&payload.structure;
+  var probs=payload&&payload.probs;
+  var summary=payload&&payload.summary;
+
+  html+='<div class="card">';
+  html+='<div class="ttl"><span class="num">SUMMARY</span> 總覽</div>';
+  if(sms!=null){
+    html+='<div class="score-big">'+sms+'</div>';
+    html+='<div class="score-lab">Smart Money Score · '+esc(payload.sms_label||"")+'</div>';
+  }
+  var grid=[];
+  if(structure) grid.push(["市場結構", structure]);
+  if(probs) grid.push(["明日機率", "反彈"+probs["反彈"]+"% / 續跌"+probs["續跌"]+"% / 震盪"+probs["震盪"]+"%"]);
+  if(summary){
+    // summary 內含 | 分隔的關鍵指標
+    grid.push(["總結", summary.replace(/\|/g," · ")]);
+  }
+  if(grid.length){
+    html+='<div class="grid2">';
+    grid.forEach(function(g){
+      html+='<div class="pill"><div class="k">'+esc(g[0])+'</div><div class="v">'+esc(g[1])+'</div></div>';
+    });
+    html+='</div>';
+  }
+  html+='</div>';
+
+  // 12 節卡片(跳過第一段標題)
+  for(var i=1;i<sections.length;i++){
+    var sec=sections[i];
+    var idx=i;
+    var title=sec.split("\n")[0].trim();
+    var body=sec.slice(title.length).trim();
+    html+='<div class="card">';
+    html+='<div class="ttl"><span class="num">L'+idx+'</span> '+esc(title)+'</div>';
+    html+='<div class="md">'+md2html("## "+title+"\n"+body)+'</div>';
+    html+='</div>';
+  }
+  c.innerHTML=html;
+}
+
+function refresh(){
+  document.getElementById("content").innerHTML='<div class="loading">分析中…</div>';
+  fetch("/api/nexora-v2").then(function(r){return r.json()}).then(function(d){
+    if(d.error){document.getElementById("content").innerHTML='<div class="err">'+esc(d.error)+'</div>';return;}
+    // API 回 dict 含 report 欄位(完整 markdown)+ sms/probs/structure 等中繼資料
+    var payload=d.report||{};
+    var md=typeof payload==="string"?payload:(payload.report||"");
+    renderCards(md, payload);
+  }).catch(function(e){
+    document.getElementById("content").innerHTML='<div class="err">連線失敗:'+esc(e)+'</div>';
+  });
+}
+document.getElementById("refresh").addEventListener("click",refresh);
+refresh();
+</script>
+</body>
+</html>
