@@ -246,7 +246,17 @@ def scheduler_loop():
 
 
 # ══════════════════════════════════════════════════════
-app = FastAPI(title="MLS Standard")
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
+    """2026-07-08: 因 uvicorn server:app module mode 不走 __main__,
+    scheduler_loop 不會自動啟動。在 lifespan 啟動時補建 scheduler + 完成 db.init()。"""
+    db.init()
+    threading.Thread(target=scheduler_loop, daemon=True).start()
+    yield
+
+app = FastAPI(title="MLS Standard", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_methods=["*"], allow_headers=["*"])
 
@@ -269,15 +279,15 @@ def api_review():
 
 @app.get("/")
 def home():
-    # 2026-07-08:首頁改為 sectors.html(全卡片板塊個股設計,取代舊 index.html 板塊+熱力表)
-    html = Path(__file__).with_name("sectors.html").read_text(encoding="utf-8")
+    # 2026-07-08:首頁 = index.html,已內含板塊族群卡片 + 群組分類熱力表卡片設計
+    html = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
     return HTMLResponse(html)
 
 
-@app.get("/legacy")
-def legacy_index():
-    """舊版 index.html 保留作為備用(板塊+熱力表設計)"""
-    html = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
+@app.get("/sectors")
+def sectors_page():
+    """獨立 sectors.html 保留(測試版,可移除)"""
+    html = Path(__file__).with_name("sectors.html").read_text(encoding="utf-8")
     return HTMLResponse(html)
 
 

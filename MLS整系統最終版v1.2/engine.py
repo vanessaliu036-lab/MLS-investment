@@ -349,6 +349,15 @@ def eval_stock(s, locked_sectors, *, sector_median=0.0, market_pct=0.0,
         "ai_score": score,
         "factors": factors, "penalties": penalties,
         "tnvr": tnvr_val,
+        "aflow": aflow,                          # 2026-07-08:主動淨流(主動買−主動賣,股)
+        "div_flag": div_flag,                    # 2026-07-08:假紅背離 / 邊拉邊賣 旗標
+        "chip": {                                # 2026-07-08:籌碼(法人/大戶)給 UI 用
+            "inst_net_20d_lots": (chip or {}).get("inst_net_20d_lots"),
+            "inst_streak": (chip or {}).get("inst_streak"),
+            "big_holder_pct": (chip or {}).get("big_holder_pct"),
+            "big_holder_trend": (chip or {}).get("big_holder_trend"),
+        },
+        "mode": mode,                            # 2026-07-08:環境係數(attack/caution/risk)
         "code": s["code"], "name": C.NAME_MAP.get(s["code"], s["code"]),
         "sector": s.get("sector", "其他"), "sector_type": s.get("sector_type", "attack"),
         "price": s["price"], "change_rate": round(s["change_rate"], 2),
