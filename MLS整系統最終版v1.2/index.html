@@ -49,6 +49,11 @@
   .conn.ok{color:var(--down)} .conn.ok .dot{background:var(--down);box-shadow:0 0 5px var(--down);animation:p 2s infinite}
   .conn.err{color:var(--danger)} .conn.err .dot{background:var(--danger)}
   @keyframes p{50%{opacity:.4}}
+  /* 排行頁入口(2026-07-08 新增) */
+  .nav-link{font-size:12px;font-weight:700;color:var(--gold);text-decoration:none;
+    padding:5px 11px;border:1px solid var(--line);border-radius:5px;
+    background:var(--surface);transition:background .15s,border-color .15s}
+  .nav-link:hover{background:var(--goldbg);border-color:var(--gold)}
 
   .marketbar{display:flex;align-items:stretch;background:var(--surface);border-bottom:1px solid var(--line)}
   .verdict{flex:0 0 auto;padding:14px 24px;border-right:1px solid var(--line);min-width:260px}
@@ -68,9 +73,10 @@
     padding:16px 20px 8px;display:flex;align-items:center;gap:10px}
   .section-title .upd{font-size:10px;color:var(--ink2);font-weight:400;letter-spacing:0}
 
-  /* ── ① 資金流入板塊排行(連續橫排) ── */
-  .grouprow{display:flex;flex-wrap:wrap;background:var(--surface);border-top:1px solid var(--line2);
-    border-bottom:1px solid var(--line);min-height:96px}
+  /* ── ① 資金流入板塊排行(2026-07-08:從橫向滑動改兩列網格) ── */
+  .grouprow{display:grid;grid-template-rows:repeat(2,auto);grid-auto-flow:column;
+    grid-auto-columns:minmax(140px,1fr);gap:0;background:var(--surface);
+    border-top:1px solid var(--line2);border-bottom:1px solid var(--line);min-height:96px}
   .grouprow::-webkit-scrollbar{display:none}
   .gcell{flex:1 0 auto;min-width:158px;padding:11px 16px;border-right:1px solid var(--line2);
     position:relative;cursor:pointer;transition:background .15s,border-color .15s}
@@ -88,7 +94,8 @@
   .gcell.top3:hover{background:linear-gradient(180deg,#fcf0d5,#fdf7e8)}
   .gcell .grank{position:absolute;top:10px;right:12px;font-size:10px;font-weight:800;color:var(--ink2)}
   .gcell.top3 .grank{color:var(--gold)}
-  .gcell.lock .grank::after{content:" · 鎖定";color:var(--gold)}
+  /* 2026-07-08:locked 變數 = 策略主做族群,改顯示「· 主做」避免誤讀為禁止 */
+  .gcell.lock .grank::after{content:" · 主做";color:var(--gold);font-weight:900;background:var(--goldbg);padding:1px 6px;border-radius:3px}
   .gtype{font-size:9px;font-weight:700;padding:1px 6px;border-radius:3px;display:inline-block;margin-bottom:6px}
   .gtype.engine{background:var(--engine);color:var(--engine-t)}
   .gtype.attack{background:var(--attack);color:var(--attack-t)}
@@ -211,6 +218,7 @@
     <div class="st"><span class="k">加權指數</span><span class="v" id="idx">—</span></div>
     <div class="st col-hide"><span class="k">成交金額</span><span class="v" id="amt">—</span></div>
     <div class="rightbar">
+      <a class="nav-link" href="/rankings">排行 ▸</a>
       <div class="countdown"><span class="k">下次更新</span><span class="v mono" id="cd">--</span></div>
       <div class="conn ok" id="conn"><span class="dot"></span><span id="connTxt">連線中…</span></div>
     </div>
