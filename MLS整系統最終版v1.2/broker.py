@@ -79,6 +79,11 @@ def batch_snapshots(codes):
             time.sleep(1)
             continue
         for s in snaps:
+            # 2026-07-08 修:Shioaji snapshot 偶爾 total_amount=0(API 不穩),
+            # fallback 用 price × total_volume 估算(張→元需 ×1000)
+            amt = s.total_amount or 0
+            if amt == 0 and s.close and s.total_volume:
+                amt = round(s.close * s.total_volume)   # close=元,volume=股 → 金額=元
             out.append({
                 "code": s.code,
                 "price": s.close,
@@ -86,7 +91,7 @@ def batch_snapshots(codes):
                 "change_rate": s.change_rate,
                 "volume_ratio": getattr(s, "volume_ratio", 0) or 0,
                 "total_volume": (s.total_volume or 0),      # 股
-                "total_amount": (s.total_amount or 0),      # 元
+                "total_amount": amt,                        # 元
                 "avg_price": getattr(s, "average_price", None),
                 "tick_type": getattr(s, "tick_type", None),
             })

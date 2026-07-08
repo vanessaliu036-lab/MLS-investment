@@ -1,6 +1,0 @@
-# MLS 標準版依賴(版本鎖定範圍;部署後可用 pip freeze 覆蓋為精確版本)
-shioaji>=1.2,<2.0
-fastapi>=0.110,<1.0
-uvicorn>=0.29,<1.0
-pandas>=2.0,<3.0
-python-dotenv>=1.0,<2.0
