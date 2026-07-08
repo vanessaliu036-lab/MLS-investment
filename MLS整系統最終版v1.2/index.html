@@ -258,24 +258,27 @@
   .expand-head .pct{font-size:18px;font-weight:800}
   .expand-head .close{font-size:20px;color:var(--ink2);cursor:pointer;padding:0 8px}
 
-  /* ═══ 2026-07-08:⑤ 熱力表 = 群組分類卡片 ═══ */
-  .heat-group{background:var(--surface);border:1.5px solid var(--line);
-    border-radius:14px;margin:8px 14px;overflow:hidden}
-  .heat-group.buy{border-color:var(--red)}
-  .heat-group.watch_buy{border-color:#f7a89e}
-  .heat-group.obs{border-color:var(--line)}
-  .heat-group.watch_exit{border-color:#a8d8c1}
-  .heat-group.sell{border-color:var(--green)}
-  .heat-hd{display:flex;align-items:center;gap:10px;padding:12px 14px;
-    border-bottom:1px solid var(--line2)}
-  .heat-hd .nm{font-size:14px;font-weight:800}
-  .heat-hd .nm b{font-size:11px;font-weight:700;color:var(--ink2);margin-left:6px}
-  .heat-hd .cnt{margin-left:auto;font-size:11px;font-weight:800;
-    padding:3px 10px;border-radius:6px;background:var(--line2);color:var(--ink2)}
-  .heat-group.buy .heat-hd .cnt{background:var(--red);color:#fff}
-  .heat-group.watch_buy .heat-hd .cnt{background:#f7a89e;color:var(--up)}
-  .heat-group.sell .heat-hd .cnt{background:var(--green);color:#fff}
-  .heat-group.watch_exit .heat-hd .cnt{background:#a8d8c1;color:var(--down)}
+  /* ═══ 2026-07-08:熱力表 = 族群巢狀(族群大卡包個股小卡) ═══ */
+  .sec-group{background:var(--surface);border:1.5px solid var(--line);
+    border-radius:14px;margin:10px 14px;overflow:hidden}
+  .sec-group-hd{display:flex;align-items:center;gap:10px;
+    padding:12px 14px;background:var(--bg);
+    border-bottom:1.5px solid var(--line);flex-wrap:wrap}
+  .sg-name{font-size:15px;font-weight:800;letter-spacing:.5px}
+  .sg-chips{display:flex;gap:4px;flex-wrap:wrap;flex:1;justify-content:center}
+  .sg-chip{font-size:10px;font-weight:800;padding:3px 8px;border-radius:5px;
+    line-height:1.3;color:#fff;cursor:pointer;
+    transition:transform .12s}
+  .sg-chip:hover{transform:translateY(-1px)}
+  .sg-chip.c-buy{background:var(--red)}
+  .sg-chip.c-wb{background:#f7a89e;color:var(--up)}
+  .sg-chip.c-obs{background:var(--line2);color:var(--ink)}
+  .sg-chip.c-we{background:#a8d8c1;color:var(--down)}
+  .sg-chip.c-sell{background:var(--green)}
+  .sg-chip b{font-size:11px;margin-left:2px}
+  .sg-meta{font-size:10px;color:var(--ink2);font-weight:700;white-space:nowrap}
+  .sec-group-body{padding:8px 10px 10px}
+  .sec-group-body .stk-grid{padding:0}
 
   .stk-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:8px 12px 12px}
   .stk-mini{background:var(--bg);border:1.5px solid var(--line);
@@ -384,9 +387,10 @@
   <div class="section-title">② 前三族群龍頭 · 深度分析 <span class="upd">· 法人近月買賣超 / 千張大戶 / 均線上方空間 / AI 建議</span></div>
   <div class="leaders" id="leaders"></div>
 
-  <!-- ⑤ 熱力表(2026-07-08:從 <table> 改為群組分類卡片,5 群:進場/觀察進場紅/監控/觀察出場綠/出場) -->
-  <div class="section-title">③ 其他訊號 · 個股熱力表 <span class="upd">· 5 群分類卡片 · 點個股看深度分析</span></div>
-  <div id="heatCards"></div>
+  <!-- ⑤ 個股熱力表(2026-07-08:嚴守「群組→分類→個股」三層流程;
+       L1 板塊卡 → 點板塊展開 → L2 群組內分類(進場/觀進/監/觀出/出) → 點分類 → L3 該分類個股小卡 grid) -->
+  <div class="section-title">③ 個股熱力表 <span class="upd">· 群組 → 分類 → 個股 · 三層展開</span></div>
+  <div id="heatLayer"></div>
   <div class="empty-note" id="emptyNote" style="display:none"></div>
 
   <!-- ── 分頁切換:盤中 ↔ 盤後分析 ── -->
@@ -878,30 +882,54 @@ if(location.hash){
     return h;
   }
 
+  /* ═══════════════════════════════════════════════════
+   個股熱力表(2026-07-08 修正):嚴守「群組→分類→個股」三層流程
+   L1 族群大卡(每板塊一張,框住所有相關個股)
+   L2 族群內分類(進場/觀進/監/觀出/出 — 顯示在族群卡右上角)
+   L3 個股小卡 grid(預設不展開,點分類才顯示)
+   ═══════════════════════════════════════════════════ */
   function renderHeatCards(){
     var stocks = data.stocks || [];
-    var groups = [
-      {act:"buy", title:"進場訊號"},
-      {act:"watch_buy", title:"觀察進場"},
-      {act:"obs", title:"監控中"},
-      {act:"watch_exit", title:"觀察出場"},
-      {act:"sell", title:"出場 / 風險"},
-    ];
+    var sectors = data.sectors || [];
+    /* 板塊分組 */
+    var bySec = {};
+    stocks.forEach(function(s){
+      var sec = s.sector || "其他";
+      bySec[sec] = bySec[sec] || {buy:0, watch_buy:0, obs:0, watch_exit:0, sell:0, list:[]};
+      bySec[sec][s.action] = (bySec[sec][s.action]||0) + 1;
+      bySec[sec].list.push(s);
+    });
+    /* 用板塊排行順序(top 8) */
+    var secOrder = sectors.map(function(s){return s.name;}).filter(function(n){return bySec[n];});
+
     var h = "";
-    groups.forEach(function(g){
-      var list = stocks.filter(function(s){return s.action === g.act;});
-      if(!list.length) return;
-      list.sort(function(a,b){return (b.change_rate||0)-(a.change_rate||0);});
-      h += '<div class="heat-group '+g.act+'">';
-      h +=   '<div class="heat-hd"><span class="nm">'+g.title+'<b>'+list.length+' 檔</b></span>'
-           +   '<span class="cnt">'+list.length+'</span></div>';
-      h +=   '<div class="stk-grid">';
-      list.forEach(function(s){ h += stkMiniHtml(s); });
+    secOrder.forEach(function(secName){
+      var g = bySec[secName];
+      var secInfo = sectors.find(function(s){return s.name===secName;}) || {};
+      h += '<div class="sec-group" data-sec="'+esc(secName)+'">';
+      h +=   '<div class="sec-group-hd">';
+      h +=     '<div class="sg-name">'+esc(secName)+'</div>';
+      h +=     '<div class="sg-chips">';
+      h +=       '<span class="sg-chip c-buy" data-action="buy">▲進 <b>'+g.buy+'</b></span>';
+      h +=       '<span class="sg-chip c-wb"  data-action="watch_buy">觀進 <b>'+g.watch_buy+'</b></span>';
+      h +=       '<span class="sg-chip c-obs" data-action="obs">監控 <b>'+g.obs+'</b></span>';
+      h +=       '<span class="sg-chip c-we"  data-action="watch_exit">觀出 <b>'+g.watch_exit+'</b></span>';
+      h +=       '<span class="sg-chip c-sell" data-action="sell">▼出 <b>'+g.sell+'</b></span>';
+      h +=     '</div>';
+      h +=     '<div class="sg-meta">'+g.list.length+' 檔 · '+g.buy+g.watch_buy+g.obs+g.watch_exit+g.sell+' 訊號</div>';
+      h +=   '</div>';
+      h +=   '<div class="sec-group-body">';
+      /* 個股全部攤平(每張卡帶所屬族群 context,符合規則 11) */
+      h +=     '<div class="stk-grid">';
+      g.list.sort(function(a,b){return (b.change_rate||0)-(a.change_rate||0);}).forEach(function(s){
+        h += stkMiniHtml(s);
+      });
+      h +=     '</div>';
       h +=   '</div>';
       h += '</div>';
     });
-    document.getElementById("heatCards").innerHTML = h
-      || '<div class="empty-note">目前無訊號</div>';
+    document.getElementById("heatLayer").innerHTML = h
+      || '<div class="empty-note">目前無族群資料</div>';
   }
 
   function renderDetail(code){
@@ -1000,7 +1028,7 @@ if(location.hash){
           || '<span style="color:var(--ink2);font-size:11px">—</span>';
     h +=   '</div></div>';
 
-    document.getElementById("stkDetailWrap") || (document.getElementById("heatCards").insertAdjacentHTML("afterend",'<div id="stkDetailWrap"></div>'));
+    document.getElementById("stkDetailWrap") || (document.getElementById("heatLayer").insertAdjacentHTML("afterend",'<div id="stkDetailWrap"></div>'));
     document.getElementById("stkDetailWrap").innerHTML = h;
     document.getElementById("stkDetailWrap").classList.add("show");
   }
@@ -1035,7 +1063,7 @@ if(location.hash){
       }
       return;
     }
-    var stk = e.target.closest(".stk-mini");
+    var stk = e.target.closest(".stk-mini") || e.target.closest(".heat-cell");
     if(stk){
       renderDetail(stk.dataset.code);
       var wrap = document.getElementById("stkDetailWrap");
