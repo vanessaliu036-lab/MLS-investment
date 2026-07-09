@@ -259,6 +259,16 @@ def api_state():
         return JSONResponse(snap)
 
 
+@app.get("/health")
+def health():
+    """Docker healthcheck 用。回 200 + 狀態摘要。"""
+    with LOCK:
+        n_sectors = len(STATE.get("sectors") or [])
+        n_stocks = len(STATE.get("stocks") or [])
+    ok = (STATE.get("status") != "starting") or (n_stocks > 0)
+    return JSONResponse({"ok": ok, "status": STATE.get("status"), "sectors": n_sectors, "stocks": n_stocks}, status_code=200 if ok else 503)
+
+
 @app.get("/api/realtime_signal/{code}")
 def api_realtime_signal(code: str):
     """
