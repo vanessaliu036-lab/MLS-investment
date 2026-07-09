@@ -556,13 +556,33 @@ HERE = Path(os.path.dirname(os.path.abspath(__file__)))
 BIG_HOLDER_DATA_DIR = HERE / "data" / "big_holder"
 
 # ── 跟「盤後資金健康度」子系統的對接 ──
-MLS_ROOT = HERE.parent                    # 「MLS 完整系統 v1.2 /」外層
-MONEY_HEALTH_DIR = MLS_ROOT / "盤後資金健康度"   # 資金健康度子系統
-MLS_DB_PATH = MLS_ROOT / "mls.db"          # 共用主資料庫
-# .env 在外層 (主系統) 不在資金健康度裡,fallback 找兩個位置
+# 本地部署: 策略系統/ 跟 盤後資金健康度/ 平級,在「MLS 完整系統 v1.2 /」下
+# VPS 部署:  /opt/pos-v1.2/ 是「合併版」,檔案平鋪,沒有「盤後資金健康度/」子資料夾
+# 所以用「找檔案」而非「固定子資料夾路徑」做 fallback
+_candidates: List[Path] = [
+    HERE.parent / "盤後資金健康度",       # 本地:外層子資料夾
+    HERE.parent,                          # VPS / 合併版:直接在外層
+    HERE,                                 # 極限:跟策略系統同目錄
+]
+
+
+def _find_money_health_dir() -> Path:
+    """找出資金健康度檔案所在的目錄 (本地子資料夾 或 VPS 合併版根)。"""
+    for base in _candidates:
+        if (base / "config.py").exists() and (base / "money_health.py").exists():
+            return base
+    # fallback:本地預期路徑
+    return HERE.parent / "盤後資金健康度"
+
+
+MONEY_HEALTH_DIR = _find_money_health_dir()
+MLS_DB_PATH = HERE.parent / "mls.db"          # 共用主資料庫 (外層)
+
+# .env 候選:本機外層 / 資金健康度/ / 策略系統/
 _MLS_DOTENV_CANDIDATES = [
-    MLS_ROOT / ".env",                     # 主系統外層 .env (有 SHIOAJI/FINMIND)
+    HERE.parent / ".env",
     MONEY_HEALTH_DIR / ".env",
+    HERE / ".env",
 ]
 
 
