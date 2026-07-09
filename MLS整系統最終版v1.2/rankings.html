@@ -80,6 +80,11 @@
     background:var(--surface);line-height:1.7}
   .sig{display:flex;gap:12px;padding:10px 16px;font-size:12.5px;color:var(--ink2)}
   .sig b{color:var(--gold)}
+  .empty{padding:36px 18px;text-align:center;background:var(--surface);border-radius:14px;line-height:1.8}
+  .empty .why{color:var(--ink2);font-size:13px;margin-top:6px}
+  .empty .hint{color:var(--gold);font-size:12px;margin-top:10px;font-weight:700}
+  .empty .num{display:flex;justify-content:center;gap:14px;margin:10px 0;font-size:11.5px;color:var(--ink2)}
+  .empty .num b{color:var(--ink);font-weight:800}
 </style>
 </head>
 <body>
@@ -134,8 +139,24 @@ function liveRank(d){
           signals:null, n:rows.length};
 }
 
+function emptyCardSectors(reason, why, hint){
+  return '<div class="empty" style="width:100%;margin:0 16px;box-sizing:border-box">'
+    +'<div style="font-size:15px;font-weight:800;color:var(--ink)">'+reason+'</div>'
+    +'<div class="why">'+why+'</div>'
+    +(hint?'<div class="hint">'+hint+'</div>':'')
+    +'</div>';
+}
+
 function renderCards(data){
   var secs=data.sectors||[], h="";
+  if(secs.length===0){
+    var why="盤中即時狀態還沒組好,或非交易時段無族群快照";
+    var hint=MODE==="eod"?"切到「盤中」分頁看即時":"等 engine 跑滿一輪(開盤後約 5 分鐘)";
+    document.getElementById("cards").innerHTML = emptyCardSectors("尚無族群資料", why, hint);
+    document.getElementById("secNote").textContent = "無族群資料";
+    return;
+  }
+  document.getElementById("secNote").textContent = "依 Flow/漲幅排行 · "+secs.length+" 族群";
   secs.slice(0,8).forEach(function(s,i){
     var q = s.quadrant||"";
     var qn = {"in_up":"流入↗漲","in_down":"⚠邊拉邊賣","out_down":"流出·休息","out_up":"量縮漲","鎖定":"🔒 鎖定"}[q]||q;
@@ -146,11 +167,42 @@ function renderCards(data){
       +'<div class="pf '+((s.pct||0)>=0?"up":"down")+' mono">'+((s.pct||0)>0?"+":"")+(s.pct||0).toFixed(2)+'%</div>'
       +'<div class="quad">'+esc(qn)+'</div></div>';
   });
-  document.getElementById("cards").innerHTML = h || '<div class="note" style="width:100%">尚無族群資料</div>';
+  document.getElementById("cards").innerHTML = h;
+}
+
+function emptyList(tabName, mode, nTotal){
+  var reason="", why="", hint="";
+  if(mode==="eod"){
+    if(nTotal===0){
+      reason="盤後榜單尚無資料";
+      why="EOD 管線在收盤後 15:05 自動跑,寫入 sector_daily + 計算隔日結果標記。盤中切到這個分頁就會看到空。";
+      hint="切回「盤中」看即時;或等 15:05 後再來";
+    } else {
+      reason="「"+tabName+"」榜在 EOD 沒有資料";
+      why="EOD 訓練樣本對這榜的過濾條件(例:創高榜需要『突破 60 日高』標記)沒命中任何檔";
+      hint="換到「熱門股」「漲幅榜」試試(條件較寬)";
+    }
+  } else {
+    if(nTotal===0){
+      reason="盤中觀察池還沒組好";
+      why="engine.build_state 還在跑(剛開盤或非交易時段),觀察池 0 檔時所有榜都會空";
+      hint="等 engine 跑完一輪(約開盤後 5 分鐘);或確認 watchlist 載入";
+    } else {
+      reason="「"+tabName+"」榜目前沒有符合條件的個股";
+      why="觀察池 "+nTotal+" 檔都沒達到「"+tabName+"」的門檻(例:創高榜需 at_high=1)";
+      hint="換到「熱門股」或「漲幅榜」看條件較寬的榜";
+    }
+  }
+  return '<div class="empty">'
+    +'<div style="font-size:15px;font-weight:800;color:var(--ink)">'+reason+'</div>'
+    +'<div class="why">'+why+'</div>'
+    +'<div class="hint">'+hint+'</div>'
+    +'</div>';
 }
 
 function renderList(data){
   var rows = data[TAB]||[];
+  var nTotal = data.n || 0;
   document.getElementById("c4h").textContent = TAB==="volume"?"量比":(MODE==="eod"?"熱度·隔日":"熱度");
   var h="";
   rows.forEach(function(r,i){
@@ -166,10 +218,11 @@ function renderList(data){
       +'<div class="c4 mono">'+(TAB==="volume"?(r.tnvr||0).toFixed(2):Math.round(r.heat||0))+lb+'</div>'
       +'</div>';
   });
-  document.getElementById("list").innerHTML = h ||
-    '<div class="note">'+ (MODE==="eod"
-      ? "尚無盤後資料。收盤後 15:05 EOD 管線產出當日榜單;若仍為空,請看 reports/EOD_QA 報告的 QA 異常項。"
-      : "盤中資料載入中或非交易時段。") + '</div>';
+  if(!h){
+    document.getElementById("list").innerHTML = emptyList({"hot":"熱門股","gainers":"漲幅榜","losers":"跌幅榜","volume":"量能榜","newhigh":"創高榜"}[TAB]||TAB, MODE, nTotal);
+  } else {
+    document.getElementById("list").innerHTML = h;
+  }
   var sig = data.signals;
   document.getElementById("sigline").innerHTML = sig
     ? "當日訊號 <b>"+(sig.total||0)+"</b>|進場 <b>"+(sig.buys||0)+"</b>|風險 <b>"+(sig.risks||0)+"</b>|樣本 "+data.n+" 檔"
@@ -188,7 +241,13 @@ function refresh(){
     fetch("/api/eod_rank").then(function(r){return r.json()}).then(function(d){
       eod = d;
       document.getElementById("upd").textContent = d.date ? ("盤後 "+d.date) : "盤後";
-      if(!d.date){renderCards({sectors:[]});document.getElementById("list").innerHTML='<div class="note">'+esc(d.note||"尚無盤後資料")+'</div>';return;}
+      if(!d.date){
+        renderCards({sectors:[]});
+        document.getElementById("list").innerHTML=emptyList(
+          {"hot":"熱門股","gainers":"漲幅榜","losers":"跌幅榜","volume":"量能榜","newhigh":"創高榜"}[TAB]||TAB,
+          "eod", 0);
+        return;
+      }
       renderCards(d); renderList(d);
     }).catch(function(){document.getElementById("list").innerHTML='<div class="note">連線失敗</div>';});
   }

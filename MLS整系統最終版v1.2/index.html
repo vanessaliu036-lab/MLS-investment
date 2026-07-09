@@ -549,12 +549,46 @@ function renderFlow(){
   document.getElementById("flowbody").innerHTML=h;
 }
 function renderMini(){
-  var secs=(STATE.sectors||[]).filter(function(s){return s.flow_score>0}).sort(function(a,b){return b.flow_score-a.flow_score}).slice(0,3);
-  var h1=secs.length?secs.map(function(s){return '<div class="mrow"><span class="nm">'+esc(s.name)+'</span><span class="v in">'+(s.amount_100m!=null?"+"+s.amount_100m+"億":pf(s.pct))+'</span></div>'}).join(""):'<div class="mrow"><span class="nm" style="color:var(--faint)">無</span></div>';
-  document.getElementById("topflow").innerHTML=h1;
-  var out=(STATE.sectors||[]).filter(function(s){return s.type==="attack"&&(s.flow_score<0||s.pct<-2)});
-  var h2=out.length?out.map(function(s){return '<div class="mrow"><span class="nm">'+esc(s.name)+'</span><span class="v down">禁追</span></div>'}).join(""):'<div class="mrow"><span class="nm" style="color:var(--faint)">今日無明確禁區</span></div>';
-  document.getElementById("donttouch").innerHTML=h2;
+  var allSecs=(STATE.sectors||[]);
+  var secs=allSecs.filter(function(s){return s.flow_score>0}).sort(function(a,b){return b.flow_score-a.flow_score}).slice(0,3);
+  if(secs.length){
+    document.getElementById("topflow").innerHTML=secs.map(function(s){
+      return '<div class="mrow"><span class="nm">'+esc(s.name)+'</span><span class="v in">'+(s.amount_100m!=null?"+"+s.amount_100m+"億":pf(s.pct))+'</span></div>';
+    }).join("");
+  } else {
+    // 區分:沒族群 vs 沒流入
+    if(allSecs.length===0){
+      document.getElementById("topflow").innerHTML=
+        '<div class="mrow"><span class="nm" style="color:var(--faint)">尚無族群資料</span></div>'
+        +'<div class="mrow" style="color:var(--faint);font-size:11.5px;line-height:1.6;padding:6px 4px 0">'
+        +'· engine 還在組 STATE(開盤後約 5 分鐘)<br>'
+        +'· 或非交易時段(午休 / 週末 / 收盤後)</div>';
+    } else {
+      document.getElementById("topflow").innerHTML=
+        '<div class="mrow"><span class="nm" style="color:var(--faint)">無資金流入群組</span></div>'
+        +'<div class="mrow" style="color:var(--faint);font-size:11.5px;line-height:1.6;padding:6px 4px 0">'
+        +'· '+allSecs.length+' 個族群都呈流出/中性<br>'
+        +'· 大盤轉弱或族群輪動休息中<br>'
+        +'· 這是常態,不是 bug</div>';
+    }
+  }
+  var out=allSecs.filter(function(s){return s.type==="attack"&&(s.flow_score<0||s.pct<-2)});
+  if(out.length){
+    document.getElementById("donttouch").innerHTML=out.map(function(s){
+      return '<div class="mrow"><span class="nm">'+esc(s.name)+'</span><span class="v down">禁追</span></div>';
+    }).join("");
+  } else {
+    if(allSecs.length===0){
+      document.getElementById("donttouch").innerHTML=
+        '<div class="mrow"><span class="nm" style="color:var(--faint)">尚無族群資料</span></div>';
+    } else {
+      document.getElementById("donttouch").innerHTML=
+        '<div class="mrow"><span class="nm" style="color:var(--faint)">無明確禁區</span></div>'
+        +'<div class="mrow" style="color:var(--faint);font-size:11.5px;line-height:1.6;padding:6px 4px 0">'
+        +'· '+allSecs.length+' 個族群都未觸發「攻擊族群 + 資金流出或跌>2%」條件<br>'
+        +'· 沒有可標的=沒有族群需要避開(好消息)</div>';
+    }
+  }
 }
 
 function pick(sec){SEL=(SEL===sec?null:sec);renderTree();if(SEL)setTimeout(function(){document.getElementById("drill").scrollIntoView({behavior:"smooth",block:"start"});},60);}
@@ -736,8 +770,54 @@ function switchTab(tab){
   }
   if(tab==="strategy"){renderStrategy();return;}
   if(tab==="livermore"){renderLivermore();return;}
+  if(tab==="nexora"){renderNexora();return;}
   var p=PLUGINS[tab];
   if(p){body.innerHTML='<div class="plugin-card"><h3>'+p.t+'</h3><p>'+p.d+'</p>'+(p.link?'<a class="lnk" href="'+p.link+'" target="_blank">開啟 '+p.link+' ↗</a>':'<p style="color:var(--violet);font-weight:700;margin-top:10px">→ 回首頁點任一個股卡片,細節彈窗即含此插件分析</p>')+'</div>';}
+}
+
+/* ── NEXORA 渲染 ── */
+function renderNexora(){
+  var body=document.getElementById("plugin-body");
+  body.innerHTML='<div class="plugin-card"><h3>🧠 NEXORA 八層盤後報告</h3><p>資金流 / Money Quality / 市場結構 / 承接 / 賣壓來源 / Smart Money / 隔日機率 / 自我驗證,12 節完整報告。</p><div id="nexora-body" style="margin-top:14px">載入中…</div></div>';
+  fetch(API_BASE+"/api/nexora").then(function(r){return r.json()}).then(function(d){
+    var box=document.getElementById("nexora-body");
+    if(!d||!d.report){
+      var note=d&&d.note?d.note:"尚無報告";
+      var why="";
+      var hint="";
+      if((d&&d.error)||!d){
+        why="NEXORA 模組讀檔失敗(可能 reports/ 目錄權限問題)";
+        hint="看 server.py /api/nexora 路由的 traceback";
+      } else if(d.note&&d.note.indexOf("15:05")>=0){
+        why="after_hours.run() 15:05 才會跑 NEXORA 報告管線,現在是盤中";
+        hint="等 15:05 後再來,或手動觸發 after_hours.run()";
+      } else {
+        why="盤後報告尚未產出";
+        hint="確認 after_hours 排程是否正常(看 server.log)";
+      }
+      box.innerHTML='<div class="empty" style="padding:24px 14px;line-height:1.8">'
+        +'<div style="font-size:15px;font-weight:800;color:var(--ink)">尚無 NEXORA 盤後報告</div>'
+        +'<div style="color:var(--faint);font-size:12.5px;margin-top:6px">'+esc(note)+'</div>'
+        +'<div style="color:var(--faint);font-size:12px;margin-top:6px">'+why+'</div>'
+        +'<div style="color:var(--violet);font-weight:700;font-size:12px;margin-top:10px">'+hint+'</div>'
+        +'</div>';
+      return;
+    }
+    // 簡單 markdown 渲染:標題/段落
+    var md=d.report;
+    var html=md.split("\n").map(function(line){
+      if(/^# (.+)$/.test(line)) return '<h3 style="margin:14px 0 6px;font-size:15px;font-weight:800">'+esc(line.slice(2))+'</h3>';
+      if(/^## (.+)$/.test(line)) return '<h4 style="margin:12px 0 4px;font-size:14px;font-weight:800;color:var(--violet)">'+esc(line.slice(3))+'</h4>';
+      if(line.trim()==="") return "<br>";
+      return '<div style="line-height:1.7;font-size:13px;color:var(--ink)">'+esc(line)+'</div>';
+    }).join("");
+    box.innerHTML='<div style="font-size:11.5px;color:var(--faint);margin-bottom:8px">檔案: '+esc(d.file||"—")+'</div><div style="background:var(--soft);padding:14px;border-radius:10px;line-height:1.7">'+html+'</div>';
+  }).catch(function(e){
+    document.getElementById("nexora-body").innerHTML='<div class="empty" style="padding:24px 14px;line-height:1.8">'
+      +'<div style="font-size:15px;font-weight:800;color:var(--ink)">載入失敗</div>'
+      +'<div style="color:var(--faint);font-size:12px;margin-top:6px">'+esc(e)+'</div>'
+      +'</div>';
+  });
 }
 
 /* ── 四大策略對比渲染 ── */
@@ -881,7 +961,30 @@ function renderDecisions(){
   set("dn-ready",DEC_CACHE.ready_n||0);
   set("dn-watch",DEC_CACHE.watch_n||0);
   set("dn-hold",DEC_CACHE.hold_n||0);
-  if(!list||!list.length){box.innerHTML='<div class="empty" style="padding:30px;text-align:center;color:var(--faint)">該狀態無個股</div>';return;}
+  if(!list||!list.length){
+    var total=DEC_CACHE.count||0;
+    var why="";
+    var hint="";
+    if(DEC_FILTER==="all"){
+      why=total===0?"/api/money_health 還沒回資料,或觀察池 0 檔":"全部個股都未達 Ready / Watch 標準(都在 Hold)";
+      hint=total===0?"等 server 跑滿一輪":"切到下方「Hold」分頁看持股續抱名單";
+    } else if(DEC_FILTER==="Ready"){
+      why="沒有任何個股達到 Ready(AI 強 + BS 過 + 三角交叉確認)";
+      hint="等盤中震盪擴大、或換股到接近關鍵點位時會觸發";
+    } else if(DEC_FILTER==="Watch"){
+      why="沒有任何個股進入 Watch(分數夠但 BS 或三角未過)";
+      hint="切到「Hold」分頁看其他個股;或繼續觀察";
+    } else if(DEC_FILTER==="Hold"){
+      why="沒有任何個股在 Hold(全部都被評為觀望 / 進場 / 風險)";
+      hint="這是防守訊號,主系統判定全部都不值得 hold,等訊號重新出現";
+    }
+    box.innerHTML='<div class="empty" style="padding:24px 14px;line-height:1.8;text-align:center">'
+      +'<div style="font-size:15px;font-weight:800;color:var(--ink)">「'+DEC_FILTER+'」分頁無個股</div>'
+      +'<div style="color:var(--faint);font-size:12.5px;margin-top:6px">'+why+'</div>'
+      +'<div style="color:var(--violet);font-weight:700;font-size:12px;margin-top:10px">'+hint+'</div>'
+      +'</div>';
+    return;
+  }
   var html='<div class="deccards">';
   list.forEach(function(c){
     var d=c.decision||{};

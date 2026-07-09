@@ -4,9 +4,10 @@
 const UPSTREAM = "http://104.156.239.83:8000";
 
 export default async function handler(req, res) {
-  // 把 req.url 例如 "/api/state" 組出 upstream URL
-  const path = req.url || "/api/";
-  const upstreamUrl = UPSTREAM + path;
+  // Vercel catch-all:子路徑陣列在 req.query.path
+  const sub = (req.query && req.query.path) || [];
+  const subPath = Array.isArray(sub) ? sub.join("/") : String(sub || "");
+  const upstreamUrl = UPSTREAM + "/api/" + subPath + (req.url && req.url.includes("?") ? req.url.slice(req.url.indexOf("?")) : "");
 
   try {
     const headers = { ...req.headers };

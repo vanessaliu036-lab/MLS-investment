@@ -392,10 +392,17 @@ def api_review_date(trade_date: str):
                         review["missed"] = []
             except Exception:
                 pass
+            # signals 表無 ai_score 欄位(見 db.py:27),改用 triggered_rules 數量+confidence_label 排序
             signals_today = [dict(r) for r in c.execute(
-                "SELECT * FROM signals WHERE trade_date=? ORDER BY ai_score DESC",
+                "SELECT * FROM signals WHERE trade_date=? ORDER BY confidence_label DESC, ts DESC",
                 (trade_date,))]
         watchlist = db.load_watchlist(trade_date)
+        # 拆 triggered_rules 統計每筆觸發的規則數(給前端當熱度)
+        for s in signals_today:
+            try:
+                s["_rules"] = json.loads(s.get("triggered_rules") or "[]")
+            except Exception:
+                s["_rules"] = []
         return _safe({
             "trade_date": trade_date,
             "review": review,
