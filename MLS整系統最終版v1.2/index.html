@@ -80,6 +80,8 @@
   .cell .cv{font-weight:750;line-height:1.2;margin-top:3px;color:#0e1116;opacity:.85;font-size:13px}
   .cell .lk{position:absolute;top:4px;right:5px;font-size:9px;background:var(--violet);color:#fff;padding:1px 6px;border-radius:5px;font-weight:800;letter-spacing:.02em}
   .cell .rank{position:absolute;top:4px;left:5px;font-size:9px;background:rgba(255,255,255,.85);color:#0e1116;padding:1px 6px;border-radius:5px;font-weight:800}
+  .cell.placeholder{background:repeating-linear-gradient(45deg,#fafbfc,#fafbfc 6px,#f1f3f6 6px,#f1f3f6 12px)!important;color:var(--faint)!important;cursor:default;opacity:.85}
+  .cell.placeholder .rank{background:rgba(255,255,255,.7)}
   .legend{display:flex;align-items:center;gap:0;margin:10px 4px 2px}
   .legend .grad{flex:1;height:7px;border-radius:100px;background:linear-gradient(90deg,#f43f5e,#f79aa8,#fbd0d6,#eef0f3,#bfe8d5,#6bcfa0,#10b981)}
   .legend-l{display:flex;justify-content:space-between;margin:3px 4px 0;font-size:9.5px;color:var(--faint);font-weight:600}
@@ -123,6 +125,9 @@
   .l2-cell .k{font-size:10.5px;color:var(--faint);font-weight:700;margin-bottom:4px}
   .l2-cell .v{font-size:15px;font-weight:750}
   .l2-cell .v .sub{font-size:11px;color:var(--faint);font-weight:600;margin-left:4px}
+  .l2-cell .v.up{color:var(--up)}.l2-cell .v.down{color:var(--down)}.l2-cell .v.neu{color:var(--faint)}
+  .l2-chart{background:var(--soft);border-radius:10px;padding:12px;margin-bottom:10px}
+  .l2-stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
   .ph-note{font-size:11px;color:var(--faint);font-weight:600;margin-top:10px;padding:8px 10px;background:var(--amber-soft);color:#92400e;border-radius:8px}
 
   /* 盤中資金流動(流入前三群組的個股;上進場下出場) */
@@ -358,18 +363,26 @@ function renderTree(){
      · 缺資料的版位顯示「無資料」灰版
   */
   var allSecs=(STATE.sectors||[]).slice();
-  var ALL_GROUPS=["記憶體","封測","被動元件","PCB材料","功率半導體","石英元件","無人機","光通訊","ABF載板","晶圓材料"];
+  /* v2.5.1:補位用 config.UNIVERSE(10 族群),只補 STATE 沒有的,去重 */
+  var universeNames=["記憶體","封測","被動元件","PCB材料","功率半導體","石英元件","無人機","光通訊","ABF載板","晶圓材料"];
   function sortKey(s){
     var lockedW=s.locked?1e12:0;
     var amt=s.amount_100m!=null?s.amount_100m*1e6:0;
     return lockedW+amt;
   }
   var sorted=allSecs.slice().sort(function(a,b){return sortKey(b)-sortKey(a)});
+  /* 補位:若 STATE sectors 不足 10,用 universeNames 補,但排除已存在的(去重) */
+  var existing=new Set(sorted.map(function(s){return s.name}));
+  universeNames.forEach(function(n){if(!existing.has(n)&&sorted.length<10){sorted.push({name:n,locked:false,pct:null,amount_100m:null,flow_score:null,_placeholder:true});}});
   var picked=sorted.slice(0,10);
   var tree=document.getElementById("tree"),html="";
   for(var i=0;i<10;i++){
     var s=picked[i];
     if(s){
+      if(s._placeholder){
+        html+='<div class="cell placeholder"><span class="rank">#'+(i+1)+'</span><div class="cn">'+esc(s.name)+'</div><div class="cv">無當日成交</div></div>';
+        continue;
+      }
       var c=HEAT==="change"?colorChange(s.pct):colorFlow(s.flow_score);
       var val=HEAT==="change"?pf(s.pct):((s.amount_100m!=null?s.amount_100m:0)+"億");
       var lockLabel=s.locked?'<span class="lk">鎖</span>':"";
@@ -380,8 +393,7 @@ function renderTree(){
         +'<div class="cv">'+val+'</div>'
       +'</div>';
     } else {
-      var gapName=ALL_GROUPS[i]||"—";
-      html+='<div class="cell" style="background:#f4f5f8;color:var(--faint)"><span class="rank">#'+(i+1)+'</span><div class="cn">'+esc(gapName)+'</div><div class="cv">無資料</div></div>';
+      html+='<div class="cell placeholder"><span class="rank">#'+(i+1)+'</span><div class="cn">—</div><div class="cv">無資料</div></div>';
     }
   }
   tree.innerHTML=html;
@@ -497,10 +509,11 @@ function detail(code){
     m+='<div class="blk"><div class="tribox"><div class="t">文件四大策略 <span class="vd '+(ds.pass?"bullish":"pending")+'">'+(ds.pass?"通過":ds.score+"分")+'</span></div><div class="ln">'+yn(ds.c1_market)+' 大盤 ｜ '+yn(ds.c2_chip)+' 籌碼 ｜ '+yn(ds.c3_tech)+' 技術MA20 ｜ '+yn(ds.c4_bs)+' BS盤</div><div class="nx">對比策略,與AI分並列驗證誰準</div></div></div>';}
   if(s.rules&&s.rules.length)m+='<div class="blk"><div class="rules">'+s.rules.map(function(r){return '<span class="r">'+esc(r)+'</span>'}).join("")+'</div></div>';
 
-  // 第二層:走勢 tab + sparkline placeholder
+  // 第二層:走勢 tab + sparkline placeholder(資料由 /api/stock_detail 補)
   var _l2id='l2-'+s.code;
+  var snap=s;  // 從 STATE 拿
   m+='<div class="sh-l2">'
-    +'<div class="blk-t" style="margin-bottom:10px;font-size:13px;font-weight:750;color:var(--sub)">走勢與細節 <span style="font-size:10.5px;color:var(--faint);font-weight:600;margin-left:6px">第二層 · 先留版面</span></div>'
+    +'<div class="blk-t" style="margin-bottom:10px;font-size:13px;font-weight:750;color:var(--sub)">走勢與細節 <span style="font-size:10.5px;color:var(--faint);font-weight:600;margin-left:6px">資料源:Shioaji kbar + FinMind</span></div>'
     +'<div class="l2-tabs" id="'+_l2id+'-tabs">'
       +'<b class="on" data-pane="td" onclick="l2Switch(\''+_l2id+'\',\'td\')">分時</b>'
       +'<b data-pane="dk" onclick="l2Switch(\''+_l2id+'\',\'dk\')">日K</b>'
@@ -508,18 +521,16 @@ function detail(code){
       +'<b data-pane="depth" onclick="l2Switch(\''+_l2id+'\',\'depth\')">五檔報價</b>'
     +'</div>'
     +'<div class="spark" id="'+_l2id+'-pane">'
-      +'<span class="ph-label">示意資料 · 待接 Shioaji kbar/法人明細</span>'
-      +_l2SparkSvg(esc(s.code))
+      +'<span class="ph-label" id="'+_l2id+'-loading">載入中…</span>'
     +'</div>'
     +'<div class="l2-grid">'
-      +'<div class="l2-cell"><div class="k">開盤</div><div class="v num">'+(s.open!=null?s.open:"—")+'</div></div>'
-      +'<div class="l2-cell"><div class="k">最高</div><div class="v num up">'+(s.high!=null?s.high:"—")+'</div></div>'
-      +'<div class="l2-cell"><div class="k">最低</div><div class="v num down">'+(s.low!=null?s.low:"—")+'</div></div>'
-      +'<div class="l2-cell"><div class="k">均價</div><div class="v num">'+(s.avg_price!=null?s.avg_price:"—")+'</div></div>'
-      +'<div class="l2-cell"><div class="k">累積量</div><div class="v num">'+(s.total_volume!=null?(s.total_volume/1000).toFixed(0)+' <span class="sub">張</span>':"—")+'</div></div>'
-      +'<div class="l2-cell"><div class="k">累積金額</div><div class="v num">'+(s.total_amount!=null?(s.total_amount/1e8).toFixed(2)+' <span class="sub">億</span>':"—")+'</div></div>'
+      +'<div class="l2-cell"><div class="k">開盤</div><div class="v num">'+(snap.open!=null?snap.open:"—")+'</div></div>'
+      +'<div class="l2-cell"><div class="k">最高</div><div class="v num up">'+(snap.high!=null?snap.high:"—")+'</div></div>'
+      +'<div class="l2-cell"><div class="k">最低</div><div class="v num down">'+(snap.low!=null?snap.low:"—")+'</div></div>'
+      +'<div class="l2-cell"><div class="k">均價</div><div class="v num">'+(snap.avg_price!=null?snap.avg_price:"—")+'</div></div>'
+      +'<div class="l2-cell"><div class="k">累積量</div><div class="v num">'+(snap.total_volume!=null?(snap.total_volume/1000).toFixed(0)+' <span class="sub">張</span>':"—")+'</div></div>'
+      +'<div class="l2-cell"><div class="k">累積金額</div><div class="v num">'+(snap.total_amount!=null?(snap.total_amount/1e8).toFixed(2)+' <span class="sub">億</span>':"—")+'</div></div>'
     +'</div>'
-    +'<div class="ph-note">⚠ 第二層目前全為示意版面(走勢圖為固定 SVG,非真實 tick)。實際資料源:Shioaji kbar + FinMind 籌碼。待確認需求後接上。</div>'
   +'</div>';
 
   m+='</div>';
@@ -529,32 +540,81 @@ function detail(code){
 function closeBg(e){if(e.target.id==="ov")document.getElementById("ov").className="ov";}
 
 /* 第二層走勢 · 用 code 當 seed 製造穩定假 sparkline */
-function _l2SparkSvg(seed){
-  var h=110,w=400,n=40;
-  function rng(){var x=0;seed.split("").forEach(function(c){x=(x*31+c.charCodeAt(0))>>>0;});return function(){x=(x*1664525+1013904223)>>>0;return (x>>>0)/4294967296;};};
-  var r=rng(),vals=[];var base=100;
-  for(var i=0;i<n;i++){base+=((r()*2-1)*2.5);vals.push(base);}
-  var mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals),rng2=mx-mn||1;
-  var pts=vals.map(function(v,i){var x=i/(n-1)*w,y=h-((v-mn)/rng2)*(h-12)-6;return x.toFixed(1)+","+y.toFixed(1);}).join(" ");
-  var up=vals[vals.length-1]>=vals[0];
-  var col=up?"#f43f5e":"#10b981",fillC=up?"rgba(244,63,94,.18)":"rgba(16,185,129,.18)";
-  return '<svg viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none">'
-    +'<defs><linearGradient id="g-esc(seed)" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="'+col+'" stop-opacity=".5"/><stop offset="100%" stop-color="'+col+'" stop-opacity="0"/></linearGradient></defs>'
-    +'<polygon points="0,'+h+' '+pts+' '+w+','+h+'" fill="url(#g-esc(seed))"/>'
-    +'<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linecap="round"/>'
-  +'</svg>';
-}
+/* l2 切換:打 /api/stock_detail 拉一次(有 cache),然後依 pane 渲染 */
+var _l2cache={};
 function l2Switch(id,pane){
   var root=document.getElementById(id);
   if(!root)return;
   var tabs=root.querySelectorAll(".l2-tabs b");
   for(var i=0;i<tabs.length;i++)tabs[i].className=(tabs[i].getAttribute("data-pane")===pane?"on":"");
-  /* placeholder: 各 pane 共用同一個 sparkline;接資料後分開 */
   var p=document.getElementById(id+"-pane");
-  if(p){
-    var labels={td:"分時示意 · 9:00-13:30",dk:"日K 示意 · 近20日",chip:"法人/大戶示意 · 20日",depth:"五檔示意 · 即時報價"};
-    var lab=p.querySelector(".ph-label");if(lab)lab.textContent=labels[pane]||"示意資料";
+  if(!p)return;
+  var code=id.replace(/^l2-/,"");
+  p.innerHTML='<span class="ph-label">載入中…</span>';
+  var apply=function(d){
+    p.innerHTML="";
+    if(pane==="td"){p.innerHTML=_l2RenderTd(d);}
+    else if(pane==="dk"){p.innerHTML=_l2RenderDk(d);}
+    else if(pane==="chip"){p.innerHTML=_l2RenderChip(d);}
+    else if(pane==="depth"){p.innerHTML=_l2RenderDepth(d);}
+  };
+  if(_l2cache[code]){apply(_l2cache[code]);return;}
+  fetch(API_BASE+"/api/stock_detail/"+encodeURIComponent(code)).then(function(r){return r.json()}).then(function(d){_l2cache[code]=d;apply(d);}).catch(function(e){p.innerHTML='<span class="ph-label neu">載入失敗:'+(e&&e.message)+'</span>';});
+}
+function _l2SparkSvg(path,w,h,opts){
+  opts=opts||{};var stroke=opts.stroke||"var(--up)",fill=opts.fill||"rgba(244,63,94,.08)";
+  var max=Math.max.apply(null,path),min=Math.min.apply(null,path),rng=Math.max(1e-6,max-min);
+  var step=(w-4)/(path.length-1),pts=path.map(function(v,i){var x=2+i*step,y=h-2-((v-min)/rng)*(h-4);return [x,y];});
+  var dline=pts.map(function(p,i){return (i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1);}).join(" ");
+  var darea=dline+" L "+(w-2).toFixed(1)+" "+(h-2).toFixed(1)+" L 2 "+(h-2).toFixed(1)+" Z";
+  return '<svg viewBox="0 0 '+w+" "+h+'" preserveAspectRatio="none" style="width:100%;height:'+h+'px;display:block"><path d="'+darea+'" fill="'+fill+'"/><path d="'+dline+'" fill="none" stroke="'+stroke+'" stroke-width="1.5"/></svg>';
+}
+function _l2RenderTd(d){
+  var snap=d.snapshot||{};
+  var path=[];for(var i=0;i<30;i++){var t=snap.change_rate||0;path.push(snap.price||0+(i-15)*t*0.3);}
+  return '<div class="l2-chart">' + _l2SparkSvg(path,300,90) + '</div>'
+    +'<div class="l2-stat-row">'
+    +l2s("開",snap.open)+l2s("高",snap.high,"up")+l2s("低",snap.low,"down")+l2s("均",snap.avg_price)
+    +'</div>'
+    +'<div class="ph-note">盤中分時需 tick stream · 示意走勢(以均價/開盤推算)</div>';
+}
+function _l2RenderDk(d){
+  var kbars=d.kbars||[];
+  if(!kbars.length)return '<div class="ph-label neu">無日K資料(可能非交易日或合約查無)</div>';
+  var closes=kbars.map(function(k){return k.close;}).filter(function(v){return v!=null;});
+  if(!closes.length)return '<div class="ph-label neu">K 資料不完整</div>';
+  var last=closes[closes.length-1];
+  return '<div class="l2-chart">' + _l2SparkSvg(closes,300,90) + '</div>'
+    +'<div class="l2-stat-row">'
+    +l2s("最新",last)+(kbars[kbars.length-1].ma20!=null?l2s("MA20",kbars[kbars.length-1].ma20):"")
+    +(kbars[kbars.length-1].ma60!=null?l2s("MA60",kbars[kbars.length-1].ma60):"")
+    +l2s("K線",kbars.length+" 根")
+    +'</div>'
+    +'<div class="ph-note">資料源:Shioaji kbar · MA20/MA60 即時算</div>';
+}
+function _l2RenderChip(d){
+  var c=d.chips||{};
+  var bs=d.buy_sell||{};
+  if(!c.has_data && bs.bs_pct==null){
+    return '<div class="ph-label neu">⚠ 籌碼無資料(FinMind token 未設 或 非交易時段) · 三角驗證此維度不計</div>';
   }
+  return '<div class="l2-stat-row">'
+    +(c.inst_net_20d_lots!=null?l2s("法人20日",(c.inst_net_20d_lots>0?"+":"")+c.inst_net_20d_lots+"張",(c.inst_net_20d_lots>=0?"up":"down")):l2s("法人20日","—","neu"))
+    +(c.inst_streak!=null?l2s("外資連"+Math.abs(c.inst_streak)+"日",c.inst_streak>0?"買超":"賣超",c.inst_streak>0?"up":"down"):l2s("外資連買","—","neu"))
+    +(c.big_holder_pct!=null?l2s("千張大戶",c.big_holder_pct.toFixed(1)+"%"+(c.big_holder_trend>0?" ▲":"")+(c.big_holder_trend<0?" ▼":""),c.big_holder_trend>0?"up":c.big_holder_trend<0?"down":"neu"):l2s("千張大戶","—","neu"))
+    +(c.big_holder_trend!=null?l2s("大戶趨勢",(c.big_holder_trend>0?"+":"")+c.big_holder_trend.toFixed(2)+"pp",c.big_holder_trend>=0?"up":"down"):"")
+    +(bs.bs_pct!=null?l2s("BS %",bs.bs_pct+"%",bs.bs_pct>=50?"up":"down"):l2s("BS %","—","neu"))
+    +(bs.buy_volume_lots?l2s("外盤量",bs.buy_volume_lots+"張"):"")
+    +(bs.sell_volume_lots?l2s("內盤量",bs.sell_volume_lots+"張","down"):"")
+    +'</div>'
+    +'<div class="ph-note">資料源:FinMind 法人/大戶持股 + Shioaji BS 累計</div>';
+}
+function _l2RenderDepth(d){
+  return '<div class="ph-label neu">⚠ 五檔報價需 Shioaji bid/ask stream · 本機 API 不公開訂單簿,需開盤中訂閱</div>'
+    +'<div class="ph-note">建議:盤中訂閱 bid/ask callback 寫進 tick tracker · 工程中(不在本次範圍)</div>';
+}
+function l2s(k,v,cls){
+  return '<div class="l2-cell"><div class="k">'+esc(k)+'</div><div class="v num '+(cls||"")+'">'+esc(v)+'</div></div>';
 }
 
 /* 分頁 */

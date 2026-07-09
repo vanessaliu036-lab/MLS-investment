@@ -245,13 +245,16 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"],
 def api_state():
     with LOCK:
         # UI 防呆:補上 health/chip/bs/quadrant/tri/doc_strategy 預設(舊 STATE 沒塞這些欄位也不會空白)
-        snap = dict(STATE)
+        snap = {k: v for k, v in STATE.items()}
         for s in (snap.get("stocks") or []):
-            s.setdefault("health", {"quadrant": "neutral", "label": "未評", "stars": "—", "desc": "資金健康度待盤後更新", "health_score": 0, "aflow_ratio": None})
-            s.setdefault("chip", {"has_data": False, "inst_net_20d_lots": None, "inst_streak": None, "big_holder_pct": None, "big_holder_trend": None})
-            s.setdefault("triangulation", {"verdict": "pending", "log": {}, "next_signal": "—"})
-            s.setdefault("doc_strategy", {"pass": False, "score": 0})
-            # bs 若為 None → 設為 50 (中性)
+            if not isinstance(s.get("health"), dict) or not s["health"].get("quadrant"):
+                s["health"] = {"quadrant": "neutral", "label": "未評", "stars": "—", "desc": "資金健康度待盤後更新", "health_score": 0, "aflow_ratio": None}
+            if not isinstance(s.get("chip"), dict):
+                s["chip"] = {"has_data": False, "inst_net_20d_lots": None, "inst_streak": None, "big_holder_pct": None, "big_holder_trend": None}
+            if not isinstance(s.get("triangulation"), dict):
+                s["triangulation"] = {"verdict": "pending", "log": {}, "next_signal": "—"}
+            if not isinstance(s.get("doc_strategy"), dict):
+                s["doc_strategy"] = {"pass": False, "score": 0}
             if s.get("bs") is None: s["bs"] = 50
         return JSONResponse(snap)
 
@@ -480,6 +483,86 @@ def api_money_health_summary():
             })
         rows.sort(key=lambda x: (x.get("health_score_avg") or 0), reverse=True)
         return JSONResponse({"as_of": full_state.get("market", {}).get("time", ""), "sectors": rows})
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ══════════════════════════════════════════════════════
+# 個股第二層 API(2026-07-09)
+# 一次回全部分時/日K/法人/大戶,給 detail modal 第二層用
+# 純插件不動主邏輯
+# ══════════════════════════════════════════════════════
+@app.get("/api/stock_detail/{code}")
+def api_stock_detail(code: str):
+    """
+    回傳:
+      snapshot    即時 OHLC + 量能(從 STATE 抓,失敗則 broker 即時取一次)
+      kbars       日K 60 筆(MA20/MA60 計算 + 走勢圖)
+      chips       法人/大戶(來自 chips.get_chips)
+      buy_sell    內外盤累計量 + BS Ratio
+    五檔報價因 Shioaji 1.5.5 公開 API 無 order_book 方法,本機無 tick stream
+    無法穩定取到 → 第二層「五檔報價」tab 維持 placeholder
+    """
+    try:
+        # 1) snapshot
+        snap = None
+        with LOCK:
+            for s in (STATE.get("stocks") or []):
+                if s.get("code") == code:
+                    snap = dict(s); break
+        if snap is None:
+            try:
+                import broker as _br
+                ss = _br.batch_snapshots([code])
+                snap = ss[0] if ss else {}
+            except Exception:
+                snap = {"code": code}
+
+        # 2) kbars
+        kbars = []
+        try:
+            import broker as _br
+            kbars = _br.daily_kbars(code, days=60)
+            # 加 MA20 / MA60
+            closes = [k.get("close") for k in kbars if k.get("close") is not None]
+            for i, k in enumerate(kbars):
+                ma20 = sum(closes[max(0, i-19):i+1]) / max(1, min(20, i+1))
+                ma60 = sum(closes[max(0, i-59):i+1]) / max(1, min(60, i+1))
+                k["ma20"] = round(ma20, 2) if ma20 else None
+                k["ma60"] = round(ma60, 2) if ma60 else None
+        except Exception as e:
+            print(f"[detail] kbars {code} 失敗:{e}")
+
+        # 3) chips
+        chips_data = {}
+        try:
+            import chips as _ch
+            chips_data = _ch.get_chips(code)
+            chips_data["has_data"] = chips_data.get("inst_net_20d_lots") is not None
+        except Exception as e:
+            print(f"[detail] chips {code} 失敗:{e}")
+            chips_data = {"has_data": False, "inst_net_20d_lots": None, "inst_streak": None, "big_holder_pct": None, "big_holder_trend": None}
+
+        # 4) buy_sell BS Ratio
+        bv = snap.get("buy_volume") or 0
+        sv = snap.get("sell_volume") or 0
+        bs_pct = None
+        if bv + sv > 0:
+            bs_pct = round(bv / (bv + sv) * 100, 1)
+
+        return JSONResponse({
+            "code": code,
+            "snapshot": snap,
+            "kbars": kbars,
+            "chips": chips_data,
+            "buy_sell": {
+                "buy_volume_lots": round(bv / 1000, 1) if bv else 0,
+                "sell_volume_lots": round(sv / 1000, 1) if sv else 0,
+                "bs_pct": bs_pct,
+            },
+            "note": "五檔報價需 Shioaji tick stream,本機 API 不支援",
+        })
     except Exception as e:
         traceback.print_exc()
         return JSONResponse({"error": str(e)}, status_code=500)
