@@ -27,6 +27,8 @@ build/
 *.log
 shioaji.log
 chips_cache.json
+策略系統/data/
+策略系統/reports/
 
 # ── Backups / temp ───────────────────────────────────────
 *.bak
@@ -47,3 +49,5 @@ htmlcov/
 .pytest_cache/
 .tox/
 .mypy_cache/
+.vercel
+.env*.local
