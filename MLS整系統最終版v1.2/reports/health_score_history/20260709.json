@@ -1,0 +1,3408 @@
+{
+  "date": "2026-07-09",
+  "as_of": "21:27:25",
+  "market_pct": 0.0,
+  "count": 50,
+  "cards": [
+    {
+      "code": "1815",
+      "name": "富喬",
+      "sector": null,
+      "price": 95.0,
+      "change_rate": -1.65,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 95.47,
+        "stop": 92.15,
+        "target": 99.75
+      },
+      "chip": {
+        "inst_net_20d_lots": 11560,
+        "inst_streak": -7,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 20,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +11560 張,外資連賣7日(-5)",
+          "base": 25,
+          "streak_adj": -5,
+          "inst_net_20d_lots": 11560,
+          "inst_streak": -7
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.8"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -1.6%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-1.6pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "2049",
+      "name": "上銀",
+      "sector": null,
+      "price": 331.5,
+      "change_rate": -2.5,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 333.16,
+        "stop": 321.56,
+        "target": 351.48
+      },
+      "chip": {
+        "inst_net_20d_lots": 445,
+        "inst_streak": -3,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 7,
+          "level": "neutral",
+          "reason": "法人近20日中性 +445 張,外資連賣3日(-3)",
+          "base": 10,
+          "streak_adj": -3,
+          "inst_net_20d_lots": 445,
+          "inst_streak": -3
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.8"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -2.5%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-2.5pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "2303",
+      "name": "聯電",
+      "sector": null,
+      "price": 156.0,
+      "change_rate": -4.29,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 156.78,
+        "stop": 151.32,
+        "target": 163.8
+      },
+      "chip": {
+        "inst_net_20d_lots": -79422,
+        "inst_streak": -1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 0,
+          "level": "big_sell",
+          "reason": "法人近20日大賣超 -79422 張",
+          "base": 0,
+          "streak_adj": 0,
+          "inst_net_20d_lots": -79422,
+          "inst_streak": -1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.7"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -4.3%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-4.3pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "2327",
+      "name": "國巨",
+      "sector": null,
+      "price": 900.0,
+      "change_rate": 1.01,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 50,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 904.5,
+        "stop": 873.0,
+        "target": 957.48
+      },
+      "chip": {
+        "inst_net_20d_lots": 12246,
+        "inst_streak": -1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 25,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +12246 張",
+          "base": 25,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 12246,
+          "inst_streak": -1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.7"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+1.0pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "2337",
+      "name": "旺宏",
+      "sector": null,
+      "price": 143.5,
+      "change_rate": 3.61,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": 0.0,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 50,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 144.22,
+        "stop": 138.8,
+        "target": 150.68
+      },
+      "chip": {
+        "inst_net_20d_lots": -92416,
+        "inst_streak": 1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 0,
+          "level": "big_sell",
+          "reason": "法人近20日大賣超 -92416 張",
+          "base": 0,
+          "streak_adj": 0,
+          "inst_net_20d_lots": -92416,
+          "inst_streak": 1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 +0.00"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比1.2"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+3.6pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "2344",
+      "name": "華邦電",
+      "sector": null,
+      "price": 176.5,
+      "change_rate": 4.74,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": 0.0,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 50,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 177.38,
+        "stop": 169.15,
+        "target": 185.84
+      },
+      "chip": {
+        "inst_net_20d_lots": -99114,
+        "inst_streak": -1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 0,
+          "level": "big_sell",
+          "reason": "法人近20日大賣超 -99114 張",
+          "base": 0,
+          "streak_adj": 0,
+          "inst_net_20d_lots": -99114,
+          "inst_streak": -1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 +0.00"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比1.1"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+4.7pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "2359",
+      "name": "所羅門",
+      "sector": null,
+      "price": 139.0,
+      "change_rate": 2.58,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 50,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 139.69,
+        "stop": 134.82,
+        "target": 145.95
+      },
+      "chip": {
+        "inst_net_20d_lots": 3249,
+        "inst_streak": 1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 15,
+          "level": "small_buy",
+          "reason": "法人近20日小買超 +3249 張",
+          "base": 15,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 3249,
+          "inst_streak": 1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比1.5"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+2.6pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "2383",
+      "name": "台光電",
+      "sector": null,
+      "price": 5295.0,
+      "change_rate": -0.37,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 30,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 5321.47,
+        "stop": 5136.15,
+        "target": 5559.75
+      },
+      "chip": {
+        "inst_net_20d_lots": 90,
+        "inst_streak": -1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 10,
+          "level": "neutral",
+          "reason": "法人近20日中性 +90 張",
+          "base": 10,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 90,
+          "inst_streak": -1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.8"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 0,
+          "why": "族群內中庸"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "2408",
+      "name": "南亞科",
+      "sector": null,
+      "price": 435.5,
+      "change_rate": 9.97,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": 0.0,
+      "verdict": "bullish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 95,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 437.68,
+        "stop": 410.44,
+        "target": 457.28
+      },
+      "chip": {
+        "inst_net_20d_lots": 75632,
+        "inst_streak": 1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 25,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +75632 張",
+          "base": 25,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 75632,
+          "inst_streak": 1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 +0.00"
+        },
+        {
+          "cat": "B",
+          "dir": 1,
+          "why": "站均價線且量比1.4"
+        },
+        {
+          "cat": "C",
+          "dir": 1,
+          "why": "突破今高"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+10.0pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "2455",
+      "name": "全新",
+      "sector": null,
+      "price": 330.5,
+      "change_rate": -1.34,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 332.15,
+        "stop": 320.58,
+        "target": 353.5
+      },
+      "chip": {
+        "inst_net_20d_lots": 4265,
+        "inst_streak": -1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 15,
+          "level": "small_buy",
+          "reason": "法人近20日小買超 +4265 張",
+          "base": 15,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 4265,
+          "inst_streak": -1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.8"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -1.3%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-1.3pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "2464",
+      "name": "盟立",
+      "sector": null,
+      "price": 161.5,
+      "change_rate": 1.25,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 50,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 162.31,
+        "stop": 156.66,
+        "target": 169.58
+      },
+      "chip": {
+        "inst_net_20d_lots": -10483,
+        "inst_streak": -5,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 0,
+          "level": "big_sell",
+          "reason": "法人近20日大賣超 -10483 張,外資連賣5日(-5)",
+          "base": 0,
+          "streak_adj": -5,
+          "inst_net_20d_lots": -10483,
+          "inst_streak": -5
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比1.4"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+1.2pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "2481",
+      "name": "強茂",
+      "sector": null,
+      "price": 213.0,
+      "change_rate": 0.7,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 30,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 214.06,
+        "stop": 206.61,
+        "target": 227.25
+      },
+      "chip": {
+        "inst_net_20d_lots": 5008,
+        "inst_streak": 1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 25,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +5008 張",
+          "base": 25,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 5008,
+          "inst_streak": 1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.6"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 0,
+          "why": "族群內中庸"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "2484",
+      "name": "希華",
+      "sector": null,
+      "price": 90.7,
+      "change_rate": -1.73,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 91.15,
+        "stop": 87.98,
+        "target": 96.66
+      },
+      "chip": {
+        "inst_net_20d_lots": 393,
+        "inst_streak": -2,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 10,
+          "level": "neutral",
+          "reason": "法人近20日中性 +393 張",
+          "base": 10,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 393,
+          "inst_streak": -2
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.7"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -1.7%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-1.7pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "2492",
+      "name": "華新科",
+      "sector": null,
+      "price": 465.5,
+      "change_rate": -1.27,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 467.83,
+        "stop": 451.53,
+        "target": 510.05
+      },
+      "chip": {
+        "inst_net_20d_lots": 2666,
+        "inst_streak": -2,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 15,
+          "level": "small_buy",
+          "reason": "法人近20日小買超 +2666 張",
+          "base": 15,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 2666,
+          "inst_streak": -2
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.6"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -1.3%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-1.3pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3006",
+      "name": "晶豪科",
+      "sector": null,
+      "price": 237.0,
+      "change_rate": 9.97,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bullish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 95,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 238.18,
+        "stop": 217.91,
+        "target": 248.85
+      },
+      "chip": {
+        "inst_net_20d_lots": 5913,
+        "inst_streak": 1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 25,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +5913 張",
+          "base": 25,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 5913,
+          "inst_streak": 1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": 1,
+          "why": "站均價線且量比1.8"
+        },
+        {
+          "cat": "C",
+          "dir": 1,
+          "why": "突破今高"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+10.0pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3016",
+      "name": "嘉晶",
+      "sector": null,
+      "price": 121.5,
+      "change_rate": 1.25,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 50,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 122.11,
+        "stop": 117.85,
+        "target": 128.27
+      },
+      "chip": {
+        "inst_net_20d_lots": -1253,
+        "inst_streak": -4,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 2,
+          "level": "small_sell",
+          "reason": "法人近20日小賣超 -1253 張,外資連賣4日(-3)",
+          "base": 5,
+          "streak_adj": -3,
+          "inst_net_20d_lots": -1253,
+          "inst_streak": -4
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比1.1"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+1.2pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3026",
+      "name": "禾伸堂",
+      "sector": null,
+      "price": 1005.0,
+      "change_rate": 5.45,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 60,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 1010.02,
+        "stop": 943.26,
+        "target": 1055.45
+      },
+      "chip": {
+        "inst_net_20d_lots": 6094,
+        "inst_streak": -1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 25,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +6094 張",
+          "base": 25,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 6094,
+          "inst_streak": -1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": 0,
+          "why": "量比0.9 價量中性"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+5.5pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3037",
+      "name": "欣興",
+      "sector": null,
+      "price": 875.0,
+      "change_rate": 1.39,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 50,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 879.37,
+        "stop": 848.75,
+        "target": 934.25
+      },
+      "chip": {
+        "inst_net_20d_lots": -30119,
+        "inst_streak": -6,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 0,
+          "level": "big_sell",
+          "reason": "法人近20日大賣超 -30119 張,外資連賣6日(-5)",
+          "base": 0,
+          "streak_adj": -5,
+          "inst_net_20d_lots": -30119,
+          "inst_streak": -6
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比1.0"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+1.4pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3042",
+      "name": "晶技",
+      "sector": null,
+      "price": 200.0,
+      "change_rate": -2.91,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 201.0,
+        "stop": 194.0,
+        "target": 212.6
+      },
+      "chip": {
+        "inst_net_20d_lots": -18049,
+        "inst_streak": 1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 0,
+          "level": "big_sell",
+          "reason": "法人近20日大賣超 -18049 張",
+          "base": 0,
+          "streak_adj": 0,
+          "inst_net_20d_lots": -18049,
+          "inst_streak": 1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.4"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -2.9%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-2.9pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3189",
+      "name": "景碩",
+      "sector": null,
+      "price": 795.0,
+      "change_rate": 5.29,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 50,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 798.97,
+        "stop": 766.15,
+        "target": 837.29
+      },
+      "chip": {
+        "inst_net_20d_lots": -4565,
+        "inst_streak": 3,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 8,
+          "level": "small_sell",
+          "reason": "法人近20日小賣超 -4565 張,外資連買3日(+3)",
+          "base": 5,
+          "streak_adj": 3,
+          "inst_net_20d_lots": -4565,
+          "inst_streak": 3
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.6"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+5.3pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3221",
+      "name": "台嘉碩",
+      "sector": null,
+      "price": 57.2,
+      "change_rate": -0.69,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 30,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 57.49,
+        "stop": 55.48,
+        "target": 60.3
+      },
+      "chip": {
+        "inst_net_20d_lots": -3079,
+        "inst_streak": -2,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 5,
+          "level": "small_sell",
+          "reason": "法人近20日小賣超 -3079 張",
+          "base": 5,
+          "streak_adj": 0,
+          "inst_net_20d_lots": -3079,
+          "inst_streak": -2
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.4"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 0,
+          "why": "族群內中庸"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3264",
+      "name": "欣銓",
+      "sector": null,
+      "price": 235.0,
+      "change_rate": 1.29,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 60,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 236.17,
+        "stop": 227.95,
+        "target": 246.75
+      },
+      "chip": {
+        "inst_net_20d_lots": 13273,
+        "inst_streak": 1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 25,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +13273 張",
+          "base": 25,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 13273,
+          "inst_streak": 1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": 0,
+          "why": "量比1.0 價量中性"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+1.3pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3317",
+      "name": "尼克森",
+      "sector": null,
+      "price": 96.6,
+      "change_rate": -2.42,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 97.08,
+        "stop": 93.7,
+        "target": 101.5
+      },
+      "chip": {
+        "inst_net_20d_lots": 918,
+        "inst_streak": -2,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 15,
+          "level": "small_buy",
+          "reason": "法人近20日小買超 +918 張",
+          "base": 15,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 918,
+          "inst_streak": -2
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.7"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -2.4%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-2.4pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3363",
+      "name": "上詮",
+      "sector": null,
+      "price": 608.0,
+      "change_rate": -5.0,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 611.04,
+        "stop": 589.76,
+        "target": 639.33
+      },
+      "chip": {
+        "inst_net_20d_lots": -1151,
+        "inst_streak": -2,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 5,
+          "level": "small_sell",
+          "reason": "法人近20日小賣超 -1151 張",
+          "base": 5,
+          "streak_adj": 0,
+          "inst_net_20d_lots": -1151,
+          "inst_streak": -2
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.5"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -5.0%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-5.0pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3374",
+      "name": "精材",
+      "sector": null,
+      "price": 356.5,
+      "change_rate": 9.86,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bullish",
+      "strength": "中",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 82,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 358.28,
+        "stop": 341.78,
+        "target": 374.32
+      },
+      "chip": {
+        "inst_net_20d_lots": 21609,
+        "inst_streak": 4,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 25,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +21609 張,外資連買4日(+3)",
+          "base": 25,
+          "streak_adj": 3,
+          "inst_net_20d_lots": 21609,
+          "inst_streak": 4
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": 0,
+          "why": "量比0.8 價量中性"
+        },
+        {
+          "cat": "C",
+          "dir": 1,
+          "why": "突破今高"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+9.9pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3450",
+      "name": "聯鈞",
+      "sector": null,
+      "price": 502.0,
+      "change_rate": -1.56,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 504.51,
+        "stop": 486.94,
+        "target": 527.1
+      },
+      "chip": {
+        "inst_net_20d_lots": -556,
+        "inst_streak": 3,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 8,
+          "level": "small_sell",
+          "reason": "法人近20日小賣超 -556 張,外資連買3日(+3)",
+          "base": 5,
+          "streak_adj": 3,
+          "inst_net_20d_lots": -556,
+          "inst_streak": 3
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.6"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -1.6%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-1.6pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3532",
+      "name": "台勝科",
+      "sector": null,
+      "price": 423.5,
+      "change_rate": 3.41,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 50,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 425.62,
+        "stop": 406.46,
+        "target": 454.5
+      },
+      "chip": {
+        "inst_net_20d_lots": 2262,
+        "inst_streak": -2,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 15,
+          "level": "small_buy",
+          "reason": "法人近20日小買超 +2262 張",
+          "base": 15,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 2262,
+          "inst_streak": -2
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比1.3"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+3.4pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3707",
+      "name": "漢磊",
+      "sector": null,
+      "price": 79.5,
+      "change_rate": -2.45,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 79.9,
+        "stop": 77.11,
+        "target": 83.93
+      },
+      "chip": {
+        "inst_net_20d_lots": -17615,
+        "inst_streak": -4,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 0,
+          "level": "big_sell",
+          "reason": "法人近20日大賣超 -17615 張,外資連賣4日(-3)",
+          "base": 0,
+          "streak_adj": -3,
+          "inst_net_20d_lots": -17615,
+          "inst_streak": -4
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.9"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -2.5%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-2.5pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "3711",
+      "name": "日月光投控",
+      "sector": null,
+      "price": 677.0,
+      "change_rate": 8.32,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bullish",
+      "strength": "中",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 82,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 680.38,
+        "stop": 623.87,
+        "target": 710.85
+      },
+      "chip": {
+        "inst_net_20d_lots": 1304,
+        "inst_streak": -5,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 10,
+          "level": "small_buy",
+          "reason": "法人近20日小買超 +1304 張,外資連賣5日(-5)",
+          "base": 15,
+          "streak_adj": -5,
+          "inst_net_20d_lots": 1304,
+          "inst_streak": -5
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": 1,
+          "why": "站均價線且量比1.2"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+8.3pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "4919",
+      "name": "新唐",
+      "sector": null,
+      "price": 162.5,
+      "change_rate": 2.52,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 50,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 163.31,
+        "stop": 157.62,
+        "target": 170.62
+      },
+      "chip": {
+        "inst_net_20d_lots": -23447,
+        "inst_streak": -1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 0,
+          "level": "big_sell",
+          "reason": "法人近20日大賣超 -23447 張",
+          "base": 0,
+          "streak_adj": 0,
+          "inst_net_20d_lots": -23447,
+          "inst_streak": -1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比1.0"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+2.5pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "4979",
+      "name": "華星光",
+      "sector": null,
+      "price": 432.5,
+      "change_rate": -0.46,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 30,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 434.66,
+        "stop": 419.52,
+        "target": 454.12
+      },
+      "chip": {
+        "inst_net_20d_lots": -5762,
+        "inst_streak": -5,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 0,
+          "level": "big_sell",
+          "reason": "法人近20日大賣超 -5762 張,外資連賣5日(-5)",
+          "base": 0,
+          "streak_adj": -5,
+          "inst_net_20d_lots": -5762,
+          "inst_streak": -5
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.4"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 0,
+          "why": "族群內中庸"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "5328",
+      "name": "華容",
+      "sector": null,
+      "price": 70.5,
+      "change_rate": -1.81,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 70.85,
+        "stop": 68.39,
+        "target": 75.45
+      },
+      "chip": {
+        "inst_net_20d_lots": -8490,
+        "inst_streak": -2,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 0,
+          "level": "big_sell",
+          "reason": "法人近20日大賣超 -8490 張",
+          "base": 0,
+          "streak_adj": 0,
+          "inst_net_20d_lots": -8490,
+          "inst_streak": -2
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.8"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -1.8%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-1.8pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "5347",
+      "name": "世界",
+      "sector": null,
+      "price": 173.0,
+      "change_rate": -1.98,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 173.86,
+        "stop": 167.81,
+        "target": 181.65
+      },
+      "chip": {
+        "inst_net_20d_lots": 31017,
+        "inst_streak": 4,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 25,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +31017 張,外資連買4日(+3)",
+          "base": 25,
+          "streak_adj": 3,
+          "inst_net_20d_lots": 31017,
+          "inst_streak": 4
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.8"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -2.0%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-2.0pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "5425",
+      "name": "台半",
+      "sector": null,
+      "price": 130.5,
+      "change_rate": -4.04,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 131.15,
+        "stop": 126.58,
+        "target": 139.38
+      },
+      "chip": {
+        "inst_net_20d_lots": 6199,
+        "inst_streak": -1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 25,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +6199 張",
+          "base": 25,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 6199,
+          "inst_streak": -1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.8"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -4.0%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-4.0pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "5483",
+      "name": "中美晶",
+      "sector": null,
+      "price": 210.5,
+      "change_rate": 1.2,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 50,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 211.55,
+        "stop": 202.98,
+        "target": 221.03
+      },
+      "chip": {
+        "inst_net_20d_lots": 33975,
+        "inst_streak": -2,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 25,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +33975 張",
+          "base": 25,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 33975,
+          "inst_streak": -2
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比1.4"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+1.2pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "6173",
+      "name": "信昌電",
+      "sector": null,
+      "price": 275.0,
+      "change_rate": 1.47,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 50,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 276.37,
+        "stop": 265.17,
+        "target": 297.95
+      },
+      "chip": {
+        "inst_net_20d_lots": -5095,
+        "inst_streak": -1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 0,
+          "level": "big_sell",
+          "reason": "法人近20日大賣超 -5095 張",
+          "base": 0,
+          "streak_adj": 0,
+          "inst_net_20d_lots": -5095,
+          "inst_streak": -1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比1.0"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+1.5pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "6174",
+      "name": "安碁",
+      "sector": null,
+      "price": 57.7,
+      "change_rate": -5.71,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 57.99,
+        "stop": 55.97,
+        "target": 62.12
+      },
+      "chip": {
+        "inst_net_20d_lots": 503,
+        "inst_streak": -2,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 15,
+          "level": "small_buy",
+          "reason": "法人近20日小買超 +503 張",
+          "base": 15,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 503,
+          "inst_streak": -2
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.1"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -5.7%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-5.7pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "6182",
+      "name": "合晶",
+      "sector": null,
+      "price": 172.5,
+      "change_rate": 7.81,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": 0.0,
+      "verdict": "bullish",
+      "strength": "中",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 82,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 173.36,
+        "stop": 158.21,
+        "target": 181.12
+      },
+      "chip": {
+        "inst_net_20d_lots": 19148,
+        "inst_streak": 1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 25,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +19148 張",
+          "base": 25,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 19148,
+          "inst_streak": 1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 +0.00"
+        },
+        {
+          "cat": "B",
+          "dir": 1,
+          "why": "站均價線且量比1.3"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+7.8pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "6213",
+      "name": "聯茂",
+      "sector": null,
+      "price": 385.0,
+      "change_rate": -2.16,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 386.92,
+        "stop": 373.45,
+        "target": 408.55
+      },
+      "chip": {
+        "inst_net_20d_lots": 27198,
+        "inst_streak": -4,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 22,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +27198 張,外資連賣4日(-3)",
+          "base": 25,
+          "streak_adj": -3,
+          "inst_net_20d_lots": 27198,
+          "inst_streak": -4
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.8"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -2.2%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-2.2pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "6223",
+      "name": "旺矽",
+      "sector": null,
+      "price": 7080.0,
+      "change_rate": 9.93,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bullish",
+      "strength": "中",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 82,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 7115.4,
+        "stop": 6726.2,
+        "target": 7434.0
+      },
+      "chip": {
+        "inst_net_20d_lots": 689,
+        "inst_streak": 1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 15,
+          "level": "small_buy",
+          "reason": "法人近20日小買超 +689 張",
+          "base": 15,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 689,
+          "inst_streak": 1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": 0,
+          "why": "量比0.9 價量中性"
+        },
+        {
+          "cat": "C",
+          "dir": 1,
+          "why": "突破今高"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+9.9pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "6239",
+      "name": "力成",
+      "sector": null,
+      "price": 320.0,
+      "change_rate": 0.62,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 30,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 321.6,
+        "stop": 310.4,
+        "target": 336.0
+      },
+      "chip": {
+        "inst_net_20d_lots": -24934,
+        "inst_streak": 1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 0,
+          "level": "big_sell",
+          "reason": "法人近20日大賣超 -24934 張",
+          "base": 0,
+          "streak_adj": 0,
+          "inst_net_20d_lots": -24934,
+          "inst_streak": 1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.8"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 0,
+          "why": "族群內中庸"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "6274",
+      "name": "台燿",
+      "sector": null,
+      "price": 1570.0,
+      "change_rate": -4.55,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 1577.85,
+        "stop": 1522.9,
+        "target": 1696.8
+      },
+      "chip": {
+        "inst_net_20d_lots": 3251,
+        "inst_streak": -2,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 15,
+          "level": "small_buy",
+          "reason": "法人近20日小買超 +3251 張",
+          "base": 15,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 3251,
+          "inst_streak": -2
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.8"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -4.5%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-4.5pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "6451",
+      "name": "訊芯-KY",
+      "sector": null,
+      "price": 518.0,
+      "change_rate": -1.33,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 520.59,
+        "stop": 502.46,
+        "target": 549.44
+      },
+      "chip": {
+        "inst_net_20d_lots": -2926,
+        "inst_streak": -1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 5,
+          "level": "small_sell",
+          "reason": "法人近20日小賣超 -2926 張",
+          "base": 5,
+          "streak_adj": 0,
+          "inst_net_20d_lots": -2926,
+          "inst_streak": -1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.6"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -1.3%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-1.3pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "6488",
+      "name": "環球晶",
+      "sector": null,
+      "price": 1350.0,
+      "change_rate": 9.75,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bullish",
+      "strength": "中",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 82,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 1356.75,
+        "stop": 1268.62,
+        "target": 1417.5
+      },
+      "chip": {
+        "inst_net_20d_lots": 11511,
+        "inst_streak": -2,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 25,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +11511 張",
+          "base": 25,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 11511,
+          "inst_streak": -2
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": 0,
+          "why": "量比0.7 價量中性"
+        },
+        {
+          "cat": "C",
+          "dir": 1,
+          "why": "突破今高"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+9.8pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "8028",
+      "name": "昇陽半導體",
+      "sector": null,
+      "price": 312.5,
+      "change_rate": 2.29,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 50,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 314.06,
+        "stop": 303.12,
+        "target": 328.12
+      },
+      "chip": {
+        "inst_net_20d_lots": -1082,
+        "inst_streak": 1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 5,
+          "level": "small_sell",
+          "reason": "法人近20日小賣超 -1082 張",
+          "base": 5,
+          "streak_adj": 0,
+          "inst_net_20d_lots": -1082,
+          "inst_streak": 1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.8"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+2.3pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "8043",
+      "name": "蜜望實",
+      "sector": null,
+      "price": 173.0,
+      "change_rate": -3.35,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 173.86,
+        "stop": 167.81,
+        "target": 185.84
+      },
+      "chip": {
+        "inst_net_20d_lots": -7720,
+        "inst_streak": -1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 0,
+          "level": "big_sell",
+          "reason": "法人近20日大賣超 -7720 張",
+          "base": 0,
+          "streak_adj": 0,
+          "inst_net_20d_lots": -7720,
+          "inst_streak": -1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.8"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -3.4%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-3.4pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "8046",
+      "name": "南電",
+      "sector": null,
+      "price": 1215.0,
+      "change_rate": 9.95,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bullish",
+      "strength": "中",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 82,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 1221.07,
+        "stop": 1084.55,
+        "target": 1275.75
+      },
+      "chip": {
+        "inst_net_20d_lots": 29177,
+        "inst_streak": -2,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 25,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +29177 張",
+          "base": 25,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 29177,
+          "inst_streak": -2
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": 0,
+          "why": "量比1.2 價量中性"
+        },
+        {
+          "cat": "C",
+          "dir": 1,
+          "why": "突破今高"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+9.9pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "8150",
+      "name": "南茂",
+      "sector": null,
+      "price": 117.0,
+      "change_rate": 9.85,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": 0.0,
+      "verdict": "bullish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 95,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 117.58,
+        "stop": 107.96,
+        "target": 122.85
+      },
+      "chip": {
+        "inst_net_20d_lots": 14295,
+        "inst_streak": 1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 25,
+          "level": "big_buy",
+          "reason": "法人近20日大買超 +14295 張",
+          "base": 25,
+          "streak_adj": 0,
+          "inst_net_20d_lots": 14295,
+          "inst_streak": 1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 +0.00"
+        },
+        {
+          "cat": "B",
+          "dir": 1,
+          "why": "站均價線且量比1.6"
+        },
+        {
+          "cat": "C",
+          "dir": 1,
+          "why": "突破今高"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+9.8pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "8182",
+      "name": "加高",
+      "sector": null,
+      "price": 51.9,
+      "change_rate": -2.99,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "bearish",
+      "strength": "強",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 27,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 52.16,
+        "stop": 50.34,
+        "target": 55.85
+      },
+      "chip": {
+        "inst_net_20d_lots": -1575,
+        "inst_streak": -4,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 2,
+          "level": "small_sell",
+          "reason": "法人近20日小賣超 -1575 張,外資連賣4日(-3)",
+          "base": 5,
+          "streak_adj": -3,
+          "inst_net_20d_lots": -1575,
+          "inst_streak": -4
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比0.4"
+        },
+        {
+          "cat": "C",
+          "dir": -1,
+          "why": "技術轉弱 -3.0%"
+        },
+        {
+          "cat": "D",
+          "dir": -1,
+          "why": "弱於族群-3.0pp"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    },
+    {
+      "code": "8358",
+      "name": "金居",
+      "sector": null,
+      "price": 533.0,
+      "change_rate": 1.91,
+      "quadrant": "unknown",
+      "label": "未連線",
+      "health_score": 50,
+      "health_v3_breakdown": {},
+      "aflow_ratio": null,
+      "verdict": "pending",
+      "strength": "—",
+      "decision": {
+        "ai_score": 50,
+        "confidence": 50,
+        "state": "Hold",
+        "action": "tick 資料未連線,暫不評估,等資金流上線再判斷",
+        "trigger": "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發",
+        "invalidation": "資料未連線期間,任何結論都先視為待確認",
+        "entry": 535.66,
+        "stop": 517.01,
+        "target": 568.63
+      },
+      "chip": {
+        "inst_net_20d_lots": -7958,
+        "inst_streak": 1,
+        "big_holder_pct": null,
+        "big_holder_trend": null,
+        "has_data": true,
+        "chip_score": {
+          "score": 0,
+          "level": "big_sell",
+          "reason": "法人近20日大賣超 -7958 張",
+          "base": 0,
+          "streak_adj": 0,
+          "inst_net_20d_lots": -7958,
+          "inst_streak": 1
+        }
+      },
+      "evidence": [
+        {
+          "cat": "A",
+          "dir": 0,
+          "why": "主動淨流 待盤中累積"
+        },
+        {
+          "cat": "B",
+          "dir": -1,
+          "why": "跌破均價線,量比1.4"
+        },
+        {
+          "cat": "C",
+          "dir": 0,
+          "why": "技術中性"
+        },
+        {
+          "cat": "D",
+          "dir": 1,
+          "why": "強於族群+1.9pp、強於大盤"
+        },
+        {
+          "cat": "E",
+          "dir": 0,
+          "why": "外部盤中未取,盤後以國際盤驗證"
+        }
+      ]
+    }
+  ]
+}

@@ -245,7 +245,8 @@ def divergence(change_rate, aflow, total_volume):
     pull_sell: 價漲但主動淨流為負 → 邊拉邊賣(拉高出貨)
     淨流須達當日量 8% 才算顯著,避免雜訊。
     """
-    if not total_volume:
+    # 2026-07-09 hotfix:任一為 None / 0 都不要算 ratio,免炸 TypeError
+    if not total_volume or aflow is None:
         return None, ""
     ratio = aflow / total_volume
     if change_rate <= -1.0 and ratio > 0.08:
@@ -295,10 +296,14 @@ def score_stock(s, *, sector_median, market_pct, locked, abab_a_day,
         F["trend"] += 5
 
     # 量能 25(TNVR 分段)
+    # 2026-07-09 hotfix:加 1.0 階梯。今日 5 檔全部 tnvr 1.06~1.21 落在 1.3 以下掛零,
+    # 連帶拖累整體 score,讓該進場的漲停股卡在 entry_min 之下。降階止血,
+    # 長期改全市場百分位排名(Phase A)。
     if tnvr_val is not None:
         if tnvr_val >= 2.5:   F["volume"] = 25
         elif tnvr_val >= 1.8: F["volume"] = 18
         elif tnvr_val >= 1.3: F["volume"] = 10
+        elif tnvr_val >= 1.0: F["volume"] = 6   # hotfix 階
 
     # 相對強度 20
     rs_sec = chg - sector_median
@@ -308,10 +313,14 @@ def score_stock(s, *, sector_median, market_pct, locked, abab_a_day,
     if rs_mkt > 0:    F["rs"] += 8
 
     # 籌碼 20(盤後快取)
-    if chip:
+    # 2026-07-09 hotfix:chip 缺資料時給 3 分中性 baseline,不要直接跳過整個區塊,
+    # 否則像 2337/2344 這種 FinMind 沒抓到籌碼的,籌碼分永遠 0 拖累總分。
+    if chip and any(chip.get(k) for k in ("inst_net_20d_lots", "inst_streak", "big_holder_trend")):
         if (chip.get("inst_net_20d_lots") or 0) > 0: F["chip"] += 10
         if (chip.get("inst_streak") or 0) >= 3:      F["chip"] += 5
         if (chip.get("big_holder_trend") or 0) > 0:  F["chip"] += 5
+    else:
+        F["chip"] = 3   # 缺資料 baseline(中性,避免被誤判為弱)
 
     # 族群 10
     if locked:      F["sector"] += 8

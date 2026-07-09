@@ -277,6 +277,10 @@
   .healbox{border-radius:14px;padding:13px 15px;margin-top:4px}
   .healbox.in_up{background:var(--up-soft)}.healbox.in_down{background:var(--amber-soft)}.healbox.out_up{background:var(--violet-soft)}.healbox.out_down{background:var(--down-soft)}
   .healbox .t{font-size:13px;font-weight:800}.healbox .d{font-size:11.5px;color:var(--sub);margin-top:4px;line-height:1.5}
+  /* v2.6:盤後模式橫幅 — 動態指標歸零時的明確說明 */
+  .afterhours-banner{border:1px dashed var(--amber);background:var(--amber-soft);border-radius:14px;padding:13px 15px;margin-top:10px}
+  .afterhours-banner .t{font-size:12.5px;font-weight:800;color:var(--amber)}
+  .afterhours-banner .d{font-size:11.5px;color:var(--sub);margin-top:4px;line-height:1.6}
   .chipbox,.tribox{border:1px solid var(--line);border-radius:14px;padding:13px 15px;margin-top:10px}
   .chipbox .t,.tribox .t{font-size:12px;font-weight:800;display:flex;align-items:center;gap:7px}
   .tribox .vd{font-size:10px;font-weight:800;padding:2px 8px;border-radius:100px}
@@ -285,6 +289,39 @@
   .nx{font-size:11px;color:var(--violet);margin-top:8px;font-weight:700}
   .rules{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px}
   .rules .r{font-size:11px;background:var(--violet-soft);color:var(--violet);padding:3px 10px;border-radius:100px;font-weight:700}
+  /* 個股資訊卡 — 籌碼/資金/健康度/技術/交易/AI 6 區塊 */
+  .sic{border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-top:14px;background:#fff}
+  .sic-t{font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;color:var(--ink)}
+  .sic-t .sic-r{font-size:10.5px;color:var(--faint);font-weight:600}
+  .sic-sec{margin-top:12px}
+  .sic-sec:first-of-type{margin-top:0}
+  .sic-sec .sic-st{font-size:11px;font-weight:800;color:var(--sub);margin-bottom:7px;display:flex;align-items:center;gap:6px}
+  .sic-sec .sic-st::before{content:"";width:3px;height:11px;background:var(--violet);border-radius:2px}
+  .sic-g{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+  .sic-g3{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+  .sic-g2{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}
+  .sic-c{background:var(--soft);border-radius:11px;padding:9px 11px}
+  .sic-c .sic-k{font-size:10.5px;color:var(--faint);font-weight:600;line-height:1.3}
+  .sic-c .sic-v{font-size:14px;font-weight:800;margin-top:2px;line-height:1.2}
+  .sic-c .sic-v.up{color:var(--up)}.sic-c .sic-v.dn{color:var(--down)}.sic-c .sic-v.nm{color:var(--sub)}
+  .sic-c .sic-u{font-size:10px;color:var(--faint);font-weight:600;margin-left:2px}
+  .sic-big{background:var(--up-soft);border-radius:13px;padding:13px 14px;text-align:center}
+  .sic-big .sic-bk{font-size:11px;color:var(--sub);font-weight:700}
+  .sic-big .sic-bv{font-size:30px;font-weight:800;color:var(--up);letter-spacing:-.02em;margin-top:2px;line-height:1.1}
+  .sic-trade{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+  .sic-trade .sic-c{padding:11px 10px}
+  .sic-trade .sic-v{font-size:16px}
+  .sic-advice{display:inline-block;font-size:11px;font-weight:800;padding:3px 12px;border-radius:100px}
+  .sic-advice.go{background:var(--up);color:#fff}
+  .sic-advice.wait{background:var(--amber-soft);color:var(--amber)}
+  .sic-advice.hold{background:var(--soft);color:var(--sub)}
+  .sic-ai-row{display:flex;align-items:center;justify-content:space-between;background:var(--violet-soft);border-radius:12px;padding:10px 14px;margin-bottom:8px}
+  .sic-ai-pct{font-size:22px;font-weight:800;color:var(--violet);letter-spacing:-.02em}
+  .sic-reason{display:flex;align-items:flex-start;gap:6px;font-size:11.5px;line-height:1.5;margin-top:4px}
+  .sic-reason.pass{color:var(--up)}.sic-reason.fail{color:var(--down)}
+  .sic-reason::before{font-weight:800;flex:none}
+  .sic-reason.pass::before{content:"✓"}
+  .sic-reason.fail::before{content:"✕"}
   .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-size:13px;font-weight:650;padding:11px 20px;border-radius:100px;z-index:80;opacity:0;transition:.25s;pointer-events:none;box-shadow:var(--shadow-lg)}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   footer{padding:18px;font-size:11px;color:var(--faint);line-height:1.8;text-align:center}
@@ -319,13 +356,13 @@
     <div class="sec">
       <div class="sec-h"><span class="sec-t">盤面速覽</span></div>
       <div class="mini-grid">
-        <div class="mini"><div class="mk">資金流入前三</div><div id="topflow"></div></div>
+        <div class="mini"><div class="mk">資金流入前三<span class="mk-tip" title="單位=主動買張−主動賣張(張);盤中才會累積,盤後/未開盤為「無流向」">主動淨流</span></div><div id="topflow"></div></div>
         <div class="mini"><div class="mk">今日禁區</div><div id="donttouch"></div></div>
       </div>
     </div>
 
     <div class="sec">
-      <div class="sec-h"><span class="sec-t">產業資金熱力圖</span><span class="sec-s">面積=資金 · 顏色=漲跌</span><span class="sec-x" id="heat-upd"></span></div>
+      <div class="sec-h"><span class="sec-t">產業資金熱力圖</span><span class="sec-s">面積=成交額佔比 · 顏色=漲跌/流向</span><span class="sec-x" id="heat-upd"></span></div>
       <div class="heat-mode">
         <b class="on" data-hm="change" onclick="setHeat('change')">漲跌幅</b>
         <b data-hm="flow" onclick="setHeat('flow')">資金動能</b>
@@ -467,7 +504,17 @@ function renderTree(){
         continue;
       }
       var c=HEAT==="change"?colorChange(s.pct):colorFlow(s.flow_score);
-      var val=HEAT==="change"?pf(s.pct):((s.amount_100m!=null?s.amount_100m:0)+"億");
+      // v2.6:HEAT=flow 顯示真實「主動淨流張數」,不再把成交額誤當淨流入
+      // 金額(amount_100m)僅用於面積權重(代表市場關注度),不再當作 inflow 標籤
+      var val;
+      if(HEAT==="change"){
+        val=pf(s.pct);
+      }else{
+        var net=(s.health&&s.health.net_lots!=null)?s.health.net_lots:null;
+        if(net==null){val="無流向";}
+        else{var kn=Math.round(Math.abs(net)/1000);
+          val=(net>=0?"+":"−")+kn+"k張";}
+      }
       var lockLabel=s.locked?'<span class="lk">鎖</span>':"";
       html+='<div class="cell'+(SEL===s.name?" sel":"")+'" style="background:'+c+'" onclick="pick(\''+esc(s.name)+'\')">'
         +'<span class="rank">#'+(i+1)+'</span>'
@@ -552,8 +599,18 @@ function renderMini(){
   var allSecs=(STATE.sectors||[]);
   var secs=allSecs.filter(function(s){return s.flow_score>0}).sort(function(a,b){return b.flow_score-a.flow_score}).slice(0,3);
   if(secs.length){
+    // v2.6:用 sector health 真實 net_lots(主動淨流張數)取代誤導的「+amount_100m 億」
+    // 成交額 ≠ 淨流入;淨流入用主動買張 − 主動賣張(由 scoring.get_aflow 累計)
     document.getElementById("topflow").innerHTML=secs.map(function(s){
-      return '<div class="mrow"><span class="nm">'+esc(s.name)+'</span><span class="v in">'+(s.amount_100m!=null?"+"+s.amount_100m+"億":pf(s.pct))+'</span></div>';
+      var net=(s.health&&s.health.net_lots!=null)?s.health.net_lots:null;
+      var label,cls;
+      if(net==null){label="無流向";cls="neu";}
+      else{
+        var kn=Math.round(Math.abs(net)/1000);
+        label=(net>=0?"+":"−")+kn+"k張";
+        cls=net>=0?"in":"out";
+      }
+      return '<div class="mrow"><span class="nm">'+esc(s.name)+'</span><span class="v '+cls+'">'+label+'</span></div>';
     }).join("");
   } else {
     // 區分:沒族群 vs 沒流入
@@ -619,7 +676,19 @@ function detail(code){
     +'<div class="c"><div class="k">量比</div><div class="v num">'+(s.volume_ratio!=null?s.volume_ratio.toFixed(2):"—")+'</div></div>'
     +'<div class="c"><div class="k">均價線</div><div class="v num">'+(s.avg_price!=null?s.avg_price:"—")+'</div></div>'
     +'<div class="c"><div class="k">建議停損</div><div class="v num down">'+(s.suggested_stop!=null?s.suggested_stop:"—")+'</div></div>'
-    +'<div class="c"><div class="k">內外盤BS</div><div class="v num">'+(s.bs!=null?s.bs+"%":"—")+'</div></div></div></div>';
+    +'<div class="c"><div class="k">內外盤BS</div><div class="v num">'+(s.bs!=null?s.bs+"%":"—")+'</div></div></div></div>'
+    // ── 個股資訊卡 ── 資料由 _l2cache[code] /api/stock_detail 補(走勢分頁會拉一次)
+    +'<div class="blk" id="sic-'+code+'"><div class="sic"><div class="sic-t">個股資訊卡 <span class="sic-r" id="sic-load-'+code+'">載入中…</span></div><div id="sic-body-'+code+'"></div></div></div>';
+  // v2.6:盤後/非交易時段提示。趨勢(突破今高)、量能(TNVR)、主動淨流都需盤中 tick 才會累積
+  // 盤後靜態快照下這幾項歸零是預期行為,加狀態橫幅避免誤判「系統壞掉」
+  if(STATE.is_market_hours===false){
+    var _isEOD=(s.change_rate!=null);  // 有收盤價 = 至少已收盤
+    m+='<div class="blk"><div class="afterhours-banner">'+
+      '<div class="t">⏱ 盤後模式</div>'+
+      '<div class="d">趨勢 / 量能 / 主動淨流等動態指標需 <b>盤中 09:00–13:30</b> 累積,目前為靜態收盤快照。</div>'+
+      (_isEOD?'<div class="d">今日收盤價 <b>'+s.price+'</b>(<span style="color:'+col(s.change_rate)+'">'+pf(s.change_rate)+'</span>)已記錄;籌碼面待 FinMind EOD 更新。</div>':'')+
+      '</div></div>';
+  }
   if(fc.trend!=null){
     var aiExplain='綜合 5 個維度給的 AI 分數(0-100),>75 偏多、55-75 中性、<55 偏空。趨勢+量能+相對強度+籌碼+族群,各佔不同權重。';
     m+='<div class="blk"><div class="blk-t"><span style="cursor:help" title="'+esc(aiExplain)+'">五因子評分</span> <span class="r">AI '+(s.ai_score||0)+'</span></div>'+fac("趨勢",fc.trend/25*100,fc.trend,25)+fac("量能",fc.volume/25*100,fc.volume,25)+fac("相對強度",fc.rs/20*100,fc.rs,20)+fac("籌碼",fc.chip/20*100,fc.chip,20)+fac("族群",fc.sector/10*100,fc.sector,10)+'</div>';
@@ -664,8 +733,122 @@ function detail(code){
   m+='</div>';
   document.getElementById("sheet").innerHTML=m;
   document.getElementById("ov").className="ov open";
+  // 觸發個股資訊卡渲染 — 用 _l2cache 已有資料就免再 fetch
+  _renderSic(code);
 }
 function closeBg(e){if(e.target.id==="ov")document.getElementById("ov").className="ov";}
+
+/* 個股資訊卡渲染 — 6 區塊(籌碼/資金/健康度/技術/交易/AI 結論) */
+function _sicCell(k, v, cls){
+  var vStr = (v==null||v===undefined) ? "—" : v;
+  var vCls = (cls==="up"||cls==="down") ? cls : "nm";
+  return '<div class="sic-c"><div class="sic-k">'+k+'</div><div class="sic-v '+vCls+'">'+vStr+'</div></div>';
+}
+function _sicSigned(v, suffix){
+  if(v==null)return "—";
+  var sign = v>0?"+":"";
+  return sign+v+(suffix||"");
+}
+function _sicDir(v){
+  if(v==null)return "—";
+  return v>0?'<span class="sic-v up">↑</span>':(v<0?'<span class="sic-v dn">↓</span>':'<span class="sic-v nm">→</span>');
+}
+function _renderSic(code){
+  var body = document.getElementById("sic-body-"+code);
+  var load = document.getElementById("sic-load-"+code);
+  if(!body)return;
+  var apply = function(d){
+    if(load)load.textContent = "資料源:FinMind + Shioaji kbar";
+    body.innerHTML = _buildSicHtml(d);
+  };
+  if(_l2cache[code]){apply(_l2cache[code]);return;}
+  fetch(API_BASE+"/api/stock_detail/"+encodeURIComponent(code))
+    .then(function(r){return r.json()})
+    .then(function(d){_l2cache[code]=d;apply(d);})
+    .catch(function(e){if(load)load.textContent="載入失敗:"+(e&&e.message);});
+}
+function _buildSicHtml(d){
+  var chips = (d&&d.chips)||{};
+  var bs = (d&&d.buy_sell)||{};
+  var ind = (d&&d.indicators)||{};
+  var hl = (d&&d.health)||{};
+  var tg = (d&&d.targets)||{};
+  var ar = (d&&d.ai_reasons)||{passes:[],fails:[]};
+  function val(v,dec){if(v==null)return "—";if(dec!=null)return Number(v).toFixed(dec);return v;}
+  // ── 籌碼面 ──
+  var chipsHtml = '<div class="sic-sec">'
+    +'<div class="sic-st">籌碼面</div>'
+    +'<div class="sic-g">'
+      +_sicCell("外資", _sicSigned(chips.foreign_net_20d, " 張"))
+      +_sicCell("投信", _sicSigned(chips.trust_net_20d, " 張"))
+      +_sicCell("自營", _sicSigned(chips.dealer_net_20d, " 張"))
+      +_sicCell("主力", _sicSigned(chips.main_force_net_20d, " 張"))
+    +'</div>'
+    +'<div class="sic-g3" style="margin-top:7px">'
+      +_sicCell("大戶持股", chips.holder_400_pct!=null?(chips.holder_400_pct+"%"):"—")
+      +_sicCell("400張以上", chips.holder_400_pct!=null?(chips.holder_400_pct+"%"+(chips.holder_400_trend>0?" ▲":chips.holder_400_trend<0?" ▼":"")):"—")
+      +_sicCell("千張大戶", chips.big_holder_pct!=null?(chips.big_holder_pct+"%"+(chips.big_holder_trend>0?" ▲":chips.big_holder_trend<0?" ▼":"")):"—")
+    +'</div></div>';
+  // ── 資金 ──
+  var moneyHtml = '<div class="sic-sec">'
+    +'<div class="sic-st">資金</div>'
+    +'<div class="sic-g2">'
+      +_sicCell("主動買", bs.active_buy_pct!=null?(bs.active_buy_pct+"%"):"—", bs.active_buy_pct>=50?"up":"nm")
+      +_sicCell("主動賣", bs.active_sell_pct!=null?(bs.active_sell_pct+"%"):"—", bs.active_sell_pct<50?"up":"nm")
+    +'</div>'
+    +'<div class="sic-g2" style="margin-top:7px">'
+      +_sicCell("5日資金流", _sicDir(chips.inst_5d))
+      +_sicCell("10日資金流", _sicDir(chips.inst_10d))
+    +'</div></div>';
+  // ── 個股健康度 ──
+  var hlHtml = '<div class="sic-sec">'
+    +'<div class="sic-st">個股健康度</div>'
+    +'<div class="sic-big">'
+      +'<div class="sic-bk">綜合健康分數</div>'
+      +'<div class="sic-bv">'+val(hl.health_score)+'</div>'
+    +'</div></div>';
+  // ── 技術 ──
+  var indHtml = '<div class="sic-sec">'
+    +'<div class="sic-st">技術</div>'
+    +'<div class="sic-g3">'
+      +_sicCell("MA5", ind.ma5!=null?ind.ma5.toFixed(2):"—")
+      +_sicCell("MA10", ind.ma10!=null?ind.ma10.toFixed(2):"—")
+      +_sicCell("MA20", ind.ma20!=null?ind.ma20.toFixed(2):"—")
+    +'</div>'
+    +'<div class="sic-g3" style="margin-top:7px">'
+      +_sicCell("MACD", ind.macd_state||"—", ind.macd_state==="黃金交叉"||ind.macd_state==="多頭"?"up":(ind.macd_state==="死亡交叉"||ind.macd_state==="空頭"?"dn":"nm"))
+      +_sicCell("KD", ind.kd_k!=null?Math.round(ind.kd_k):"—")
+      +_sicCell("RSI", ind.rsi!=null?Math.round(ind.rsi):"—")
+    +'</div>'
+    +'<div class="sic-g3" style="margin-top:7px">'
+      +_sicCell("ATR", ind.atr!=null?ind.atr.toFixed(2):"—")
+    +'</div></div>';
+  // ── 交易 ──
+  var adviceCls = tg.advice==="可進場"?"go":(tg.advice==="等待回測"?"wait":"hold");
+  var tradeHtml = '<div class="sic-sec">'
+    +'<div class="sic-st">交易</div>'
+    +'<div style="margin-bottom:8px">建議 <span class="sic-advice '+adviceCls+'">'+esc(tg.advice||"等待")+'</span></div>'
+    +'<div class="sic-trade">'
+      +_sicCell("買點", tg.buy!=null?tg.buy.toFixed(2):"—", "up")
+      +_sicCell("停損", tg.stop!=null?tg.stop.toFixed(2):"—", "dn")
+      +_sicCell("T1", tg.t1!=null?tg.t1.toFixed(2):"—", "up")
+    +'</div>'
+    +'<div class="sic-trade" style="margin-top:7px">'
+      +_sicCell("T2", tg.t2!=null?tg.t2.toFixed(2):"—", "up")
+      +_sicCell("RR", tg.rr!=null?tg.rr.toFixed(2):"—")
+    +'</div></div>';
+  // ── AI 結論 ──
+  var aiPct = ar.ai_score!=null?ar.ai_score+"%":"—";
+  var reasonHtml = '';
+  (ar.passes||[]).forEach(function(x){reasonHtml += '<div class="sic-reason pass">'+esc(x)+'</div>';});
+  (ar.fails||[]).forEach(function(x){reasonHtml += '<div class="sic-reason fail">'+esc(x)+'</div>';});
+  var aiHtml = '<div class="sic-sec">'
+    +'<div class="sic-st">AI 結論</div>'
+    +'<div class="sic-ai-row"><span style="font-size:12px;font-weight:700;color:var(--violet)">AI</span><span class="sic-ai-pct">'+aiPct+'</span></div>'
+    +(reasonHtml?'<div style="margin-top:6px"><div style="font-size:11px;color:var(--sub);font-weight:700;margin-bottom:4px">原因</div>'+reasonHtml+'</div>':'')
+    +'</div>';
+  return chipsHtml + moneyHtml + hlHtml + indHtml + tradeHtml + aiHtml;
+}
 
 /* 第二層走勢 · 用 code 當 seed 製造穩定假 sparkline */
 /* l2 切換:打 /api/stock_detail 拉一次(有 cache),然後依 pane 渲染 */
@@ -771,8 +954,200 @@ function switchTab(tab){
   if(tab==="strategy"){renderStrategy();return;}
   if(tab==="livermore"){renderLivermore();return;}
   if(tab==="nexora"){renderNexora();return;}
+  if(tab==="health"){renderHealth();return;}
   var p=PLUGINS[tab];
   if(p){body.innerHTML='<div class="plugin-card"><h3>'+p.t+'</h3><p>'+p.d+'</p>'+(p.link?'<a class="lnk" href="'+p.link+'" target="_blank">開啟 '+p.link+' ↗</a>':'<p style="color:var(--violet);font-weight:700;margin-top:10px">→ 回首頁點任一個股卡片,細節彈窗即含此插件分析</p>')+'</div>';}
+}
+
+/* ── 資金健康度 tab 渲染(2026-07-09 v3) ── */
+function renderHealth(){
+  var body=document.getElementById("plugin-body");
+  body.innerHTML='<div class="plugin-card">'
+    +'<h3>💰 資金健康度</h3>'
+    +'<p>資金流向 × 漲跌 四象限 + Level 8.1 三角交叉驗證 + Chip Score(法人買賣超)。'
+    +'健康度不是單日評分,而是時間序列:連續買超天數、健康分昨日 vs 今日、命中率統計都在這頁。</p>'
+    +'<div id="health-body" style="margin-top:14px">載入中…</div>'
+    +'</div>';
+  fetch(API_BASE+"/api/money_health").then(function(r){return r.json()}).then(function(d){
+    var box=document.getElementById("health-body");
+    if(d.error){
+      box.innerHTML='<div class="empty" style="padding:24px;color:var(--out)">載入失敗:'+esc(d.error)+'</div>';
+      return;
+    }
+    if(!d.cards||!d.cards.length){
+      box.innerHTML='<div class="empty" style="padding:24px;line-height:1.8;text-align:center">'
+        +'<div style="font-size:15px;font-weight:800;color:var(--ink)">尚無個股資料</div>'
+        +'<div style="color:var(--faint);font-size:12.5px;margin-top:6px">/api/money_health 還沒回資料,或觀察池 0 檔</div>'
+        +'<div style="color:var(--violet);font-weight:700;font-size:12px;margin-top:10px">等 server 跑滿一輪(盤中才有 watchlist)</div>'
+        +'</div>';
+      return;
+    }
+
+    /* ─── 1) 4 象限圖 ─── */
+    var quads = {in_up:[],in_down:[],out_up:[],out_down:[],unknown:[]};
+    d.cards.forEach(function(c){ (quads[c.quadrant||'unknown']=quads[c.quadrant||'unknown']).push(c); });
+    var quadLbl = {in_up:'健康 (流入+漲)',in_down:'假紅 (流入+跌)',out_up:'惜售 (流出+漲)',out_down:'休息 (流出+跌)',unknown:'未連線'};
+    var quadCls = {in_up:'up',in_down:'down',out_up:'warn',out_down:'down',unknown:'neu'};
+    var quadHtml = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">';
+    ['in_up','in_down','out_up','out_down','unknown'].forEach(function(q){
+      var list = quads[q];
+      if(!list.length) return;
+      var avg_hs = 0, n = 0;
+      list.forEach(function(c){ if(c.health_score!=null){avg_hs+=c.health_score; n++;} });
+      avg_hs = n ? Math.round(avg_hs/n) : 0;
+      var chips_avg = 0, cn = 0;
+      list.forEach(function(c){
+        var cs = (c.chip||{}).chip_score;
+        if(cs && cs.score!=null){ chips_avg+=cs.score; cn++; }
+      });
+      chips_avg = cn ? (chips_avg/cn).toFixed(1) : '—';
+      quadHtml += '<div style="padding:10px 12px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        +'<span style="font-weight:800;font-size:13px">'+esc(quadLbl[q])+'</span>'
+        +'<span style="font-size:11px;color:var(--faint)">'+list.length+' 檔</span>'
+        +'</div>'
+        +'<div style="display:flex;gap:12px;font-size:11.5px">'
+        +'<span>均健康分 <b style="color:var(--ink)">'+avg_hs+'</b></span>'
+        +'<span>均 Chip <b style="color:var(--ink)">'+chips_avg+'</b></span>'
+        +'</div>'
+        +'<div style="margin-top:6px;font-size:11px;color:var(--faint)">'
+        +list.slice(0,4).map(function(c){return esc(c.name||c.code);}).join('、')
+        +(list.length>4?' 等 '+list.length+' 檔':'')
+        +'</div>'
+        +'</div>';
+    });
+    quadHtml += '</div>';
+
+    /* ─── 2) 命中率統計(若有 ≥2 快照) ─── */
+    var hitHtml = '';
+    if(d.hit_rate && d.hit_rate.by_health_score){
+      var h = d.hit_rate.by_health_score;
+      var q2 = d.hit_rate.by_quadrant || {};
+      hitHtml += '<div style="background:rgba(124,108,255,0.06);border:1px solid rgba(124,108,255,0.18);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px">'
+        +'<div style="font-weight:800;color:var(--ink);font-size:13px;margin-bottom:6px">📊 模型命中率驗證</div>'
+        +'<div style="color:var(--faint);margin-bottom:6px">用過去快照統計健康分三組 + 四象限的隔日報酬率('+d.hit_rate.snapshots_n+' 個交易日,'+d.hit_rate.pairs_n+' 組配對)</div>'
+        +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px">';
+      function hrCell(name, st){
+        if(!st||!st.n) return '<div style="opacity:0.6"><b>'+name+'</b>: 資料不足</div>';
+        var wr = st.win_rate!=null?st.win_rate+'%':'—';
+        var ar = st.avg_ret!=null?((st.avg_ret>=0?'+':'')+st.avg_ret+'%'):'—';
+        var cls = st.avg_ret>0?'color:var(--up)':(st.avg_ret<0?'color:var(--out)':'color:var(--ink)');
+        return '<div><b>'+name+'</b>: n='+st.n+' 勝率 '+wr+' 均報酬 <span style="'+cls+'">'+ar+'</span></div>';
+      }
+      hitHtml += hrCell('健康分≥65', h.high_ge_65);
+      hitHtml += hrCell('50-64', h.mid_50_64);
+      hitHtml += hrCell('<50', h.low_lt_50);
+      hitHtml += '</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:11px;color:var(--faint)">'
+        +'<div>in_up '+((q2.in_up&&q2.in_up.avg_ret!=null)?((q2.in_up.avg_ret>=0?'+':'')+q2.in_up.avg_ret+'%'):'—')+'</div>'
+        +'<div>in_down '+((q2.in_down&&q2.in_down.avg_ret!=null)?((q2.in_down.avg_ret>=0?'+':'')+q2.in_down.avg_ret+'%'):'—')+'</div>'
+        +'<div>out_up '+((q2.out_up&&q2.out_up.avg_ret!=null)?((q2.out_up.avg_ret>=0?'+':'')+q2.out_up.avg_ret+'%'):'—')+'</div>'
+        +'<div>out_down '+((q2.out_down&&q2.out_down.avg_ret!=null)?((q2.out_down.avg_ret>=0?'+':'')+q2.out_down.avg_ret+'%'):'—')+'</div>'
+        +'</div></div>';
+    } else if (d.hit_rate && d.hit_rate.note) {
+      hitHtml += '<div style="background:rgba(124,108,255,0.06);border:1px solid rgba(124,108,255,0.18);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--faint)">'
+        +'📊 模型命中率驗證:'+esc(d.hit_rate.note)+'<br><span style="font-size:11px">→ 明天起每日 15:05 自動累積,連續 20-30 日可驗證模型預測力</span></div>';
+    }
+
+    /* ─── 3) 列表報告(每張決策卡) ─── */
+    var cardsHtml = '<div style="font-weight:800;color:var(--ink);font-size:13px;margin:8px 0 10px">📋 個股健康度報告('+d.cards.length+' 檔 · 排序:Ready > Watch > Hold)</div>';
+    d.cards.forEach(function(c){
+      var dd = c.decision||{};
+      var cs = (c.chip||{}).chip_score;
+      var cs_score = cs && cs.score!=null ? cs.score : null;
+      var cs_lvl = cs ? {big_buy:'主力大買',small_buy:'主力小買',neutral:'中性',small_sell:'小賣',big_sell:'大賣',no_data:'無資料'}[cs.level]||cs.level : '無資料';
+      var cs_color = cs_score==null?'var(--faint)':(cs_score>=20?'var(--up)':(cs_score>=10?'var(--violet)':'var(--out)'));
+      var hs = c.health_score!=null ? c.health_score : '—';
+      var hs_color = hs==='—'?'var(--faint)':(hs>=65?'var(--up)':(hs>=50?'var(--violet)':'var(--out)'));
+      var bd = c.health_v3_breakdown||{};
+      var bd_text = bd.chip!=null ? ('資 '+(bd.fund!=null?bd.fund:0).toFixed(0)+' / 價 '+(bd.pv!=null?bd.pv:0).toFixed(0)+' / 族 '+(bd.sector!=null?bd.sector:0)+' / Chip '+(bd.chip!=null?bd.chip:0)) : '';
+      var chg = c.change_rate!=null ? c.change_rate : 0;
+      var chgCls = chg>=0?'up':'down';
+      var chgStr = (chg>=0?'+':'')+chg.toFixed(2)+'%';
+      var conf_color = (dd.confidence>=85)?'var(--up)':((dd.confidence>=65)?'var(--violet)':'var(--out)');
+      var ai_color = (dd.ai_score>=75)?'var(--up)':((dd.ai_score>=55)?'var(--violet)':'var(--out)');
+
+      cardsHtml += '<div style="background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px">';
+      // header
+      cardsHtml += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">'
+        +'<div><b style="font-size:15px;color:var(--ink)">'+esc(c.name||c.code)+'</b>'
+        +'<span style="color:var(--faint);font-size:11.5px;margin-left:6px">'+esc(c.code||'')+'</span>'
+        +(c.sector?'<span style="background:rgba(124,108,255,0.15);color:var(--violet);padding:1px 8px;border-radius:100px;font-size:11px;margin-left:6px">'+esc(c.sector)+'</span>':'')
+        +'<span style="background:var(--ink);color:#fff;padding:2px 10px;border-radius:100px;font-size:11px;margin-left:6px">'+esc(dd.state||"—")+'</span></div>'
+        +'<div style="text-align:right">'
+        +'<b style="font-size:15px;color:var(--ink)">'+esc(c.price!=null?c.price:"—")+'</b>'
+        +'<span style="margin-left:8px;font-weight:700;color:'+(chg>=0?'var(--up)':'var(--out)')+'">'+chgStr+'</span>'
+        +'</div></div>';
+
+      // 5 欄 metrics
+      cardsHtml += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px;font-size:11.5px">';
+      cardsHtml += '<div style="text-align:center;padding:6px;background:rgba(255,255,255,0.04);border-radius:6px"><div style="color:var(--faint)">AI Score</div><div style="font-size:18px;font-weight:800;color:'+ai_color+'">'+esc(dd.ai_score!=null?dd.ai_score:"—")+'</div></div>';
+      cardsHtml += '<div style="text-align:center;padding:6px;background:rgba(255,255,255,0.04);border-radius:6px"><div style="color:var(--faint)">信心</div><div style="font-size:18px;font-weight:800;color:'+conf_color+'">'+esc(dd.confidence!=null?dd.confidence:"—")+'%</div></div>';
+      cardsHtml += '<div style="text-align:center;padding:6px;background:rgba(255,255,255,0.04);border-radius:6px"><div style="color:var(--faint)">象限</div><div style="font-size:13px;font-weight:700;color:var(--ink)">'+esc(c.label||"—")+'</div></div>';
+      cardsHtml += '<div style="text-align:center;padding:6px;background:rgba(255,255,255,0.04);border-radius:6px"><div style="color:var(--faint)">Chip 分</div><div style="font-size:18px;font-weight:800;color:'+cs_color+'">'+(cs_score!=null?cs_score+'/25':'—')+'</div><div style="font-size:10px;color:var(--faint)">'+esc(cs_lvl)+'</div></div>';
+      cardsHtml += '<div style="text-align:center;padding:6px;background:rgba(255,255,255,0.04);border-radius:6px"><div style="color:var(--faint)">健康分 v3</div><div style="font-size:18px;font-weight:800;color:'+hs_color+'">'+hs+'/100</div>'+(bd_text?'<div style="font-size:9.5px;color:var(--faint);margin-top:2px">'+esc(bd_text)+'</div>':'')+'</div>';
+      cardsHtml += '</div>';
+
+      // Chip 評語
+      if(cs && cs.reason){
+        cardsHtml += '<div style="font-size:11.5px;color:var(--violet);background:rgba(124,108,255,0.08);padding:6px 10px;border-radius:6px;margin-bottom:6px">📈 Chip 評語:'+esc(cs.reason)+'</div>';
+      }
+
+      // Action / Trigger / Invalidation
+      cardsHtml += '<div style="font-size:12px;color:var(--ink);margin:6px 0"><b>▶ Action:</b> '+esc(dd.action||"—")+'</div>';
+      cardsHtml += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11.5px">';
+      cardsHtml += '<div style="padding:6px 8px;background:rgba(124,108,255,0.08);border-radius:6px"><b style="color:var(--violet)">觸發:</b> '+esc(dd.trigger||"—")+'</div>';
+      cardsHtml += '<div style="padding:6px 8px;background:rgba(255,80,80,0.08);border-radius:6px"><b style="color:var(--out)">失效:</b> '+esc(dd.invalidation||"—")+'</div>';
+      cardsHtml += '</div>';
+
+      // 進場/停損/目標
+      if(dd.entry||dd.stop||dd.target){
+        cardsHtml += '<div style="display:flex;gap:12px;font-size:12px;margin-top:6px;color:var(--sub)">'
+          +'<span>進場 <b style="color:var(--ink)">'+esc(dd.entry||"—")+'</b></span>'
+          +'<span>停損 <b style="color:var(--out)">'+esc(dd.stop||"—")+'</b></span>'
+          +'<span>目標 <b style="color:var(--up)">'+esc(dd.target||"—")+'</b></span>'
+          +'</div>';
+      }
+
+      // 時間序列(若有)
+      var ts = c.time_series||[];
+      if(ts.length>=2){
+        cardsHtml += '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11.5px;color:var(--violet);font-weight:700">📊 健康分時間序列(近 '+ts.length+' 日)</summary>';
+        cardsHtml += '<div style="margin-top:4px;font-size:11px">';
+        ts.forEach(function(p){
+          var phs = p.health_score!=null?p.health_score:'—';
+          var phsC = phs==='—'?'var(--faint)':(phs>=65?'var(--up)':(phs>=50?'var(--violet)':'var(--out)'));
+          var pqL = {in_up:'健康',in_down:'假紅',out_up:'惜售',out_down:'休息',unknown:'未連線'};
+          cardsHtml += '<div style="display:flex;justify-content:space-between;padding:3px 8px;border-bottom:1px dashed rgba(255,255,255,0.06)">'
+            +'<span style="color:var(--faint);width:80px">'+esc(p.date||'')+'</span>'
+            +'<span style="color:'+phsC+';font-weight:700;width:40px;text-align:right">'+phs+'</span>'
+            +'<span style="flex:1;color:var(--ink)">'+esc(pqL[p.quadrant]||p.quadrant||'—')+'</span>'
+            +'<span style="color:var(--faint)">當日 '+(p.change_rate!=null?((p.change_rate>=0?'+':'')+p.change_rate.toFixed(2)+'%'):'—')+'</span>'
+            +'</div>';
+        });
+        cardsHtml += '</div></details>';
+      }
+
+      cardsHtml += '</div>';
+    });
+
+    // 名詞表
+    cardsHtml += '<div style="margin-top:14px;padding:10px 12px;background:rgba(255,255,255,0.04);border-radius:8px;font-size:11.5px;line-height:1.7;color:var(--sub)">'
+      +'<div style="font-weight:800;color:var(--ink);margin-bottom:4px">📖 名詞速查</div>'
+      +'<b>象限</b>=資金流向×漲跌的交叉:<b>健康</b>=流入+漲(真攻擊)、<b>假紅</b>=流入+跌(主力邊拉邊賣)、<b>惜售</b>=流出+漲(量縮惜售)、<b>休息</b>=流出+跌(退潮)、<b>未連線</b>=tick 資料缺。<br>'
+      +'<b>Chip 分</b>(0-25)=法人近20日買賣超張數:大買≥+5000張→25、小買+500~+5000→15、中性±500→10、小賣-5000~-500→5、大賣≤-5000→0;再依外資連買/連賣日數 ±3~±5。<br>'
+      +'<b>健康分 v3</b>=資金流(0-50)+價量(0-20)+族群(0-5)+Chip(0-25),總分100。<b>時間序列</b>看健康度是延續還是反轉。<br>'
+      +'<b>命中率驗證</b>=過去快照隔日報酬率,30 日後驗證模型預測力。<br>'
+      +'<b>狀態</b>=<b>Ready</b>=現在可布局、<b>Watch</b>=等觸發、<b>Hold</b>=不進場。'
+      +'</div>';
+
+    box.innerHTML = quadHtml + hitHtml + cardsHtml;
+
+    // 更新標題時間
+    var updEl = document.getElementById('decisions-upd');
+    if(updEl) updEl.textContent = '更新 '+((d.as_of||'')).slice(11,16);
+  }).catch(function(e){
+    document.getElementById('health-body').innerHTML='<div class="empty" style="padding:24px;color:var(--out)">連線失敗:'+esc(String(e))+'</div>';
+  });
 }
 
 /* ── NEXORA 渲染 ── */

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>個股資訊卡 · UI 預覽</title>
+<style>
+:root{
+  --up:#f43f5e; --up-soft:#fff1f3;
+  --down:#10b981; --down-soft:#ecfdf5;     /* 預覽用綠為跌,符合 Vanessa 訊息 */
+  --amber:#f59e0b; --amber-soft:#fffbeb;
+  --violet:#7c3aed; --violet-soft:#f5f3ff;
+  --ink:#0f1219; --sub:#6b7280; --faint:#9ca3af;
+  --card:#fff; --line:#e5e7eb; --soft:#f9fafb;
+  --shadow-lg:0 24px 60px -12px rgba(15,18,25,.18);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro TC","PingFang TC",sans-serif;background:#f3f4f6;color:var(--ink);padding:24px;line-height:1.4}
+.wrap{max-width:520px;margin:0 auto;background:var(--card);border-radius:26px;box-shadow:var(--shadow-lg);overflow:hidden}
+.head{padding:14px 22px 16px;border-bottom:1px solid var(--line)}
+.snm{font-size:22px;font-weight:800;letter-spacing:-.02em}
+.ssub{font-size:12px;color:var(--sub);font-weight:600;margin-top:2px}
+.body{padding:6px 22px 26px}
+.sic{border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-top:14px;background:#fff}
+.sic-t{font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;color:var(--ink)}
+.sic-t .sic-r{font-size:10.5px;color:var(--faint);font-weight:600}
+.sic-sec{margin-top:12px}
+.sic-sec:first-of-type{margin-top:0}
+.sic-sec .sic-st{font-size:11px;font-weight:800;color:var(--sub);margin-bottom:7px;display:flex;align-items:center;gap:6px}
+.sic-sec .sic-st::before{content:"";width:3px;height:11px;background:var(--violet);border-radius:2px}
+.sic-g{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+.sic-g3{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.sic-g2{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}
+.sic-c{background:var(--soft);border-radius:11px;padding:9px 11px}
+.sic-c .sic-k{font-size:10.5px;color:var(--faint);font-weight:600;line-height:1.3}
+.sic-c .sic-v{font-size:14px;font-weight:800;margin-top:2px;line-height:1.2}
+.sic-c .sic-v.up{color:var(--up)}.sic-c .sic-v.dn{color:var(--down)}.sic-c .sic-v.nm{color:var(--sub)}
+.sic-big{background:var(--up-soft);border-radius:13px;padding:13px 14px;text-align:center}
+.sic-big .sic-bk{font-size:11px;color:var(--sub);font-weight:700}
+.sic-big .sic-bv{font-size:30px;font-weight:800;color:var(--up);letter-spacing:-.02em;margin-top:2px;line-height:1.1}
+.sic-trade{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.sic-trade .sic-c{padding:11px 10px}
+.sic-trade .sic-v{font-size:16px}
+.sic-advice{display:inline-block;font-size:11px;font-weight:800;padding:3px 12px;border-radius:100px}
+.sic-advice.go{background:var(--up);color:#fff}
+.sic-advice.wait{background:var(--amber-soft);color:var(--amber)}
+.sic-advice.hold{background:var(--soft);color:var(--sub)}
+.sic-ai-row{display:flex;align-items:center;justify-content:space-between;background:var(--violet-soft);border-radius:12px;padding:10px 14px;margin-bottom:8px}
+.sic-ai-pct{font-size:22px;font-weight:800;color:var(--violet);letter-spacing:-.02em}
+.sic-reason{display:flex;align-items:flex-start;gap:6px;font-size:11.5px;line-height:1.5;margin-top:4px}
+.sic-reason.pass{color:var(--up)}.sic-reason.fail{color:var(--down)}
+.sic-reason::before{font-weight:800;flex:none}
+.sic-reason.pass::before{content:"✓"}
+.sic-reason.fail::before{content:"✕"}
+.tag{padding:4px 10px;border-radius:100px;background:#000;color:#fff;font-size:11px;font-weight:700;display:inline-block;margin-bottom:14px}
+</style>
+</head>
+<body>
+
+<div class="tag">MOCK 預覽 · 視覺驗收用</div>
+
+<div class="wrap">
+  <div class="head">
+    <div class="snm">台積電 <span style="font-size:13px;color:var(--faint);font-weight:600">2330 · 半導體</span></div>
+    <div class="ssub">現價 182.5 · <span style="color:var(--up)">+1.85%</span> · AI 82</div>
+  </div>
+  <div class="body">
+
+    <!-- 個股資訊卡 -->
+    <div class="sic">
+      <div class="sic-t">個股資訊卡 <span class="sic-r">資料源:FinMind + Shioaji kbar</span></div>
+
+      <!-- 籌碼面 -->
+      <div class="sic-sec">
+        <div class="sic-st">籌碼面</div>
+        <div class="sic-g">
+          <div class="sic-c"><div class="sic-k">外資</div><div class="sic-v up">+3,582</div></div>
+          <div class="sic-c"><div class="sic-k">投信</div><div class="sic-v up">+1,240</div></div>
+          <div class="sic-c"><div class="sic-k">自營</div><div class="sic-v dn">-325</div></div>
+          <div class="sic-c"><div class="sic-k">主力</div><div class="sic-v up">+5,800</div></div>
+        </div>
+        <div class="sic-g3" style="margin-top:7px">
+          <div class="sic-c"><div class="sic-k">大戶持股</div><div class="sic-v up">+1.8%</div></div>
+          <div class="sic-c"><div class="sic-k">400張以上</div><div class="sic-v up">+2.3%</div></div>
+          <div class="sic-c"><div class="sic-k">千張大戶</div><div class="sic-v up">+0.8%</div></div>
+        </div>
+      </div>
+
+      <!-- 資金 -->
+      <div class="sic-sec">
+        <div class="sic-st">資金</div>
+        <div class="sic-g2">
+          <div class="sic-c"><div class="sic-k">主動買</div><div class="sic-v up">62%</div></div>
+          <div class="sic-c"><div class="sic-k">主動賣</div><div class="sic-v dn">38%</div></div>
+        </div>
+        <div class="sic-g2" style="margin-top:7px">
+          <div class="sic-c"><div class="sic-k">5日資金流</div><div class="sic-v up" style="font-size:20px">↑</div></div>
+          <div class="sic-c"><div class="sic-k">10日資金流</div><div class="sic-v up" style="font-size:20px">↑</div></div>
+        </div>
+      </div>
+
+      <!-- 個股健康度 -->
+      <div class="sic-sec">
+        <div class="sic-st">個股健康度</div>
+        <div class="sic-big">
+          <div class="sic-bk">綜合健康分數</div>
+          <div class="sic-bv">87</div>
+        </div>
+      </div>
+
+      <!-- 技術 -->
+      <div class="sic-sec">
+        <div class="sic-st">技術</div>
+        <div class="sic-g3">
+          <div class="sic-c"><div class="sic-k">MA5</div><div class="sic-v up">↑</div></div>
+          <div class="sic-c"><div class="sic-k">MA10</div><div class="sic-v up">↑</div></div>
+          <div class="sic-c"><div class="sic-k">MA20</div><div class="sic-v up">↑</div></div>
+        </div>
+        <div class="sic-g3" style="margin-top:7px">
+          <div class="sic-c"><div class="sic-k">MACD</div><div class="sic-v up" style="font-size:12px">黃金交叉</div></div>
+          <div class="sic-c"><div class="sic-k">KD</div><div class="sic-v nm">82</div></div>
+          <div class="sic-c"><div class="sic-k">RSI</div><div class="sic-v nm">68</div></div>
+        </div>
+        <div class="sic-g3" style="margin-top:7px">
+          <div class="sic-c"><div class="sic-k">ATR</div><div class="sic-v nm">2.1</div></div>
+        </div>
+      </div>
+
+      <!-- 交易 -->
+      <div class="sic-sec">
+        <div class="sic-st">交易</div>
+        <div style="margin-bottom:8px">建議 <span class="sic-advice wait">等待</span></div>
+        <div class="sic-trade">
+          <div class="sic-c"><div class="sic-k">買點</div><div class="sic-v up">178.5</div></div>
+          <div class="sic-c"><div class="sic-k">停損</div><div class="sic-v dn">173.8</div></div>
+          <div class="sic-c"><div class="sic-k">T1</div><div class="sic-v up">186</div></div>
+        </div>
+        <div class="sic-trade" style="margin-top:7px">
+          <div class="sic-c"><div class="sic-k">T2</div><div class="sic-v up">194</div></div>
+          <div class="sic-c"><div class="sic-k">RR</div><div class="sic-v nm">2.8</div></div>
+        </div>
+      </div>
+
+      <!-- AI 結論 -->
+      <div class="sic-sec">
+        <div class="sic-st">AI 結論</div>
+        <div class="sic-ai-row">
+          <span style="font-size:12px;font-weight:700;color:var(--violet)">AI</span>
+          <span class="sic-ai-pct">82%</span>
+        </div>
+        <div style="margin-top:6px">
+          <div style="font-size:11px;color:var(--sub);font-weight:700;margin-bottom:4px">原因</div>
+          <div class="sic-reason pass">大戶增加</div>
+          <div class="sic-reason pass">主動資金翻正</div>
+          <div class="sic-reason pass">技術多頭</div>
+          <div class="sic-reason fail">籌碼尚未完全集中</div>
+        </div>
+      </div>
+
+    </div>
+    <!-- /個股資訊卡 -->
+
+  </div>
+</div>
+
+</body>
+</html>

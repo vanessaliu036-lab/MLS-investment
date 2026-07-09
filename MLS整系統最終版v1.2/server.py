@@ -665,15 +665,27 @@ def api_money_health():
     - 每張卡附 Chip Score(法人買賣超→0-25 分)+ 健康分 v3 分項明細
     - 每日自動存檔到 reports/health_score_history/YYYYMMDD.json
     - 含 time_series(該股近 5 日健康分序列)+ hit_rate_stats(命中率統計)
+    - 全觀察池覆蓋(不再只回觀察清單),盤後即使 tick 未連線也照跑、照存檔
     """
     try:
-        full_state = engine.build_state(watchlist_codes=_watchlist_codes)
-        sectors = full_state.get("sectors") or []
-        stocks = full_state.get("stocks") or []
-        market_pct = (full_state.get("market") or {}).get("change_rate") or 0.0
+        # 直接讀 UNIVERSE 50 檔全觀察池,不走 engine.build_state()(它會被 total_volume
+        # 過濾掉 + Shioaji session 重連很慢)。sectors 從 db 讀今日 snapshot,
+        # 沒 snapshot 時用空 list(annotate 仍會跑,但 sector_pct 全 0)。
+        import config as _C
+        import broker as _broker
+        codes = list(_C.UNIVERSE)
+        snaps = _broker.batch_snapshots(codes)
+        # 補 name 欄位(batch_snapshots 不給 name)
+        for _s in snaps:
+            if not _s.get("name"):
+                _s["name"] = _C.NAME_MAP.get(_s.get("code"), _s.get("code"))
+        # sectors:優先讀 STATE(已跑 scheduler_loop),fallback 用空 list
+        sectors = (STATE.get("sectors") if isinstance(STATE, dict) else None) or []
+        market_pct = ((STATE.get("market") or {}).get("change_rate") if isinstance(STATE, dict) else None) or 0.0
         # 跑決策卡(每檔增補 _decision)
         import money_health
-        money_health.annotate_with_decision(stocks, sectors, market_pct)
+        money_health.annotate_with_decision(snaps, sectors, market_pct)
+        stocks = snaps  # 替換變數名,後面組 cards 用 snaps(全觀察池)
         # 組裝回傳:每檔一個決策卡
         cards = []
         for s in stocks:
@@ -732,7 +744,7 @@ def api_money_health():
             hit_rate = None
 
         return _safe({
-            "as_of": (full_state.get("market") or {}).get("time", ""),
+            "as_of": ((STATE.get("market") or {}).get("time") if isinstance(STATE, dict) else "") or "",
             "market_pct": market_pct,
             "count": len(cards),
             "ready_n": sum(1 for c in cards if c["decision"].get("state") == "Ready"),
@@ -798,8 +810,12 @@ def api_stock_detail(code: str):
     回傳:
       snapshot    即時 OHLC + 量能(從 STATE 抓,失敗則 broker 即時取一次)
       kbars       日K 60 筆(MA20/MA60 計算 + 走勢圖)
-      chips       法人/大戶(來自 chips.get_chips)
-      buy_sell    內外盤累計量 + BS Ratio
+      chips       法人/大戶(來自 chips.get_chips)— 外資/投信/自營/主力/400張/千張
+      buy_sell    內外盤累計量 + BS Ratio + 主動買/賣%
+      indicators  MA5/MA10/MA20/MACD/KD/RSI/ATR 技術指標
+      health      個股健康度(來自 scoring + engine 既有)
+      targets     買點 / 停損 / T1 / T2 / RR(規則引擎產出)
+      ai_reasons  AI 結論 + 通過/未通過因子清單
     五檔報價因 Shioaji 1.5.5 公開 API 無 order_book 方法,本機無 tick stream
     無法穩定取到 → 第二層「五檔報價」tab 維持 placeholder
     """
@@ -868,14 +884,146 @@ def api_stock_detail(code: str):
             chips_data["has_data"] = chips_data.get("inst_net_20d_lots") is not None
         except Exception as e:
             print(f"[detail] chips {code} 失敗:{e}")
-            chips_data = {"has_data": False, "inst_net_20d_lots": None, "inst_streak": None, "big_holder_pct": None, "big_holder_trend": None}
+            chips_data = {"has_data": False,
+                          "inst_net_20d_lots": None, "inst_streak": None,
+                          "big_holder_pct": None, "big_holder_trend": None,
+                          "foreign_net_20d": None, "trust_net_20d": None,
+                          "dealer_net_20d": None, "main_force_net_20d": None,
+                          "foreign_5d": None, "foreign_10d": None,
+                          "inst_5d": None, "inst_10d": None,
+                          "holder_400_pct": None, "holder_400_trend": None}
 
-        # 4) buy_sell BS Ratio
+        # 4) buy_sell BS Ratio + 主動買賣%
         bv = snap.get("buy_volume") or 0
         sv = snap.get("sell_volume") or 0
         bs_pct = None
         if bv + sv > 0:
             bs_pct = round(bv / (bv + sv) * 100, 1)
+        active_buy_pct = bs_pct              # 主動買% == BS% (外盤/(外+內))
+        active_sell_pct = round(100 - bs_pct, 1) if bs_pct is not None else None
+
+        # 5) 技術指標
+        indicators = {}
+        try:
+            import indicators as _ind
+            indicators = _ind.compute_all(kbars)
+        except Exception as e:
+            print(f"[detail] indicators {code} 失敗:{e}")
+            indicators = {"ok": False, "reason": str(e)}
+
+        # 6) 個股健康度 — 直接從 STATE 找該股,既有 health_score/quadrant/label/aflow_ratio
+        health = {"health_score": None, "quadrant": None, "label": None,
+                  "stars": None, "aflow_ratio": None}
+        try:
+            for _s in (STATE.get("stocks") or []):
+                if _s.get("code") == code:
+                    health = {
+                        "health_score": _s.get("health_score"),
+                        "quadrant": _s.get("quadrant"),
+                        "label": _s.get("label"),
+                        "stars": _s.get("stars"),
+                        "aflow_ratio": _s.get("aflow_ratio"),
+                    }
+                    break
+        except Exception:
+            pass
+
+        # 7) 交易計劃 — 買點 / 停損 / T1 / T2 / RR
+        # 規則:買點 = 站上均價線且昨日收 + 微量緩衝;停損 = 既有 suggested_stop;
+        #       T1 = 買點 + 1R;T2 = 買點 + 2R;RR = (T1-買點)/(買點-停損)
+        targets = {"advice": "等待", "buy": None, "stop": None,
+                   "t1": None, "t2": None, "rr": None}
+        try:
+            price = snap.get("price")
+            stop = snap.get("suggested_stop") or snap.get("low")
+            avgp = snap.get("avg_price")
+            # 買點:均價線微上(等回測不追高)— 若已大於均價太多,退回均價 + ATR/2
+            atr_v = (indicators or {}).get("atr")
+            if price is not None and avgp:
+                if price <= avgp * 1.005:
+                    buy = round(price, 2)              # 已回均價附近,直接可進
+                elif atr_v:
+                    buy = round(avgp + atr_v * 0.5, 2)
+                else:
+                    buy = round(avgp * 1.003, 2)
+            elif price is not None:
+                # 沒均價就用昨日收 + 0.5%
+                closes = [k.get("close") for k in (kbars or []) if k.get("close") is not None]
+                if len(closes) >= 2:
+                    buy = round(closes[-2] * 1.005, 2)
+            # T1 / T2 / RR
+            if buy and stop and buy > stop:
+                r1 = buy - stop
+                t1 = round(buy + r1, 2)
+                t2 = round(buy + r1 * 2, 2)
+                rr = round(r1 / r1, 2) if r1 > 0 else None      # = 1.0 嚴格定義
+                # 但 Vanessa 訊息 RR=2.8 是 (T1-buy)/(buy-stop) 的倍數 — 那是買點 → T1 的空間 vs 風險比
+                rr = round((t1 - buy) / (buy - stop), 2) if (buy - stop) > 0 else None
+                # 建議:買點現價差 < 1% 可進場,>3% 等回測;否則等待
+                diff_pct = abs(price - buy) / buy * 100 if (price and buy) else None
+                if diff_pct is not None:
+                    if diff_pct <= 1 and price > (stop or 0):
+                        advice = "可進場"
+                    elif diff_pct <= 3:
+                        advice = "等待回測"
+                    else:
+                        advice = "等待"
+                # 沒停損資料 → 全等待
+                if stop is None or buy is None:
+                    advice = "等待"
+                targets = {"advice": advice, "buy": buy, "stop": stop,
+                           "t1": t1, "t2": t2, "rr": rr}
+        except Exception as e:
+            print(f"[detail] targets {code} 失敗:{e}")
+
+        # 8) AI 結論 + 通過/未通過因子(來自 factors + 大戶/主動翻正/技術多頭/籌碼集中)
+        ai_reasons = {"ai_score": None, "passes": [], "fails": []}
+        try:
+            ai_score = None
+            factors = None
+            for _s in (STATE.get("stocks") or []):
+                if _s.get("code") == code:
+                    ai_score = _s.get("ai_score")
+                    factors = _s.get("factors")
+                    break
+            ai_reasons["ai_score"] = ai_score
+            fc = factors or {}
+            inst_net = chips_data.get("inst_net_20d_lots") or 0
+            main_force = chips_data.get("main_force_net_20d") or 0
+            big_holder_trend = chips_data.get("big_holder_trend") or 0
+            aflow_ratio = health.get("aflow_ratio")
+            # ✓ 大戶增加(千張趨勢 > 0)
+            if big_holder_trend > 0:
+                ai_reasons["passes"].append("大戶增加")
+            elif big_holder_trend is not None:
+                ai_reasons["fails"].append("大戶減少")
+            # ✓ 主動資金翻正(盤中主動淨流比 > 0)
+            if aflow_ratio is not None and aflow_ratio > 0:
+                ai_reasons["passes"].append("主動資金翻正")
+            elif aflow_ratio is not None:
+                ai_reasons["fails"].append("主動資金偏空")
+            # ✓ 技術多頭(MA5 > MA10 > MA20)
+            ma5 = (indicators or {}).get("ma5")
+            ma10 = (indicators or {}).get("ma10")
+            ma20 = (indicators or {}).get("ma20")
+            if ma5 and ma10 and ma20 and ma5 > ma10 > ma20:
+                ai_reasons["passes"].append("技術多頭")
+            elif ma5 is not None:
+                ai_reasons["fails"].append("技術未多頭排列")
+            # ✓/✕ 籌碼尚未完全集中(用千張 < 30% 或 400張趨勢 < 1pp 判斷)
+            big_pct = chips_data.get("big_holder_pct")
+            h400_trend = chips_data.get("holder_400_trend")
+            if (big_pct is not None and big_pct < 30) or (h400_trend is not None and h400_trend < 1):
+                ai_reasons["fails"].append("籌碼尚未完全集中")
+            else:
+                ai_reasons["passes"].append("籌碼集中")
+            # 三大法人買超當加分
+            if main_force > 0:
+                ai_reasons["passes"].append("三大法人買超")
+            elif main_force < 0:
+                ai_reasons["fails"].append("三大法人賣超")
+        except Exception as e:
+            print(f"[detail] ai_reasons {code} 失敗:{e}")
 
         return _safe({
             "code": code,
@@ -886,7 +1034,13 @@ def api_stock_detail(code: str):
                 "buy_volume_lots": round(bv / 1000, 1) if bv else 0,
                 "sell_volume_lots": round(sv / 1000, 1) if sv else 0,
                 "bs_pct": bs_pct,
+                "active_buy_pct": active_buy_pct,
+                "active_sell_pct": active_sell_pct,
             },
+            "indicators": indicators,
+            "health": health,
+            "targets": targets,
+            "ai_reasons": ai_reasons,
             "note": "五檔報價需 Shioaji tick stream,本機 API 不支援",
         })
     except Exception as e:

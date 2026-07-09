@@ -87,14 +87,22 @@ def sector_health(sector_name, members):
                 "health_score": int(med), "advice": HEALTH_LABEL["unknown"][2]}
     net = sum(a for a in aflows if a is not None)
     chg_med = median([m.get("change_rate") or 0 for m in members])
-    flow_in = net >= 0
-    if flow_in and chg_med >= 0: quad = "in_up"
-    elif flow_in: quad = "in_down"
-    elif chg_med >= 0: quad = "out_up"
-    else: quad = "out_down"
+    # v2.6:淨流絕對值太小(<500 張)視為中性,避免「淨流=0」被誤判為流入
+    if abs(net) < 500:
+        quad = "unknown"
+    else:
+        flow_in = net >= 0
+        if flow_in and chg_med >= 0: quad = "in_up"
+        elif flow_in: quad = "in_down"
+        elif chg_med >= 0: quad = "out_up"
+        else: quad = "out_down"
     label, stars, desc = HEALTH_LABEL[quad]
+    # ── v2.6:把淨流量化值帶回前端,讓 UI 能正確顯示「資金流入」而不是把成交額誤當淨流入
+    # net 單位 = 張(主動買張 − 主動賣張);正值=流入,負值=流出
     return {"quadrant": quad, "label": label, "stars": stars,
-            "health_score": int(med), "advice": desc}
+            "health_score": int(med), "advice": desc,
+            "net_lots": int(net),
+            "aflow_count": sum(1 for a in aflows if a is not None)}
 
 
 # ════════════════════════════════════════════════════════
@@ -109,9 +117,13 @@ def gather_evidence(s, health, sector_pct, market_pct, chip):
     ev = []
     chg = s.get("change_rate") or 0
     # A 資金面
-    r = health["aflow_ratio"]
-    ev.append(("A", 1 if r > 0.05 else (-1 if r < -0.05 else 0),
-               f"主動淨流 {r:+.2f}"))
+    r = health.get("aflow_ratio")
+    if r is None:
+        # 盤後/tick 未連線 → 主動淨流無方向,中立,不進三角投票
+        ev.append(("A", 0, "主動淨流 待盤中累積"))
+    else:
+        ev.append(("A", 1 if r > 0.05 else (-1 if r < -0.05 else 0),
+                   f"主動淨流 {r:+.2f}"))
     # B 價量結構
     vr = s.get("volume_ratio") or 0
     avgp = s.get("avg_price") or 0
