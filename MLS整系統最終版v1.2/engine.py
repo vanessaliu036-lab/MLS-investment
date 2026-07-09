@@ -451,7 +451,7 @@ def build_state(watchlist_codes=None):
                    "time": now.strftime("%H:%M:%S")},
         "sectors": [{**{k: v for k, v in s.items() if k != "members"},
                      "health": sec_health.get(s["name"])}
-                    for s in sectors[:8]],
+                    for s in sectors],
         "locked_sectors": locked,
         "leaders": leaders,              # ★ 前三族群龍頭深度分析
         "stocks": table[:60],

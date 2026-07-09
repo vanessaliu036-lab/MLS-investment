@@ -102,6 +102,7 @@
   .stock .snm .at{font-size:10px;font-weight:800;padding:1px 7px;border-radius:100px}
   .at.buy{background:var(--up-soft);color:var(--up)}.at.sell{background:var(--down-soft);color:var(--down)}.at.watch{background:var(--amber-soft);color:var(--amber)}
   .stock .sid{font-size:11px;color:var(--faint);font-weight:600;margin-top:2px}
+  .stock .smeta{font-size:10.5px;color:var(--ink2);font-weight:500;margin-top:3px;line-height:1.45}
   .stock .sright{text-align:right;flex:none}
   .stock .sprice{font-size:16px;font-weight:750}
   .stock .spct{font-size:12px;font-weight:700}
@@ -278,6 +279,9 @@ var API_BASE="";  /* 空字串=同源(透過 Vercel serverless function /api/[..
 var STATE=null, HEAT="change", SEL=null, TAB="home";
 var ENGINE={"2303":1,"5347":1};
 var QN={"in_up":"流入·漲","in_down":"⚠流入·跌 邊拉邊賣","out_up":"流出·漲 惜售","out_down":"流出·跌 休息"};
+/* action 全 6 值對應:UI 顯示文字 + CSS class(預設:buy=buy, sell=sell, obs=obs, watch_buy/watch=watch, watch_exit/hold=hold) */
+var ACTION_LABEL={buy:"進場",sell:"出場",obs:"僅觀察",watch:"高潛力",watch_buy:"觀察進場",watch_exit:"觀察出場",hold:"續抱"};
+var ACTION_CSS={buy:"buy",sell:"sell",obs:"obs",watch:"watch",watch_buy:"watch",watch_exit:"hold",hold:"hold"};
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 function pf(v){if(v==null)return"—";return (v>0?"+":"")+Number(v).toFixed(2)+"%";}
 function col(v){return (v||0)>=0?"var(--up)":"var(--down)";}
@@ -391,9 +395,16 @@ function renderDrill(){
     +'<div class="stocks">'+(st.length?st.map(stockCard).join(""):'<div class="empty">此群組暫無符合條件個股<br>盤中才有進出場訊號</div>')+'</div>';
 }
 function stockCard(s){
-  var act=s.action||"",al={buy:"進場",sell:"出場",watch:"觀察"}[act];
-  return '<div class="stock '+act+'" onclick="detail(\''+s.code+'\')"><div class="stripe"></div>'
-    +'<div class="sway"><div class="snm">'+esc(s.name)+(al?'<span class="at '+act+'">'+al+'</span>':'')+'</div><div class="sid num">'+esc(s.code)+(ENGINE[s.code]?" · 引擎":"")+'</div></div>'
+  var act=s.action||"obs";
+  var al=ACTION_LABEL[act]||act;
+  var cls=ACTION_CSS[act]||"obs";
+  var sub=[(s.volume_ratio!=null?("量比 "+s.volume_ratio.toFixed(2)):"")];
+  if(s.avg_price)sub.push("均價 "+s.avg_price);
+  if(s.suggested_stop)sub.push("停損 "+s.suggested_stop);
+  if(s.bs!=null)sub.push("BS "+s.bs+"%");
+  if(s.health&&s.health.quadrant)sub.push(QN[s.health.quadrant]||s.health.quadrant);
+  return '<div class="stock '+cls+'" onclick="detail(\''+s.code+'\')"><div class="stripe"></div>'
+    +'<div class="sway"><div class="snm">'+esc(s.name)+'<span class="at '+cls+'">'+al+'</span></div><div class="sid num">'+esc(s.code)+(ENGINE[s.code]?" · 引擎":"")+'</div><div class="smeta">'+sub.filter(Boolean).join(" · ")+'</div></div>'
     +'<div class="sright"><div class="sprice num" style="color:'+col(s.change_rate)+'">'+(s.price!=null?s.price:"—")+'</div><div class="spct num" style="color:'+col(s.change_rate)+'">'+pf(s.change_rate)+'</div></div>'
     +'<span class="conf">'+(s.ai_score!=null?s.ai_score:"—")+'</span></div>';
 }
@@ -407,8 +418,8 @@ function renderFlow(){
     ? ("範圍:"+secs.map(function(s){return s.name}).join("、")+" — 只看流入群組內個股")
     : "目前無資金流入群組(盤中資金流入前三才會出現個股)";
   var pool=(STATE.stocks||[]).filter(function(x){return names[x.sector]});
-  var buys=pool.filter(function(x){return x.action==="buy"||x.action==="watch"}).sort(function(a,b){return (b.ai_score||0)-(a.ai_score||0)});
-  var sells=pool.filter(function(x){return x.action==="sell"}).sort(function(a,b){return (a.change_rate||0)-(b.change_rate||0)});
+  var buys=pool.filter(function(x){return x.action==="buy"||x.action==="watch"||x.action==="watch_buy"}).sort(function(a,b){return (b.ai_score||0)-(a.ai_score||0)});
+  var sells=pool.filter(function(x){return x.action==="sell"||x.action==="watch_exit"}).sort(function(a,b){return (a.change_rate||0)-(b.change_rate||0)});
   function frow(s,kind){
     var af=s.health?s.health.aflow_ratio:null;
     return '<div class="frow '+kind+'" onclick="detail(\''+s.code+'\')"><div class="fstripe"></div>'
@@ -437,7 +448,9 @@ function setHeat(m){HEAT=m;document.querySelectorAll(".heat-mode b").forEach(fun
 /* 個股細節 */
 function detail(code){
   var s=(STATE.stocks||[]).find(function(x){return x.code===code});if(!s)return;
-  var act=s.action||"obs",al={buy:"進場訊號",sell:"出場/風險",watch:"高潛力觀察",obs:"僅觀察"}[act];
+  var act=s.action||"obs";
+  var al={buy:"進場訊號",sell:"出場/風險",watch:"高潛力觀察",obs:"僅觀察",watch_buy:"觀察中可進場",watch_exit:"觀察中準備出場",hold:"續抱(已持股)"}[act]||act;
+  var cls=ACTION_CSS[act]||"obs";
   var h=s.health||{},t=s.triangulation||{},cp=s.chip,ds=s.doc_strategy;
   function fac(k,v){var c=v>=75?"var(--up)":v>=55?"var(--violet)":v>=40?"var(--amber)":"var(--down)";return '<div class="fac"><span class="fk">'+k+'</span><div class="fb"><i style="width:'+Math.round(v||0)+'%;background:'+c+'"></i></div><span class="fv" style="color:'+c+'">'+Math.round(v||0)+'</span></div>';}
   var fc=s.factors||{};

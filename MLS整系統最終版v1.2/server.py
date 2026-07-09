@@ -244,7 +244,16 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"],
 @app.get("/api/state")
 def api_state():
     with LOCK:
-        return JSONResponse(STATE)
+        # UI 防呆:補上 health/chip/bs/quadrant/tri/doc_strategy 預設(舊 STATE 沒塞這些欄位也不會空白)
+        snap = dict(STATE)
+        for s in (snap.get("stocks") or []):
+            s.setdefault("health", {"quadrant": "neutral", "label": "未評", "stars": "—", "desc": "資金健康度待盤後更新", "health_score": 0, "aflow_ratio": None})
+            s.setdefault("chip", {"has_data": False, "inst_net_20d_lots": None, "inst_streak": None, "big_holder_pct": None, "big_holder_trend": None})
+            s.setdefault("triangulation", {"verdict": "pending", "log": {}, "next_signal": "—"})
+            s.setdefault("doc_strategy", {"pass": False, "score": 0})
+            # bs 若為 None → 設為 50 (中性)
+            if s.get("bs") is None: s["bs"] = 50
+        return JSONResponse(snap)
 
 
 @app.get("/api/realtime_signal/{code}")
@@ -367,6 +376,113 @@ def v23_mock_design():
     """v2.3 靜態設計稿(個股卡片第二層 + 頂部 banner 純展示)。"""
     html = Path(__file__).with_name("v23_mock_design.html").read_text(encoding="utf-8")
     return HTMLResponse(html)
+
+
+# ══════════════════════════════════════════════════════
+# 四大策略對比插件(2026-07-09)
+# 照你文件的四大條件獨立評分:MA20/乖離率/量>5日均/收>昨高
+# 與主系統 AI 分數 A/B 對比,所有資料來自主系統 STATE
+# 純插件不動主邏輯
+# ══════════════════════════════════════════════════════
+@app.get("/api/strategy_compare")
+def api_strategy_compare():
+    try:
+        watchlist_codes = _watchlist_codes
+        full_state = engine.build_state(watchlist_codes=watchlist_codes)
+        rows = []
+        for s in (full_state.get("stocks") or []):
+            factors = s.get("factors") or {}
+            ai = s.get("ai_score") or 0
+            # 文件四大條件(用既有 factors 加 change_rate 推算,純讀)
+            cond_ma20  = (factors.get("trend") or 0) >= 18          # 趨勢 >= 18/25 視為站上 MA20
+            cond_bias  = abs(s.get("change_rate") or 0) < 8          # 乖離率 < 8%
+            cond_vol5  = (s.get("volume_ratio") or 0) >= 1.3        # 量比 >= 1.3 ≈ 量 > 5日均
+            cond_high  = (s.get("change_rate") or 0) > 0            # 收 > 昨高(漲)
+            cond_chip  = (factors.get("chip") or 0) >= 12           # 籌碼 >= 12/20
+            doc_pass = sum([cond_ma20, cond_bias, cond_vol5, cond_high, cond_chip])
+            # BS 動態倍數(從 STATE 拿,沒就降級)
+            bs = s.get("bs")
+            bs_mult = round((bs or 50) / 50, 2) if bs is not None else None
+            # AI 對比:通過 >= 4 視為強勢
+            agree = "A=B" if (doc_pass >= 4 and ai >= 70) or (doc_pass <= 2 and ai < 50) else ("A>B" if ai > 80 else "B>A" if doc_pass >= 4 else "—")
+            rows.append({
+                "code": s.get("code"),
+                "name": s.get("name"),
+                "sector": s.get("sector"),
+                "ai_score": ai,
+                "doc_pass": doc_pass,
+                "doc_score": doc_pass * 20,                    # 5 條件 × 20 分
+                "cond_ma20": cond_ma20,
+                "cond_bias": cond_bias,
+                "cond_vol5": cond_vol5,
+                "cond_high": cond_high,
+                "cond_chip": cond_chip,
+                "bs_mult": bs_mult,
+                "agree": agree,
+                "action": s.get("action"),
+            })
+        rows.sort(key=lambda x: (x["doc_pass"], x["ai_score"]), reverse=True)
+        return JSONResponse({"as_of": full_state.get("market", {}).get("time", ""), "n": len(rows), "rows": rows})
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ══════════════════════════════════════════════════════
+# 資金健康度摘要插件(2026-07-09)
+# 資金流向×漲跌四象限 + Level 8.1 三角交叉驗證
+# 純讀主系統 STATE,只取每族群最佳代表
+# ══════════════════════════════════════════════════════
+@app.get("/api/money_health_summary")
+def api_money_health_summary():
+    try:
+        watchlist_codes = _watchlist_codes
+        full_state = engine.build_state(watchlist_codes=watchlist_codes)
+        sectors = full_state.get("sectors") or []
+        rows = []
+        for sec in sectors:
+            members = [s for s in (full_state.get("stocks") or []) if s.get("sector") == sec.get("name")]
+            if not members:
+                continue
+            # 從每檔個股的 health.quadrant 統計四象限
+            quad_count = {"in_up": 0, "in_down": 0, "out_up": 0, "out_down": 0}
+            health_score_avg = 0
+            health_n = 0
+            for m in members:
+                h = m.get("health") or {}
+                q = h.get("quadrant")
+                if q in quad_count:
+                    quad_count[q] += 1
+                hs = h.get("health_score")
+                if hs is not None:
+                    health_score_avg += hs
+                    health_n += 1
+            hs_avg = round(health_score_avg / health_n, 1) if health_n else None
+            # 取族群代表:健康度最高那檔
+            top = sorted(members, key=lambda m: (m.get("health") or {}).get("health_score", 0), reverse=True)
+            rep = top[0] if top else None
+            rep_h = (rep or {}).get("health") or {}
+            rows.append({
+                "sector": sec.get("name"),
+                "sector_type": sec.get("type"),
+                "pct": sec.get("pct"),
+                "flow_score": sec.get("flow_score"),
+                "locked": sec.get("locked"),
+                "member_n": len(members),
+                "quadrant": quad_count,
+                "health_score_avg": hs_avg,
+                "rep_code": (rep or {}).get("code"),
+                "rep_name": (rep or {}).get("name"),
+                "rep_quadrant": rep_h.get("quadrant"),
+                "rep_label": rep_h.get("label"),
+                "rep_stars": rep_h.get("stars"),
+                "rep_score": rep_h.get("health_score"),
+            })
+        rows.sort(key=lambda x: (x.get("health_score_avg") or 0), reverse=True)
+        return JSONResponse({"as_of": full_state.get("market", {}).get("time", ""), "sectors": rows})
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 if __name__ == "__main__":
