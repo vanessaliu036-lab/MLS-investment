@@ -657,7 +657,8 @@ function resetSim(){simOn=false;clearInterval(simTimer);var b=document.getElemen
 function setSpeed(ms){simSpeed=ms;document.querySelectorAll(".spd b").forEach(function(x){x.className=(parseInt(x.getAttribute("data-s"),10)===ms?"on":"")});if(simOn){clearInterval(simTimer);simTimer=setInterval(simStep,simSpeed);}}
 
 function renderHome(){
-  var steps=[renderTop,renderVerdict,renderTree,renderFlow,renderMini];
+  /* 順序:頂部 → 結論 → 盤面速覽(資金流入前3 + 今日禁區)→ 熱力圖 → 盤中流動 */
+  var steps=[renderTop,renderVerdict,renderMini,renderTree,renderFlow];
   for(var i=0;i<steps.length;i++){try{steps[i]();}catch(e){if(window.console)console.log("r",i,e&&e.message);}}
 }
 function poll(){
