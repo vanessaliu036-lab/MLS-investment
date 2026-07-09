@@ -140,6 +140,10 @@
   .frow .fmain{flex:1;min-width:0}
   .frow .fnm{font-size:15px;font-weight:750}
   .frow .fsub{font-size:11px;color:var(--faint);font-weight:600;margin-top:2px}
+  .frow .fchip{font-size:10.5px;color:var(--in);font-weight:600;margin-top:3px;line-height:1.5}
+  .frow .fchip.neu{color:var(--faint);font-weight:500}
+  .frow .fmeta{font-size:10px;color:var(--ink2);font-weight:500;margin-top:2px}
+  .frow .fact{font-size:10px;font-weight:800;padding:1px 6px;border-radius:100px;margin-left:6px;vertical-align:middle}
   .frow .fflow{text-align:right;flex:none}
   .frow .fflow .fv{font-size:15px;font-weight:800}
   .frow .fflow .fk{font-size:10px;color:var(--faint);font-weight:600}
@@ -422,8 +426,24 @@ function renderFlow(){
   var sells=pool.filter(function(x){return x.action==="sell"||x.action==="watch_exit"}).sort(function(a,b){return (a.change_rate||0)-(b.change_rate||0)});
   function frow(s,kind){
     var af=s.health?s.health.aflow_ratio:null;
+    var h=s.health||{};
+    var cp=s.chip||{};
+    var act=ACTION_LABEL[s.action||"obs"]||s.action||"obs";
+    // 第二行:籌碼摘要(法人/大戶/外資連買)
+    var chipLine=[];
+    if(cp.has_data!==false){
+      if(cp.inst_net_20d_lots!=null)chipLine.push('法人'+(cp.inst_net_20d_lots>0?"買超":"賣超")+(cp.inst_net_20d_lots>0?"+":"")+cp.inst_net_20d_lots+"張");
+      if(cp.inst_streak!=null&&cp.inst_streak>0)chipLine.push('外資連買 '+cp.inst_streak+' 日');
+      if(cp.big_holder_pct!=null)chipLine.push('大戶 '+cp.big_holder_pct.toFixed(1)+'%'+(cp.big_holder_trend>0?" ▲":"")+(cp.big_holder_trend<0?" ▼":""));
+    }
+    if(chipLine.length===0)chipLine.push('籌碼待盤後更新');
+    // 第三行:健康度象限 + 量比 + BS
+    var meta=['量比 '+(s.volume_ratio!=null?s.volume_ratio.toFixed(2):"—"),(s.bs!=null?'BS '+s.bs+'%':null),QN[h.quadrant]||null,(s.suggested_stop!=null?'停損 '+s.suggested_stop:null)].filter(Boolean).join(' · ');
     return '<div class="frow '+kind+'" onclick="detail(\''+s.code+'\')"><div class="fstripe"></div>'
-      +'<div class="fmain"><div class="fnm">'+esc(s.name)+'</div><div class="fsub">'+esc(s.code)+' · '+esc(s.sector)+' · AI '+(s.ai_score!=null?s.ai_score:"—")+(s.bs!=null?' · 內外盤'+s.bs+'%':'')+'</div></div>'
+      +'<div class="fmain"><div class="fnm">'+esc(s.name)+'<span class="fact '+ACTION_CSS[s.action||"obs"]+'">'+act+'</span></div>'
+      +'<div class="fsub">'+esc(s.code)+' · '+esc(s.sector)+' · AI '+(s.ai_score!=null?s.ai_score:"—")+'</div>'
+      +'<div class="fchip '+(cp.has_data?"":"neu")+'">'+chipLine.join(" ｜ ")+'</div>'
+      +'<div class="fmeta">'+meta+'</div></div>'
       +'<div class="fflow"><div class="fv '+(af>0?"in":af<0?"out":"")+'">'+(af!=null?((af>0?"+":"")+(af*100).toFixed(0)+"%"):"—")+'</div><div class="fk">主動淨流</div></div>'
       +'<div class="fpx"><div class="v num" style="color:'+col(s.change_rate)+'">'+(s.price!=null?s.price:"—")+'</div><div class="c num" style="color:'+col(s.change_rate)+'">'+pf(s.change_rate)+'</div></div></div>';
   }
