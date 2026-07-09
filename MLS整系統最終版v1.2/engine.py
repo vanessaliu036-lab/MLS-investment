@@ -112,6 +112,8 @@ def pick_leaders(sectors):
     """
     取資金流入前 TOP_SECTORS 族群,每族群依龍頭分數選 1 檔。
     龍頭分數 = amount_rank*0.5 + change_rank*0.3 + vr_rank*0.2(族群內正規化)
+    回傳:leaders 列表。每個 leader 含 {sector, sector_rank, sector_type, snap}。
+    次龍頭在 callers 端用 pick_tier2(leaders, sectors) 取。
     """
     top = sectors[:C.TOP_SECTORS]
     leaders = []
@@ -134,6 +136,40 @@ def pick_leaders(sectors):
         leaders.append({"sector": sec["name"], "sector_rank": sec["rank"],
                         "sector_type": sec["type"], "snap": best})
     return leaders
+
+
+def pick_tier2(leaders, sectors):
+    """
+    取「次龍頭候選池」:每族群龍頭分數排名 2~LOCKED_SECTOR_MEMBERS_PER_GROUP 的個股。
+    用於把觀察池從 3 → 30+。**只多給進 table 排序,不影響 leaders 列表、不影響任何評分邏輯。**
+    """
+    n_per = max(1, int(getattr(C, "LOCKED_SECTOR_MEMBERS_PER_GROUP", 1)))
+    eng = getattr(C, "ENGINE_STOCKS", set())
+    leader_codes = {(l.get("snap") or {}).get("code") for l in leaders}
+    sec_map = {s["name"]: s for s in sectors}
+    tier2 = []
+    for sec in (sectors or [])[:getattr(C, "TOP_SECTORS", 3)]:
+        ms = [m for m in sec.get("members", []) if m["code"] not in eng]
+        if not ms:
+            continue
+        # 用同樣的 rank_norm 排序,排除前 1 (龍頭) 與 leader_codes 中已選的
+        def rank_norm(key):
+            order = sorted(ms, key=lambda m: m[key], reverse=True)
+            return {m["code"]: 1 - i / max(1, len(order) - 1) if len(order) > 1 else 1
+                    for i, m in enumerate(order)}
+        ra, rc, rv = rank_norm("total_amount"), rank_norm("change_rate"), rank_norm("volume_ratio")
+        scored = sorted(ms, key=lambda m: -(
+            ra[m["code"]] * C.LEADER_W["amount"]
+            + rc[m["code"]] * C.LEADER_W["change"]
+            + rv[m["code"]] * C.LEADER_W["vr"]
+        ))
+        for m in scored[:n_per]:
+            if m["code"] in leader_codes:
+                continue
+            tier2.append({"sector": sec["name"], "sector_rank": sec["rank"],
+                          "sector_type": sec["type"], "snap": m})
+            leader_codes.add(m["code"])
+    return tier2
 
 
 # ══════════════════════════════════════════════════════════
@@ -381,29 +417,42 @@ def build_state(watchlist_codes=None):
         pass
 
     # ②③④ 前三族群龍頭深度分析
-    leaders = [analyze_leader(l) for l in pick_leaders(sectors)]
+    picked_leaders = pick_leaders(sectors)
+    leaders = [analyze_leader(l) for l in picked_leaders]
+
+    # ②.⑤ 次龍頭候選(觀察池寬度擴充:每族群前 LOCKED_SECTOR_MEMBERS_PER_GROUP 名)
+    # 2026-07-09 加寬:把觀察池從每族群 1 → LOCKED_SECTOR_MEMBERS_PER_GROUP 支。
+    # 只影響 table 准入,不動 leaders 列表、不動評分邏輯、不動現有條件式。
+    tier2 = pick_tier2(picked_leaders, sectors)
+
+    # 允許進熱力表的全體代碼 = leader_codes ∪ tier2_codes
+    leader_codes = {(l.get("snap") or {}).get("code") for l in picked_leaders}
+    tier2_codes = {(t.get("snap") or {}).get("code") for t in tier2}
+    allowed_codes = leader_codes | tier2_codes
 
     # ⑤ 其餘候選(W 條件)→ 熱力表
-    leader_codes = {l["code"] for l in leaders}
     table = []
     _EC = {"strong": "entry_high", "hot": "entry", "warm": "potential",
            "neutral": "monitor", "cold": "risk"}
     for s in snaps:
-        if s["code"] in leader_codes or "sector" not in s:
+        if "sector" not in s:
+            continue
+        if s["code"] not in allowed_codes:
             continue
         in_wl = s["code"] in watchlist_codes
-        # 固定池全數評估(50檔成本低;風險/假紅訊號絕不因W條件漏掉)
-        if True:
-            row = eval_stock(
-                s, locked,
-                sector_median=sec_median.get(s.get("sector"), 0.0),
-                market_pct=market_pct,
-                abab_a_day=s.get("sector") in abab_a,
-                mode=mode)
-            row["is_watchlist_hit"] = in_wl
-            row["event_class"] = _EC[row["heat_level"]]
-            table.append(row)
+        row = eval_stock(
+            s, locked,
+            sector_median=sec_median.get(s.get("sector"), 0.0),
+            market_pct=market_pct,
+            abab_a_day=s.get("sector") in abab_a,
+            mode=mode)
+        row["is_watchlist_hit"] = in_wl
+        row["event_class"] = _EC[row["heat_level"]]
+        table.append(row)
     table.sort(key=lambda x: x["ai_score"], reverse=True)
+    # 觀察池寬度上限:HEATMAP_TOP_N (預設 30)。**只切片**——只把前 N 名進 stocks 給 UI。
+    # 超出者不進 UI;若未來要完整保留可在 server STATE 多開一個 deferred 欄位。
+    table = table[:getattr(C, "HEATMAP_TOP_N", 30)]  # 先用最單純切片
 
     # 現金閘門(持股標記 hold + 滿手時進場降級)
     import gatekeeper
@@ -447,6 +496,30 @@ def build_state(watchlist_codes=None):
     score = min(100, int(up_n / max(1, len(sectors)) * 70 + len(locked) * 10))
     now = datetime.now(TW_TZ)
 
+    # ── ⑥ leaders + table 合併為一池,by ai_score 統一排序 ──
+    # leaders 標記 is_leader=True 給前端高亮;table 標記 is_leader=False。
+    leader_codes_set = set()
+    for ld in leaders:
+        c = ld.get("code")
+        if c:
+            ld["is_leader"] = True
+            leader_codes_set.add(c)
+    for row in table:
+        row["is_leader"] = row.get("code") in leader_codes_set
+    # 合併;leader 若已在 table(理論不會但防呆)以 table 為準
+    _table_codes = {r["code"] for r in table}
+    leaders_only = [ld for ld in leaders if ld.get("code") not in _table_codes]
+    # leaders 沒算 ai_score,給保守預設 60(龍頭基線)以便排序
+    for ld in leaders_only:
+        ld.setdefault("ai_score", 60)
+        ld.setdefault("heat_level", "hot")
+        ld.setdefault("action", "watch")
+        ld.setdefault("event_class", "entry")
+        ld.setdefault("factors", [])
+        ld.setdefault("penalties", [])
+    merged = leaders_only + table
+    merged.sort(key=lambda x: x.get("ai_score", 0), reverse=True)
+
     return {
         "market": {**broker.index_snapshot(),
                    "score": score,
@@ -457,8 +530,8 @@ def build_state(watchlist_codes=None):
                      "health": sec_health.get(s["name"])}
                     for s in sectors],
         "locked_sectors": locked,
-        "leaders": leaders,              # ★ 前三族群龍頭深度分析
-        "stocks": table[:60],
+        "leaders": leaders,              # ★ 前三族群龍頭深度分析(保留原始結構)
+        "stocks": merged[:60],           # ★ 一池給熱力圖(leaders 標 is_leader=True)
         "gate": {"active": gated, "note": gate_note},
         "updated_at": now.isoformat(),
         "source": "Shioaji realtime + FinMind chips(EOD)",

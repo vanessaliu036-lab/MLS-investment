@@ -277,6 +277,10 @@ def api_state():
             if not isinstance(s.get("doc_strategy"), dict):
                 s["doc_strategy"] = {"pass": False, "score": 0}
             if s.get("bs") is None: s["bs"] = 50
+        # 補 asof 對齊 as_of (前端 rankings / strategy_compare / nexora 直接吃 as_of)
+        mkt = snap.get("market") or {}
+        snap["asof"] = mkt.get("time") or snap.get("updated_at") or ""
+        snap["as_of"] = snap["asof"]
         return _safe(snap)
 
 
@@ -515,15 +519,28 @@ def api_livermore_stock(code: str):
 @app.get("/preview_v23")
 def preview_v23():
     """v2.3 UI preview with mocked state (只用於截圖驗收,看 UI 是否你喜歡)。"""
-    html = Path(__file__).with_name("preview_v23.html").read_text(encoding="utf-8")
-    return HTMLResponse(html)
+    try:
+        html = Path(__file__).with_name("preview_v23.html").read_text(encoding="utf-8")
+        return HTMLResponse(html)
+    except FileNotFoundError:
+        return HTMLResponse(
+            "<h3 style='font-family:sans-serif;padding:24px'>preview_v23.html 尚未生成</h3>"
+            "<p style='font-family:sans-serif;padding:0 24px'>這條路由只供設計稿截圖用,檔案不存在就 200 回空殼,不影響上線。</p>",
+            status_code=200,
+        )
 
 
 @app.get("/v23_mock_design")
 def v23_mock_design():
     """v2.3 靜態設計稿(個股卡片第二層 + 頂部 banner 純展示)。"""
-    html = Path(__file__).with_name("v23_mock_design.html").read_text(encoding="utf-8")
-    return HTMLResponse(html)
+    try:
+        html = Path(__file__).with_name("v23_mock_design.html").read_text(encoding="utf-8")
+        return HTMLResponse(html)
+    except FileNotFoundError:
+        return HTMLResponse(
+            "<h3 style='font-family:sans-serif;padding:24px'>v23_mock_design.html 尚未生成</h3>",
+            status_code=200,
+        )
 
 
 # ══════════════════════════════════════════════════════
@@ -641,6 +658,14 @@ def api_money_health_summary():
 # ══════════════════════════════════════════════════════
 @app.get("/api/money_health")
 def api_money_health():
+    """
+    v3 升級(2026-07-09 Vanessa 規格):
+    - 列表報告模式(不再只是點擊個股 modal)
+    - 健康分 v3 公式:資金流分(0-50)+ 價量分(0-20)+ 族群分(0-5)+ Chip Score(0-25)
+    - 每張卡附 Chip Score(法人買賣超→0-25 分)+ 健康分 v3 分項明細
+    - 每日自動存檔到 reports/health_score_history/YYYYMMDD.json
+    - 含 time_series(該股近 5 日健康分序列)+ hit_rate_stats(命中率統計)
+    """
     try:
         full_state = engine.build_state(watchlist_codes=_watchlist_codes)
         sectors = full_state.get("sectors") or []
@@ -655,6 +680,7 @@ def api_money_health():
             d = s.get("_decision") or {}
             h = s.get("_health") or {}
             t = s.get("_tri") or {}
+            c = s.get("_chip") or {}
             cards.append({
                 "code": s.get("code"),
                 "name": s.get("name"),
@@ -664,17 +690,47 @@ def api_money_health():
                 "quadrant": h.get("quadrant"),
                 "label": h.get("label"),
                 "health_score": h.get("health_score"),
+                "health_v3_breakdown": h.get("health_v3_breakdown") or {},
                 "aflow_ratio": h.get("aflow_ratio"),
                 "verdict": t.get("verdict"),
                 "strength": t.get("strength"),
                 "decision": d,
-                "chip": s.get("_chip") or {},
+                "chip": c,
                 "evidence": s.get("_ev") or [],
             })
         # 排序:state (Ready > Watch > Hold) + ai_score desc
         state_order = {"Ready": 0, "Watch": 1, "Hold": 2}
         cards.sort(key=lambda c: (state_order.get(c["decision"].get("state", "Hold"), 9),
                                   -(c["decision"].get("ai_score") or 0)))
+
+        # v3 新增:每日快照存檔 + 命中率統計
+        try:
+            import health_history
+            snapshot_path = health_history.save_snapshot(cards, market_pct)
+        except Exception as e:
+            print(f"[money_health] save_snapshot failed: {e}")
+            snapshot_path = None
+
+        try:
+            import health_history
+            hit_rate = health_history.hit_rate_stats()
+            # 取每檔 time_series(近 5 日)
+            recent_snaps = health_history.load_recent_snapshots(5)
+            ts_map = {}
+            for c in cards:
+                code = c.get("code")
+                if code:
+                    series = health_history.time_series_for_code(code, recent_snaps)
+                    if series:
+                        ts_map[code] = series
+            for c in cards:
+                code = c.get("code")
+                if code in ts_map:
+                    c["time_series"] = ts_map[code]
+        except Exception as e:
+            print(f"[money_health] hit_rate/time_series failed: {e}")
+            hit_rate = None
+
         return _safe({
             "as_of": (full_state.get("market") or {}).get("time", ""),
             "market_pct": market_pct,
@@ -683,7 +739,49 @@ def api_money_health():
             "watch_n": sum(1 for c in cards if c["decision"].get("state") == "Watch"),
             "hold_n": sum(1 for c in cards if c["decision"].get("state") == "Hold"),
             "cards": cards,
+            "snapshot_path": snapshot_path,
+            "hit_rate": hit_rate,
         })
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
+
+
+# ══════════════════════════════════════════════════════
+# 命中率統計獨立端點(2026-07-09)
+# 給前端「模型驗證」分頁用;查 reports/health_score_history/ 所有快照
+# ══════════════════════════════════════════════════════
+@app.get("/api/money_health/hit_rate")
+def api_money_health_hit_rate():
+    """
+    從 reports/health_score_history/*.json 讀所有快照,
+    算健康分 ≥65 / 50-64 / <50 三組 + 四象限的隔日報酬率。
+    """
+    try:
+        import health_history
+        stats = health_history.hit_rate_stats()
+        snaps = health_history.load_recent_snapshots(60)
+        return _safe({
+            "stats": stats,
+            "snapshots": [{"date": s.get("date"), "count": s.get("count"),
+                           "market_pct": s.get("market_pct")} for s in snaps],
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/money_health/time_series/{code}")
+def api_money_health_time_series(code: str):
+    """
+    個股健康分時間序列(從 reports/health_score_history 讀)。
+    """
+    try:
+        import health_history
+        snaps = health_history.load_recent_snapshots(30)
+        series = health_history.time_series_for_code(code, snaps)
+        return _safe({"code": code, "series": series,
+                      "snapshots_n": len(snaps)})
     except Exception as e:
         traceback.print_exc()
         return _safe({"error": str(e)}, status_code=500)

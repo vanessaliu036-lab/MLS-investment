@@ -18,6 +18,11 @@ LEADERS_PER_SECTOR = 1          # 每族群龍頭數(前三族群共3檔)
 # 龍頭分數 = 成交金額*0.5 + 漲幅*0.3 + 量比*0.2(族群內排名)
 LEADER_W = {"amount": 0.5, "change": 0.3, "vr": 0.2}
 
+# ── 觀察池寬度(2026-07-09 Vanessa 決定) ─────────────────
+# 觀察池 3 → 30+ 的兩個開關,只動切片/排序,**不動任何評分邏輯**
+HEATMAP_TOP_N = 30              # engine.py table[:HEATMAP_TOP_N] 上限(已排序)
+LOCKED_SECTOR_MEMBERS_PER_GROUP = 3  # 攻擊族群內納入候選的個股數(各族群前N名)
+
 # ── 第一層廣掃(進攻優先,寧濫勿缺) ─────────────────────
 W1_CHANGE_RATE = 1.5            # 漲幅門檻 %
 W2_VOLUME_RATIO = 1.3           # 量比門檻

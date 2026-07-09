@@ -985,7 +985,36 @@ function renderDecisions(){
       +'</div>';
     return;
   }
-  var html='<div class="deccards">';
+  // ─── v3 區塊頂部:命中率統計摘要(從 DEC_CACHE.hit_rate 讀) ───
+  var hit_html = '';
+  var hr = DEC_CACHE.hit_rate;
+  if(hr && hr.by_health_score){
+    var h = hr.by_health_score;
+    var q = hr.by_quadrant || {};
+    hit_html += '<div class="hitrate-box" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;line-height:1.7">';
+    hit_html += '<div style="font-weight:800;color:var(--ink);font-size:13px;margin-bottom:6px">📊 模型命中率驗證(' + (hr.snapshots_n||0) + ' 個交易日快照,' + (hr.pairs_n||0) + ' 組隔日配對)</div>';
+    hit_html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px">';
+    function hrCell(name, st){
+      if(!st || !st.n) return '<div style="opacity:0.5"><b>'+name+'</b>: 資料不足</div>';
+      var wr = st.win_rate != null ? st.win_rate + '%' : '—';
+      var ar = st.avg_ret != null ? (st.avg_ret>=0?'+':'')+st.avg_ret + '%' : '—';
+      var cls = st.avg_ret>0?'color:var(--up)':(st.avg_ret<0?'color:var(--out)':'color:var(--ink)');
+      return '<div><b>'+name+'</b>: n='+st.n+' 勝率 '+wr+' 均報酬 <span style="'+cls+'">'+ar+'</span></div>';
+    }
+    hit_html += hrCell('健康分≥65', h.high_ge_65);
+    hit_html += hrCell('健康分50-64', h.mid_50_64);
+    hit_html += hrCell('健康分<50', h.low_lt_50);
+    hit_html += '</div>';
+    hit_html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:11px;color:var(--faint)">';
+    hit_html += '<div>in_up 均報酬 '+((q.in_up&&q.in_up.avg_ret!=null)?((q.in_up.avg_ret>=0?'+':'')+q.in_up.avg_ret+'%'):'—')+'</div>';
+    hit_html += '<div>in_down '+((q.in_down&&q.in_down.avg_ret!=null)?((q.in_down.avg_ret>=0?'+':'')+q.in_down.avg_ret+'%'):'—')+'</div>';
+    hit_html += '<div>out_up '+((q.out_up&&q.out_up.avg_ret!=null)?((q.out_up.avg_ret>=0?'+':'')+q.out_up.avg_ret+'%'):'—')+'</div>';
+    hit_html += '<div>out_down '+((q.out_down&&q.out_down.avg_ret!=null)?((q.out_down.avg_ret>=0?'+':'')+q.out_down.avg_ret+'%'):'—')+'</div>';
+    hit_html += '</div>';
+    hit_html += '</div>';
+  }
+
+  var html=hit_html+'<div class="deccards">';
   list.forEach(function(c){
     var d=c.decision||{};
     var quad=c.quadrant||"";
@@ -999,6 +1028,19 @@ function renderDecisions(){
     var confColor=d.confidence>=85?"var(--up)":(d.confidence>=65?"var(--violet)":"var(--out)");
     var aiColor=d.ai_score>=75?"var(--up)":(d.ai_score>=55?"var(--violet)":"var(--out)");
     var instTag=instStreak!=null?('法人連買 '+instStreak+' 日'):'法人資料未取';
+    // v3 Chip Score 處理
+    var chipSc = (inst.chip_score && inst.chip_score.score != null) ? inst.chip_score : null;
+    var chipScoreVal = chipSc ? chipSc.score : null;
+    var chipLevelLbl = {
+      'big_buy':'主力大買','small_buy':'主力小買','neutral':'中性',
+      'small_sell':'小賣','big_sell':'大賣','no_data':'無資料'
+    };
+    var chipLevelText = chipSc ? (chipLevelLbl[chipSc.level]||chipSc.level) : '無資料';
+    var chipColor = chipScoreVal==null?'var(--faint)':(chipScoreVal>=20?'var(--up)':(chipScoreVal>=10?'var(--violet)':'var(--out)'));
+    // v3 健康分分項
+    var bd = c.health_v3_breakdown || {};
+    var bdText = bd.chip != null ? ('資 '+ (bd.fund!=null?bd.fund:0).toFixed(0) +' / 價 '+(bd.pv!=null?bd.pv:0).toFixed(0)+' / 族 '+(bd.sector!=null?bd.sector:0)+' / Chip '+(bd.chip!=null?bd.chip:0)) : '';
+
     html+='<div class="dec" data-state="'+d.state+'" data-quad="'+quad+'">';
     html+='<div class="dec-h">';
     html+='<span class="nm">'+esc(c.name||"")+'</span>';
@@ -1008,19 +1050,23 @@ function renderDecisions(){
     html+='<span class="price">'+price+'</span>';
     html+='<span class="chg '+chgCls+'">'+chgStr+'</span>';
     html+='</div>';
-    // 4 欄 metrics:AI Score / 信心 / 健康象限 / 法人
-    // label 全部加 title= hover tooltip,告訴使用者這個分數是什麼意思
+    // 5 欄 metrics(v3 新增 Chip Score)
     var aiLbl = '<span class="lbl" title="AI Score = 健康分排名(0-100)。綜合價量象限、漲跌強度給的綜合分。>75 偏多、55-75 中性、<55 偏空。">AI SCORE</span>';
     var confLbl = '<span class="lbl" title="信心 = AI 對自己判斷的把握(0-100%)。看證據有幾條支持、幾條反對。>85% 高信心、65-85% 中等、<65% 低信心(等資料齊全再決策)。">信心</span>';
     var quadLbl = '<span class="lbl" title="象限 = 資金流向 × 漲跌的交叉。健康(流入+漲)/假紅(流入+跌)/惜售(流出+漲)/休息(流出+跌)/未連線(tick 資料缺)。">象限</span>';
-    var chipLbl = '<span class="lbl" title="法人連買天數(來自 FinMind) + 大戶持股比例(%口數,週資料,免費層拿不到會顯示—)。">法人 / 大戶</span>';
+    var chipLbl = '<span class="lbl" title="Chip Score(0-25) = 法人買賣超近20日合計張數對應分數:大買25/小買15/中性10/小賣5/大賣0,再加連買連賣日數調整。">Chip 分</span>';
+    var hsLbl = '<span class="lbl" title="v3 健康分 = 資金流(0-50)+ 價量(0-20)+ 族群(0-5)+ Chip(0-25) = 100。">健康分 v3</span>';
     html+='<div class="dec-metrics">';
     html+='<div class="dec-m">'+aiLbl+'<div class="val" style="color:'+aiColor+'">'+d.ai_score+'</div><div class="sub">健康分排名</div></div>';
     html+='<div class="dec-m">'+confLbl+'<div class="val" style="color:'+confColor+'">'+d.confidence+'<span class="pct">%</span></div><div class="sub">'+esc(c.strength||"—")+' 證據</div></div>';
     var quadVal = (c.quadrant === 'unknown') ? '<div class="val no-data">未連線</div><div class="sub">tick 資料未取</div>' : '<div class="val" style="font-size:13.5px">'+esc(c.label||"—")+'</div><div class="sub">'+esc(d.state)+'</div>';
     html+='<div class="dec-m">'+quadLbl+quadVal+'</div>';
-    var chipVal = (quad === 'unknown') ? '<div class="val no-data">未連線</div><div class="sub">tick 資料未取</div>' : '<div class="val" style="font-size:13.5px">'+esc(instTag)+'</div><div class="sub">大戶 '+bigPct+'</div>';
-    html+='<div class="dec-m">'+chipLbl+chipVal+'</div>';
+    var chipScoreVal_html = (chipScoreVal==null) ? '<div class="val no-data">—</div><div class="sub">FinMind 無資料</div>' : '<div class="val" style="color:'+chipColor+'">'+chipScoreVal+'<span class="pct">/25</span></div><div class="sub">'+esc(chipLevelText)+'</div>';
+    html+='<div class="dec-m">'+chipLbl+chipScoreVal_html+'</div>';
+    // 健康分 v3(獨立顯示,跟 AI Score 區隔)
+    var hsVal = (c.health_score!=null) ? c.health_score : '—';
+    var hsColor = hsVal>=65?'var(--up)':(hsVal>=50?'var(--violet)':'var(--out)');
+    html+='<div class="dec-m">'+hsLbl+'<div class="val" style="color:'+hsColor+'">'+hsVal+'<span class="pct">/100</span></div><div class="sub" style="font-size:10.5px">'+esc(bdText)+'</div></div>';
     html+='</div>';
     // Action
     var actionCls = (quad === 'unknown') ? 'dec-action no-data' : 'dec-action';
@@ -1032,6 +1078,27 @@ function renderDecisions(){
     html+='<div class="dec-row">'+trgK+'<div class="v trigger">'+esc(d.trigger||"—")+'</div></div>';
     html+='<div class="dec-row">'+invK+'<div class="v invalidation">'+esc(d.invalidation||"—")+'</div></div>';
     html+='</div>';
+    // v3 新增:Chip Score 理由 + 時間序列
+    if(chipSc && chipSc.reason){
+      html+='<div style="font-size:11.5px;color:var(--violet);background:rgba(124,108,255,0.08);padding:6px 10px;border-radius:6px;margin:4px 0">📈 Chip 評語:'+esc(chipSc.reason)+'</div>';
+    }
+    var ts = c.time_series || [];
+    if(ts.length >= 2){
+      html+='<details class="dec-evidence"><summary>📊 健康分時間序列(近 '+ts.length+' 日)</summary>';
+      html+='<div class="ev-body">';
+      ts.forEach(function(p){
+        var hs = p.health_score != null ? p.health_score : '—';
+        var hsColor2 = hs>=65?'var(--up)':(hs>=50?'var(--violet)':'var(--out)');
+        var qLbl = {in_up:'健康',in_down:'假紅',out_up:'惜售',out_down:'休息',unknown:'未連線'};
+        html+='<div class="ev-row">';
+        html+='<span style="color:var(--faint);font-size:11px;width:78px;flex-shrink:0">'+esc(p.date||'')+'</span>';
+        html+='<span style="color:'+hsColor2+';font-weight:700;width:38px;text-align:right">'+hs+'</span>';
+        html+='<span style="font-size:11px;color:var(--ink);flex:1">'+esc(qLbl[p.quadrant]||p.quadrant||'—')+'</span>';
+        html+='<span style="font-size:11px;color:var(--faint)">當日 '+(p.change_rate!=null?((p.change_rate>=0?'+':'')+p.change_rate.toFixed(2)+'%'):'—')+'</span>';
+        html+='</div>';
+      });
+      html+='</div></details>';
+    }
     // 展開區:為什麼是這個分數(證據拆解)
     var evs = c.evidence || [];
     if(evs.length){
@@ -1060,13 +1127,16 @@ function renderDecisions(){
     html+='</div>';
   });
   html+='</div>';
-  // 區塊底部加名詞表(新手第一次看會查)
+  // 區塊底部加名詞表(新手第一次看會查,v3 升級版)
   html+='<div class="dec-glossary">';
   html+='<span class="gt">新手 30 秒看懂這些詞</span>';
   html+='<b>AI Score</b> = 健康分排名,>75 偏多、55-75 中性、<55 偏空。<br>';
   html+='<b>信心</b> = AI 對自己判斷的把握,看證據支持/反對的比例。證據矛盾時會掉到 30-50%,AI 寧可說「不確定」也不要亂喊。<br>';
-  html+='<b>象限</b> = 資金流向 × 漲跌的交叉。<b>健康</b>=流入+漲(真攻擊)、<b>假紅</b>=流入+跌(主力邊拉邊賣)、<b>惜售</b>=流出+漲(量縮惜售)、<b>休息</b>=流出+跌(退潮)、<b>未連線</b>=tick 資料缺(不要依賴此時的結論)。<br>';
-  html+='<b>狀態</b> = <b>Ready</b>=現在可布局、<b>Watch</b>=等觸發條件達成、<b>Hold</b>=不進場(資料不足或趨勢不對)。<br>';
+  html+='<b>象限</b> = 資金流向 × 漲跌的交叉。<b>健康</b>=流入+漲(真攻擊)、<b>假紅</b>=流入+跌(主力邊拉邊賣)、<b>惜售</b>=流出+漲(量縮惜售)、<b>休息</b>=流出+跌(退潮)、<b>未連線</b>=tick 資料缺。<br>';
+  html+='<b>Chip 分</b>(0-25) = 法人近20日買賣超張數:大買≥+5000張→25、小買+500~+5000→15、中性±500→10、小賣-5000~-500→5、大賣≤-5000→0;再依外資連買/連賣日數 ±3~±5。<br>';
+  html+='<b>健康分 v3</b> = 資金流(0-50)+ 價量(0-20)+ 族群(0-5)+ Chip(0-25),總分 100。<b>時間序列</b>顯示該股近 5 日健康分走勢,評估「健康度是延續還是反轉」。<br>';
+  html+='<b>狀態</b> = <b>Ready</b>=現在可布局、<b>Watch</b>=等觸發條件達成、<b>Hold</b>=不進場。<br>';
+  html+='<b>命中率驗證</b> = 用過去快照統計「健康分高/中/低 三組的隔日平均報酬」與「四象限的隔日平均報酬」,30 天後驗證模型預測力。<br>';
   html+='<b>觸發 / 失效</b> = 進場的條件句 vs 出場的條件句。看不到觸發別進場,碰到失效要出場。';
   html+='</div>';
   box.innerHTML=html;

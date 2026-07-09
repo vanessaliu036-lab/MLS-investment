@@ -229,6 +229,7 @@ def build_decision_card(s):
     # 正向 > 反向(弱) → 70%
     # 1:1 / 矛盾 → 50%
     # 反向為主 → 30%
+    # 其餘(1 正向 0 反向 等不完整訊號)→ 60%
     if pos_n >= 3 and neg_n == 0:
         conf = 92
     elif pos_n >= 2 and neg_n == 0:
@@ -242,7 +243,18 @@ def build_decision_card(s):
     elif neg_n > pos_n:
         conf = 30
     else:
-        conf = 60
+        conf = 60  # 例如 1 正向 0 反向、3 反向 0 正向以外的情形
+    # ─── Confidence 修補(2026-07-09):健康度高但 verdict bear/pending 卡死在 30% 的 bug。
+    # 當證據全反推時,以 health_score 對 verdict 給**校正基線**,
+    # 使「健康度高(>60)的 bearish/pending 卡」至少有 45~55% 而非 30%。
+    # 仍保留正負因子鏈最高 92% 的判斷能力(正向情況不修)。
+    if conf == 30:
+        if hs >= 70 and quad in ("in_up", "in_down"):
+            conf = 55  # 高健康度 + 有方向(即使是弱勢)應至少 55
+        elif hs >= 60:
+            conf = 45  # 健康度尚可,給 45 而非 30
+        # 反之 (hs < 50) 保持 30 — 確實資料混亂 / 健康度差
+    # 其他正向情況 92/82/70/50/60 全部保留,不壓低
     # verdict 強弱加成
     if verdict == "bullish" and strength == "強":
         conf = min(95, conf + 3)
@@ -361,15 +373,159 @@ def annotate_with_decision(snaps, sectors, market_pct=0.0):
 # ════════════════════════════════════════════════════════
 # 主入口:為一批 snapshot 增補 health + triangulation
 # ════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════
+# v3 — Chip Score(法人買賣超→0-25 分)
+# + 時間序列健康分(昨日基準比對)
+# + 命中率統計存檔介面
+# 純插件延伸:不改主邏輯、不打新 API
+# ════════════════════════════════════════════════════════
+
+def chip_score(chip):
+    """
+    Chip Score(0-25 分):把法人買賣超資料轉成分數。
+    分級依使用者規格(2026-07-09):
+      主力大買(>=+5000 張近 20 日) → 25
+      主力小買(+500~+5000)         → 15
+      中性(-500~+500)              → 10
+      小賣(-5000~-500)             → 5
+      大賣(<=-5000)                → 0
+    inst_streak 加成:連買>=3 日 +3、>=5 日 +5(上限)
+    inst_streak 扣分:連賣>=3 日 -3、>=5 日 -5(下限)
+    最終夾在 0~25 之間。
+    """
+    if not chip or chip.get("inst_net_20d_lots") is None:
+        return {"score": None, "level": "no_data", "reason": "FinMind 無資料(法人買賣超未取得)"}
+
+    lots = chip["inst_net_20d_lots"]
+    streak = chip.get("inst_streak") or 0
+
+    # 1) 基準分(看 20 日合計張數)
+    if lots >= 5000:
+        base = 25; level = "big_buy"; reason = f"法人近20日大買超 +{lots:.0f} 張"
+    elif lots >= 500:
+        base = 15; level = "small_buy"; reason = f"法人近20日小買超 +{lots:.0f} 張"
+    elif lots > -500:
+        base = 10; level = "neutral"; reason = f"法人近20日中性 {lots:+.0f} 張"
+    elif lots > -5000:
+        base = 5; level = "small_sell"; reason = f"法人近20日小賣超 {lots:.0f} 張"
+    else:
+        base = 0; level = "big_sell"; reason = f"法人近20日大賣超 {lots:.0f} 張"
+
+    # 2) 連買連賣加成
+    streak_adj = 0
+    if streak >= 5:
+        streak_adj = 5
+        reason += f",外資連買{streak}日(+5)"
+    elif streak >= 3:
+        streak_adj = 3
+        reason += f",外資連買{streak}日(+3)"
+    elif streak <= -5:
+        streak_adj = -5
+        reason += f",外資連賣{abs(streak)}日(-5)"
+    elif streak <= -3:
+        streak_adj = -3
+        reason += f",外資連賣{abs(streak)}日(-3)"
+
+    score = max(0, min(25, base + streak_adj))
+    return {"score": score, "level": level, "reason": reason,
+            "base": base, "streak_adj": streak_adj,
+            "inst_net_20d_lots": lots, "inst_streak": streak}
+
+
+def recompute_health_score(s):
+    """
+    v3 公式:健康分 = 資金流分(0-50) + 價量分(0-20) + 族群分(0-5) + Chip Score(0-25)
+    原 stock_health 公式為 base = 50 + ratio*50 + 四象限加成(最多 ±30)
+    本函數只重組「健康分」這一維,其他欄位(quadrant/label/stars/desc)沿用 _health。
+    資金流分:base 0-50(原公式 base)
+    價量分:0-20(看量比 + 站/跌均價)
+    族群分:0-5(強於族群 +5、其餘 0)
+    Chip Score:0-25(chip_score 結果)
+    最終夾在 0-100 之間。
+    """
+    h = s.get("_health") or {}
+    if h.get("quadrant") == "unknown":
+        # tick 未連線路徑:不重算(沿用中性 50,避免假訊號)
+        return h
+
+    aflow_ratio = h.get("aflow_ratio")
+    if aflow_ratio is None:
+        return h
+
+    chg = s.get("change_rate") or 0
+    vr = s.get("volume_ratio") or 0
+    avgp = s.get("avg_price") or 0
+    price = s.get("price") or 0
+    sec_pct = s.get("_sector_pct") or 0
+
+    # A 資金流分 0-50
+    fund = 25 + aflow_ratio * 25
+    fund = max(0, min(50, fund))
+
+    # B 價量分 0-20
+    pv = 0
+    if avgp and price >= avgp:
+        pv += 10  # 站上均價
+    if vr >= 1.5:
+        pv += 7
+    elif vr >= 1.2:
+        pv += 4
+    elif vr >= 1.0:
+        pv += 2
+    # 漲跌加成
+    if chg >= 1.5:
+        pv += 3
+    elif chg >= 0.5:
+        pv += 1
+    pv = max(0, min(20, pv))
+
+    # C 族群分 0-5
+    rs = chg - sec_pct
+    if rs >= 1.5:
+        sec_score = 5
+    elif rs >= 0.5:
+        sec_score = 3
+    elif rs >= 0:
+        sec_score = 1
+    else:
+        sec_score = 0
+    sec_score = max(0, min(5, sec_score))
+
+    # D Chip Score 0-25
+    ch = s.get("_chip_raw") or {}
+    cs = chip_score(ch)
+    chip_pts = cs["score"] if cs["score"] is not None else 0
+
+    total = fund + pv + sec_score + chip_pts
+    score = int(max(0, min(100, total)))
+
+    # 把公式分項掛到 _health 供 UI 顯示「為什麼這分」
+    new_h = dict(h)
+    new_h["health_score"] = score
+    new_h["health_v3_breakdown"] = {
+        "fund": round(fund, 1),
+        "pv": round(pv, 1),
+        "sector": sec_score,
+        "chip": chip_pts,
+        "chip_reason": cs.get("reason", ""),
+        "chip_level": cs.get("level", "no_data"),
+    }
+    s["_health"] = new_h
+    return new_h
+
+
 def annotate(snaps, sectors, market_pct=0.0):
     """
     原地為每檔 snap 增補 _health / _tri;為 sectors 增補 _health。
     回傳 (sector_health_map, verdict_counts)
+    v3 升級:在原 annotate 流程後,跑 chip_score + 重算 health_score(v3 公式)。
     """
     sec_pct = {s["name"]: s["pct"] for s in (sectors or [])}
     by_sec = {}
     for s in snaps:
         s["_health"] = stock_health(s)
+        # 把族群 pct 預先掛上,recompute_health_score 要用
+        s["_sector_pct"] = sec_pct.get(s.get("sector"), 0)
         by_sec.setdefault(s.get("sector"), []).append(s)
 
     counts = {"bullish": 0, "bearish": 0, "pending": 0}
@@ -381,12 +537,14 @@ def annotate(snaps, sectors, market_pct=0.0):
         except Exception:
             pass
         # 把真籌碼掛到個股,供前端顯示(無資料明確標 None → 前端顯示「無資料」)
+        s["_chip_raw"] = ch or {}
         s["_chip"] = {
             "inst_net_20d_lots": (ch or {}).get("inst_net_20d_lots"),
             "inst_streak": (ch or {}).get("inst_streak"),
             "big_holder_pct": (ch or {}).get("big_holder_pct"),
             "big_holder_trend": (ch or {}).get("big_holder_trend"),
             "has_data": bool(ch and ch.get("inst_net_20d_lots") is not None),
+            "chip_score": chip_score(ch or {}),
         }
         ev = gather_evidence(s, s["_health"], sec_pct.get(s.get("sector"), 0),
                              market_pct, ch)
@@ -394,6 +552,10 @@ def annotate(snaps, sectors, market_pct=0.0):
         s["_ev"] = [{"cat": c, "dir": d, "why": w} for c, d, w in ev]
         s["_tri"] = triangulate(ev)
         counts[s["_tri"]["verdict"]] += 1
+
+    # v3 升級:依新公式重算 health_score(在 _decision 之前)
+    for s in snaps:
+        recompute_health_score(s)
 
     sh_map = {}
     for name, members in by_sec.items():
