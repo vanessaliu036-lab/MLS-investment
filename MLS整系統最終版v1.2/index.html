@@ -274,7 +274,7 @@
 <footer>紅漲綠跌 · 資金流入前三群組才進盤中流動列表 · 資訊僅供參考,不構成投資建議</footer>
 
 <script>
-var API_BASE="http://104.156.239.83";  /* VPS FastAPI (Shioaji 滿血);空字串=同源 */
+var API_BASE="";  /* 空字串=同源(透過 Vercel serverless function /api/[...path].js 反代到 VPS 104.156.239.83:8000)。切回 VPS 直連時改回 "http://104.156.239.83",但需 VPS HTTPS。 */
 var STATE=null, HEAT="change", SEL=null, TAB="home";
 var ENGINE={"2303":1,"5347":1};
 var QN={"in_up":"流入·漲","in_down":"⚠流入·跌 邊拉邊賣","out_up":"流出·漲 惜售","out_down":"流出·跌 休息"};
