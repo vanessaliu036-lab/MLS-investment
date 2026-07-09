@@ -1,0 +1,28 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "builds": [
+    {
+      "src": "*.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "api/proxy.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/proxy"
+    },
+    {
+      "source": "/signals",
+      "destination": "/signals.html"
+    },
+    {
+      "source": "/rankings",
+      "destination": "/rankings.html"
+    }
+  ]
+}

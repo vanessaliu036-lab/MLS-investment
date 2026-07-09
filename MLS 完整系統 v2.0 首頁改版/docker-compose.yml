@@ -1,0 +1,44 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mls-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - /opt/mls-secrets/.env:/app/.env:ro
+      - mls-data:/app/data
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [mls]
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: mls-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - certbot-certs:/etc/letsencrypt
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [mls]
+
+volumes:
+  mls-data:
+  certbot-certs:
+
+networks:
+  mls:
+    driver: bridge

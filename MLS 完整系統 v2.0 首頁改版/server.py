@@ -28,6 +28,7 @@ MLS 標準版 — server.py(完整版)
 import threading
 import time
 import traceback
+import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -35,6 +36,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.encoders import jsonable_encoder
 import uvicorn
 
 load_dotenv()
@@ -276,6 +278,26 @@ def rankings_page():
         return HTMLResponse(f"rankings.html 缺失:{e}", status_code=500)
 
 
+@app.get("/sectors")
+def sectors_page():
+    """v1.7 熱力圖首頁(族群卡片 + 進度列 + 龍頭標記)。"""
+    try:
+        html = Path(__file__).with_name("sectors.html").read_text(encoding="utf-8")
+        return HTMLResponse(html)
+    except Exception as e:
+        return HTMLResponse(f"sectors.html 缺失:{e}", status_code=500)
+
+
+@app.get("/signals")
+def signals_page():
+    """v1.8 進出場訊號板頁面(盤中 buy/watch + BS 濾網結果)。"""
+    try:
+        html = Path(__file__).with_name("signals.html").read_text(encoding="utf-8")
+        return HTMLResponse(html)
+    except Exception as e:
+        return HTMLResponse(f"signals.html 缺失:{e}", status_code=500)
+
+
 @app.get("/api/nexora")
 def api_nexora():
     """NEXORA 插件當日報告(無報告時回提示)。"""
@@ -295,6 +317,595 @@ def api_nexora():
 def home():
     html = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
     return HTMLResponse(html)
+
+
+# ══════════════════════════════════════════════════════
+# 通用 helper:JSON-safe 包裝(等同主桶的 _safe)
+# ══════════════════════════════════════════════════════
+def _safe(obj, status_code=200):
+    """JSONResponse 包裝:用 jsonable_encoder 把 enum/datetime 轉成 JSON-safe 形式"""
+    return JSONResponse(jsonable_encoder(obj), status_code=status_code)
+
+
+# ══════════════════════════════════════════════════════
+# 補齊 v1.2 主桶既有的 endpoint(從 MLS整系統最終版v1.2/server.py 移植)
+# 確保 v2.0 = 最終完整版
+# ══════════════════════════════════════════════════════
+@app.get("/health")
+def health():
+    """Docker healthcheck 用。回 200 + 狀態摘要。"""
+    with LOCK:
+        n_sectors = len(STATE.get("sectors") or [])
+        n_stocks = len(STATE.get("stocks") or [])
+    ok = (STATE.get("status") != "starting") or (n_stocks > 0)
+    return _safe({"ok": ok, "status": STATE.get("status"),
+                  "sectors": n_sectors, "stocks": n_stocks},
+                 status_code=200 if ok else 503)
+
+
+@app.get("/api/realtime_signal/{code}")
+def api_realtime_signal(code: str):
+    """文件二盤中觸發(第四條件 + 三大條件);evaluate_realtime 結果。"""
+    try:
+        import scoring
+        tracker = scoring.get_tracker(code)
+        with LOCK:
+            st = STATE
+        stock = next((x for x in st.get("stocks", []) if x.get("code") == code), None)
+        mkt = st.get("market", {})
+        result = scoring.evaluate_realtime(
+            code=code,
+            current_price=(stock or {}).get("price"),
+            market_open_price=mkt.get("open"),
+            market_current_price=mkt.get("index"),
+            day_30m_high=(stock or {}).get("high"),
+            est_volume=(stock or {}).get("total_volume"),
+            prev_day_volume=(stock or {}).get("prev_day_volume"),
+            tracker=tracker,
+            loose_first_30min=True,
+        )
+        result["in_pool"] = stock is not None
+        if result.get("cum_ratio") == float('inf'): result["cum_ratio"] = None
+        if result.get("recent_ratio") == float('inf'): result["recent_ratio"] = None
+        return _safe(result)
+    except Exception as e:
+        return _safe({"error": str(e), "code": code}, status_code=500)
+
+
+@app.post("/api/tick/{code}")
+def api_tick(code: str, payload: dict):
+    """餵入一筆 tick 進 TickTracker。"""
+    try:
+        import scoring
+        tracker = scoring.get_tracker(code)
+        tracker.add_tick(
+            price=float(payload.get("price", 0)),
+            volume=int(payload.get("volume", 0)),
+            ts=payload.get("ts"),
+            side=payload.get("side"),
+        )
+        return _safe({"ok": True,
+                      "cum_ratio": (None if tracker.cum_ratio == float('inf') else tracker.cum_ratio),
+                      "recent_ratio": (None if tracker.recent_5min_ratio == float('inf') else tracker.recent_5min_ratio)})
+    except Exception as e:
+        return _safe({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/watchlist/{trade_date}")
+def api_watchlist(trade_date: str):
+    """盤後產出的「{trade_date} 觀察清單」。"""
+    try:
+        rows = db.load_watchlist(trade_date)
+        return _safe({
+            "trade_date": trade_date,
+            "n": len(rows),
+            "n_active": sum(1 for r in rows if not r.get("demoted")),
+            "n_demoted": sum(1 for r in rows if r.get("demoted")),
+            "rows": rows,
+        })
+    except Exception as e:
+        return _safe({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/review/{trade_date}")
+def api_review_date(trade_date: str):
+    """單日盤後複查:命中率 / 漏抓股 / 觀察清單 / 訊號清單。"""
+    try:
+        with db._lock, db._conn() as c:
+            review = None
+            try:
+                row = c.execute("SELECT * FROM review_log WHERE trade_date=?", (trade_date,)).fetchone()
+                if row:
+                    review = dict(row)
+                    try:
+                        review["missed"] = json.loads(review.get("missed") or "[]")
+                    except Exception:
+                        review["missed"] = []
+            except Exception:
+                pass
+            signals_today = [dict(r) for r in c.execute(
+                "SELECT * FROM signals WHERE trade_date=? ORDER BY confidence_label DESC, ts DESC",
+                (trade_date,))]
+        watchlist = db.load_watchlist(trade_date)
+        for s in signals_today:
+            try:
+                s["_rules"] = json.loads(s.get("triggered_rules") or "[]")
+            except Exception:
+                s["_rules"] = []
+        return _safe({
+            "trade_date": trade_date,
+            "review": review,
+            "watchlist": watchlist,
+            "signals_count": len(signals_today),
+            "top_signals": signals_today[:10],
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
+
+
+# ══════════════════════════════════════════════════════
+# 李佛摩 v10 篩選插件(2026-07-09)— 六點轉向邏輯
+# 純讀 STATE + broker.daily_kbars,不動主邏輯
+# ══════════════════════════════════════════════════════
+@app.get("/api/livermore")
+def api_livermore():
+    try:
+        import livermore
+        full_state = engine.build_state(watchlist_codes=_watchlist_codes)
+        stocks = full_state.get("stocks") or []
+
+        def _kbars(code):
+            import broker as _br
+            return _br.daily_kbars(code, days=70)
+
+        rows = livermore.screen_pool(stocks, _kbars)
+        return _safe({
+            "as_of": (full_state.get("market") or {}).get("time", ""),
+            "n": len(rows),
+            "buy_n": sum(1 for r in rows if r.get("signal", "").startswith("buy")),
+            "sell_n": sum(1 for r in rows if "sell" in r.get("signal", "") or "breakdown" in r.get("signal", "")),
+            "watch_n": sum(1 for r in rows if r.get("signal", "").startswith("watch")),
+            "rows": rows,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/livermore/{code}")
+def api_livermore_stock(code: str):
+    try:
+        import livermore
+        import broker as _br
+        full_state = engine.build_state(watchlist_codes=_watchlist_codes)
+        snap = next((s for s in (full_state.get("stocks") or []) if s.get("code") == code), None)
+        if snap is None:
+            return _safe({"error": f"個股 {code} 不在觀察池"}, status_code=404)
+        kbars = _br.daily_kbars(code, days=70)
+        return _safe(livermore.analyze_stock(snap, kbars))
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
+
+
+# ══════════════════════════════════════════════════════
+# 四大策略對比插件(2026-07-09)
+# 文件四大條件獨立評分:MA20/乖離率/量>5日均/收>昨高 + 籌碼
+# ══════════════════════════════════════════════════════
+@app.get("/api/strategy_compare")
+def api_strategy_compare():
+    try:
+        watchlist_codes = _watchlist_codes
+        full_state = engine.build_state(watchlist_codes=watchlist_codes)
+        rows = []
+        for s in (full_state.get("stocks") or []):
+            factors = s.get("factors") or {}
+            ai = s.get("ai_score") or 0
+            cond_ma20  = (factors.get("trend") or 0) >= 18
+            cond_bias  = abs(s.get("change_rate") or 0) < 8
+            cond_vol5  = (s.get("volume_ratio") or 0) >= 1.3
+            cond_high  = (s.get("change_rate") or 0) > 0
+            cond_chip  = (factors.get("chip") or 0) >= 12
+            doc_pass = sum([cond_ma20, cond_bias, cond_vol5, cond_high, cond_chip])
+            bs = s.get("bs")
+            bs_mult = round((bs or 50) / 50, 2) if bs is not None else None
+            agree = ("A=B" if (doc_pass >= 4 and ai >= 70) or (doc_pass <= 2 and ai < 50)
+                     else ("A>B" if ai > 80 else "B>A" if doc_pass >= 4 else "—"))
+            rows.append({
+                "code": s.get("code"),
+                "name": s.get("name"),
+                "sector": s.get("sector"),
+                "ai_score": ai,
+                "doc_pass": doc_pass,
+                "doc_score": doc_pass * 20,
+                "cond_ma20": cond_ma20,
+                "cond_bias": cond_bias,
+                "cond_vol5": cond_vol5,
+                "cond_high": cond_high,
+                "cond_chip": cond_chip,
+                "bs_mult": bs_mult,
+                "agree": agree,
+                "action": s.get("action"),
+            })
+        rows.sort(key=lambda x: (x["doc_pass"], x["ai_score"]), reverse=True)
+        return _safe({"as_of": full_state.get("market", {}).get("time", ""),
+                      "n": len(rows), "rows": rows})
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
+
+
+# ══════════════════════════════════════════════════════
+# 資金健康度摘要插件(2026-07-09)
+# 資金流向×漲跌四象限 + Level 8.1 三角交叉驗證
+# ══════════════════════════════════════════════════════
+@app.get("/api/money_health_summary")
+def api_money_health_summary():
+    try:
+        watchlist_codes = _watchlist_codes
+        full_state = engine.build_state(watchlist_codes=watchlist_codes)
+        sectors = full_state.get("sectors") or []
+        rows = []
+        for sec in sectors:
+            members = [s for s in (full_state.get("stocks") or []) if s.get("sector") == sec.get("name")]
+            if not members:
+                continue
+            quad_count = {"in_up": 0, "in_down": 0, "out_up": 0, "out_down": 0}
+            health_score_avg = 0
+            health_n = 0
+            for m in members:
+                h = m.get("health") or {}
+                q = h.get("quadrant")
+                if q in quad_count:
+                    quad_count[q] += 1
+                hs = h.get("health_score")
+                if hs is not None:
+                    health_score_avg += hs
+                    health_n += 1
+            hs_avg = round(health_score_avg / health_n, 1) if health_n else None
+            top = sorted(members, key=lambda m: (m.get("health") or {}).get("health_score", 0), reverse=True)
+            rep = top[0] if top else None
+            rep_h = (rep or {}).get("health") or {}
+            rows.append({
+                "sector": sec.get("name"),
+                "sector_type": sec.get("type"),
+                "pct": sec.get("pct"),
+                "flow_score": sec.get("flow_score"),
+                "locked": sec.get("locked"),
+                "member_n": len(members),
+                "quadrant": quad_count,
+                "health_score_avg": hs_avg,
+                "rep_code": (rep or {}).get("code"),
+                "rep_name": (rep or {}).get("name"),
+                "rep_quadrant": rep_h.get("quadrant"),
+            })
+        return _safe({"as_of": full_state.get("market", {}).get("time", ""),
+                      "n": len(rows), "rows": rows})
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
+
+
+# ══════════════════════════════════════════════════════
+# 資金健康度 v3 升級(2026-07-09 Vanessa 規格)
+# 列表報告模式 + 健康分 v3 + Chip Score + 5 日 time_series
+# ══════════════════════════════════════════════════════
+@app.get("/api/money_health")
+def api_money_health():
+    """
+    v3:健康分 = 資金流分(0-50) + 價量分(0-20) + 族群分(0-5) + Chip Score(0-25)
+    每張卡附 6 欄位決策卡:AI Score / Confidence / State / Action / Trigger / Invalidation
+    每日存檔 reports/health_score_history/YYYYMMDD.json
+    """
+    try:
+        import config as _C
+        import broker as _broker
+        codes = list(_C.UNIVERSE)
+        snaps = _broker.batch_snapshots(codes)
+        for _s in snaps:
+            if not _s.get("name"):
+                _s["name"] = _C.NAME_MAP.get(_s.get("code"), _s.get("code"))
+        sectors = (STATE.get("sectors") if isinstance(STATE, dict) else None) or []
+        market_pct = ((STATE.get("market") or {}).get("change_rate") if isinstance(STATE, dict) else None) or 0.0
+        import money_health
+        money_health.annotate_with_decision(snaps, sectors, market_pct)
+        stocks = snaps
+        cards = []
+        for s in stocks:
+            d = s.get("_decision") or {}
+            h = s.get("_health") or {}
+            t = s.get("_tri") or {}
+            c = s.get("_chip") or {}
+            cards.append({
+                "code": s.get("code"),
+                "name": s.get("name"),
+                "sector": s.get("sector"),
+                "price": s.get("price"),
+                "change_rate": s.get("change_rate"),
+                "quadrant": h.get("quadrant"),
+                "label": h.get("label"),
+                "health_score": h.get("health_score"),
+                "health_v3_breakdown": h.get("health_v3_breakdown") or {},
+                "aflow_ratio": h.get("aflow_ratio"),
+                "verdict": t.get("verdict"),
+                "strength": t.get("strength"),
+                "decision": d,
+                "chip": c,
+                "evidence": s.get("_ev") or [],
+            })
+        state_order = {"Ready": 0, "Watch": 1, "Hold": 2}
+        cards.sort(key=lambda c: (state_order.get(c["decision"].get("state", "Hold"), 9),
+                                  -(c["decision"].get("ai_score") or 0)))
+        try:
+            import health_history
+            snapshot_path = health_history.save_snapshot(cards, market_pct)
+        except Exception as e:
+            print(f"[money_health] save_snapshot failed: {e}")
+            snapshot_path = None
+        try:
+            import health_history
+            hit_rate = health_history.hit_rate_stats()
+            recent_snaps = health_history.load_recent_snapshots(5)
+            ts_map = {}
+            for c in cards:
+                code = c.get("code")
+                if code:
+                    series = health_history.time_series_for_code(code, recent_snaps)
+                    if series:
+                        ts_map[code] = series
+            for c in cards:
+                code = c.get("code")
+                if code in ts_map:
+                    c["time_series"] = ts_map[code]
+        except Exception as e:
+            print(f"[money_health] hit_rate/time_series failed: {e}")
+            hit_rate = None
+        return _safe({
+            "as_of": ((STATE.get("market") or {}).get("time") if isinstance(STATE, dict) else "") or "",
+            "market_pct": market_pct,
+            "count": len(cards),
+            "ready_n": sum(1 for c in cards if c["decision"].get("state") == "Ready"),
+            "watch_n": sum(1 for c in cards if c["decision"].get("state") == "Watch"),
+            "hold_n": sum(1 for c in cards if c["decision"].get("state") == "Hold"),
+            "cards": cards,
+            "snapshot_path": snapshot_path,
+            "hit_rate": hit_rate,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/money_health/hit_rate")
+def api_money_health_hit_rate():
+    """命中率統計獨立端點(健康分 ≥65 / 50-64 / <50 三組 + 四象限的隔日報酬率)。"""
+    try:
+        import health_history
+        stats = health_history.hit_rate_stats()
+        snaps = health_history.load_recent_snapshots(60)
+        return _safe({
+            "stats": stats,
+            "snapshots": [{"date": s.get("date"), "count": s.get("count"),
+                           "market_pct": s.get("market_pct")} for s in snaps],
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/money_health/time_series/{code}")
+def api_money_health_time_series(code: str):
+    """個股健康分時間序列(從 reports/health_score_history 讀)。"""
+    try:
+        import health_history
+        snaps = health_history.load_recent_snapshots(30)
+        series = health_history.time_series_for_code(code, snaps)
+        return _safe({"code": code, "series": series,
+                      "snapshots_n": len(snaps)})
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
+
+
+# ══════════════════════════════════════════════════════
+# 個股第二層 API(2026-07-09)— detail modal 第二層用
+# 一次回全部分時/日K/法人/大戶/BS/指標/健康/買賣計劃/AI 結論
+# ══════════════════════════════════════════════════════
+@app.get("/api/stock_detail/{code}")
+def api_stock_detail(code: str):
+    try:
+        snap = None
+        with LOCK:
+            for s in (STATE.get("stocks") or []):
+                if s.get("code") == code:
+                    snap = dict(s); break
+        if snap is None:
+            try:
+                import broker as _br
+                ss = _br.batch_snapshots([code])
+                snap = ss[0] if ss else {}
+            except Exception:
+                snap = {"code": code}
+        def _clean(v):
+            if v is None: return None
+            if hasattr(v, "name"): return str(v.name)
+            if isinstance(v, dict): return {k: _clean(x) for k, x in v.items()}
+            if isinstance(v, list): return [_clean(x) for x in v]
+            return v
+        snap = _clean(snap)
+
+        kbars = []
+        try:
+            import broker as _br
+            kbars = _br.daily_kbars(code, days=60)
+            closes = [k.get("close") for k in kbars if k.get("close") is not None]
+            for i, k in enumerate(kbars):
+                ma20 = sum(closes[max(0, i-19):i+1]) / max(1, min(20, i+1))
+                ma60 = sum(closes[max(0, i-59):i+1]) / max(1, min(60, i+1))
+                k["ma20"] = round(ma20, 2) if ma20 else None
+                k["ma60"] = round(ma60, 2) if ma60 else None
+        except Exception as e:
+            print(f"[detail] kbars {code} 失敗:{e}")
+
+        if kbars:
+            last_k = kbars[-1]
+            if snap.get("open") is None and last_k.get("open") is not None: snap["open"] = last_k["open"]
+            if snap.get("high") is None and last_k.get("high") is not None: snap["high"] = last_k["high"]
+            if snap.get("low") is None and last_k.get("low") is not None: snap["low"] = last_k["low"]
+            if snap.get("total_volume") is None and last_k.get("volume") is not None: snap["total_volume"] = last_k["volume"]
+
+        chips_data = {}
+        try:
+            import chips as _ch
+            try:
+                _ch._load_disk()
+            except Exception:
+                pass
+            chips_data = _ch.get_chips(code)
+            chips_data["has_data"] = chips_data.get("inst_net_20d_lots") is not None
+        except Exception as e:
+            print(f"[detail] chips {code} 失敗:{e}")
+            chips_data = {"has_data": False,
+                          "inst_net_20d_lots": None, "inst_streak": None,
+                          "big_holder_pct": None, "big_holder_trend": None,
+                          "foreign_net_20d": None, "trust_net_20d": None,
+                          "dealer_net_20d": None, "main_force_net_20d": None,
+                          "foreign_5d": None, "foreign_10d": None,
+                          "inst_5d": None, "inst_10d": None,
+                          "holder_400_pct": None, "holder_400_trend": None}
+
+        bv = snap.get("buy_volume") or 0
+        sv = snap.get("sell_volume") or 0
+        bs_pct = round(bv / (bv + sv) * 100, 1) if (bv + sv) > 0 else None
+        active_buy_pct = bs_pct
+        active_sell_pct = round(100 - bs_pct, 1) if bs_pct is not None else None
+
+        indicators = {}
+        try:
+            import indicators as _ind
+            indicators = _ind.compute_all(kbars)
+        except Exception as e:
+            print(f"[detail] indicators {code} 失敗:{e}")
+            indicators = {"ok": False, "reason": str(e)}
+
+        health = {"health_score": None, "quadrant": None, "label": None,
+                  "stars": None, "aflow_ratio": None}
+        try:
+            for _s in (STATE.get("stocks") or []):
+                if _s.get("code") == code:
+                    health = {
+                        "health_score": _s.get("health_score"),
+                        "quadrant": _s.get("quadrant"),
+                        "label": _s.get("label"),
+                        "stars": _s.get("stars"),
+                        "aflow_ratio": _s.get("aflow_ratio"),
+                    }
+                    break
+        except Exception:
+            pass
+
+        targets = {"advice": "等待", "buy": None, "stop": None,
+                   "t1": None, "t2": None, "rr": None}
+        try:
+            price = snap.get("price")
+            stop = snap.get("suggested_stop") or snap.get("low")
+            avgp = snap.get("avg_price")
+            atr_v = (indicators or {}).get("atr")
+            if price is not None and avgp:
+                if price <= avgp * 1.005:
+                    buy = round(price, 2)
+                elif atr_v:
+                    buy = round(avgp + atr_v * 0.5, 2)
+                else:
+                    buy = round(avgp * 1.003, 2)
+            elif price is not None:
+                closes = [k.get("close") for k in (kbars or []) if k.get("close") is not None]
+                if len(closes) >= 2:
+                    buy = round(closes[-2] * 1.005, 2)
+            if buy and stop and buy > stop:
+                r1 = buy - stop
+                t1 = round(buy + r1, 2)
+                t2 = round(buy + r1 * 2, 2)
+                rr = round((t1 - buy) / (buy - stop), 2) if (buy - stop) > 0 else None
+                diff_pct = abs(price - buy) / buy * 100 if (price and buy) else None
+                advice = "等待"
+                if diff_pct is not None:
+                    if diff_pct <= 1 and price > (stop or 0):
+                        advice = "可進場"
+                    elif diff_pct <= 3:
+                        advice = "等待回測"
+                if stop is None or buy is None:
+                    advice = "等待"
+                targets = {"advice": advice, "buy": buy, "stop": stop,
+                           "t1": t1, "t2": t2, "rr": rr}
+        except Exception as e:
+            print(f"[detail] targets {code} 失敗:{e}")
+
+        ai_reasons = {"ai_score": None, "passes": [], "fails": []}
+        try:
+            ai_score = None
+            factors = None
+            for _s in (STATE.get("stocks") or []):
+                if _s.get("code") == code:
+                    ai_score = _s.get("ai_score")
+                    factors = _s.get("factors")
+                    break
+            ai_reasons["ai_score"] = ai_score
+            fc = factors or {}
+            inst_net = chips_data.get("inst_net_20d_lots") or 0
+            main_force = chips_data.get("main_force_net_20d") or 0
+            big_holder_trend = chips_data.get("big_holder_trend") or 0
+            aflow_ratio = health.get("aflow_ratio")
+            if big_holder_trend > 0:
+                ai_reasons["passes"].append("大戶增加")
+            elif big_holder_trend is not None:
+                ai_reasons["fails"].append("大戶減少")
+            if aflow_ratio is not None and aflow_ratio > 0:
+                ai_reasons["passes"].append("主動資金翻正")
+            elif aflow_ratio is not None:
+                ai_reasons["fails"].append("主動資金偏空")
+            ma5 = (indicators or {}).get("ma5")
+            ma10 = (indicators or {}).get("ma10")
+            ma20 = (indicators or {}).get("ma20")
+            if ma5 and ma10 and ma20 and ma5 > ma10 > ma20:
+                ai_reasons["passes"].append("技術多頭")
+            elif ma5 is not None:
+                ai_reasons["fails"].append("技術未多頭排列")
+            big_pct = chips_data.get("big_holder_pct")
+            h400_trend = chips_data.get("holder_400_trend")
+            if (big_pct is not None and big_pct < 30) or (h400_trend is not None and h400_trend < 1):
+                ai_reasons["fails"].append("籌碼尚未完全集中")
+            else:
+                ai_reasons["passes"].append("籌碼集中")
+            if main_force > 0:
+                ai_reasons["passes"].append("三大法人買超")
+            elif main_force < 0:
+                ai_reasons["fails"].append("三大法人賣超")
+        except Exception as e:
+            print(f"[detail] ai_reasons {code} 失敗:{e}")
+
+        return _safe({
+            "code": code,
+            "snapshot": snap,
+            "kbars": kbars,
+            "chips": chips_data,
+            "buy_sell": {
+                "buy_volume_lots": round(bv / 1000, 1) if bv else 0,
+                "sell_volume_lots": round(sv / 1000, 1) if sv else 0,
+                "bs_pct": bs_pct,
+                "active_buy_pct": active_buy_pct,
+                "active_sell_pct": active_sell_pct,
+            },
+            "indicators": indicators,
+            "health": health,
+            "targets": targets,
+            "ai_reasons": ai_reasons,
+            "note": "五檔報價需 Shioaji tick stream,本機 API 不支援",
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
 
 
 if __name__ == "__main__":

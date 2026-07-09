@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MLS · 進出場訊號板</title>
+<style>
+  :root{
+    color-scheme:light;
+    --bg:#fcfcfd;--card:#ffffff;--soft:#f4f5f8;--line:#edeff3;
+    --ink:#0e1116;--sub:#6b7280;--faint:#aeb4bf;
+    --up:#f43f5e;--up-soft:#fff1f3;--down:#10b981;--down-soft:#ecfdf5;
+    --amber:#f59e0b;--amber-soft:#fffbeb;--violet:#6366f1;--violet-soft:#f0f1fe;
+    --in:#2563c7;--out:#e07b2e;--shadow:0 1px 3px rgba(15,18,25,.04),0 8px 24px rgba(15,18,25,.06);--r:20px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{background:#fcfcfd !important;color:#0e1116 !important}
+  body{font-family:-apple-system,"SF Pro Text","PingFang TC","Noto Sans TC",sans-serif;font-size:14px;line-height:1.5;padding-bottom:40px;max-width:640px;margin:0 auto}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+  .up{color:var(--up)}.down{color:var(--down)}
+
+  .top{position:sticky;top:0;z-index:40;background:rgba(252,252,253,.86);backdrop-filter:saturate(1.4) blur(16px);padding:14px 18px 10px;border-bottom:1px solid var(--line)}
+  .top-r1{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .logo{font-size:17px;font-weight:750;letter-spacing:-.02em}
+  .clock{margin-left:auto;font-size:13px;font-weight:700;color:var(--sub)}
+  .seg{display:flex;background:var(--soft);border-radius:100px;padding:3px;gap:2px;overflow-x:auto;scrollbar-width:none}
+  .seg::-webkit-scrollbar{display:none}
+  .seg span{flex:none;padding:6px 14px;border-radius:100px;font-size:13px;font-weight:700;color:var(--sub);cursor:pointer;white-space:nowrap}
+  .seg span.on{background:var(--ink);color:#fff}
+
+  .wrap{padding:14px 18px}
+  .sec-h{display:flex;align-items:baseline;gap:8px;margin:6px 4px 10px}
+  .sec-t{font-size:18px;font-weight:750;letter-spacing:-.02em}
+  .sec-s{font-size:12px;color:var(--faint);font-weight:600}
+  .sec-x{margin-left:auto;font-size:12px;color:var(--faint);font-weight:600}
+
+  .card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:14px 16px;margin-bottom:10px}
+  .row{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:0}
+  .nm{font-size:15px;font-weight:750;min-width:96px}
+  .nm small{display:block;font-size:11px;color:var(--faint);font-weight:600;margin-top:2px}
+  .pr{font-size:16px;font-weight:800;min-width:78px;text-align:right;font-variant-numeric:tabular-nums}
+  .pct{font-size:13px;font-weight:700;min-width:60px;text-align:right;font-variant-numeric:tabular-nums}
+  .act{font-size:12px;font-weight:750;padding:5px 10px;border-radius:100px;letter-spacing:.02em}
+  .act.buy{background:var(--up-soft);color:var(--up)}
+  .act.sell{background:var(--down-soft);color:var(--down)}
+  .act.watch{background:var(--amber-soft);color:var(--amber)}
+  .act.hold{background:var(--soft);color:var(--sub)}
+  .why{font-size:11.5px;color:var(--sub);line-height:1.6;margin-top:6px;padding-left:106px}
+  .empty{text-align:center;color:var(--faint);padding:30px 0;font-size:13px}
+  .stop{font-size:11px;color:var(--down);font-weight:700;margin-top:4px}
+
+  .filter{display:flex;gap:6px;flex-wrap:wrap;margin:6px 4px 14px}
+  .filter b{font-size:12px;font-weight:700;padding:5px 11px;border-radius:100px;background:var(--soft);color:var(--sub);cursor:pointer}
+  .filter b.on{background:var(--ink);color:#fff}
+
+  .toplink{position:fixed;bottom:18px;right:18px;width:46px;height:46px;border-radius:50%;
+    background:var(--ink);color:#fff;display:grid;place-items:center;text-decoration:none;
+    font-size:20px;box-shadow:0 6px 22px rgba(0,0,0,.18);z-index:50}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="top-r1">
+    <div class="logo">🚦 進出場訊號板</div>
+    <div class="clock" id="clk">--:--:--</div>
+  </div>
+  <div class="seg" id="period">
+    <span class="on" data-p="live">盤中即時</span>
+    <span data-p="eod">盤後分析</span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div id="live-pane">
+    <div class="sec-h">
+      <span class="sec-t">即時訊號</span>
+      <span class="sec-s" id="upd">載入中…</span>
+      <span class="sec-x" id="cnt">0 筆</span>
+    </div>
+
+    <div class="filter" id="filter">
+      <b class="on" data-act="all">全部動作</b>
+      <b data-act="buy">buy</b>
+      <b data-act="watch">watch</b>
+      <b data-act="sell">sell</b>
+      <b data-act="hold">hold</b>
+      <b data-act="obs">obs</b>
+    </div>
+
+    <div class="card" id="list"></div>
+
+    <div class="sec-h">
+      <span class="sec-t">逐股即時評估</span>
+      <span class="sec-s">四條件即時命中度</span>
+    </div>
+    <div class="card" id="realtime">
+      <div class="empty">載入中…</div>
+    </div>
+  </div>
+
+  <div id="eod-pane" style="display:none">
+    <div class="sec-h">
+      <span class="sec-t">盤後進出場分析</span>
+      <span class="sec-s" id="eod-sub">—</span>
+    </div>
+
+    <div class="card" id="eod-summary" style="margin-bottom:10px">
+      <div class="empty">載入中…</div>
+    </div>
+
+    <div class="sec-h">
+      <span class="sec-t" id="wl-title">明日觀察清單</span>
+      <span class="sec-s" id="wl-sub">—</span>
+    </div>
+
+    <div class="filter" id="wl-filter">
+      <b class="on" data-wl="all">全部</b>
+      <b data-wl="active">有效</b>
+      <b data-wl="demoted">降級</b>
+      <b data-wl="hit">命中</b>
+    </div>
+
+    <div class="card" id="wl-list">
+      <div class="empty">載入中…</div>
+    </div>
+
+    <div class="sec-h">
+      <span class="sec-t">今日命中率</span>
+      <span class="sec-s">近 30 日</span>
+    </div>
+    <div class="card" id="hitrate">
+      <div class="empty">載入中…</div>
+    </div>
+  </div>
+
+</div>
+
+<a class="toplink" href="/" title="回首頁">🏠</a>
+
+<script>
+const API="/api";
+let PERIOD="live";
+let FILTER="all", ACT="all";
+let POOL=[];
+
+function esc(s){return s==null?"":String(s).replace(/[<>&"']/g,c=>({"<":"&lt;",">":"&gt;","&":"&amp;","\"":"&quot;","'":"&#39;"}[c]));}
+function tick(){const d=new Date();document.getElementById("clk").textContent=d.toTimeString().slice(0,8);}setInterval(tick,1000);tick();
+
+function actClass(a){return a==="buy"||a==="watch_buy"?"buy":(a==="sell"||a==="watch_exit"||a==="risk"?"sell":(a==="watch"||a==="obs"||a==="watch_buy"||a==="watch_exit"?"watch":"hold"));}
+function actLabel(a){return ({buy:"進場",watch:"觀察",sell:"出場",obs:"僅觀察",watch_buy:"觀察可進",watch_exit:"觀察可出",hold:"續抱",risk:"風險"})[a]||a;}
+
+function render(){
+  const box=document.getElementById("list");
+  let rows=POOL.slice();
+  if(ACT!=="all") rows=rows.filter(r=>r.action===ACT);
+  if(FILTER!=="all") rows=rows.filter(r=>actClass(r.action)===FILTER);
+  document.getElementById("cnt").textContent=`${rows.length} 筆`;
+  if(!rows.length){
+    const totalActionCount=POOL.filter(r=>["buy","sell","watch"].includes(actClass(r.action))).length;
+    if(FILTER!=="all" || ACT!=="all"){
+      box.innerHTML=`<div class="empty" style="padding:24px 14px;line-height:1.8">
+        目前沒有符合「${FILTER==="all"?"全部":FILTER}」+「${ACT==="all"?"全部動作":ACT}」的訊號<br>
+        <small style="color:var(--faint)">觀察池 ${POOL.length} 檔裡,${totalActionCount} 檔有動作。試著放寬篩選 →</small><br>
+        <span style="display:inline-block;margin-top:8px;font-size:12px;color:var(--violet)">點上方「全部」或「全部動作」看完整池</span>
+      </div>`;
+    } else {
+      box.innerHTML=`<div class="empty" style="padding:24px 14px;line-height:1.8">
+        目前沒有任何進場/出場訊號<br>
+        <small style="color:var(--faint)">這是正常,不是 bug。<br>主系統只在大盤多頭 + 五因子共識 + BS 濾網通過時才發 buy。<br>沒訊號 = 觀察池現在沒標的達標,繼續 hold。</small>
+        <br><br>
+        <span style="color:var(--violet);font-weight:700">→ 盤後的進出場分析在「盤後分析」分頁,看明天要觀察的清單</span>
+      </div>`;
+    }
+    return;
+  }
+  box.innerHTML=rows.map(r=>{
+    const ac=actClass(r.action);
+    const pct=(r.change_rate>=0?"+":"")+(r.change_rate||0).toFixed(2)+"%";
+    return `<div class="row">
+      <div class="nm">${esc(r.name||r.code)}<small>${esc(r.code)} · ${esc(r.sector||"—")}</small></div>
+      <div class="pr">${(r.price||0).toFixed(2)}</div>
+      <div class="pct ${r.change_rate>=0?"up":"down"}">${pct}</div>
+      <div class="act ${ac}">${actLabel(r.action)}</div>
+      <div class="why">AI ${r.ai_score||0} · BS ${r.bs!=null?r.bs:"—"} · ${esc(r.why||"")}</div>
+    </div>`;
+  }).join("");
+}
+
+function periodClick(el){
+  PERIOD=el.dataset.p;
+  document.querySelectorAll("#period span").forEach(s=>s.className=(s.dataset.p===PERIOD?"on":""));
+  document.getElementById("live-pane").style.display=PERIOD==="live"?"":"none";
+  document.getElementById("eod-pane").style.display=PERIOD==="eod"?"":"none";
+  if(PERIOD==="eod") loadEod();
+}
+function segClick(el){
+  FILTER=el.dataset.f;
+  document.querySelectorAll("#seg span").forEach(s=>s.className=(s.dataset.f===FILTER?"on":""));
+  render();
+}
+function filtClick(el){
+  ACT=el.dataset.act;
+  document.querySelectorAll("#filter b").forEach(s=>s.className=(s.dataset.act===ACT?"on":""));
+  render();
+}
+function wlFiltClick(el){
+  WLFILT=el.dataset.wl;
+  document.querySelectorAll("#wl-filter b").forEach(s=>s.className=(s.dataset.wl===WLFILT?"on":""));
+  renderWl();
+}
+document.querySelectorAll("#period span").forEach(s=>s.onclick=()=>periodClick(s));
+document.querySelectorAll("#seg span").forEach(s=>s.onclick=()=>segClick(s));
+document.querySelectorAll("#filter b").forEach(s=>s.onclick=()=>filtClick(s));
+document.querySelectorAll("#wl-filter b").forEach(s=>s.onclick=()=>wlFiltClick(s));
+
+let WLFILT="all";
+let WL_RAW={};
+let REVIEW_RAW=null;
+let HITS=[];
+
+function renderWl(){
+  const box=document.getElementById("wl-list");
+  let rows=(WL_RAW.rows||[]).slice();
+  if(WLFILT==="active") rows=rows.filter(r=>!r.demoted);
+  if(WLFILT==="demoted") rows=rows.filter(r=>r.demoted);
+  if(WLFILT==="hit") rows=rows.filter(r=>r.hit);
+  if(!rows.length){
+    const n=WL_RAW.n||0;
+    box.innerHTML=`<div class="empty" style="padding:24px 14px;line-height:1.8">
+      沒有「${WLFILT==="all"?"全部":WLFILT}」的觀察股<br>
+      <small style="color:var(--faint)">${n>0?`明日觀察池共 ${n} 檔`:"after_hours 還沒跑 15:05 盤後複查(盤中無此資料)"}</small>
+    </div>`;
+    return;
+  }
+  box.innerHTML=rows.map(r=>{
+    const demote=r.demoted?'<span style="color:var(--down);font-weight:700">降級</span>':(r.hit?'<span style="color:var(--up);font-weight:700">命中</span>':'<span style="color:var(--in);font-weight:700">有效</span>');
+    return `<div class="row">
+      <div class="nm">${esc(r.stock_name||r.stock_id)}<small>${esc(r.stock_id)} · ${esc(r.sector||"—")}</small></div>
+      <div class="pr" style="min-width:auto">${demote}</div>
+      <div class="pct" style="min-width:auto">${r.reverified?"已重驗":"待重驗"}</div>
+      <div class="why" style="padding-left:0">${esc(r.reason||"")}</div>
+    </div>`;
+  }).join("");
+}
+
+function loadEod(){
+  document.getElementById("eod-sub").textContent="讀取盤後資料中…";
+  // 1) 今日複查(命中率)
+  fetch(API+"/api/review").then(r=>r.json()).then(d=>{
+    REVIEW_RAW=d;
+    HITS=d.recent_hit_rates||[];
+    // 今日複查摘要
+    const sumBox=document.getElementById("eod-summary");
+    const today=d.today||{};
+    const wlToday=d.watchlist_today||[];
+    const hit30=HITS.length;
+    const avg30=HITS.length?(HITS.reduce((a,b)=>a+(b.hit_rate||0),0)/HITS.length):0;
+    sumBox.innerHTML=`
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12.5px">
+        <div><div style="color:var(--faint);font-size:11px">今日命中率</div><div style="font-size:22px;font-weight:800;color:var(--ink)">${today.rate||0}%</div><div style="color:var(--sub);font-size:11px">${today.hit||0}/${today.total||0} 命中</div></div>
+        <div><div style="color:var(--faint);font-size:11px">近 30 日平均</div><div style="font-size:22px;font-weight:800;color:var(--violet)">${avg30.toFixed(1)}%</div><div style="color:var(--sub);font-size:11px">共 ${hit30} 個交易日</div></div>
+        <div><div style="color:var(--faint);font-size:11px">今日觀察池</div><div style="font-size:18px;font-weight:700">${wlToday.length} 檔</div></div>
+        <div><div style="color:var(--faint);font-size:11px">本池命中</div><div style="font-size:18px;font-weight:700;color:var(--up)">${wlToday.filter(r=>r.hit).length} 檔</div></div>
+      </div>
+      ${!today.total?`<div style="margin-top:10px;padding:10px 12px;background:var(--soft);border-radius:10px;font-size:11.5px;color:var(--sub);line-height:1.7">
+        <b>📋 今日複查資料尚未產出</b><br>
+        收盤後 15:05 自動跑 after_hours.run() 會寫 review_log + 產生明日觀察清單。<br>
+        盤中(現在 14:30)這欄會是空白 → 切回「盤中即時」分頁看即時訊號。
+      </div>`:''}
+    `;
+    // 命中率圖
+    const hitBox=document.getElementById("hitrate");
+    if(!HITS.length){
+      hitBox.innerHTML='<div class="empty">無近 30 日資料</div>';
+    } else {
+      hitBox.innerHTML='<div style="font-size:12.5px">'+HITS.slice(0,10).map(h=>{
+        const pct=h.hit_rate||0;
+        const color=pct>=70?"var(--up)":(pct>=50?"var(--amber)":"var(--down)");
+        return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--line)">
+          <div style="width:84px;color:var(--faint);font-size:11px">${esc(h.trade_date)}</div>
+          <div style="flex:1;background:var(--soft);height:8px;border-radius:4px;overflow:hidden"><div style="width:${pct}%;background:${color};height:100%"></div></div>
+          <div style="width:48px;text-align:right;font-weight:700;color:${color}">${pct.toFixed(1)}%</div>
+        </div>`;
+      }).join("")+'<div style="margin-top:10px;font-size:11px;color:var(--faint)">顯示最近 10 個交易日(完整 30 日由 /api/review 回傳)</div></div>';
+    }
+  });
+  // 2) 明天觀察清單(after_hours 寫的;盤中=空,盤後才有)
+  const now=new Date();
+  const tomorrow=new Date(now.getTime()+86400000);
+  const fmt=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const tomorrowStr=fmt(tomorrow);
+  fetch(API+"/api/watchlist/"+tomorrowStr).then(r=>r.json()).then(d=>{
+    WL_RAW=d;
+    document.getElementById("wl-title").textContent="明日("+tomorrowStr+")觀察清單";
+    document.getElementById("wl-sub").textContent=d.n?`${d.n} 檔(有效 ${d.n_active} · 降級 ${d.n_demoted} · 命中 ${d.n_hit})`:"尚無資料";
+    renderWl();
+    document.getElementById("eod-sub").textContent=d.n?"after_hours 15:05 已產出":"after_hours 還沒跑(盤中資料,等收盤)";
+  });
+  // 3) 今日複查明細
+  const todayStr=fmt(now);
+  fetch(API+"/api/review/"+todayStr).then(r=>r.json()).then(d=>{
+    // 併入摘要(若 /api/review 沒資料,這裡補)
+    if(d.review){
+      const sumBox=document.getElementById("eod-summary");
+      // 已經 render 過了,只補 missed
+    }
+  }).catch(()=>{});
+}
+
+function load(){
+  fetch(API+"/api/state").then(r=>r.json()).then(d=>{
+    POOL=d.stocks||[];
+    document.getElementById("upd").textContent="更新 "+(d.market?.time||"")+" · 觀察池 "+POOL.length+" 檔";
+    render();
+    Promise.all(POOL.map(s=>fetch(API+"/api/realtime_signal/"+s.code).then(r=>r.json()).catch(()=>({}))))
+      .then(arr=>{
+        const rt=document.getElementById("realtime");
+        const valid=arr.filter(r=>r && !r.error);
+        if(!valid.length){
+          rt.innerHTML='<div class="empty" style="padding:24px 14px;line-height:1.8">無即時評估資料<br><small style="color:var(--faint)">scoring.evaluate_realtime 還沒收到 tick(盤前/盤後/週末)</small></div>';
+          return;
+        }
+        const pass0=valid.filter(r=>{
+          let n=0;
+          if(r.c1_market)n++; if(r.c2_trend)n++; if(r.c2_30m)n++; if(r.c3_volume)n++; if(r.c4_bs)n++;
+          return n>=4;
+        }).length;
+        rt.innerHTML=arr.map((r,i)=>{
+          if(!r||r.error) return '';
+          const s=POOL[i]||{};
+          const pass=[];
+          if(r.c1_market) pass.push("大盤>開");
+          if(r.c2_trend) pass.push("現>MA20");
+          if(r.c2_30m) pass.push(">前30分高");
+          if(r.c3_volume) pass.push("預估量>昨");
+          if(r.c4_bs) pass.push("BS>1.2");
+          if(r.loose_30m) pass.push("寬鬆30分");
+          const over=r.override||"—";
+          const n=pass.length;
+          const why=n===0?'<span style="color:var(--faint)">4 條件全未命中(這是常態,不是 bug)</span>':(n<2?`命中 ${n}/4 · ${pass.join("、")}(容忍不足)`:`命中 ${n}/4 · ${pass.join("、")}`);
+          return `<div class="row">
+            <div class="nm">${esc(s.name||s.code)}<small>${esc(s.code)}</small></div>
+            <div class="pr">${(s.price||0).toFixed(2)}</div>
+            <div class="pct">cum ${r.cum_ratio!=null?r.cum_ratio.toFixed(2):"—"}</div>
+            <div class="act ${n>=4?"buy":n>=2?"watch":"hold"}">${n}/4</div>
+            <div class="why">${why} · 寬限:${over}</div>
+          </div>`;
+        }).join("")+
+        (pass0===0?`<div style="margin-top:10px;padding:10px 12px;background:var(--violet-soft);border-radius:10px;font-size:11.5px;color:var(--violet);line-height:1.7">
+          <b>為什麼都沒 4/4 命中?</b><br>
+          盤中四條件(大盤>開 / 現>MA20 / >前30分高 / BS>1.2)需同時成立才進場。<br>
+          目前 ${valid.length} 檔都未達標 → 這是盤中正常狀態,條件觸發瞬間才會轉 buy。
+          <br><br>
+          <b>→ 想看明天要觀察的清單?</b>點上方「盤後分析」分頁。
+        </div>`:'');
+      });
+  }).catch(e=>{
+    document.getElementById("upd").textContent="載入失敗:"+e;
+  });
+}
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>
