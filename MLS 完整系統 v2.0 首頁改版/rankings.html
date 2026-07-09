@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MLS 排行 — 族群卡</title>
+<style>
+  :root{
+    --bg:#faf8f3; --surface:#ffffff; --ink:#1a1d23; --ink2:#6b6256;
+    --line:#e8e2d6; --line2:#f0ebe0; --gold:#8a6d1a; --goldbg:#f3ecd8;
+    --up:#d0342c; --down:#1a8a5a; --in:#2563c7; --out:#e07b2e;
+    --engine:#e9edf5; --engine-t:#3a5074; --attack:#fdeede; --attack-t:#a35a12;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);max-width:560px;margin:0 auto;
+    font-family:-apple-system,"PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+    font-size:15px;padding-bottom:40px}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
+  .up{color:var(--up)} .down{color:var(--down)}
+  .top{position:sticky;top:0;z-index:20;background:rgba(250,248,243,.96);
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
+    padding:12px 16px;display:flex;align-items:center;gap:12px}
+  .top .lg{font-weight:800;color:var(--gold);font-size:16px}
+  .top .mkt{font-size:12px;color:var(--ink2)} .top .mkt b{font-size:14px}
+  .seg{display:flex;background:var(--line2);border-radius:10px;padding:3px;margin-left:auto}
+  .seg span{padding:6px 15px;border-radius:8px;font-size:13.5px;font-weight:700;color:var(--ink2);cursor:pointer}
+  .seg span.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .hint{padding:10px 16px;font-size:12px;color:var(--ink2);background:var(--goldbg)}
+  .grid{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+  .gcard{background:var(--surface);border:1.5px solid var(--line);border-radius:16px;overflow:hidden;transition:border-color .15s}
+  .gcard.top3{border-color:var(--gold)}
+  .gcard.locked{border-color:var(--up)}
+  .ghead{display:flex;align-items:center;gap:14px;padding:16px 18px;cursor:pointer}
+  .grank{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;
+    font-size:18px;font-weight:800;color:#fff;background:#9aa4b5;flex:0 0 auto}
+  .gcard.top3 .grank{background:linear-gradient(135deg,#e8b427,#c8901a)}
+  .ginfo{flex:1;min-width:0}
+  .gname{font-size:20px;font-weight:800;display:flex;align-items:center;gap:8px}
+  .gname .badge{font-size:10px;font-weight:800;padding:2px 7px;border-radius:5px}
+  .badge.lock{background:#fde9e7;color:var(--up)}
+  .gsub{font-size:12px;color:var(--ink2);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
+  .gsub .q{font-weight:700}
+  .gpf{text-align:right;flex:0 0 auto}
+  .gpf .p{font-size:24px;font-weight:800;line-height:1}
+  .gpf .l{font-size:10px;color:var(--ink2);margin-top:2px}
+  .gpf .arrow{font-size:12px;color:var(--ink2);margin-top:6px;transition:transform .2s;display:inline-block}
+  .gcard.open .gpf .arrow{transform:rotate(180deg)}
+  .stocks{border-top:1px solid var(--line2);background:#fdfcf9;display:none}
+  .gcard.open .stocks{display:block}
+  .srow{display:flex;align-items:center;padding:13px 18px;border-bottom:1px solid var(--line2)}
+  .srow:last-child{border-bottom:0}
+  .srow .act{width:5px;align-self:stretch;border-radius:3px;margin-right:12px;background:transparent;min-height:34px}
+  .srow.buy .act{background:var(--up)} .srow.sell .act{background:var(--down)}
+  .srow.watch .act{background:var(--gold)}
+  .sn{flex:1;min-width:0}
+  .sn .nm{font-size:16px;font-weight:700}
+  .sn .cd{font-size:11px;color:var(--ink2);margin-top:2px}
+  .sn .tag{font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:4px;margin-left:6px}
+  .tag.buy{background:#fde9e7;color:var(--up)} .tag.sell{background:#e2f0ea;color:var(--down)}
+  .tag.watch{background:var(--goldbg);color:var(--gold)}
+  .sp{text-align:right;flex:0 0 auto;min-width:76px}
+  .sp .v{font-size:17px;font-weight:800}
+  .sp .c{font-size:12px;font-weight:700;margin-top:1px}
+  .sx{text-align:right;flex:0 0 auto;min-width:56px;margin-left:10px}
+  .sx .k{font-size:9.5px;color:var(--ink2)} .sx .val{font-size:13px;font-weight:700}
+  .win{font-size:10px;font-weight:800;margin-left:8px}
+  .win.ok{color:var(--up)} .win.no{color:var(--down)}
+  .note{padding:40px 20px;text-align:center;color:var(--ink2);font-size:13.5px;line-height:1.7}
+</style>
+</head>
+<body>
+<div class="top">
+  <span class="lg">MLS 族群</span>
+  <span class="mkt" id="mkt">—</span>
+  <div class="seg"><span class="on" data-m="live">盤中</span><span data-m="eod">盤後</span></div>
+</div>
+<div class="hint" id="hint">點族群卡片展開底下個股</div>
+<div class="grid" id="grid"></div>
+<script>
+var MODE="live", OPEN={};
+var ENGINE={"2303":1,"5347":1};
+var QN={"in_up":"資金流入·上漲","in_down":"⚠流入但跌·邊拉邊賣","out_down":"資金流出·休息","out_up":"量縮上漲","鎖定":"🔒 鎖定攻擊"};
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function pct(v){if(v==null)return"—";return (v>0?"+":"")+v.toFixed(2)+"%";}
+function liveShape(d){
+  var byS={};
+  (d.stocks||[]).forEach(function(s){(byS[s.sector]=byS[s.sector]||[]).push({code:s.code,name:s.name,sector:s.sector,price:s.price,chg:s.change_rate,vr:s.volume_ratio,action:s.action,label:null});});
+  var secs=(d.sectors||[]).map(function(s){return {sector:s.name,pct:s.pct,locked:s.locked,quad:s.locked?"鎖定":"",stocks:(byS[s.name]||[]).sort(function(a,b){return (b.chg||0)-(a.chg||0)})};});
+  return {market:d.market||{}, sectors:secs};
+}
+function eodShape(d){
+  if(!d.date) return {empty:true, note:d.note};
+  var all={};
+  ["hot","gainers","losers","volume","newhigh"].forEach(function(k){(d[k]||[]).forEach(function(s){all[s.code]=s;});});
+  var byS={};
+  Object.keys(all).forEach(function(c){var s=all[c];(byS[s.sector]=byS[s.sector]||[]).push({code:s.code,name:s.name,sector:s.sector,price:s.close,chg:s.chg,vr:s.vr,action:null,label:s.label});});
+  var secs=(d.sectors||[]).map(function(s){return {sector:s.sector,pct:s.pct,locked:false,quad:s.quadrant||"",stocks:(byS[s.sector]||[]).sort(function(a,b){return (b.chg||0)-(a.chg||0)})};});
+  return {market:{date:d.date}, sectors:secs};
+}
+function render(shaped){
+  if(shaped.empty){document.getElementById("grid").innerHTML='<div class="note">'+esc(shaped.note||"尚無盤後資料")+'</div>';return;}
+  var m=shaped.market||{};
+  document.getElementById("mkt").innerHTML = MODE==="live"
+    ? (m.index!=null?('加權 <b class="'+((m.index_pct||0)>=0?"up":"down")+'">'+m.index+' '+pct(m.index_pct)+'</b> · '+(m.time||"")):"盤中")
+    : ('盤後 '+(m.date||""));
+  var g="";
+  (shaped.sectors||[]).forEach(function(s,i){
+    var cls=(i<3?" top3":"")+(s.locked?" locked":"")+(OPEN[s.sector]?" open":"");
+    var buys=(s.stocks||[]).filter(function(x){return x.action==="buy"}).length;
+    var sells=(s.stocks||[]).filter(function(x){return x.action==="sell"}).length;
+    var sig = MODE==="live" ? (((buys?('<span class="up">▲進場 '+buys+'</span>'):'')+(sells?(' <span class="down">▼出場 '+sells+'</span>'):''))||'觀察中') : ((s.stocks.length)+' 檔');
+    g+='<div class="gcard'+cls+'" data-s="'+esc(s.sector)+'">'
+      +'<div class="ghead" onclick="toggle(\''+esc(s.sector)+'\')">'
+      +'<div class="grank">'+(i+1)+'</div>'
+      +'<div class="ginfo"><div class="gname">'+esc(s.sector)+(s.locked?'<span class="badge lock">鎖定</span>':'')+'</div>'
+      +'<div class="gsub"><span class="q">'+esc(QN[s.quad]||"—")+'</span><span>'+sig+'</span></div></div>'
+      +'<div class="gpf"><div class="p '+((s.pct||0)>=0?"up":"down")+' mono">'+pct(s.pct)+'</div>'
+      +'<div class="l">族群漲幅</div><div class="arrow">▼</div></div></div>'
+      +'<div class="stocks">'+ (s.stocks.length?s.stocks.map(stockRow).join(""):'<div class="note" style="padding:20px">此族群暫無個股資料</div>') +'</div></div>';
+  });
+  document.getElementById("grid").innerHTML = g || '<div class="note">尚無族群資料</div>';
+}
+function stockRow(s){
+  var act=s.action||"", actLabel={buy:"進場",sell:"出場",watch:"觀察"}[act];
+  var lb=(s.label!=null)?('<span class="win '+(s.label?"ok":"no")+'">隔日'+(s.label?"✓":"✗")+'</span>'):"";
+  return '<div class="srow '+act+'"><div class="act"></div>'
+    +'<div class="sn"><div class="nm">'+esc(s.name)+(actLabel?'<span class="tag '+act+'">'+actLabel+'</span>':'')+lb+'</div>'
+    +'<div class="cd">'+esc(s.code)+(ENGINE[s.code]?' · 引擎(不進場)':'')+'</div></div>'
+    +'<div class="sp"><div class="v mono '+((s.chg||0)>=0?"up":"down")+'">'+(s.price!=null?s.price:"—")+'</div>'
+    +'<div class="c '+((s.chg||0)>=0?"up":"down")+' mono">'+pct(s.chg)+'</div></div>'
+    +'<div class="sx"><div class="k">量比</div><div class="val mono">'+(s.vr!=null?s.vr.toFixed(2):"—")+'</div></div></div>';
+}
+function toggle(sec){OPEN[sec]=!OPEN[sec];
+  var card=document.querySelector('.gcard[data-s="'+sec.replace(/"/g,'')+'"]');
+  if(card) card.classList.toggle("open");}
+function refresh(){
+  var url = MODE==="live" ? "/api/state" : "/api/eod_rank";
+  fetch(url).then(function(r){return r.json()}).then(function(d){
+    if(MODE==="live"){if(d.status==="starting"||!d.stocks){document.getElementById("grid").innerHTML='<div class="note">引擎啟動中…</div>';return;}render(liveShape(d));}
+    else render(eodShape(d));
+  }).catch(function(){document.getElementById("grid").innerHTML='<div class="note">連線失敗</div>';});
+}
+document.querySelectorAll(".seg span").forEach(function(b){
+  b.onclick=function(){document.querySelectorAll(".seg span").forEach(function(x){x.classList.remove("on")});
+    this.classList.add("on"); MODE=this.getAttribute("data-m");
+    document.getElementById("hint").textContent = MODE==="live"?"點族群卡片展開底下個股 · 進出場訊號顯示在族群列":"盤後榜:點族群看當日個股與隔日結果";
+    refresh();};
+});
+setInterval(function(){if(MODE==="live")refresh();},30000);
+refresh();
+</script>
+</body>
+</html>
