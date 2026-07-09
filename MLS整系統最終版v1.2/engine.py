@@ -346,8 +346,12 @@ def build_state(watchlist_codes=None):
     snaps = broker.batch_snapshots(codes)
 
     # 硬過濾:流動性
+    # 收盤後 Shioaji snapshots 不累積當日 volume,放寬門檻避免全過濾掉
+    from datetime import datetime as _dt
+    _now_hm = _dt.now().strftime("%H:%M")
+    _min_vol = C.MIN_VOLUME_LOTS * (100 if ("13:30" < _now_hm or _now_hm < "09:00") else 1000)
     snaps = [s for s in snaps
-             if (s["total_volume"] or 0) >= C.MIN_VOLUME_LOTS * 1000]
+             if (s.get("total_volume") or 0) >= _min_vol]
 
     # ① 資金流入板塊
     sectors = compute_sector_flow(snaps)
