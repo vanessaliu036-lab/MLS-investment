@@ -33,7 +33,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
 from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.encoders import jsonable_encoder
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -238,6 +240,19 @@ def scheduler_loop():
 
 # ══════════════════════════════════════════════════════
 app = FastAPI(title="MLS Standard")
+
+
+@asynccontextmanager
+async def lifespan(app):
+    """uvicorn 啟動時啟動 scheduler_loop,停機時自動結束。"""
+    t = threading.Thread(target=scheduler_loop, daemon=True)
+    t.start()
+    print("[server] scheduler_loop started via lifespan", flush=True)
+    yield
+    print("[server] shutting down scheduler_loop", flush=True)
+
+
+app.router.lifespan_context = lifespan
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_methods=["*"], allow_headers=["*"])
 
@@ -599,5 +614,6 @@ def _safe(obj, status_code=200):
 
 if __name__ == "__main__":
     db.init()
-    threading.Thread(target=scheduler_loop, daemon=True).start()
+    # scheduler_loop 已透過 lifespan 啟動(uvicorn/gunicorn 都會跑 lifespan)
+    # 本地直接 python server.py 時也由 lifespan 啟動,避免重複
     uvicorn.run(app, host="0.0.0.0", port=8000)
