@@ -3,18 +3,26 @@
   "version": 2,
   "builds": [
     {
-      "src": "index.html",
+      "src": "*.html",
       "use": "@vercel/static"
     },
     {
-      "src": "api/**/*.js",
+      "src": "api/proxy.js",
       "use": "@vercel/node"
     }
   ],
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
+      "source": "/api/:path*",
+      "destination": "/api/proxy"
+    },
+    {
+      "source": "/signals",
+      "destination": "/signals.html"
+    },
+    {
+      "source": "/rankings",
+      "destination": "/rankings.html"
     }
   ]
 }
