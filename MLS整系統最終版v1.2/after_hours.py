@@ -42,48 +42,11 @@ TW_TZ = timezone(timedelta(hours=8))
 ABAB_MIN_ABS = 0.5      # 交錯判定的最小單日幅度(%)
 
 
-def _flow_dir(sector_name, today_share, sec=None, by_sector=None, tdate=None):
-    """
-    三維交叉驗證(Nexora Hard Rule):禁止單維判定。
-    維度 1 — 資金流:金額佔比上升 (today_share >= prev_amount_share)
-    維度 2 — 法人/籌碼:族內法人近月淨買 或 大戶連買 ≥3 日
-    維度 3 — 價量結構:pct > 0 (今日族內中位漲幅為正)
-    ≥2 項正 → 流入(1);<2 項正 → 流出(-1)。
-    sec / by_sector / tdate 由 rotation_analysis 傳入;tdate 用於時序對齊
-    (chips.get_chips_at 避免「用未來法人判過去流向」,違反 Level 8 證據三角)。
-    """
+def _flow_dir(sector_name, today_share):
     prev = db.prev_amount_share(sector_name)
-
-    # 退化路徑:沒有 sec/by_sector context → 維持舊單維邏輯(相容舊測試/呼叫端)
-    if sec is None or by_sector is None:
-        if prev is None:
-            return 1 if today_share > 0 else -1
-        return 1 if today_share >= prev else -1
-
-    # 維度 1:資金流(金額佔比變化)
-    flow_amount = (prev is not None and today_share >= prev)
-
-    # 維度 2:法人/籌碼(族內個股法人近月淨買 或 大戶連買 ≥3 日)
-    # 時序對齊:用 tdate(若有)拉該日快照,避免拉到未來資料
-    members = by_sector.get(sector_name, [])
-    inst_positive = False
-    for m in members:
-        try:
-            if tdate:
-                ch = chips.get_chips_at(m["code"], tdate)
-            else:
-                ch = chips.get_chips(m["code"])
-            if (ch.get("inst_net_20d_lots") or 0) > 0 or (ch.get("inst_streak") or 0) >= 3:
-                inst_positive = True
-                break
-        except Exception:
-            continue    # 該股籌碼拉失敗,跳過(不影響整族判定)
-
-    # 維度 3:價量結構(族內中位漲幅為正)
-    price_up = sec.get("pct", 0) > 0
-
-    positives = sum([bool(flow_amount), bool(inst_positive), bool(price_up)])
-    return 1 if positives >= 2 else -1
+    if prev is None:
+        return 1 if today_share > 0 else -1     # 首日以佔比正負暫代
+    return 1 if today_share >= prev else -1
 
 
 def _quadrant(flow_dir, pct):
@@ -131,7 +94,7 @@ def rotation_analysis(sectors, snaps):
         if sec["type"] != "attack":
             continue
         name = sec["name"]
-        fdir = _flow_dir(name, sec["amount_share"], sec=sec, by_sector=by_sector, tdate=tdate)
+        fdir = _flow_dir(name, sec["amount_share"])
         quad = _quadrant(fdir, sec["pct"])
         hist = db.sector_history(name, days=5)
         abab = _is_abab(hist, sec["pct"])
@@ -378,7 +341,6 @@ def run(last_state):
         f"精度 {precision_report['rolling_precision'] if precision_report['rolling_precision'] is not None else '—'}"
         f"(n={precision_report['samples']}) 門檻→{precision_report['entry_score_min']:.0f}\n"
         f"明日觀察清單 *{len(wl)} 檔* 已產出({tomorrow})")
-
     # ── 插件掛鉤:NEXORA 盤後報告(失敗不影響主流程) ──
     nexora_out = None
     try:

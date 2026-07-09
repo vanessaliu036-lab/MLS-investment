@@ -78,12 +78,12 @@ def batch_snapshots(codes):
             print(f"[broker] snapshots 批次失敗: {e}")
             time.sleep(1)
             continue
+        # DEBUG: 標記從 server vs 手動跑
+        import os as _os
+        _who = "[srv]" if "server.py" in _os.path.abspath("") else "[manual]"
+        if not snaps:
+            print(f"[broker-DBG] {_who} batch[{i}:{i+400}] 回 0 個 snapshot, contracts 數={len(contracts[i:i+400])}")
         for s in snaps:
-            # 2026-07-08 修:Shioaji snapshot 偶爾 total_amount=0(API 不穩),
-            # fallback 用 price × total_volume 估算(張→元需 ×1000)
-            amt = s.total_amount or 0
-            if amt == 0 and s.close and s.total_volume:
-                amt = round(s.close * s.total_volume)   # close=元,volume=股 → 金額=元
             out.append({
                 "code": s.code,
                 "price": s.close,
@@ -91,9 +91,12 @@ def batch_snapshots(codes):
                 "change_rate": s.change_rate,
                 "volume_ratio": getattr(s, "volume_ratio", 0) or 0,
                 "total_volume": (s.total_volume or 0),      # 股
-                "total_amount": amt,                        # 元
+                "total_amount": (s.total_amount or 0),      # 元
                 "avg_price": getattr(s, "average_price", None),
                 "tick_type": getattr(s, "tick_type", None),
+                # 內外盤累積量(BS Ratio 用;Shioaji 快照提供,單位:股)
+                "buy_volume": getattr(s, "buy_volume", 0) or 0,    # 外盤(主動買)
+                "sell_volume": getattr(s, "sell_volume", 0) or 0,  # 內盤(主動賣)
             })
         time.sleep(0.3)
     return out

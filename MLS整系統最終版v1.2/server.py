@@ -113,14 +113,12 @@ def handle_new_signals(state):
             db.mark_watch_hit(db.today(), l["code"])
 
     for s in state.get("stocks", []):
-        # 2026-07-08 改:watch 拆成 watch_buy(進場觀察)/ watch_exit(退場觀察)
-        if s["action"] not in ("buy", "watch_buy", "watch_exit", "watch", "sell"):
+        if s["action"] not in ("buy", "watch", "sell"):
             continue
         first_today = not db.signaled_today(s["code"])
-        # 進場觀察(buy/watch_buy)首次推;賣出與退場觀察由冷卻控制(重複提醒)
         should_push = (
-            (s["action"] in ("buy", "watch_buy", "watch") and first_today)
-            or s["action"] in ("sell", "watch_exit")
+            (s["action"] in ("buy", "watch") and first_today)
+            or s["action"] == "sell"
         )
         # 斷路器:進場訊號停發(記錄照常);成功一筆則重置連敗
         if s["action"] == "buy" and _breaker_on:
@@ -167,6 +165,8 @@ def scheduler_loop():
                 if _did_reverify != today and hm >= "08:55":
                     import scoring
                     scoring.reset_aflow()        # 每日開盤重置主動淨流
+                    scoring.reset_bs()           # 每日開盤重置BS濾網近端估算
+                    scoring.reset_all_trackers()  # 每日開盤重置 TickTracker(第四條件)
                     global _sig_watch, _consec_fails, _breaker_on
                     _sig_watch, _consec_fails, _breaker_on = {}, 0, False
                     engine.reload_entry_min()    # 載入盤後調整過的門檻
@@ -221,21 +221,11 @@ def scheduler_loop():
                 continue
 
             # ── 非交易時段:輕量更新畫面 ───────────────
-            # 修盤後覆蓋 bug:盤中有資料時保留 _last_full_state,不讓空 STATE 蓋掉
-            if _last_full_state is not None:
-                # 用盤中最後一輪凍結的資料當 STATE,只在 is_market_hours 標記更新
-                with LOCK:
-                    STATE = {k: v for k, v in _last_full_state.items()
-                             if not k.startswith("_")}
-                    STATE["is_market_hours"] = False
-                    STATE["updated_at"] = datetime.now(TW_TZ).isoformat()
-            else:
-                # 冷啟動:還沒跑過盤中才 build_state
-                state = engine.build_state(watchlist_codes=_watchlist_codes)
-                _last_full_state = state
-                with LOCK:
-                    STATE = {k: v for k, v in state.items()
-                             if not k.startswith("_")}
+            state = engine.build_state(watchlist_codes=_watchlist_codes)
+            _last_full_state = _last_full_state or state
+            with LOCK:
+                STATE = {k: v for k, v in state.items()
+                         if not k.startswith("_")}
             time.sleep(300)
 
         except Exception as e:
@@ -246,17 +236,7 @@ def scheduler_loop():
 
 
 # ══════════════════════════════════════════════════════
-from contextlib import asynccontextmanager
-
-@asynccontextmanager
-async def lifespan(app):
-    """2026-07-08: 因 uvicorn server:app module mode 不走 __main__,
-    scheduler_loop 不會自動啟動。在 lifespan 啟動時補建 scheduler + 完成 db.init()。"""
-    db.init()
-    threading.Thread(target=scheduler_loop, daemon=True).start()
-    yield
-
-app = FastAPI(title="MLS Standard", lifespan=lifespan)
+app = FastAPI(title="MLS Standard")
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_methods=["*"], allow_headers=["*"])
 
@@ -265,6 +245,63 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"],
 def api_state():
     with LOCK:
         return JSONResponse(STATE)
+
+
+@app.get("/api/realtime_signal/{code}")
+def api_realtime_signal(code: str):
+    """
+    文件二盤中觸發(第四條件 + 三大條件)。
+    對指定股票代碼回傳 evaluate_realtime 結果。
+    前端可每秒或每分鐘呼叫一次。
+    """
+    try:
+        import scoring
+        tracker = scoring.get_tracker(code)
+        # 從 /api/state 拿現價 + 大盤資訊(避免重複打 Shioaji)
+        with LOCK:
+            st = STATE
+        stock = next((x for x in st.get("stocks", []) if x.get("code") == code), None)
+        mkt = st.get("market", {})
+        result = scoring.evaluate_realtime(
+            code=code,
+            current_price=(stock or {}).get("price"),
+            market_open_price=mkt.get("open"),
+            market_current_price=mkt.get("index"),
+            day_30m_high=(stock or {}).get("high"),
+            est_volume=(stock or {}).get("total_volume"),
+            prev_day_volume=(stock or {}).get("prev_day_volume"),
+            tracker=tracker,
+            loose_first_30min=True,
+        )
+        result["in_pool"] = stock is not None
+        # None-safe:inf 不能 JSON
+        if result.get("cum_ratio") == float('inf'): result["cum_ratio"] = None
+        if result.get("recent_ratio") == float('inf'): result["recent_ratio"] = None
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"error": str(e), "code": code}, status_code=500)
+
+
+@app.post("/api/tick/{code}")
+def api_tick(code: str, payload: dict):
+    """
+    餵入一筆 tick 進 TickTracker。
+    期望 payload:{price: float, volume: int, ts?: float, side?: 1|-1|0}
+    """
+    try:
+        import scoring
+        tracker = scoring.get_tracker(code)
+        tracker.add_tick(
+            price=float(payload.get("price", 0)),
+            volume=int(payload.get("volume", 0)),
+            ts=payload.get("ts"),
+            side=payload.get("side"),
+        )
+        return JSONResponse({"ok": True,
+                             "cum_ratio": (None if tracker.cum_ratio == float('inf') else tracker.cum_ratio),
+                             "recent_ratio": (None if tracker.recent_5min_ratio == float('inf') else tracker.recent_5min_ratio)})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.get("/api/review")
@@ -276,25 +313,6 @@ def api_review():
         "watchlist_today": db.load_watchlist(db.today()),
     })
 
-
-@app.get("/")
-def home():
-    # 2026-07-08:首頁 = index.html,已內含板塊族群卡片 + 群組分類熱力表卡片設計
-    html = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
-    return HTMLResponse(html)
-
-
-@app.get("/sectors")
-def sectors_page():
-    """獨立 sectors.html 保留(測試版,可移除)"""
-    html = Path(__file__).with_name("sectors.html").read_text(encoding="utf-8")
-    return HTMLResponse(html)
-
-
-# ══════════════════════════════════════════════════════
-# 插件掛鉤端點(v1.3 NEXORA / v1.4 EOD / v1.5 排行)
-# 純插件:讀主系統既有資料,失敗降級為提示,不影響主流程
-# ══════════════════════════════════════════════════════
 
 @app.get("/api/eod_rank")
 def api_eod_rank():
@@ -331,43 +349,24 @@ def api_nexora():
         return JSONResponse({"report": None, "error": str(e)})
 
 
-@app.get("/sectors")
-def sectors_page():
-    """板塊→個股卡片式 UI(2026-07-08 新增,外部頁面,不動主邏輯)。"""
-    try:
-        html = Path(__file__).with_name("sectors.html").read_text(encoding="utf-8")
-        return HTMLResponse(html)
-    except Exception as e:
-        return HTMLResponse(f"sectors.html 缺失:{e}", status_code=500)
+@app.get("/")
+def home():
+    html = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
+    return HTMLResponse(html)
 
 
-@app.get("/api/nexora-v2")
-def api_nexora_v2():
-    """NEXORA V2.0 獨立頁面用 API(2026-07-08 新增):
-    直接呼叫 nexora.run_report() 跑完整 12 節報告,
-    不動主邏輯,僅新增外部 endpoint + 頁面。"""
-    try:
-        watchlist_codes = _watchlist_codes
-        full_state = engine.build_state(watchlist_codes=watchlist_codes)
-        import nexora
-        # 傳空 rotation_reports(避免在 API 呼叫時觸發 after_hours 推播)
-        report = nexora.run_report(full_state, [])
-        return JSONResponse({"date": full_state.get("market", {}).get("time", ""),
-                             "report": report})
-    except Exception as e:
-        traceback.print_exc()
-        return JSONResponse({"report": None, "error": str(e)}, status_code=500)
+@app.get("/preview_v23")
+def preview_v23():
+    """v2.3 UI preview with mocked state (只用於截圖驗收,看 UI 是否你喜歡)。"""
+    html = Path(__file__).with_name("preview_v23.html").read_text(encoding="utf-8")
+    return HTMLResponse(html)
 
 
-@app.get("/nexora")
-def nexora_page():
-    """NEXORA V2.0 獨立頁面(2026-07-08 新增)。"""
-    try:
-        html = Path(__file__).with_name("nexora-v2.html").read_text(encoding="utf-8")
-        return HTMLResponse(html)
-    except Exception as e:
-        return HTMLResponse(f"nexora-v2.html 缺失:{e}", status_code=500)
-        return JSONResponse({"report": None, "error": str(e)})
+@app.get("/v23_mock_design")
+def v23_mock_design():
+    """v2.3 靜態設計稿(個股卡片第二層 + 頂部 banner 純展示)。"""
+    html = Path(__file__).with_name("v23_mock_design.html").read_text(encoding="utf-8")
+    return HTMLResponse(html)
 
 
 if __name__ == "__main__":

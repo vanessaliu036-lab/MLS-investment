@@ -250,20 +250,10 @@ def sector_history(sector, days=6):
     return list(reversed(rows))
 
 
-def prev_amount_share(sector, today=None):
-    """取該族群前一個交易日的 amount_share(排除今日)。"""
+def prev_amount_share(sector):
     with _lock, _conn() as c:
-        if today is None:
-            today = c.execute("SELECT trade_date FROM sector_daily "
-                              "ORDER BY trade_date DESC LIMIT 1").fetchone()
-            today = today["trade_date"] if today else None
-        if today:
-            r = c.execute("""SELECT amount_share FROM sector_daily
-              WHERE sector=? AND trade_date<?
-              ORDER BY trade_date DESC LIMIT 1""", (sector, today)).fetchone()
-        else:
-            r = c.execute("""SELECT amount_share FROM sector_daily
-              WHERE sector=? ORDER BY trade_date DESC LIMIT 1""", (sector,)).fetchone()
+        r = c.execute("""SELECT amount_share FROM sector_daily
+          WHERE sector=? ORDER BY trade_date DESC LIMIT 1""", (sector,)).fetchone()
         return r["amount_share"] if r else None
 
 

@@ -61,92 +61,6 @@ def _today_key():
     return datetime.now().strftime("%Y-%m-%d")
 
 
-def _compute_chips_for_date(code, target_date):
-    """
-    計算指定交易日(target_date, YYYY-MM-DD)的籌碼資料。
-    與 get_chips 同邏輯,但不走當日快取、不動 _cache。
-    用於盤後/歷史時序回看(避免用未來資料判過去,違反 NEXORA Hard Rule)。
-    """
-    result = {
-        "inst_net_20d_lots": None, "inst_streak": None,
-        "big_holder_pct": None, "big_holder_trend": None,
-    }
-
-    # ── 法人買賣超(以 target_date 為終點往前抓,取最近 20 交易日) ──
-    try:
-        tdt = datetime.strptime(target_date, "%Y-%m-%d")
-        start = (tdt - timedelta(days=70)).strftime("%Y-%m-%d")
-        rows = _finmind("TaiwanStockInstitutionalInvestorsBuySell", code, start)
-        by_date = {}
-        for r in rows:
-            if r.get("name") in ("Foreign_Investor", "Investment_Trust"):
-                d = r["date"]
-                if d > target_date:    # 排除 target_date 之後的資料(未來)
-                    continue
-                by_date.setdefault(d, {"net": 0, "foreign_net": 0})
-                net = (r.get("buy", 0) - r.get("sell", 0)) / 1000
-                by_date[d]["net"] += net
-                if r["name"] == "Foreign_Investor":
-                    by_date[d]["foreign_net"] += net
-        dates = sorted(by_date.keys())[-INST_DAYS:]
-        if dates:
-            result["inst_net_20d_lots"] = round(sum(by_date[d]["net"] for d in dates))
-            streak = 0
-            for d in reversed(dates):
-                f = by_date[d]["foreign_net"]
-                if streak == 0:
-                    streak = 1 if f > 0 else (-1 if f < 0 else 0)
-                elif (streak > 0 and f > 0):
-                    streak += 1
-                elif (streak < 0 and f < 0):
-                    streak -= 1
-                else:
-                    break
-            result["inst_streak"] = streak
-    except Exception as e:
-        print(f"[chips@date] 法人 {code} {target_date} 失敗: {e}")
-
-    # ── 大戶比例(取 target_date 當週或前一週) ─────────────
-    try:
-        tdt = datetime.strptime(target_date, "%Y-%m-%d")
-        start = (tdt - timedelta(days=45)).strftime("%Y-%m-%d")
-        rows = _finmind("TaiwanStockHoldingSharesPer", code, start)
-        weeks = {}
-        for r in rows:
-            lvl = str(r.get("HoldingSharesLevel", ""))
-            first = lvl.split("-")[0].replace(",", "")
-            try:
-                min_shares = int(first)
-            except ValueError:
-                continue
-            if min_shares >= BIG_HOLDER_LEVEL * 1000:
-                if r["date"] > target_date:    # 排除未來
-                    continue
-                weeks.setdefault(r["date"], 0)
-                weeks[r["date"]] += float(r.get("percent", 0))
-        wd = sorted(weeks.keys())
-        if wd:
-            result["big_holder_pct"] = round(weeks[wd[-1]], 2)
-            if len(wd) >= 2:
-                result["big_holder_trend"] = round(weeks[wd[-1]] - weeks[wd[0]], 2)
-    except Exception as e:
-        print(f"[chips@date] 大戶 {code} {target_date} 失敗: {e}")
-
-    return result
-
-
-def get_chips_at(code, date):
-    """
-    取得指定交易日的籌碼快照(時序對齊)。
-    用於 after_hours / EOD 等「回看過去某日」的情境,
-    避免 chips.get_chips() 拉到「現在」當下資料造成的未來洩漏。
-
-    注意:此函式會呼叫 FinMind API(每日 300/hr 匿名額度);
-          若族內個股 > 50 檔同一天回看,可能觸發額度上限。
-    """
-    return _compute_chips_for_date(code, date)
-
-
 def get_chips(code):
     """
     回傳該股籌碼摘要 dict:
@@ -154,9 +68,8 @@ def get_chips(code):
       inst_streak         外資連續買超天數(負值=連賣)
       big_holder_pct      千張大戶持股比例(%)
       big_holder_trend    大戶比例近4週變化(百分點)
-      查無資料時對應值為 None。結果快取至當日。
+    查無資料時對應值為 None。結果快取至當日。
     """
-    global _cache
     _load_disk()
     today = _today_key()
     if _cache.get("date") == today and code in _cache.get("stocks", {}):
