@@ -592,6 +592,11 @@ def api_stock_detail(code: str):
         return _safe({"error": str(e)}, status_code=500)
 
 
+def _safe(obj, status_code=200):
+    """JSONResponse 包裝:用 jsonable_encoder 把 enum/datetime 轉成 JSON-safe 形式"""
+    return JSONResponse(jsonable_encoder(obj), status_code=status_code)
+
+
 if __name__ == "__main__":
     db.init()
     threading.Thread(target=scheduler_loop, daemon=True).start()
