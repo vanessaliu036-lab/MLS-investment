@@ -34,6 +34,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -256,7 +257,7 @@ def api_state():
             if not isinstance(s.get("doc_strategy"), dict):
                 s["doc_strategy"] = {"pass": False, "score": 0}
             if s.get("bs") is None: s["bs"] = 50
-        return JSONResponse(snap, json_dumps_params={"default": str})
+        return _safe(snap)
 
 
 @app.get("/health")
@@ -266,7 +267,7 @@ def health():
         n_sectors = len(STATE.get("sectors") or [])
         n_stocks = len(STATE.get("stocks") or [])
     ok = (STATE.get("status") != "starting") or (n_stocks > 0)
-    return JSONResponse({"ok": ok, "status": STATE.get("status"), "sectors": n_sectors, "stocks": n_stocks}, status_code=200 if ok else 503)
+    return _safe({"ok": ok, "status": STATE.get("status"), "sectors": n_sectors, "stocks": n_stocks}, status_code=200 if ok else 503)
 
 
 @app.get("/api/realtime_signal/{code}")
@@ -299,9 +300,9 @@ def api_realtime_signal(code: str):
         # None-safe:inf 不能 JSON
         if result.get("cum_ratio") == float('inf'): result["cum_ratio"] = None
         if result.get("recent_ratio") == float('inf'): result["recent_ratio"] = None
-        return JSONResponse(result, json_dumps_params={"default": str})
+        return _safe(result)
     except Exception as e:
-        return JSONResponse({"error": str(e), "code": code}, status_code=500)
+        return _safe({"error": str(e), "code": code}, status_code=500)
 
 
 @app.post("/api/tick/{code}")
@@ -319,18 +320,18 @@ def api_tick(code: str, payload: dict):
             ts=payload.get("ts"),
             side=payload.get("side"),
         )
-        return JSONResponse({"ok": True,
+        return _safe({"ok": True,
                              "cum_ratio": (None if tracker.cum_ratio == float('inf') else tracker.cum_ratio),
-                             "recent_ratio": (None if tracker.recent_5min_ratio == float('inf') else tracker.recent_5min_ratio)}, json_dumps_params={"default": str})
+                             "recent_ratio": (None if tracker.recent_5min_ratio == float('inf') else tracker.recent_5min_ratio)})
     except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _safe({"error": str(e)}, status_code=500)
 
 
 @app.get("/api/review")
 def api_review():
     """近30日命中率 + 今日統計(前端學習區/複盤頁用)"""
-    return JSONResponse({
-        "recent_hit_rates": db.recent_hit_rates(30, json_dumps_params={"default": str}),
+    return _safe({
+        "recent_hit_rates": db.recent_hit_rates(30),
         "today": db.today_stats(),
         "watchlist_today": db.load_watchlist(db.today()),
     })
@@ -341,9 +342,9 @@ def api_eod_rank():
     """排行插件:盤後榜單(資料源 = EOD 管線 training_samples/sector_daily)。"""
     try:
         import rankings_api
-        return JSONResponse(rankings_api.eod_rankings(), json_dumps_params={"default": str})
+        return _safe(rankings_api.eod_rankings())
     except Exception as e:
-        return JSONResponse({"date": None, "note": f"插件錯誤:{e}"}, json_dumps_params={"default": str})
+        return _safe({"date": None, "note": f"插件錯誤:{e}"})
 
 
 @app.get("/rankings")
@@ -364,11 +365,11 @@ def api_nexora():
         import glob
         files = sorted(glob.glob(str(_P(__file__).parent / "reports" / "NEXORA_*.md")))
         if not files:
-            return JSONResponse({"report": None, "note": "尚無報告,盤後 15:05 產出"}, json_dumps_params={"default": str})
-        return JSONResponse({"report": _P(files[-1]).read_text(encoding="utf-8"),
-                             "file": files[-1]}, json_dumps_params={"default": str})
+            return _safe({"report": None, "note": "尚無報告,盤後 15:05 產出"})
+        return _safe({"report": _P(files[-1]).read_text(encoding="utf-8"),
+                             "file": files[-1]})
     except Exception as e:
-        return JSONResponse({"report": None, "error": str(e)})
+        return _safe({"report": None, "error": str(e)})
 
 
 @app.get("/")
@@ -435,10 +436,10 @@ def api_strategy_compare():
                 "action": s.get("action"),
             })
         rows.sort(key=lambda x: (x["doc_pass"], x["ai_score"]), reverse=True)
-        return JSONResponse({"as_of": full_state.get("market", {}).get("time", ""), "n": len(rows), "rows": rows})
+        return _safe({"as_of": full_state.get("market", {}).get("time", ""), "n": len(rows), "rows": rows})
     except Exception as e:
         traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _safe({"error": str(e)}, status_code=500)
 
 
 # ══════════════════════════════════════════════════════
@@ -492,10 +493,10 @@ def api_money_health_summary():
                 "rep_score": rep_h.get("health_score"),
             })
         rows.sort(key=lambda x: (x.get("health_score_avg") or 0), reverse=True)
-        return JSONResponse({"as_of": full_state.get("market", {}).get("time", ""), "sectors": rows})
+        return _safe({"as_of": full_state.get("market", {}).get("time", ""), "sectors": rows})
     except Exception as e:
         traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _safe({"error": str(e)}, status_code=500)
 
 
 # ══════════════════════════════════════════════════════
@@ -574,21 +575,21 @@ def api_stock_detail(code: str):
         if bv + sv > 0:
             bs_pct = round(bv / (bv + sv) * 100, 1)
 
-        return JSONResponse({
+        return _safe({
             "code": code,
             "snapshot": snap,
             "kbars": kbars,
             "chips": chips_data,
             "buy_sell": {
-                "buy_volume_lots": round(bv / 1000, 1, json_dumps_params={"default": str}) if bv else 0,
+                "buy_volume_lots": round(bv / 1000, 1) if bv else 0,
                 "sell_volume_lots": round(sv / 1000, 1) if sv else 0,
                 "bs_pct": bs_pct,
             },
             "note": "五檔報價需 Shioaji tick stream,本機 API 不支援",
-        }, json_dumps_params={"default": str})
+        })
     except Exception as e:
         traceback.print_exc()
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return _safe({"error": str(e)}, status_code=500)
 
 
 if __name__ == "__main__":
