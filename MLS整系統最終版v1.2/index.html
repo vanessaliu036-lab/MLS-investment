@@ -94,6 +94,72 @@
   .badge.in{background:var(--in-soft);color:var(--in)}.badge.out{background:var(--out-soft);color:var(--out)}
   .badge.act{background:var(--violet-soft);color:var(--violet)}
   .drill-h .cnt{margin-left:auto;font-size:12px;color:var(--faint);font-weight:600}
+
+  /* v3:反攻候選名單 — 決策卡 */
+  .decision-tabs{display:flex;gap:6px;margin:0 4px 12px;flex-wrap:wrap}
+  .decision-tabs b{font-size:12px;font-weight:700;padding:6px 13px;border-radius:100px;background:var(--card);border:1px solid var(--line);color:var(--sub);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .decision-tabs b.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .dn{font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:100px;background:var(--line);color:var(--sub);min-width:18px;text-align:center}
+  .decision-tabs b.on .dn{background:rgba(255,255,255,.22);color:#fff}
+  .dn-ready{background:var(--up-soft);color:var(--up)}
+  .dn-watch{background:var(--violet-soft);color:var(--violet)}
+  .dn-hold{background:var(--out-soft);color:var(--out)}
+
+  .deccards{display:flex;flex-direction:column;gap:12px}
+  .dec{background:var(--card);border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow);border-left:4px solid var(--line);position:relative}
+  .dec[data-state="Ready"]{border-left-color:var(--up)}
+  .dec[data-state="Watch"]{border-left-color:var(--violet)}
+  .dec[data-state="Hold"]{border-left-color:var(--out)}
+  .dec[data-quad="unknown"]{border-left-color:var(--faint);background:repeating-linear-gradient(45deg,var(--card),var(--card) 8px,rgba(0,0,0,.015) 8px,rgba(0,0,0,.015) 16px)}
+  .dec-h{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+  .dec-h .nm{font-size:16px;font-weight:750;letter-spacing:-.01em}
+  .dec-h .cd{font-size:11.5px;font-weight:700;color:var(--faint);font-family:var(--mono);margin-left:-4px}
+  .dec-h .sec-tg{font-size:11px;font-weight:700;padding:3px 9px;border-radius:100px;background:var(--line);color:var(--sub)}
+  .dec-h .st{font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:100px;letter-spacing:.02em}
+  .dec-h .st.Ready{background:var(--up-soft);color:var(--up)}
+  .dec-h .st.Watch{background:var(--violet-soft);color:var(--violet)}
+  .dec-h .st.Hold{background:var(--out-soft);color:var(--out)}
+  .dec-h .price{margin-left:auto;font-size:14px;font-weight:750;font-family:var(--mono)}
+  .dec-h .chg{font-size:12.5px;font-weight:700;margin-left:6px;font-family:var(--mono)}
+  .dec-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px;padding:10px;background:var(--bg);border-radius:10px}
+  .dec-m{margin:0;text-align:center;position:relative}
+  .dec-m .lbl{font-size:10.5px;font-weight:700;color:var(--faint);margin-bottom:3px;letter-spacing:.03em;cursor:help;border-bottom:1px dotted var(--faint);display:inline-block;padding-bottom:1px}
+  .dec-m .val{font-size:17px;font-weight:800;font-family:var(--mono)}
+  .dec-m .val .pct{font-size:11px;font-weight:700;margin-left:2px}
+  .dec-m .sub{font-size:10.5px;color:var(--sub);margin-top:2px}
+  .dec-m .val.no-data{color:var(--faint);font-style:italic;font-size:13px}
+  /* 展開區:為什麼是這個分數 */
+  .dec-evidence{margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
+  .dec-evidence summary{cursor:pointer;font-size:11.5px;font-weight:700;color:var(--violet);list-style:none;display:inline-flex;align-items:center;gap:4px;padding:4px 0}
+  .dec-evidence summary::before{content:"▸";transition:transform .12s;display:inline-block}
+  .dec-evidence[open] summary::before{transform:rotate(90deg)}
+  .dec-evidence summary::-webkit-details-marker{display:none}
+  .dec-evidence .ev-body{font-size:12px;line-height:1.7;padding:8px 4px 2px}
+  .dec-evidence .ev-row{display:flex;gap:8px;align-items:flex-start;padding:4px 0}
+  .dec-evidence .ev-cat{flex:none;font-size:10px;font-weight:800;padding:2px 6px;border-radius:4px;background:var(--line);color:var(--sub);min-width:22px;text-align:center;font-family:var(--mono)}
+  .dec-evidence .ev-cat.pos{background:var(--up-soft);color:var(--up)}
+  .dec-evidence .ev-cat.neg{background:var(--out-soft);color:var(--out)}
+  .dec-evidence .ev-cat.neu{background:var(--bg);color:var(--faint)}
+  .dec-evidence .ev-why{color:var(--ink);font-weight:500}
+  .dec-glossary{margin-top:14px;padding:12px 14px;background:var(--bg);border-radius:10px;font-size:11.5px;line-height:1.7;color:var(--sub)}
+  .dec-glossary b{color:var(--ink);font-weight:750}
+  .dec-glossary .gt{font-size:10.5px;font-weight:800;color:var(--faint);letter-spacing:.04em;display:block;margin:6px 0 4px}
+  .dec-action{font-size:13.5px;font-weight:700;color:var(--ink);line-height:1.6;margin-bottom:10px;padding:8px 12px;background:var(--violet-soft);border-radius:8px}
+  .dec-action.no-data{background:repeating-linear-gradient(45deg,var(--bg),var(--bg) 6px,rgba(0,0,0,.02) 6px,rgba(0,0,0,.02) 12px);color:var(--faint)}
+  .dec-rows{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .dec-row{font-size:12px;line-height:1.55}
+  .dec-row .k{font-size:10.5px;font-weight:700;color:var(--faint);margin-bottom:3px;letter-spacing:.03em;display:flex;align-items:center;gap:4px;cursor:help}
+  .dec-row .k .hi{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:50%;background:var(--line);color:var(--sub);font-size:9px;font-weight:800;font-family:var(--mono)}
+  .dec-row .v{color:var(--ink);font-weight:600}
+  .dec-row .v.trigger{color:var(--in)}
+  .dec-row .v.invalidation{color:var(--out)}
+  .dec-trade{display:flex;gap:8px;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);font-size:11.5px;color:var(--sub);font-family:var(--mono)}
+  .dec-trade span{flex:1}
+  .dec-trade b{color:var(--ink);font-weight:750}
+  @media (max-width:680px){
+    .dec-metrics{grid-template-columns:repeat(2,1fr)}
+    .dec-rows{grid-template-columns:1fr}
+  }
   .stocks{display:flex;flex-direction:column;gap:9px}
   .stock{background:var(--card);border-radius:16px;padding:14px 16px;box-shadow:var(--shadow);cursor:pointer;transition:transform .12s;display:flex;align-items:center;gap:12px}
   .stock:active{transform:scale(.985)}
@@ -240,6 +306,8 @@
   <div class="tab" data-tab="nexora">🧠 NEXORA</div>
   <div class="tab" data-tab="strategy">🎯 四大策略</div>
   <div class="tab" data-tab="health">💰 資金健康度</div>
+  <div class="tab" data-tab="signals">🚦 訊號板</div>
+  <div class="tab" data-tab="livermore">📈 李佛摩</div>
   <div class="tab" data-tab="sim">⚙️ 模擬/設定</div>
 </div>
 
@@ -266,6 +334,21 @@
       <div class="legend"><div class="grad"></div></div>
       <div class="legend-l"><span>&gt;+3%</span><span>+1%</span><span>0</span><span>-1%</span><span>&lt;-3%</span></div>
       <div class="drill" id="drill"></div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h">
+        <span class="sec-t">反攻候選名單</span>
+        <span class="sec-s">決策卡 · AI Score / 信心 / 狀態 / 動作 / 觸發 / 失效</span>
+        <span class="sec-x" id="decisions-upd"></span>
+      </div>
+      <div class="decision-tabs">
+        <b class="on" data-df="all" onclick="setDecFilter('all',this)">全部 <span class="dn" id="dn-all">0</span></b>
+        <b data-df="Ready" onclick="setDecFilter('Ready',this)">Ready <span class="dn dn-ready" id="dn-ready">0</span></b>
+        <b data-df="Watch" onclick="setDecFilter('Watch',this)">Watch <span class="dn dn-watch" id="dn-watch">0</span></b>
+        <b data-df="Hold" onclick="setDecFilter('Hold',this)">Hold <span class="dn dn-hold" id="dn-hold">0</span></b>
+      </div>
+      <div id="decisions"></div>
     </div>
 
     <div class="sec flow-sec">
@@ -484,7 +567,15 @@ function detail(code){
   var al={buy:"進場訊號",sell:"出場/風險",watch:"高潛力觀察",obs:"僅觀察",watch_buy:"觀察中可進場",watch_exit:"觀察中準備出場",hold:"續抱(已持股)"}[act]||act;
   var cls=ACTION_CSS[act]||"obs";
   var h=s.health||{},t=s.triangulation||{},cp=s.chip,ds=s.doc_strategy;
-  function fac(k,v){var c=v>=75?"var(--up)":v>=55?"var(--violet)":v>=40?"var(--amber)":"var(--down)";return '<div class="fac"><span class="fk">'+k+'</span><div class="fb"><i style="width:'+Math.round(v||0)+'%;background:'+c+'"></i></div><span class="fv" style="color:'+c+'">'+Math.round(v||0)+'</span></div>';}
+  function fac(k,v,raw,cap){
+    var c=v>=75?"var(--up)":v>=55?"var(--violet)":v>=40?"var(--amber)":"var(--down)";
+    var capHint = (raw!=null && cap) ? '滿分 '+cap+' · 實際 '+Math.round(raw||0) : '';
+    return '<div class="fac" title="'+esc(k)+':'+capHint+' · '+Math.round(raw||0)+'/'+cap+' = '+Math.round(v||0)+'%">'+
+      '<span class="fk">'+k+'</span>'+
+      '<div class="fb"><i style="width:'+Math.round(v||0)+'%;background:'+c+'"></i></div>'+
+      '<span class="fv" style="color:'+c+'">'+Math.round(raw||0)+'/'+cap+'</span>'+
+      '</div>';
+  }
   var fc=s.factors||{};
   var m='<div class="grip"></div><div class="sh-h"><div class="snm">'+esc(s.name)+' <span style="font-size:13px;color:var(--faint);font-weight:600">'+esc(s.code)+' · '+esc(s.sector)+'</span></div>'
     +'<div class="ssub">現價 '+(s.price!=null?s.price:"—")+' · <span style="color:'+col(s.change_rate)+'">'+pf(s.change_rate)+'</span> · AI '+(s.ai_score!=null?s.ai_score:"—")+'</div>'
@@ -495,7 +586,10 @@ function detail(code){
     +'<div class="c"><div class="k">均價線</div><div class="v num">'+(s.avg_price!=null?s.avg_price:"—")+'</div></div>'
     +'<div class="c"><div class="k">建議停損</div><div class="v num down">'+(s.suggested_stop!=null?s.suggested_stop:"—")+'</div></div>'
     +'<div class="c"><div class="k">內外盤BS</div><div class="v num">'+(s.bs!=null?s.bs+"%":"—")+'</div></div></div></div>';
-  if(fc.trend!=null)m+='<div class="blk"><div class="blk-t">五因子評分 <span class="r">AI '+(s.ai_score||0)+'</span></div>'+fac("趨勢",fc.trend/25*100)+fac("量能",fc.volume/25*100)+fac("相對強度",fc.rs/20*100)+fac("籌碼",fc.chip/20*100)+fac("族群",fc.sector/10*100)+'</div>';
+  if(fc.trend!=null){
+    var aiExplain='綜合 5 個維度給的 AI 分數(0-100),>75 偏多、55-75 中性、<55 偏空。趨勢+量能+相對強度+籌碼+族群,各佔不同權重。';
+    m+='<div class="blk"><div class="blk-t"><span style="cursor:help" title="'+esc(aiExplain)+'">五因子評分</span> <span class="r">AI '+(s.ai_score||0)+'</span></div>'+fac("趨勢",fc.trend/25*100,fc.trend,25)+fac("量能",fc.volume/25*100,fc.volume,25)+fac("相對強度",fc.rs/20*100,fc.rs,20)+fac("籌碼",fc.chip/20*100,fc.chip,20)+fac("族群",fc.sector/10*100,fc.sector,10)+'</div>';
+  }
   if(h.quadrant)m+='<div class="blk"><div class="healbox '+h.quadrant+'"><div class="t">資金健康度 '+esc(h.stars||"")+' '+esc(h.label||"")+' ('+(h.health_score||0)+')</div><div class="d">'+esc(h.desc||"")+' · 主動淨流比 '+(h.aflow_ratio!=null?h.aflow_ratio:"—")+'</div></div></div>';
   if(cp){m+='<div class="blk"><div class="chipbox"><div class="t">籌碼面</div>';
     if(cp.has_data)m+='<div class="ln">法人近月買超 <b class="'+((cp.inst_net_20d_lots||0)>=0?"pos":"neg")+'">'+(cp.inst_net_20d_lots!=null?(cp.inst_net_20d_lots>0?"+":"")+cp.inst_net_20d_lots+" 張":"—")+'</b> ｜ 外資連買 '+(cp.inst_streak!=null?cp.inst_streak+" 日":"—")+'</div><div class="ln">千張大戶 '+(cp.big_holder_pct!=null?cp.big_holder_pct+"%":"—")+'（趨勢 '+(cp.big_holder_trend!=null?(cp.big_holder_trend>0?"+":"")+cp.big_holder_trend+"pp":"—")+'）</div>';
@@ -622,7 +716,9 @@ var PLUGINS={
   rank:{t:"排行插件",d:"觀察池 50 股五榜(熱門/漲幅/跌幅/量能/創高)+ 隔日結果標記。盤後資料來自 EOD 管線。",link:"/rankings"},
   nexora:{t:"NEXORA 八層盤後報告",d:"資金流/Money Quality/市場結構/承接/賣壓來源/Smart Money/隔日機率/自我驗證,12 節完整報告。",link:"/api/nexora"},
   strategy:{t:"四大策略對比",d:"照你文件的四大條件(MA20/乖離率/量>5日均/收>昨高 + 籌碼 + BS動態倍數)獨立評分,與主系統 AI 分數 A/B 對比。點個股細節可看逐條。",link:null},
-  health:{t:"資金健康度",d:"資金流向×漲跌四象限 + 三角交叉驗證。真籌碼接 FinMind,無資料明確標示。點個股細節查看。",link:null}
+  health:{t:"資金健康度",d:"資金流向×漲跌四象限 + 三角交叉驗證。真籌碼接 FinMind,無資料明確標示。點個股細節查看。",link:null},
+  signals:{t:"進出場訊號板",d:"全觀察池即時進出場動作 + 每檔四條件命中度,盤中動態刷新。",link:"/signals"},
+  livermore:{t:"李佛摩六點轉向",d:"經典 Jesse Livermore 關鍵點位篩選:趨勢/自然回撤/突破/跌破/量能/警示。買點=回測 50%/突破 60 日高+量增,賣點=跌破 60 日低+量增。",link:null}
 };
 function switchTab(tab){
   TAB=tab;
@@ -638,8 +734,113 @@ function switchTab(tab){
       +'<p style="margin-top:10px">狀態:<b id="simstat">'+(simOn?"模擬中":"即時 /api/state")+'</b></p></div>';
     return;
   }
+  if(tab==="strategy"){renderStrategy();return;}
+  if(tab==="livermore"){renderLivermore();return;}
   var p=PLUGINS[tab];
   if(p){body.innerHTML='<div class="plugin-card"><h3>'+p.t+'</h3><p>'+p.d+'</p>'+(p.link?'<a class="lnk" href="'+p.link+'" target="_blank">開啟 '+p.link+' ↗</a>':'<p style="color:var(--violet);font-weight:700;margin-top:10px">→ 回首頁點任一個股卡片,細節彈窗即含此插件分析</p>')+'</div>';}
+}
+
+/* ── 四大策略對比渲染 ── */
+function renderStrategy(){
+  var body=document.getElementById("plugin-body");
+  body.innerHTML='<div class="plugin-card"><h3>🎯 四大策略對比</h3><p>文件原文四條件(MA20/乖離率/量>5日均/收>昨高 + 籌碼) vs 主系統 AI Score,A/B 對比每檔命中度。'+(simOn?'(模擬資料)':'(即時 STATE)')+'</p><div id="str-rows">載入中…</div></div>';
+  fetch(API_BASE+"/api/strategy_compare").then(function(r){return r.json()}).then(function(d){
+    var rows=d.rows||[];
+    if(!rows.length){document.getElementById("str-rows").innerHTML='<div class="empty">觀察池尚無資料</div>';return;}
+    var html='<div style="display:flex;gap:8px;margin:10px 4px;font-size:12px;color:var(--sub)"><span><b style="color:var(--up)">A=B</b> 雙強共識</span><span>·</span><span><b style="color:var(--in)">A&gt;B</b> AI 強</span><span>·</span><span><b style="color:var(--violet)">B&gt;A</b> 條件強</span></div>';
+    html+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">';
+    html+='<tr style="background:var(--soft);text-align:left"><th style="padding:8px 6px">股</th><th style="padding:8px 4px">AI</th><th style="padding:8px 4px">B分</th><th style="padding:8px 4px">命中</th><th style="padding:8px 4px">MA20</th><th style="padding:8px 4px">乖離</th><th style="padding:8px 4px">量>5</th><th style="padding:8px 4px">收高</th><th style="padding:8px 4px">籌碼</th><th style="padding:8px 4px">BS</th><th style="padding:8px 4px">共識</th></tr>';
+    rows.forEach(function(r){
+      var yn=function(b){return b?'<span style="color:var(--up);font-weight:800">✓</span>':'<span style="color:var(--faint)">·</span>';};
+      var agreeColor=r.agree==="A=B"?"var(--up)":(r.agree==="A>B"?"var(--in)":"var(--violet)");
+      html+='<tr style="border-top:1px solid var(--line)">'
+        +'<td style="padding:7px 6px"><b>'+esc(r.name||r.code)+'</b><br><small style="color:var(--faint)">'+esc(r.code)+'·'+esc(r.sector||"—")+'</small></td>'
+        +'<td style="padding:7px 4px;font-weight:800">'+r.ai_score+'</td>'
+        +'<td style="padding:7px 4px;font-weight:800;color:var(--violet)">'+r.doc_score+'</td>'
+        +'<td style="padding:7px 4px;font-weight:800">'+r.doc_pass+'/5</td>'
+        +'<td style="padding:7px 4px">'+yn(r.cond_ma20)+'</td>'
+        +'<td style="padding:7px 4px">'+yn(r.cond_bias)+'</td>'
+        +'<td style="padding:7px 4px">'+yn(r.cond_vol5)+'</td>'
+        +'<td style="padding:7px 4px">'+yn(r.cond_high)+'</td>'
+        +'<td style="padding:7px 4px">'+yn(r.cond_chip)+'</td>'
+        +'<td style="padding:7px 4px;color:var(--sub)">'+(r.bs_mult!=null?r.bs_mult:'—')+'</td>'
+        +'<td style="padding:7px 4px;font-weight:800;color:'+agreeColor+'">'+esc(r.agree)+'</td>'
+        +'</tr>';
+    });
+    html+='</table></div>';
+
+    // 如果全部都 A=B(同向共識)且 doc_pass 都很低,給統一說明
+    const allLow=rows.every(r=>(r.doc_pass||0)<=2);
+    const allAB=rows.every(r=>r.agree==="A=B");
+    if(rows.length>0 && allLow && allAB){
+      html+=`<div style="margin-top:14px;padding:12px 14px;background:var(--violet-soft);border-radius:12px;font-size:12.5px;color:var(--violet);line-height:1.7">
+        <b>📋 為什麼 A=B 共識分都很低?</b><br>
+        文件四大條件需要 4/5 命中才算「條件強」,AI 分數要 ≥ 70 才算「AI 強」。<br>
+        目前 ${rows.length} 檔都低標 → 主系統跟文件策略都判定「不進場」。這是雙策略共識的「防守訊號」,不是 bug。
+      </div>`;
+    } else if(rows.length>0 && rows.filter(r=>r.doc_pass>=4).length===0 && rows.filter(r=>r.ai_score>=70).length===0){
+      html+=`<div style="margin-top:14px;padding:12px 14px;background:var(--amber-soft);border-radius:12px;font-size:12.5px;color:var(--amber);line-height:1.7">
+        <b>📋 目前沒有任何檔達到「進場標準」</b><br>
+        · 文件條件命中 0/5 條件: ${rows.filter(r=>r.doc_pass===0).length} 檔<br>
+        · AI Score ≥ 70: 0 檔<br>
+        繼續觀察,等任一檔跨過門檻就會出現在表格頂部。
+      </div>`;
+    }
+    document.getElementById("str-rows").innerHTML=html;
+  }).catch(function(e){
+    document.getElementById("str-rows").innerHTML='<div class="empty">載入失敗:'+esc(e)+'</div>';
+  });
+}
+
+/* ── 李佛摩渲染 ── */
+function renderLivermore(){
+  var body=document.getElementById("plugin-body");
+  body.innerHTML='<div class="plugin-card"><h3>📈 李佛摩六點轉向</h3><p>經典 Jesse Livermore 關鍵點位篩選。買點=回測 50% 自然回撤 / 突破 60 日高+量增;賣點=跌破 60 日低+量增。'+(simOn?'(模擬)':'(即時)')+'</p><div id="lvmr-stats" style="display:flex;gap:8px;margin:10px 4px;font-size:12px"></div><div id="lvmr-rows">載入中…</div></div>';
+  fetch(API_BASE+"/api/livermore").then(function(r){return r.json()}).then(function(d){
+    var rows=d.rows||[];
+    document.getElementById("lvmr-stats").innerHTML
+      ='<span style="background:var(--up-soft);color:var(--up);padding:5px 10px;border-radius:100px;font-weight:700">買訊 '+(d.buy_n||0)+'</span>'
+      +'<span style="background:var(--down-soft);color:var(--down);padding:5px 10px;border-radius:100px;font-weight:700">賣訊 '+(d.sell_n||0)+'</span>'
+      +'<span style="background:var(--amber-soft);color:var(--amber);padding:5px 10px;border-radius:100px;font-weight:700">觀察 '+(d.watch_n||0)+'</span>';
+    if(!rows.length){document.getElementById("lvmr-rows").innerHTML='<div class="empty">觀察池尚無資料</div>';return;}
+    var sigLabel={buy_pullback:"回撤買",buy_shallow_pullback:"淺回買",buy_breakout:"突破買",buy_near_breakout:"近高買",sell_breakdown:"跌破賣",watch_bounce_fail:"反彈警",watch_near_low:"近低警",watch_breakout:"突破觀",watch_breakdown:"跌破觀",neutral:"中性"};
+    var html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">';
+    html+='<tr style="background:var(--soft);text-align:left"><th style="padding:8px 6px">股</th><th style="padding:8px 4px">趨勢</th><th style="padding:8px 4px">訊號</th><th style="padding:8px 4px">強</th><th style="padding:8px 4px">60H</th><th style="padding:8px 4px">NR50</th><th style="padding:8px 4px">量比</th><th style="padding:8px 4px">說明</th></tr>';
+    rows.forEach(function(r){
+      var sigColor=r.signal.startsWith("buy")?"var(--up)":(r.signal.startsWith("sell")||r.signal==="watch_near_low"?"var(--down)":(r.signal.startsWith("watch")?"var(--amber)":"var(--sub)"));
+      var trendColor=r.trend.startsWith("up")?"var(--up)":(r.trend.startsWith("down")?"var(--down)":"var(--sub)");
+      var p=r.pivot_points||{};
+      // neutral 時用「為什麼沒訊號」當說明;有訊號用 commentary
+      var explain=r.signal==="neutral"?(r.neutral_reason||(r.commentary&&r.commentary[0])||"未觸發"):((r.commentary&&r.commentary[0])||"—");
+      var sigBg=r.signal==="neutral"?"background:var(--soft);color:var(--sub)":"";
+      html+='<tr style="border-top:1px solid var(--line)">'
+        +'<td style="padding:7px 6px"><b>'+esc(r.name||r.code)+'</b><br><small style="color:var(--faint)">'+esc(r.code)+'·'+(r.price?r.price.toFixed(2):'—')+'</small></td>'
+        +'<td style="padding:7px 4px;font-weight:700;color:'+trendColor+'">'+esc(r.trend||"—")+'</td>'
+        +'<td style="padding:7px 4px;font-weight:800;color:'+sigColor+';'+sigBg+'">'+esc(sigLabel[r.signal]||r.signal)+'</td>'
+        +'<td style="padding:7px 4px;font-weight:800">'+r.signal_strength+'</td>'
+        +'<td style="padding:7px 4px;color:var(--sub)">'+(r.key_levels?.["60d_high"]||"—")+'</td>'
+        +'<td style="padding:7px 4px;color:var(--violet);font-weight:700">'+(p.NR_50||"—")+'</td>'
+        +'<td style="padding:7px 4px;color:var(--sub)">'+(r.vol_expansion||"—")+'</td>'
+        +'<td style="padding:7px 4px;font-size:11px;color:var(--sub);max-width:280px;line-height:1.5">'+esc(explain)+'</td>'
+        +'</tr>';
+    });
+    html+='</table></div>';
+
+    // 如果全部都 neutral → 加一行統一說明
+    if(d.buy_n===0 && d.sell_n===0 && d.watch_n===0 && rows.length>0){
+      html+='<div style="margin-top:14px;padding:12px 14px;background:var(--violet-soft);border-radius:12px;font-size:12.5px;color:var(--violet);line-height:1.7">'
+        +'<b>📋 為什麼這批都沒訊號?</b><br>'
+        +'李佛摩篩選需要股價符合任一條件:<br>'
+        +'· 上升趨勢 + 股價回測 50% 自然回撤位(±2% 容忍)<br>'
+        +'· 突破 60 日新高 + 量增(>1.2 倍)<br>'
+        +'· 跌破 60 日新低 + 量增(賣訊)<br><br>'
+        +'目前 '+rows.length+' 檔都不在這些關鍵點位上 → <b>這是正常,不是 bug</b>。盤中震盪擴大、或換股到接近回撤位時會觸發。'
+        +'</div>';
+    }
+    document.getElementById("lvmr-rows").innerHTML=html;
+  }).catch(function(e){
+    document.getElementById("lvmr-rows").innerHTML='<div class="empty">載入失敗:'+esc(e)+'</div>';
+  });
 }
 document.querySelectorAll(".tab").forEach(function(b){b.onclick=function(){switchTab(this.getAttribute("data-tab"))};});
 
@@ -657,16 +858,133 @@ function resetSim(){simOn=false;clearInterval(simTimer);var b=document.getElemen
 function setSpeed(ms){simSpeed=ms;document.querySelectorAll(".spd b").forEach(function(x){x.className=(parseInt(x.getAttribute("data-s"),10)===ms?"on":"")});if(simOn){clearInterval(simTimer);simTimer=setInterval(simStep,simSpeed);}}
 
 function renderHome(){
-  /* 順序:頂部 → 結論 → 盤面速覽(資金流入前3 + 今日禁區)→ 熱力圖 → 盤中流動 */
-  var steps=[renderTop,renderVerdict,renderMini,renderTree,renderFlow];
+  /* 順序:頂部 → 結論 → 盤面速覽(資金流入前3 + 今日禁區)→ 熱力圖 → 決策卡 → 盤中流動 */
+  var steps=[renderTop,renderVerdict,renderMini,renderTree,renderDecisions,renderFlow];
   for(var i=0;i<steps.length;i++){try{steps[i]();}catch(e){if(window.console)console.log("r",i,e&&e.message);}}
 }
+
+/* v3:反攻候選名單 — 決策卡渲染(2026-07-09) */
+var DEC_FILTER="all",DEC_CACHE=null;
+function setDecFilter(f,el){
+  DEC_FILTER=f;
+  document.querySelectorAll(".decision-tabs b").forEach(function(b){b.className=(b.getAttribute("data-df")===f?"on":"");});
+  renderDecisions();
+}
+function renderDecisions(){
+  var box=document.getElementById("decisions");
+  if(!box)return;
+  if(!DEC_CACHE){loadDecisions();return;}
+  var list=DEC_FILTER==="all"?DEC_CACHE.cards:DEC_CACHE.cards.filter(function(c){return c.decision&&c.decision.state===DEC_FILTER;});
+  // 數字 badge
+  function set(id,n){var e=document.getElementById(id);if(e)e.textContent=n;}
+  set("dn-all",DEC_CACHE.count||0);
+  set("dn-ready",DEC_CACHE.ready_n||0);
+  set("dn-watch",DEC_CACHE.watch_n||0);
+  set("dn-hold",DEC_CACHE.hold_n||0);
+  if(!list||!list.length){box.innerHTML='<div class="empty" style="padding:30px;text-align:center;color:var(--faint)">該狀態無個股</div>';return;}
+  var html='<div class="deccards">';
+  list.forEach(function(c){
+    var d=c.decision||{};
+    var quad=c.quadrant||"";
+    var inst=c.chip||{};
+    var instStreak=inst.inst_streak!=null?inst.inst_streak:null;
+    var bigPct=inst.big_holder_pct!=null?(inst.big_holder_pct+"%"):"—";
+    var price=c.price!=null?c.price:"—";
+    var chg=c.change_rate!=null?c.change_rate:0;
+    var chgCls=chg>=0?"up":"down";
+    var chgStr=(chg>=0?"+":"")+chg.toFixed(2)+"%";
+    var confColor=d.confidence>=85?"var(--up)":(d.confidence>=65?"var(--violet)":"var(--out)");
+    var aiColor=d.ai_score>=75?"var(--up)":(d.ai_score>=55?"var(--violet)":"var(--out)");
+    var instTag=instStreak!=null?('法人連買 '+instStreak+' 日'):'法人資料未取';
+    html+='<div class="dec" data-state="'+d.state+'" data-quad="'+quad+'">';
+    html+='<div class="dec-h">';
+    html+='<span class="nm">'+esc(c.name||"")+'</span>';
+    html+='<span class="cd">'+esc(c.code||"")+'</span>';
+    if(c.sector)html+='<span class="sec-tg">'+esc(c.sector)+'</span>';
+    html+='<span class="st '+d.state+'">'+d.state+'</span>';
+    html+='<span class="price">'+price+'</span>';
+    html+='<span class="chg '+chgCls+'">'+chgStr+'</span>';
+    html+='</div>';
+    // 4 欄 metrics:AI Score / 信心 / 健康象限 / 法人
+    // label 全部加 title= hover tooltip,告訴使用者這個分數是什麼意思
+    var aiLbl = '<span class="lbl" title="AI Score = 健康分排名(0-100)。綜合價量象限、漲跌強度給的綜合分。>75 偏多、55-75 中性、<55 偏空。">AI SCORE</span>';
+    var confLbl = '<span class="lbl" title="信心 = AI 對自己判斷的把握(0-100%)。看證據有幾條支持、幾條反對。>85% 高信心、65-85% 中等、<65% 低信心(等資料齊全再決策)。">信心</span>';
+    var quadLbl = '<span class="lbl" title="象限 = 資金流向 × 漲跌的交叉。健康(流入+漲)/假紅(流入+跌)/惜售(流出+漲)/休息(流出+跌)/未連線(tick 資料缺)。">象限</span>';
+    var chipLbl = '<span class="lbl" title="法人連買天數(來自 FinMind) + 大戶持股比例(%口數,週資料,免費層拿不到會顯示—)。">法人 / 大戶</span>';
+    html+='<div class="dec-metrics">';
+    html+='<div class="dec-m">'+aiLbl+'<div class="val" style="color:'+aiColor+'">'+d.ai_score+'</div><div class="sub">健康分排名</div></div>';
+    html+='<div class="dec-m">'+confLbl+'<div class="val" style="color:'+confColor+'">'+d.confidence+'<span class="pct">%</span></div><div class="sub">'+esc(c.strength||"—")+' 證據</div></div>';
+    var quadVal = (c.quadrant === 'unknown') ? '<div class="val no-data">未連線</div><div class="sub">tick 資料未取</div>' : '<div class="val" style="font-size:13.5px">'+esc(c.label||"—")+'</div><div class="sub">'+esc(d.state)+'</div>';
+    html+='<div class="dec-m">'+quadLbl+quadVal+'</div>';
+    var chipVal = (quad === 'unknown') ? '<div class="val no-data">未連線</div><div class="sub">tick 資料未取</div>' : '<div class="val" style="font-size:13.5px">'+esc(instTag)+'</div><div class="sub">大戶 '+bigPct+'</div>';
+    html+='<div class="dec-m">'+chipLbl+chipVal+'</div>';
+    html+='</div>';
+    // Action
+    var actionCls = (quad === 'unknown') ? 'dec-action no-data' : 'dec-action';
+    html+='<div class="'+actionCls+'">▶ '+esc(d.action||"—")+'</div>';
+    // Trigger / Invalidation (key 標籤加 tooltip)
+    var trgK = '<div class="k"><span class="hi" title="進場觸發 = 條件句,全部達成才能布局。">?</span>觸發條件 TRIGGER</div>';
+    var invK = '<div class="k"><span class="hi" title="失效條件 = 任一發生就代表判斷錯誤,該出場。">?</span>失效條件 INVALIDATION</div>';
+    html+='<div class="dec-rows">';
+    html+='<div class="dec-row">'+trgK+'<div class="v trigger">'+esc(d.trigger||"—")+'</div></div>';
+    html+='<div class="dec-row">'+invK+'<div class="v invalidation">'+esc(d.invalidation||"—")+'</div></div>';
+    html+='</div>';
+    // 展開區:為什麼是這個分數(證據拆解)
+    var evs = c.evidence || [];
+    if(evs.length){
+      html+='<details class="dec-evidence"><summary>為什麼是這個分數?(展開 '+(evs.length)+' 條證據)</summary>';
+      html+='<div class="ev-body">';
+      evs.forEach(function(e){
+        var cls = e.dir>0?'pos':(e.dir<0?'neg':'neu');
+        var dirSym = e.dir>0?'+':(e.dir<0?'−':'·');
+        html+='<div class="ev-row">';
+        html+='<span class="ev-cat '+cls+'">'+esc(e.cat)+'</span>';
+        html+='<span class="ev-why"><b>'+dirSym+'</b> '+esc(e.why)+'</span>';
+        html+='</div>';
+      });
+      html+='</div></details>';
+    }
+    // Trade plan
+    if(d.entry||d.stop||d.target){
+      html+='<div class="dec-trade">';
+      html+='<span title="現價 +0.5% 的參考進場點">進場 <b>'+(d.entry?d.entry:"—")+'</b></span>';
+      html+='<span title="今日低點 -0.5% 或現價 -3%,取較低">停損 <b>'+(d.stop?d.stop:"—")+'</b></span>';
+      html+='<span title="現價 +5% 或今日高點 +1%,取較高">目標 <b>'+(d.target?d.target:"—")+'</b></span>';
+      html+='</div>';
+    } else if(quad === 'unknown'){
+      html+='<div class="dec-trade" style="color:var(--faint)">進場 / 停損 / 目標 待 tick 資料連線後計算</div>';
+    }
+    html+='</div>';
+  });
+  html+='</div>';
+  // 區塊底部加名詞表(新手第一次看會查)
+  html+='<div class="dec-glossary">';
+  html+='<span class="gt">新手 30 秒看懂這些詞</span>';
+  html+='<b>AI Score</b> = 健康分排名,>75 偏多、55-75 中性、<55 偏空。<br>';
+  html+='<b>信心</b> = AI 對自己判斷的把握,看證據支持/反對的比例。證據矛盾時會掉到 30-50%,AI 寧可說「不確定」也不要亂喊。<br>';
+  html+='<b>象限</b> = 資金流向 × 漲跌的交叉。<b>健康</b>=流入+漲(真攻擊)、<b>假紅</b>=流入+跌(主力邊拉邊賣)、<b>惜售</b>=流出+漲(量縮惜售)、<b>休息</b>=流出+跌(退潮)、<b>未連線</b>=tick 資料缺(不要依賴此時的結論)。<br>';
+  html+='<b>狀態</b> = <b>Ready</b>=現在可布局、<b>Watch</b>=等觸發條件達成、<b>Hold</b>=不進場(資料不足或趨勢不對)。<br>';
+  html+='<b>觸發 / 失效</b> = 進場的條件句 vs 出場的條件句。看不到觸發別進場,碰到失效要出場。';
+  html+='</div>';
+  box.innerHTML=html;
+  var upd=document.getElementById("decisions-upd");if(upd)upd.textContent="更新 "+((DEC_CACHE.as_of||"")).slice(11,16);
+}
+function loadDecisions(){
+  var box=document.getElementById("decisions");
+  if(box)box.innerHTML='<div class="empty" style="padding:30px;text-align:center;color:var(--faint)">載入決策卡…</div>';
+  fetch(API_BASE+"/api/money_health").then(function(r){return r.json()}).then(function(d){
+    if(d.error){box.innerHTML='<div class="empty" style="padding:30px;text-align:center;color:var(--out)">決策卡載入失敗:'+esc(d.error)+'</div>';return;}
+    DEC_CACHE=d;renderDecisions();
+  }).catch(function(e){box.innerHTML='<div class="empty" style="padding:30px;text-align:center;color:var(--out)">連線失敗</div>';});
+}
+
 function poll(){
   if(simOn)return;
   fetch(API_BASE+"/api/state").then(function(r){return r.json()}).then(function(d){
     if(d.status==="starting"){document.getElementById("tree").innerHTML='<div class="empty" style="height:100%;display:flex;align-items:center;justify-content:center">引擎啟動中…</div>';return;}
     STATE=d;renderHome();
   }).catch(function(){document.getElementById("tree").innerHTML='<div class="empty" style="height:100%;display:flex;align-items:center;justify-content:center">連線失敗</div>';});
+  loadDecisions();
 }
 window.addEventListener("resize",function(){if(STATE&&TAB==="home")renderTree();});
 setInterval(poll,30000);poll();

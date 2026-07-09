@@ -72,6 +72,7 @@ def get_chips(code):
     """
     _load_disk()
     today = _today_key()
+    global _cache
     if _cache.get("date") == today and code in _cache.get("stocks", {}):
         return _cache["stocks"][code]
 

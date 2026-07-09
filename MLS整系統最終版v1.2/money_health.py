@@ -24,6 +24,7 @@ HEALTH_LABEL = {
     "in_down":  ("假紅", "★★☆☆☆", "資金流入但下跌,邊拉邊賣/砸盤疑慮,等外資蓋章"),
     "out_up":   ("惜售", "★★★☆☆", "資金流出但上漲,量縮惜售,續航存疑"),
     "out_down": ("休息", "★☆☆☆☆", "資金流出且下跌,輪動退潮,不接刀"),
+    "unknown":  ("未連線", "—", "tick 資料未連線(broker 沒回逐筆/total_volume),健康度暫不評,先看其他因子"),
 }
 
 
@@ -31,11 +32,26 @@ def stock_health(s):
     """
     個股資金健康度。回傳 dict:
       quadrant, label, stars, desc, health_score(0-100), aflow_ratio
+    若 aflow 是 None(tick 未連線),quadrant=unknown,健康分 = 中性 50,UI 顯示「未連線」
     """
     aflow = scoring.get_aflow(s["code"])
+    chg = s.get("change_rate") or 0
+    # ── tick 未連線路徑:不要假裝有方向 ──
+    if aflow is None:
+        return {"quadrant": "unknown", "label": HEALTH_LABEL["unknown"][0],
+                "stars": HEALTH_LABEL["unknown"][1], "desc": HEALTH_LABEL["unknown"][2],
+                "health_score": 50, "aflow_ratio": None}
+
     tv = s.get("total_volume") or 1
     ratio = aflow / tv                      # +主動買 / -主動賣
-    chg = s.get("change_rate") or 0
+    # ── 量差太小路徑:aflow 是 0 但 sign 累計不出有效方向(可能剛開盤、可能量差太小)
+    # 跟 None 差別:None 是「完全沒連線」,這條是「連線了但沒累積到有效訊號」
+    # 兩者對決策都是「等資料齊全再說」,給同樣 unknown label
+    if abs(aflow) < 100:
+        return {"quadrant": "unknown", "label": HEALTH_LABEL["unknown"][0],
+                "stars": HEALTH_LABEL["unknown"][1], "desc": "量差太小(<100 股),看不出明顯買賣方向,等盤中量累積再評",
+                "health_score": 50, "aflow_ratio": round(ratio, 3)}
+
     flow_in = ratio >= 0
 
     if flow_in and chg >= 0:   quad = "in_up"
@@ -63,7 +79,13 @@ def sector_health(sector_name, members):
     scores = [m["_health"]["health_score"] for m in members if m.get("_health")]
     med = median(scores) if scores else 50
     # 族群層象限用成員 aflow 加總 vs 漲幅中位
-    net = sum(scoring.get_aflow(m["code"]) for m in members)
+    aflows = [scoring.get_aflow(m["code"]) for m in members]
+    # 全 None → tick 未連線
+    if all(a is None for a in aflows):
+        return {"quadrant": "unknown", "label": HEALTH_LABEL["unknown"][0],
+                "stars": HEALTH_LABEL["unknown"][1],
+                "health_score": int(med), "advice": HEALTH_LABEL["unknown"][2]}
+    net = sum(a for a in aflows if a is not None)
     chg_med = median([m.get("change_rate") or 0 for m in members])
     flow_in = net >= 0
     if flow_in and chg_med >= 0: quad = "in_up"
@@ -170,6 +192,173 @@ def _next_signal():
 
 
 # ════════════════════════════════════════════════════════
+# Phase A — 決策卡（AI Score / Confidence / State / Action /
+#                   Trigger / Invalidation / 進場停損目標）
+# 純推導:輸入 health + tri + chip + avg_price,輸出完整決策卡
+# 不動主邏輯、不打新 API
+# ════════════════════════════════════════════════════════
+def build_decision_card(s):
+    """
+    從一支 snap(已 annotate 過,有 _health / _tri / _chip)推導 6 欄位決策卡。
+    回傳 dict: ai_score, confidence, state, action, trigger, invalidation,
+               entry, stop, target
+    """
+    h = s.get("_health") or {}
+    t = s.get("_tri") or {}
+    c = s.get("_chip") or {}
+    price = s.get("price") or 0
+    avgp = s.get("avg_price") or 0
+    high = s.get("high") or 0
+    low = s.get("low") or 0
+    vr = s.get("volume_ratio") or 0
+    chg = s.get("change_rate") or 0
+    quad = h.get("quadrant", "out_down")
+    hs = h.get("health_score", 50)
+    verdict = t.get("verdict", "pending")
+    strength = t.get("strength", "—")
+    log = t.get("log") or {}
+    pos_n = len(log.get("positive", []))
+    neg_n = len(log.get("negative", []))
+
+    # ─── AI Score: 健康分(0-100)→ 排名分(0-100,線性) ───
+    ai_score = hs
+
+    # ─── Confidence: 從證據共識度推導 ───
+    # ≥3 正向且 0 反向 → 92%
+    # ≥2 正向且 0 反向 → 82%
+    # 正向 > 反向(弱) → 70%
+    # 1:1 / 矛盾 → 50%
+    # 反向為主 → 30%
+    if pos_n >= 3 and neg_n == 0:
+        conf = 92
+    elif pos_n >= 2 and neg_n == 0:
+        conf = 82
+    elif pos_n > neg_n and pos_n >= 2:
+        conf = 70
+    elif pos_n == 0 and neg_n == 0:
+        conf = 50
+    elif pos_n == neg_n:
+        conf = 50
+    elif neg_n > pos_n:
+        conf = 30
+    else:
+        conf = 60
+    # verdict 強弱加成
+    if verdict == "bullish" and strength == "強":
+        conf = min(95, conf + 3)
+    elif verdict == "bearish" and strength == "強":
+        conf = max(15, conf - 3)
+
+    # ─── State: Ready / Watch / Hold ───
+    # Ready = verdict=bullish 且 強 / 中 且 健康分 ≥ 60
+    # Watch = verdict=bullish 弱 或 verdict=pending 但共識偏多
+    # Hold = verdict=bearish 或 pending 且證據不足 或 健康分 < 50
+    # tick 未連線:健康分 = 50 中性 → 一律 Hold(資料不足,不進場)
+    if quad == "unknown":
+        state = "Hold"
+    elif verdict == "bullish" and strength in ("強", "中") and hs >= 60:
+        state = "Ready"
+    elif verdict == "bullish" and strength == "弱":
+        state = "Watch"
+    elif verdict == "pending" and pos_n > neg_n and pos_n >= 2:
+        state = "Watch"
+    elif verdict == "bearish" and strength in ("強", "中"):
+        state = "Hold"
+    else:
+        state = "Hold"
+
+    # ─── Action: 用 rule template ───
+    # 大戶連買(>3日)+ verdict=bullish → 「可分批布局」/「等突破即可布局」
+    inst_streak = c.get("inst_streak") or 0
+    big_pct = c.get("big_holder_pct")
+    big_trend = c.get("big_holder_trend")
+    if quad == "unknown":
+        action = "tick 資料未連線,暫不評估,等資金流上線再判斷"
+    elif state == "Ready":
+        if inst_streak >= 3:
+            action = "可分批布局"
+        else:
+            action = "等突破昨日高點即可布局"
+    elif state == "Watch":
+        if quad == "in_down":
+            action = "等量縮止跌"
+        elif quad == "out_up":
+            action = "等籌碼沉澱"
+        else:
+            action = "等站回均價線"
+    else:  # Hold
+        if big_trend == "down":
+            action = "籌碼仍待改善,暫不介入"
+        else:
+            action = "暫不介入,等趨勢翻多"
+
+    # ─── Trigger: 進場觸發(條件句) ───
+    if quad == "unknown":
+        trigger = "tick 資料連線恢復後,依「站回均價線 + 量>1.5x + 法人連買」標準觸發"
+    else:
+        triggers = []
+        if avgp and price < avgp:
+            triggers.append(f"站回均價線 {avgp:.1f}")
+        if vr < 1.2:
+            triggers.append("成交量>5日均量1.5倍")
+        if inst_streak and inst_streak < 3:
+            triggers.append("法人連買≥3日")
+        # 預設觸發(避免空清單)
+        if not triggers:
+            triggers.append("明日開盤站穩今日高點")
+        trigger = " + ".join(triggers[:3])  # 最多 3 條,避免太長
+
+    # ─── Invalidation: 失效條件 ───
+    if quad == "unknown":
+        invalidation = "資料未連線期間,任何結論都先視為待確認"
+    else:
+        invalidations = []
+        if low and price:
+            invalidations.append(f"跌破前低 {low:.1f}")
+        if inst_streak and inst_streak >= 2:
+            invalidations.append("法人由連買轉連賣")
+        # 預設失效
+        invalidations.append("資金流轉負且量增下跌")
+        invalidation = " / ".join(invalidations[:3])
+
+    # ─── 進場價 / 停損 / 目標(用既有技術指標湊) ───
+    # 進場 = 現價 ±1% 區間(實戰以 trigger 觸發後的突破價為主,這裡給參考)
+    entry = round(price * 1.005, 2) if price else None
+    # 停損 = 今日低點 - 0.5% 或現價 -3%
+    if low and price:
+        stop = round(min(low * 0.995, price * 0.97), 2)
+    else:
+        stop = None
+    # 目標 = 現價 +5% 或 今日高點 +1%
+    if high and price:
+        target = round(max(price * 1.05, high * 1.01), 2)
+    else:
+        target = None
+
+    return {
+        "ai_score": ai_score,
+        "confidence": conf,
+        "state": state,
+        "action": action,
+        "trigger": trigger,
+        "invalidation": invalidation,
+        "entry": entry,
+        "stop": stop,
+        "target": target,
+    }
+
+
+def annotate_with_decision(snaps, sectors, market_pct=0.0):
+    """
+    annotate + 每檔 snap 增補 _decision 決策卡
+    """
+    sh_map, counts = annotate(snaps, sectors, market_pct)
+    for s in snaps:
+        s["_decision"] = build_decision_card(s)
+    return sh_map, counts
+
+
+# ════════════════════════════════════════════════════════
 # 主入口:為一批 snapshot 增補 health + triangulation
 # ════════════════════════════════════════════════════════
 def annotate(snaps, sectors, market_pct=0.0):
@@ -201,6 +390,8 @@ def annotate(snaps, sectors, market_pct=0.0):
         }
         ev = gather_evidence(s, s["_health"], sec_pct.get(s.get("sector"), 0),
                              market_pct, ch)
+        # 把證據原始 list 掛在 s 上,供 API 吐給 UI 顯示「為什麼這個分數」
+        s["_ev"] = [{"cat": c, "dir": d, "why": w} for c, d, w in ev]
         s["_tri"] = triangulate(ev)
         counts[s["_tri"]["verdict"]] += 1
 

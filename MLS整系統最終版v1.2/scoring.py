@@ -52,7 +52,11 @@ def update_aflow(code, total_volume, tick_type):
     每輪掃描呼叫:把兩輪之間的量增量,依當前 tick_type 記為主動買/賣。
     tick_type: Shioaji 1=賣盤成交(內盤) 2=買盤成交(外盤);FinMind 同義。
     近似法——盤中無逐筆時的最佳估計。
+    若 total_volume 或 tick_type 是 None → 標記 None,不要累積 0 假資料。
     """
+    if total_volume is None or tick_type is None:
+        _aflow[code] = None
+        return None
     prev = _prev_vol.get(code, total_volume)
     delta = max(0, (total_volume or 0) - prev)
     _prev_vol[code] = total_volume or 0
@@ -73,7 +77,12 @@ def reset_aflow():
 
 
 def get_aflow(code):
-    return _aflow.get(code, 0)
+    """
+    取得主動淨流股數。回傳 None 表示「無 tick 資料」,不要當 0 處理。
+    None 的來源:broker 沒回 total_volume / tick_type,update_aflow 累積 0。
+    為了區分「真 0」和「沒資料」,_aflow 內部用 None 標記未連線。
+    """
+    return _aflow.get(code, None)
 
 
 # ─────────────────────────────────────────────────────────────

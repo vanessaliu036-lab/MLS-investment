@@ -191,7 +191,7 @@ def scheduler_loop():
                         handle_sector_locks(state)
                 except Exception as e:
                     print(f"[server] build_state 失敗:{e}", flush=True)
-                    state = _last_full_state or {"sectors": [], "stocks": [], "locked_sectors": [], "leaders": [], "market": {"index": 0, "index_pct": 0, "amount_100m": 0, "score": 0, "mode": "—", "time": hm}, "is_market_hours": False}
+                    state = _last_full_state or {"sectors": [], "stocks": [], "locked_sectors": [], "leaders": [], "_sectors_full": [], "market": {"index": 0, "index_pct": 0, "amount_100m": 0, "score": 0, "mode": "—", "time": hm}, "is_market_hours": False}
                 if time.time() - _last_sector_snapshot >= 300:   # 每5分鐘
                     db.insert_sector_snapshot(state["_sectors_full"])
                     _last_sector_snapshot = time.time()
@@ -357,6 +357,57 @@ def api_review():
     })
 
 
+@app.get("/api/watchlist/{trade_date}")
+def api_watchlist(trade_date: str):
+    """盤後產出的「{trade_date} 觀察清單」(after_hours.build_tomorrow_watchlist)。"""
+    try:
+        rows = db.load_watchlist(trade_date)
+        # 補上開盤重驗狀態
+        return _safe({
+            "trade_date": trade_date,
+            "n": len(rows),
+            "n_active": sum(1 for r in rows if not r.get("demoted")),
+            "n_demoted": sum(1 for r in rows if r.get("demoted")),
+            "n_hit": sum(1 for r in rows if r.get("hit")),
+            "rows": rows,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/review/{trade_date}")
+def api_review_date(trade_date: str):
+    """單日盤後複查:命中率 / 漏抓股 / 觀察清單"""
+    try:
+        with db._lock, db._conn() as c:
+            review = None
+            try:
+                row = c.execute("SELECT * FROM review_log WHERE trade_date=?", (trade_date,)).fetchone()
+                if row:
+                    review = dict(row)
+                    try:
+                        review["missed"] = json.loads(review.get("missed") or "[]")
+                    except Exception:
+                        review["missed"] = []
+            except Exception:
+                pass
+            signals_today = [dict(r) for r in c.execute(
+                "SELECT * FROM signals WHERE trade_date=? ORDER BY ai_score DESC",
+                (trade_date,))]
+        watchlist = db.load_watchlist(trade_date)
+        return _safe({
+            "trade_date": trade_date,
+            "review": review,
+            "watchlist": watchlist,
+            "signals_count": len(signals_today),
+            "top_signals": signals_today[:10],
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
+
+
 @app.get("/api/eod_rank")
 def api_eod_rank():
     """排行插件:盤後榜單(資料源 = EOD 管線 training_samples/sector_daily)。"""
@@ -396,6 +447,62 @@ def api_nexora():
 def home():
     html = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
     return HTMLResponse(html)
+
+
+@app.get("/signals")
+def signals_page():
+    """v1.8 進出場訊號板頁面。"""
+    try:
+        html = Path(__file__).with_name("signals.html").read_text(encoding="utf-8")
+        return HTMLResponse(html)
+    except Exception as e:
+        return HTMLResponse(f"signals.html 缺失:{e}", status_code=500)
+
+
+# ══════════════════════════════════════════════════════
+# 李佛摩 v10 篩選插件(2026-07-09)
+# 六點轉向邏輯:趨勢 / 自然回撤 / 突破 / 跌破 / 量能 / 警示
+# 純讀 STATE + broker.daily_kbars,不動主邏輯
+# ══════════════════════════════════════════════════════
+@app.get("/api/livermore")
+def api_livermore():
+    try:
+        import livermore
+        full_state = engine.build_state(watchlist_codes=_watchlist_codes)
+        stocks = full_state.get("stocks") or []
+
+        def _kbars(code):
+            import broker as _br
+            return _br.daily_kbars(code, days=70)
+
+        rows = livermore.screen_pool(stocks, _kbars)
+        return _safe({
+            "as_of": (full_state.get("market") or {}).get("time", ""),
+            "n": len(rows),
+            "buy_n": sum(1 for r in rows if r.get("signal", "").startswith("buy")),
+            "sell_n": sum(1 for r in rows if "sell" in r.get("signal", "") or "breakdown" in r.get("signal", "")),
+            "watch_n": sum(1 for r in rows if r.get("signal", "").startswith("watch")),
+            "rows": rows,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/livermore/{code}")
+def api_livermore_stock(code: str):
+    try:
+        import livermore
+        import broker as _br
+        full_state = engine.build_state(watchlist_codes=_watchlist_codes)
+        snap = next((s for s in (full_state.get("stocks") or []) if s.get("code") == code), None)
+        if snap is None:
+            return _safe({"error": f"個股 {code} 不在觀察池"}, status_code=404)
+        kbars = _br.daily_kbars(code, days=70)
+        return _safe(livermore.analyze_stock(snap, kbars))
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
 
 
 @app.get("/preview_v23")
@@ -520,6 +627,62 @@ def api_money_health_summary():
 
 
 # ══════════════════════════════════════════════════════
+# 資金健康度決策卡 API(2026-07-09 Phase A)
+# 回傳每檔個股 6 欄位決策卡:AI Score / Confidence / State /
+#   Action / Trigger / Invalidation / 進場停損目標
+# 純插件:讀 STATE + 跑 annotate_with_decision
+# ══════════════════════════════════════════════════════
+@app.get("/api/money_health")
+def api_money_health():
+    try:
+        full_state = engine.build_state(watchlist_codes=_watchlist_codes)
+        sectors = full_state.get("sectors") or []
+        stocks = full_state.get("stocks") or []
+        market_pct = (full_state.get("market") or {}).get("change_rate") or 0.0
+        # 跑決策卡(每檔增補 _decision)
+        import money_health
+        money_health.annotate_with_decision(stocks, sectors, market_pct)
+        # 組裝回傳:每檔一個決策卡
+        cards = []
+        for s in stocks:
+            d = s.get("_decision") or {}
+            h = s.get("_health") or {}
+            t = s.get("_tri") or {}
+            cards.append({
+                "code": s.get("code"),
+                "name": s.get("name"),
+                "sector": s.get("sector"),
+                "price": s.get("price"),
+                "change_rate": s.get("change_rate"),
+                "quadrant": h.get("quadrant"),
+                "label": h.get("label"),
+                "health_score": h.get("health_score"),
+                "aflow_ratio": h.get("aflow_ratio"),
+                "verdict": t.get("verdict"),
+                "strength": t.get("strength"),
+                "decision": d,
+                "chip": s.get("_chip") or {},
+                "evidence": s.get("_ev") or [],
+            })
+        # 排序:state (Ready > Watch > Hold) + ai_score desc
+        state_order = {"Ready": 0, "Watch": 1, "Hold": 2}
+        cards.sort(key=lambda c: (state_order.get(c["decision"].get("state", "Hold"), 9),
+                                  -(c["decision"].get("ai_score") or 0)))
+        return _safe({
+            "as_of": (full_state.get("market") or {}).get("time", ""),
+            "market_pct": market_pct,
+            "count": len(cards),
+            "ready_n": sum(1 for c in cards if c["decision"].get("state") == "Ready"),
+            "watch_n": sum(1 for c in cards if c["decision"].get("state") == "Watch"),
+            "hold_n": sum(1 for c in cards if c["decision"].get("state") == "Hold"),
+            "cards": cards,
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return _safe({"error": str(e)}, status_code=500)
+
+
+# ══════════════════════════════════════════════════════
 # 個股第二層 API(2026-07-09)
 # 一次回全部分時/日K/法人/大戶,給 detail modal 第二層用
 # 純插件不動主邏輯
@@ -572,6 +735,20 @@ def api_stock_detail(code: str):
                 k["ma60"] = round(ma60, 2) if ma60 else None
         except Exception as e:
             print(f"[detail] kbars {code} 失敗:{e}")
+
+        # 2.5) snapshot 缺欄位 fallback:從 kbars 最後一筆 K 補
+        # broker 1.5.5 公開 API 的 snapshots 對某些股不會回 high/low/total_volume,
+        # 用最後一根日 K 的 open/high/low/volume 補
+        if kbars:
+            last_k = kbars[-1]
+            if snap.get("open") is None and last_k.get("open") is not None:
+                snap["open"] = last_k["open"]
+            if snap.get("high") is None and last_k.get("high") is not None:
+                snap["high"] = last_k["high"]
+            if snap.get("low") is None and last_k.get("low") is not None:
+                snap["low"] = last_k["low"]
+            if snap.get("total_volume") is None and last_k.get("volume") is not None:
+                snap["total_volume"] = last_k["volume"]
 
         # 3) chips
         chips_data = {}
