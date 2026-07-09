@@ -528,6 +528,14 @@ def api_stock_detail(code: str):
                 snap = ss[0] if ss else {}
             except Exception:
                 snap = {"code": code}
+        # 清洗:把 enum 物件轉成字串(Shioaji tick_type 等)
+        def _clean(v):
+            if v is None: return None
+            if hasattr(v, "name"): return str(v.name)
+            if isinstance(v, dict): return {k: _clean(x) for k, x in v.items()}
+            if isinstance(v, list): return [_clean(x) for x in v]
+            return v
+        snap = _clean(snap)
 
         # 2) kbars
         kbars = []
@@ -548,6 +556,11 @@ def api_stock_detail(code: str):
         chips_data = {}
         try:
             import chips as _ch
+            # 確保 _cache 已初始化(模組剛 import 時 _cache 還沒設)
+            try:
+                _ch._load_disk()
+            except Exception:
+                pass
             chips_data = _ch.get_chips(code)
             chips_data["has_data"] = chips_data.get("inst_net_20d_lots") is not None
         except Exception as e:
