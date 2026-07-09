@@ -180,13 +180,18 @@ def scheduler_loop():
                 time.sleep(30)
                 continue
 
-            # ── 09:00–13:35 盤中主迴圈 ────────────────
-            if "09:00" <= hm <= "13:35":
-                state = engine.build_state(watchlist_codes=_watchlist_codes)
-                _last_full_state = state
-                check_stops(state)
-                handle_new_signals(state)
-                handle_sector_locks(state)
+            # ── 09:00–13:35 盤中主迴圈(收盤後也跑,讓資料庫保持熱)────
+            if True:
+                try:
+                    state = engine.build_state(watchlist_codes=_watchlist_codes)
+                    _last_full_state = state
+                    if "09:00" <= hm <= "13:35":
+                        check_stops(state)
+                        handle_new_signals(state)
+                        handle_sector_locks(state)
+                except Exception as e:
+                    print(f"[server] build_state 失敗:{e}", flush=True)
+                    state = _last_full_state or {"sectors": [], "stocks": [], "locked_sectors": [], "leaders": [], "market": {"index": 0, "index_pct": 0, "amount_100m": 0, "score": 0, "mode": "—", "time": hm}, "is_market_hours": False}
                 if time.time() - _last_sector_snapshot >= 300:   # 每5分鐘
                     db.insert_sector_snapshot(state["_sectors_full"])
                     _last_sector_snapshot = time.time()
