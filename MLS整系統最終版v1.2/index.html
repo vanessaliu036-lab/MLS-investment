@@ -68,17 +68,18 @@
   .verdict .pick.sub{background:var(--amber-soft);border-color:var(--amber);color:var(--amber)}
   .verdict .pick .k{font-size:10.5px;color:var(--faint);font-weight:600}
 
-  /* treemap */
+  /* v2.5:正方形熱力圖(10 群組固定 5×2 grid) */
   .heat-mode{display:flex;gap:6px;margin:0 4px 10px}
   .heat-mode b{font-size:12px;font-weight:700;padding:6px 13px;border-radius:100px;background:var(--card);border:1px solid var(--line);color:var(--sub);cursor:pointer}
   .heat-mode b.on{background:var(--violet);color:#fff;border-color:var(--violet)}
-  #tree{position:relative;width:100%;height:400px;border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);background:var(--card)}
-  .cell{position:absolute;overflow:hidden;cursor:pointer;border:2px solid #fff;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:3px;transition:filter .1s}
+  #tree{position:relative;width:100%;display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(2,1fr);gap:6px;border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);background:var(--card);padding:6px;aspect-ratio:5/2}
+  .cell{position:relative;overflow:hidden;cursor:pointer;border-radius:10px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:6px;transition:filter .1s;aspect-ratio:1/1;min-height:96px}
   .cell:active{filter:brightness(1.05)}
-  .cell.sel{border-color:var(--violet);z-index:5}
-  .cell .cn{font-weight:800;line-height:1.15;color:#0e1116}
-  .cell .cv{font-weight:750;line-height:1.2;margin-top:2px;color:#0e1116;opacity:.85}
-  .cell .lk{position:absolute;top:3px;right:4px;font-size:8px;background:var(--violet);color:#fff;padding:0 5px;border-radius:4px;font-weight:800}
+  .cell.sel{outline:3px solid var(--violet);outline-offset:-3px;z-index:5}
+  .cell .cn{font-weight:800;line-height:1.15;color:#0e1116;font-size:15px;letter-spacing:-.01em}
+  .cell .cv{font-weight:750;line-height:1.2;margin-top:3px;color:#0e1116;opacity:.85;font-size:13px}
+  .cell .lk{position:absolute;top:4px;right:5px;font-size:9px;background:var(--violet);color:#fff;padding:1px 6px;border-radius:5px;font-weight:800;letter-spacing:.02em}
+  .cell .rank{position:absolute;top:4px;left:5px;font-size:9px;background:rgba(255,255,255,.85);color:#0e1116;padding:1px 6px;border-radius:5px;font-weight:800}
   .legend{display:flex;align-items:center;gap:0;margin:10px 4px 2px}
   .legend .grad{flex:1;height:7px;border-radius:100px;background:linear-gradient(90deg,#f43f5e,#f79aa8,#fbd0d6,#eef0f3,#bfe8d5,#6bcfa0,#10b981)}
   .legend-l{display:flex;justify-content:space-between;margin:3px 4px 0;font-size:9.5px;color:var(--faint);font-weight:600}
@@ -343,18 +344,39 @@ function renderVerdict(){
 }
 function renderTree(){
   document.getElementById("heat-upd").textContent="更新 "+((STATE.market||{}).time||"");
-  var secs=(STATE.sectors||[]).filter(function(s){return secWeight(s)>0});
-  var tree=document.getElementById("tree"),W=tree.clientWidth||600,H=400;
-  var rects=treemap(secs.map(function(s){return {name:s.name,weight:secWeight(s),s:s}}),W,H);
-  var html="";
-  rects.forEach(function(r){
-    var s=r.it.s,c=HEAT==="change"?colorChange(s.pct):colorFlow(s.flow_score);
-    var val=HEAT==="change"?pf(s.pct):((s.flow_score>=0?"+":"")+(s.amount_100m!=null?s.amount_100m:0)+"億");
-    var big=Math.min(r.w,r.h),fn=Math.max(9,Math.min(17,big/5,r.w/4)),show=r.w>44&&r.h>30;
-    html+='<div class="cell'+(SEL===s.name?" sel":"")+'" style="left:'+r.x+'px;top:'+r.y+'px;width:'+r.w+'px;height:'+r.h+'px;background:'+c+'" onclick="pick(\''+esc(s.name)+'\')">'
-      +(s.locked?'<span class="lk">鎖</span>':'')+(show?('<div class="cn" style="font-size:'+fn+'px">'+esc(s.name)+'</div><div class="cv" style="font-size:'+Math.max(8,fn-3)+'px">'+val+'</div>'):'')+'</div>';
-  });
-  tree.innerHTML=html||'<div class="empty" style="height:100%;display:flex;align-items:center;justify-content:center">無資料</div>';
+  /* v2.5:5×2 固定 grid,10 群組等大正方形
+     · 排序:locked 優先 → 再依金額遞減
+     · 顏色:HEAT=change(漲跌幅)/HEAT=flow(資金動能)
+     · 缺資料的版位顯示「無資料」灰版
+  */
+  var allSecs=(STATE.sectors||[]).slice();
+  var ALL_GROUPS=["記憶體","封測","被動元件","PCB材料","功率半導體","石英元件","無人機","光通訊","ABF載板","晶圓材料"];
+  function sortKey(s){
+    var lockedW=s.locked?1e12:0;
+    var amt=s.amount_100m!=null?s.amount_100m*1e6:0;
+    return lockedW+amt;
+  }
+  var sorted=allSecs.slice().sort(function(a,b){return sortKey(b)-sortKey(a)});
+  var picked=sorted.slice(0,10);
+  var tree=document.getElementById("tree"),html="";
+  for(var i=0;i<10;i++){
+    var s=picked[i];
+    if(s){
+      var c=HEAT==="change"?colorChange(s.pct):colorFlow(s.flow_score);
+      var val=HEAT==="change"?pf(s.pct):((s.amount_100m!=null?s.amount_100m:0)+"億");
+      var lockLabel=s.locked?'<span class="lk">鎖</span>':"";
+      html+='<div class="cell'+(SEL===s.name?" sel":"")+'" style="background:'+c+'" onclick="pick(\''+esc(s.name)+'\')">'
+        +'<span class="rank">#'+(i+1)+'</span>'
+        +lockLabel
+        +'<div class="cn">'+esc(s.name)+'</div>'
+        +'<div class="cv">'+val+'</div>'
+      +'</div>';
+    } else {
+      var gapName=ALL_GROUPS[i]||"—";
+      html+='<div class="cell" style="background:#f4f5f8;color:var(--faint)"><span class="rank">#'+(i+1)+'</span><div class="cn">'+esc(gapName)+'</div><div class="cv">無資料</div></div>';
+    }
+  }
+  tree.innerHTML=html;
   renderDrill();
 }
 function grpStocks(sec){return (STATE.stocks||[]).filter(function(x){return x.sector===sec}).sort(function(a,b){return (b.ai_score||0)-(a.ai_score||0)});}
