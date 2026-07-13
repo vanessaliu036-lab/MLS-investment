@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>李佛摩價格紀錄</title>
+<style>
+  :root{
+    --bg:#f4f1ea; --surface:#ffffff; --ink:#15181e; --ink2:#575043;
+    --line:#e2dccf; --gold:#8a6d1a; --goldbg:#f3ecd8;
+    --up:#c0342c; --down:#1a8a5a;
+    --c-secr:#c99a1e; --c-natr:#e0662b; --c-up:#c0342c;
+    --c-dn:#1a8a5a; --c-natR:#2f6bd0; --c-secR:#6a4bb0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{background:var(--bg);color:var(--ink);max-width:760px;margin:0 auto;
+    font-family:-apple-system,"PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+    font-size:15px;padding-bottom:40px}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-variant-numeric:tabular-nums}
+  .bar{position:sticky;top:0;z-index:30;background:rgba(244,241,234,.97);
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
+    padding:11px 14px;display:flex;align-items:center;gap:10px}
+  .bar .lg{font-weight:800;color:var(--gold);font-size:16px}
+  .bar .sub{font-size:11.5px;color:var(--ink2)}
+  .bar .rt{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .btn{font-size:12px;font-weight:700;padding:7px 12px;border-radius:9px;
+    border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+  .btn.gold{background:var(--gold);color:#fff;border-color:var(--gold)}
+  .btn:active{filter:brightness(.96)}
+  .modeseg{display:flex;padding:10px 14px 4px;gap:0}
+  .modeseg .m{flex:1;text-align:center;padding:8px;font-size:13px;font-weight:700;
+    color:var(--ink2);border-bottom:2px solid transparent;cursor:pointer}
+  .modeseg .m.on{color:var(--ink);border-bottom-color:var(--gold)}
+  /* 圖例 */
+  .legend{display:flex;flex-wrap:wrap;gap:6px;padding:8px 14px}
+  .legend .lg{font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:6px;color:#fff}
+  /* 總覽列表 */
+  .ovwrap{padding:6px 12px}
+  .secgrp{margin-bottom:14px}
+  .secgrp .sh{font-size:12.5px;font-weight:800;color:var(--gold);
+    padding:6px 4px;display:flex;align-items:center;gap:6px}
+  .secgrp .sh .tag{font-size:10px;font-weight:700;padding:1px 7px;border-radius:5px;
+    background:var(--goldbg);color:var(--gold)}
+  .secgrp .sh .tag.eng{background:#e9ecf4;color:#3550a0}
+  .ovgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+  .ovcard{background:var(--surface);border:1px solid var(--line);border-radius:11px;
+    padding:9px 11px;cursor:pointer;position:relative;border-left-width:5px}
+  .ovcard:active{filter:brightness(.98)}
+  .ovcard .nm{font-size:14.5px;font-weight:800}
+  .ovcard .cd{font-size:10.5px;color:var(--ink2)}
+  .ovcard .pr{font-size:16px;font-weight:800;margin-top:3px}
+  .ovcard .st{display:inline-block;font-size:10.5px;white-space:nowrap;font-weight:800;color:#fff;
+    padding:1px 8px;border-radius:5px;margin-top:5px}
+  .ovcard .pv{position:absolute;top:8px;right:9px;font-size:10px;white-space:nowrap;font-weight:800;
+    padding:1px 6px;border-radius:5px;background:var(--gold);color:#fff}
+  .ovcard .eng-badge{position:absolute;top:8px;right:9px;font-size:10px;white-space:nowrap;font-weight:700;
+    padding:1px 6px;border-radius:5px;background:#e9ecf4;color:#3550a0}
+  /* 單檔六欄表 */
+  .picker{padding:8px 14px}
+  .picker select{width:100%;padding:10px 12px;font-size:15px;font-weight:700;
+    border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
+  .sixhead{display:grid;grid-template-columns:56px repeat(6,minmax(0,1fr));
+    position:sticky;top:52px;z-index:20;background:var(--bg);
+    border-bottom:2px solid var(--gold)}
+  .sixhead .h{font-size:10.5px;font-weight:800;text-align:center;padding:6px 1px;white-space:nowrap;
+    color:#fff;line-height:1.25}
+  .sixhead .h.date{background:transparent;color:var(--ink2);
+    display:flex;align-items:center;justify-content:center}
+  .sixrow{display:grid;grid-template-columns:56px repeat(6,minmax(0,1fr));
+    border-bottom:1px solid var(--line);min-height:34px}
+  .sixrow .d{font-size:10.5px;color:var(--ink2);display:flex;align-items:center;
+    justify-content:center;font-variant-numeric:tabular-nums}
+  .sixrow .c{display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;
+    border-left:1px solid #f0ece2;white-space:nowrap;min-width:0;letter-spacing:-.2px}
+  .sixrow .c.fill{color:#fff}
+  .sixrow .c .pvdot{margin-left:2px;font-size:11px}
+  .sixrow.pivot{box-shadow:inset 0 0 0 2px var(--gold)}
+  .note{padding:36px 20px;text-align:center;color:var(--ink2);font-size:13px;line-height:1.7}
+  .toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);
+    background:var(--ink);color:#fff;font-size:13px;padding:10px 18px;border-radius:10px;
+    opacity:0;transition:opacity .25s;z-index:80;pointer-events:none}
+  .toast.on{opacity:1}
+  .pvlegend{padding:4px 14px 10px;font-size:10.5px;color:var(--ink2);line-height:1.6}
+  .pvlegend b{color:var(--gold)}
+  /* 六點轉向合格區(v2.4.1) */
+  .sixq{margin:10px 12px 2px;background:var(--surface);border:1px solid var(--line);
+    border-left:6px solid var(--gold);border-radius:12px;padding:11px 13px}
+  .sixq .qt{font-size:12.5px;font-weight:800;color:var(--gold);display:flex;gap:8px;align-items:center}
+  .sixq .qt .qd{margin-left:auto;font-size:10.5px;color:#575043;font-weight:700}
+  .sixq .qrow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:7px 0 2px;
+    border-top:1px solid var(--line);margin-top:7px;font-size:12.5px}
+  .sixq .qrow:first-of-type{border-top:none}
+  .sixq .qnm{font-weight:800;white-space:nowrap}
+  .sixq .qtag{font-size:10px;font-weight:800;color:#fff;padding:1px 7px;border-radius:5px;white-space:nowrap}
+  .sixq .qtag.long{background:var(--up)} .sixq .qtag.short{background:var(--down)}
+  .sixq .qf{font-size:10.5px;color:#575043;font-weight:700;white-space:nowrap}
+  .sixq .qf.on{color:var(--gold)}
+  .sixq .qempty{font-size:12px;color:#575043;padding-top:6px;line-height:1.6}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div>
+    <div class="lg">📈 李佛摩價格紀錄</div>
+    <div class="sub" id="sub">六欄色表 · 每日觀察池</div>
+  </div>
+  <div class="rt">
+    <button class="btn" id="refreshBtn">重整</button>
+    <button class="btn gold" id="snapBtn">存今日</button>
+  </div>
+</div>
+
+<div class="modeseg">
+  <div class="m on" data-mode="overview">總覽列表</div>
+  <div class="m" data-mode="detail">單檔六欄表</div>
+</div>
+
+<!-- 總覽 -->
+<div id="overview">
+  <div class="sixq" id="sixq" style="display:none"></div>
+  <div class="legend" id="legend"></div>
+  <div class="ovwrap" id="ovwrap"><div class="note">載入中…</div></div>
+</div>
+
+<!-- 單檔六欄表 -->
+<div id="detail" style="display:none">
+  <div class="picker"><select id="stockSel"></select></div>
+  <div class="pvlegend">
+    ★ = <b>關鍵點(Pivotal Point)</b>:價格突破前一趨勢極值,李佛摩判定的轉向訊號。
+    每日價格只落在一欄,其餘留白 —— 即他手寫簿的記法。
+  </div>
+  <div class="sixhead" id="sixhead"></div>
+  <div id="sixbody"><div class="note">請選擇股票</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const COLS = ["次級反彈","自然反彈","上升趨勢","下降趨勢","自然回檔","次級回檔"];
+let COLORS = {};
+let UNIVERSE = [];
+
+function toast(msg){
+  const t=document.getElementById("toast");
+  t.textContent=msg; t.classList.add("on");
+  setTimeout(()=>t.classList.remove("on"),1900);
+}
+
+// ---------- 總覽 ----------
+async function loadOverview(){
+  const wrap=document.getElementById("ovwrap");
+  wrap.innerHTML='<div class="note">載入中…</div>';
+  try{
+    const r=await fetch("/api/liv/overview"); const d=await r.json();
+    COLORS=d.colors||{};
+    renderLegend();
+    const stocks=d.stocks||[];
+    UNIVERSE=stocks.map(s=>({code:s.code,name:s.name}));
+    buildPicker();
+    if(!stocks.length){wrap.innerHTML='<div class="note">尚無資料。按右上「存今日」抓一次盤後價,或等盤後自動存檔。</div>';return;}
+    // 依族群分組
+    const groups={};
+    stocks.forEach(s=>{(groups[s.sector]=groups[s.sector]||[]).push(s)});
+    let html="";
+    Object.keys(groups).forEach(sec=>{
+      const arr=groups[sec];
+      const isEng=arr.some(x=>x.stock_type==="engine");
+      html+=`<div class="secgrp"><div class="sh">${sec}`+
+            (isEng?`<span class="tag eng">主引擎</span>`:`<span class="tag">攻擊部隊</span>`)+
+            `</div><div class="ovgrid">`;
+      arr.forEach(s=>{
+        const col=COLORS[s.state]||"#888";
+        const badge = s.stock_type==="engine"
+          ? `<span class="eng-badge">溫度計</span>`
+          : (s.pivot?`<span class="pv">${s.pivot.replace('關鍵點','')}</span>`:"");
+        html+=`<div class="ovcard" style="border-left-color:${col}" data-code="${s.code}">
+          ${badge}
+          <div class="nm">${s.name}</div><div class="cd">${s.code}</div>
+          <div class="pr mono">${s.price!=null?s.price:"—"}</div>
+          <div class="st" style="background:${col}">${s.state}</div>
+        </div>`;
+      });
+      html+=`</div></div>`;
+    });
+    wrap.innerHTML=html;
+    wrap.querySelectorAll(".ovcard").forEach(c=>{
+      c.onclick=()=>{document.getElementById("stockSel").value=c.dataset.code;
+        switchMode("detail"); loadDetail(c.dataset.code);};
+    });
+  }catch(e){wrap.innerHTML='<div class="note">載入失敗:'+e+'</div>';}
+}
+
+function renderLegend(){
+  const el=document.getElementById("legend");
+  el.innerHTML=COLS.map(c=>`<span class="lg" style="background:${COLORS[c]||'#888'}">${c}</span>`).join("");
+}
+
+// ---------- 單檔六欄表 ----------
+function buildPicker(){
+  const sel=document.getElementById("stockSel");
+  if(sel.options.length===UNIVERSE.length && sel.options.length>0) return;
+  sel.innerHTML=UNIVERSE.map(s=>`<option value="${s.code}">${s.name}(${s.code})</option>`).join("");
+  sel.onchange=()=>loadDetail(sel.value);
+}
+
+function renderSixHead(){
+  const head=document.getElementById("sixhead");
+  let h=`<div class="h date">日期</div>`;
+  COLS.forEach(c=>{const lb=c.length===4?c.slice(0,2)+"<br>"+c.slice(2):c;h+=`<div class="h" style="background:${COLORS[c]||'#888'}">${lb}</div>`});
+  head.innerHTML=h;
+}
+
+async function loadDetail(code){
+  const body=document.getElementById("sixbody");
+  body.innerHTML='<div class="note">載入中…</div>';
+  try{
+    const r=await fetch("/api/liv/record?code="+encodeURIComponent(code));
+    const d=await r.json();
+    COLORS=d.colors||COLORS;
+    renderSixHead();
+    document.getElementById("sub").textContent=`${d.name}(${d.code}) · 六欄紀錄`;
+    const rows=d.rows||[];
+    if(!rows.length){body.innerHTML='<div class="note">此檔尚無紀錄</div>';return;}
+    let html="";
+    rows.slice().reverse().forEach(row=>{  // 最新在上
+      const idx=COLS.indexOf(row.state);
+      const col=COLORS[row.state]||"#888";
+      const cells=COLS.map((c,i)=>{
+        if(i===idx){
+          const pv=row.pivot?`<span class="pvdot">★</span>`:"";
+          return `<div class="c fill" style="background:${col}">${row.price}${pv}</div>`;
+        }
+        return `<div class="c"></div>`;
+      }).join("");
+      const dt=(row.date||"").slice(5); // MM-DD
+      html+=`<div class="sixrow ${row.pivot?'pivot':''}"><div class="d">${dt}</div>${cells}</div>`;
+    });
+    body.innerHTML=html;
+  }catch(e){body.innerHTML='<div class="note">載入失敗:'+e+'</div>';}
+}
+
+// ---------- 模式切換 ----------
+function switchMode(mode){
+  document.querySelectorAll(".modeseg .m").forEach(m=>{
+    m.classList.toggle("on",m.dataset.mode===mode)});
+  document.getElementById("overview").style.display=mode==="overview"?"":"none";
+  document.getElementById("detail").style.display=mode==="detail"?"":"none";
+  if(mode==="detail"){
+    const sel=document.getElementById("stockSel");
+    if(sel.value) loadDetail(sel.value);
+  }
+}
+document.querySelectorAll(".modeseg .m").forEach(m=>{
+  m.onclick=()=>switchMode(m.dataset.mode);
+});
+
+// ---------- 按鈕 ----------
+document.getElementById("refreshBtn").onclick=()=>{
+  if(document.getElementById("overview").style.display!=="none") loadOverview();
+  else{const s=document.getElementById("stockSel");if(s.value)loadDetail(s.value);}
+};
+document.getElementById("snapBtn").onclick=async()=>{
+  toast("抓取盤後價中…");
+  try{
+    const r=await fetch("/api/liv/snapshot",{method:"POST"});
+    const d=await r.json();
+    if(d.ok){
+      toast(`已存 ${d.date} · ${d.saved} 檔,六點掃描中…`);
+      try{const s2=await (await fetch("/api/liv/sixpoint_scan",{method:"POST"})).json();
+        if(s2.ok) toast(`完成:六點合格 ${s2.qualified} 檔`);}catch(e){}
+    } else toast("存檔失敗:"+(d.error||""));
+    loadSixQ(); loadOverview();
+  }catch(e){toast("存檔失敗:"+e);}
+};
+
+// ── 六點轉向合格區(v2.4.1)──
+async function loadSixQ(){
+  try{
+    const d=await (await fetch("/api/liv/sixpoint")).json();
+    const el=document.getElementById("sixq");
+    if(!d.date){el.style.display="none";return;}
+    el.style.display="";
+    const q=d.qualified||[];
+    let h=`<div class="qt">⚡ 今日六點轉向合格 <span class="qd">${d.date} · 盤後選股中心</span></div>`;
+    if(!q.length){h+=`<div class="qempty">今日無正式合格標的(突破60日高/低 + 量放大)。合格為零也是資訊:市場未給訊號,休息。</div>`;}
+    else q.forEach(r=>{
+      const nm=r.name||r.code;
+      h+=`<div class="qrow"><span class="qtag ${r.qualified}">${r.qualified==="long"?"多方":"空方"}</span>
+        <span class="qnm">${nm}</span><span class="qf on">收${r.close}</span>
+        <span class="qf ${r.break60_high?"on":""}">${r.break60_high?"✓破60日高"+r.hi60:"✓破60日低"+r.lo60}</span>
+        <span class="qf on">✓量${r.vol_ratio}×</span>
+        <span class="qf ${r.retest50_hold?"on":""}">${r.retest50_hold?"✓50%回測未破":"✕50%回測跌破"}</span>
+        <span class="qf ${r.pivot?"on":""}">${r.pivot?"✓"+r.pivot:"—關鍵點"}</span></div>`;
+    });
+    el.innerHTML=h;
+  }catch(e){/* 靜默 */}
+}
+loadSixQ();
+loadOverview();
+</script>
+</body>
+</html>

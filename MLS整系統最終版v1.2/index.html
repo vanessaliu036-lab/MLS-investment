@@ -9,7 +9,7 @@
   :root{
     color-scheme:light;
     --bg:#fcfcfd;--card:#ffffff;--soft:#f4f5f8;--line:#edeff3;
-    --ink:#0e1116;--sub:#6b7280;--faint:#aeb4bf;
+    --ink:#0e1116;--sub:#3a4150;--faint:#565e6e;
     --up:#f43f5e;--up-soft:#fff1f3;--down:#10b981;--down-soft:#ecfdf5;
     --amber:#f59e0b;--amber-soft:#fffbeb;--violet:#6366f1;--violet-soft:#f0f1fe;
     --in:#2563c7;--in-soft:#eef3fc;--out:#e07b2e;--out-soft:#fdf3e9;
@@ -55,36 +55,21 @@
   .verdict .big{font-size:22px;font-weight:800;letter-spacing:-.03em;line-height:1.3}
   .verdict .big em{font-style:normal;color:var(--up)}
   .verdict .sub{font-size:13px;color:var(--sub);margin-top:8px;font-weight:500;line-height:1.6}
-  .verdict .banner-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:14px;border-top:1px dashed var(--line)}
-  .verdict .mode-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 11px;border-radius:100px;font-size:12px;font-weight:700;letter-spacing:-.01em}
-  .mode-chip.attack{background:var(--up-soft);color:var(--up)}
-  .mode-chip.caution{background:var(--amber-soft);color:var(--amber)}
-  .mode-chip.risk{background:var(--soft);color:var(--sub)}
-  .mode-chip .d{width:6px;height:6px;border-radius:50%;background:currentColor}
-  .verdict .strategy-chip{background:var(--violet-soft);color:var(--violet);padding:5px 11px;border-radius:100px;font-size:12px;font-weight:700}
-  .verdict .pick-line{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap}
-  .verdict .pick{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:10px;font-size:13px;font-weight:700;background:var(--card);border:1px solid var(--line)}
-  .verdict .pick.main{background:var(--up-soft);border-color:var(--up);color:var(--up)}
-  .verdict .pick.sub{background:var(--amber-soft);border-color:var(--amber);color:var(--amber)}
-  .verdict .pick .k{font-size:10.5px;color:var(--faint);font-weight:600}
 
-  /* v2.5:正方形熱力圖(10 群組固定 5×2 grid) */
+  /* treemap */
   .heat-mode{display:flex;gap:6px;margin:0 4px 10px}
   .heat-mode b{font-size:12px;font-weight:700;padding:6px 13px;border-radius:100px;background:var(--card);border:1px solid var(--line);color:var(--sub);cursor:pointer}
   .heat-mode b.on{background:var(--violet);color:#fff;border-color:var(--violet)}
-  #tree{position:relative;width:100%;display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(2,1fr);gap:6px;border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);background:var(--card);padding:6px;aspect-ratio:5/2}
-  .cell{position:relative;overflow:hidden;cursor:pointer;border-radius:10px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:6px;transition:filter .1s;aspect-ratio:1/1;min-height:96px}
+  #tree{position:relative;width:100%;height:400px;border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow);background:var(--card)}
+  .cell{position:absolute;overflow:hidden;cursor:pointer;border:2px solid #fff;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:3px;transition:filter .1s}
   .cell:active{filter:brightness(1.05)}
-  .cell.sel{outline:3px solid var(--violet);outline-offset:-3px;z-index:5}
-  .cell .cn{font-weight:800;line-height:1.15;color:#0e1116;font-size:15px;letter-spacing:-.01em}
-  .cell .cv{font-weight:750;line-height:1.2;margin-top:3px;color:#0e1116;opacity:.85;font-size:13px}
-  .cell .lk{position:absolute;top:4px;right:5px;font-size:9px;background:var(--violet);color:#fff;padding:1px 6px;border-radius:5px;font-weight:800;letter-spacing:.02em}
-  .cell .rank{position:absolute;top:4px;left:5px;font-size:9px;background:rgba(255,255,255,.85);color:#0e1116;padding:1px 6px;border-radius:5px;font-weight:800}
-  .cell.placeholder{background:repeating-linear-gradient(45deg,#fafbfc,#fafbfc 6px,#f1f3f6 6px,#f1f3f6 12px)!important;color:var(--faint)!important;cursor:default;opacity:.85}
-  .cell.placeholder .rank{background:rgba(255,255,255,.7)}
+  .cell.sel{border-color:var(--violet);z-index:5}
+  .cell .cn{font-weight:800;line-height:1.15;color:#0e1116;white-space:nowrap}
+  .cell .cv{font-weight:750;line-height:1.2;margin-top:2px;color:#0e1116;opacity:.85;white-space:nowrap}
+  .cell .lk{position:absolute;top:3px;right:4px;font-size:9.5px;background:var(--violet);color:#fff;padding:0 5px;border-radius:4px;font-weight:800}
   .legend{display:flex;align-items:center;gap:0;margin:10px 4px 2px}
   .legend .grad{flex:1;height:7px;border-radius:100px;background:linear-gradient(90deg,#f43f5e,#f79aa8,#fbd0d6,#eef0f3,#bfe8d5,#6bcfa0,#10b981)}
-  .legend-l{display:flex;justify-content:space-between;margin:3px 4px 0;font-size:9.5px;color:var(--faint);font-weight:600}
+  .legend-l{display:flex;justify-content:space-between;margin:3px 4px 0;font-size:10.5px;color:var(--faint);font-weight:600}
 
   /* 展開個股 */
   .drill{margin-top:14px}
@@ -94,107 +79,21 @@
   .badge.in{background:var(--in-soft);color:var(--in)}.badge.out{background:var(--out-soft);color:var(--out)}
   .badge.act{background:var(--violet-soft);color:var(--violet)}
   .drill-h .cnt{margin-left:auto;font-size:12px;color:var(--faint);font-weight:600}
-
-  /* v3:反攻候選名單 — 決策卡 */
-  .decision-tabs{display:flex;gap:6px;margin:0 4px 12px;flex-wrap:wrap}
-  .decision-tabs b{font-size:12px;font-weight:700;padding:6px 13px;border-radius:100px;background:var(--card);border:1px solid var(--line);color:var(--sub);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
-  .decision-tabs b.on{background:var(--ink);color:#fff;border-color:var(--ink)}
-  .dn{font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:100px;background:var(--line);color:var(--sub);min-width:18px;text-align:center}
-  .decision-tabs b.on .dn{background:rgba(255,255,255,.22);color:#fff}
-  .dn-ready{background:var(--up-soft);color:var(--up)}
-  .dn-watch{background:var(--violet-soft);color:var(--violet)}
-  .dn-hold{background:var(--out-soft);color:var(--out)}
-
-  .deccards{display:flex;flex-direction:column;gap:12px}
-  .dec{background:var(--card);border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow);border-left:4px solid var(--line);position:relative}
-  .dec[data-state="Ready"]{border-left-color:var(--up)}
-  .dec[data-state="Watch"]{border-left-color:var(--violet)}
-  .dec[data-state="Hold"]{border-left-color:var(--out)}
-  .dec[data-quad="unknown"]{border-left-color:var(--faint);background:repeating-linear-gradient(45deg,var(--card),var(--card) 8px,rgba(0,0,0,.015) 8px,rgba(0,0,0,.015) 16px)}
-  .dec-h{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
-  .dec-h .nm{font-size:16px;font-weight:750;letter-spacing:-.01em}
-  .dec-h .cd{font-size:11.5px;font-weight:700;color:var(--faint);font-family:var(--mono);margin-left:-4px}
-  .dec-h .sec-tg{font-size:11px;font-weight:700;padding:3px 9px;border-radius:100px;background:var(--line);color:var(--sub)}
-  .dec-h .st{font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:100px;letter-spacing:.02em}
-  .dec-h .st.Ready{background:var(--up-soft);color:var(--up)}
-  .dec-h .st.Watch{background:var(--violet-soft);color:var(--violet)}
-  .dec-h .st.Hold{background:var(--out-soft);color:var(--out)}
-  .dec-h .price{margin-left:auto;font-size:14px;font-weight:750;font-family:var(--mono)}
-  .dec-h .chg{font-size:12.5px;font-weight:700;margin-left:6px;font-family:var(--mono)}
-  .dec-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px;padding:10px;background:var(--bg);border-radius:10px}
-  .dec-m{margin:0;text-align:center;position:relative}
-  .dec-m .lbl{font-size:10.5px;font-weight:700;color:var(--faint);margin-bottom:3px;letter-spacing:.03em;cursor:help;border-bottom:1px dotted var(--faint);display:inline-block;padding-bottom:1px}
-  .dec-m .val{font-size:17px;font-weight:800;font-family:var(--mono)}
-  .dec-m .val .pct{font-size:11px;font-weight:700;margin-left:2px}
-  .dec-m .sub{font-size:10.5px;color:var(--sub);margin-top:2px}
-  .dec-m .val.no-data{color:var(--faint);font-style:italic;font-size:13px}
-  /* 展開區:為什麼是這個分數 */
-  .dec-evidence{margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
-  .dec-evidence summary{cursor:pointer;font-size:11.5px;font-weight:700;color:var(--violet);list-style:none;display:inline-flex;align-items:center;gap:4px;padding:4px 0}
-  .dec-evidence summary::before{content:"▸";transition:transform .12s;display:inline-block}
-  .dec-evidence[open] summary::before{transform:rotate(90deg)}
-  .dec-evidence summary::-webkit-details-marker{display:none}
-  .dec-evidence .ev-body{font-size:12px;line-height:1.7;padding:8px 4px 2px}
-  .dec-evidence .ev-row{display:flex;gap:8px;align-items:flex-start;padding:4px 0}
-  .dec-evidence .ev-cat{flex:none;font-size:10px;font-weight:800;padding:2px 6px;border-radius:4px;background:var(--line);color:var(--sub);min-width:22px;text-align:center;font-family:var(--mono)}
-  .dec-evidence .ev-cat.pos{background:var(--up-soft);color:var(--up)}
-  .dec-evidence .ev-cat.neg{background:var(--out-soft);color:var(--out)}
-  .dec-evidence .ev-cat.neu{background:var(--bg);color:var(--faint)}
-  .dec-evidence .ev-why{color:var(--ink);font-weight:500}
-  .dec-glossary{margin-top:14px;padding:12px 14px;background:var(--bg);border-radius:10px;font-size:11.5px;line-height:1.7;color:var(--sub)}
-  .dec-glossary b{color:var(--ink);font-weight:750}
-  .dec-glossary .gt{font-size:10.5px;font-weight:800;color:var(--faint);letter-spacing:.04em;display:block;margin:6px 0 4px}
-  .dec-action{font-size:13.5px;font-weight:700;color:var(--ink);line-height:1.6;margin-bottom:10px;padding:8px 12px;background:var(--violet-soft);border-radius:8px}
-  .dec-action.no-data{background:repeating-linear-gradient(45deg,var(--bg),var(--bg) 6px,rgba(0,0,0,.02) 6px,rgba(0,0,0,.02) 12px);color:var(--faint)}
-  .dec-rows{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  .dec-row{font-size:12px;line-height:1.55}
-  .dec-row .k{font-size:10.5px;font-weight:700;color:var(--faint);margin-bottom:3px;letter-spacing:.03em;display:flex;align-items:center;gap:4px;cursor:help}
-  .dec-row .k .hi{display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:50%;background:var(--line);color:var(--sub);font-size:9px;font-weight:800;font-family:var(--mono)}
-  .dec-row .v{color:var(--ink);font-weight:600}
-  .dec-row .v.trigger{color:var(--in)}
-  .dec-row .v.invalidation{color:var(--out)}
-  .dec-trade{display:flex;gap:8px;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);font-size:11.5px;color:var(--sub);font-family:var(--mono)}
-  .dec-trade span{flex:1}
-  .dec-trade b{color:var(--ink);font-weight:750}
-  @media (max-width:680px){
-    .dec-metrics{grid-template-columns:repeat(2,1fr)}
-    .dec-rows{grid-template-columns:1fr}
-  }
   .stocks{display:flex;flex-direction:column;gap:9px}
   .stock{background:var(--card);border-radius:16px;padding:14px 16px;box-shadow:var(--shadow);cursor:pointer;transition:transform .12s;display:flex;align-items:center;gap:12px}
   .stock:active{transform:scale(.985)}
   .stock .stripe{width:4px;align-self:stretch;border-radius:4px;background:var(--faint);min-height:30px}
   .stock.buy .stripe{background:var(--up)}.stock.sell .stripe{background:var(--down)}.stock.watch .stripe{background:var(--amber)}
   .stock .sway{flex:1;min-width:0}
-  .stock .snm{font-size:16px;font-weight:750;display:flex;align-items:center;gap:6px}
-  .stock .snm .at{font-size:10px;font-weight:800;padding:1px 7px;border-radius:100px}
+  .stock .snm{font-size:16px;font-weight:750;display:flex;align-items:center;gap:6px;white-space:nowrap}
+  .stock .snm .at{font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:100px}
   .at.buy{background:var(--up-soft);color:var(--up)}.at.sell{background:var(--down-soft);color:var(--down)}.at.watch{background:var(--amber-soft);color:var(--amber)}
   .stock .sid{font-size:11px;color:var(--faint);font-weight:600;margin-top:2px}
-  .stock .smeta{font-size:10.5px;color:var(--ink2);font-weight:500;margin-top:3px;line-height:1.45}
   .stock .sright{text-align:right;flex:none}
   .stock .sprice{font-size:16px;font-weight:750}
   .stock .spct{font-size:12px;font-weight:700}
   .stock .conf{font-size:11px;font-weight:800;padding:4px 9px;border-radius:100px;background:var(--violet-soft);color:var(--violet);flex:none}
   .empty{padding:26px;text-align:center;color:var(--faint);background:var(--card);border-radius:var(--r);font-weight:600;box-shadow:var(--shadow);font-size:13px;line-height:1.7}
-
-  /* 個股細節 · 第二層(分時/走勢/籌碼tab + 走勢小圖 placeholder) */
-  .sh-l2{margin-top:14px;border-top:1px dashed var(--line);padding-top:14px}
-  .l2-tabs{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;scrollbar-width:none}
-  .l2-tabs::-webkit-scrollbar{display:none}
-  .l2-tabs b{flex:none;font-size:12px;font-weight:700;padding:6px 12px;border-radius:100px;background:var(--soft);color:var(--sub);cursor:pointer;border:1px solid transparent;transition:.12s;white-space:nowrap}
-  .l2-tabs b.on{background:var(--ink);color:#fff;border-color:var(--ink)}
-  .spark{width:100%;height:110px;background:var(--soft);border-radius:12px;position:relative;overflow:hidden}
-  .spark svg{width:100%;height:100%;display:block}
-  .spark .ph-label{position:absolute;top:8px;left:10px;font-size:10.5px;font-weight:700;color:var(--faint);background:rgba(255,255,255,.7);padding:2px 7px;border-radius:6px}
-  .l2-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
-  .l2-cell{background:var(--soft);padding:11px 12px;border-radius:10px}
-  .l2-cell .k{font-size:10.5px;color:var(--faint);font-weight:700;margin-bottom:4px}
-  .l2-cell .v{font-size:15px;font-weight:750}
-  .l2-cell .v .sub{font-size:11px;color:var(--faint);font-weight:600;margin-left:4px}
-  .l2-cell .v.up{color:var(--up)}.l2-cell .v.down{color:var(--down)}.l2-cell .v.neu{color:var(--faint)}
-  .l2-chart{background:var(--soft);border-radius:10px;padding:12px;margin-bottom:10px}
-  .l2-stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px}
-  .ph-note{font-size:11px;color:var(--faint);font-weight:600;margin-top:10px;padding:8px 10px;background:var(--amber-soft);color:#92400e;border-radius:8px}
 
   /* 盤中資金流動(流入前三群組的個股;上進場下出場) */
   .flow-sec .flow-note{font-size:11.5px;color:var(--faint);font-weight:600;margin:0 4px 12px}
@@ -211,13 +110,9 @@
   .frow .fmain{flex:1;min-width:0}
   .frow .fnm{font-size:15px;font-weight:750}
   .frow .fsub{font-size:11px;color:var(--faint);font-weight:600;margin-top:2px}
-  .frow .fchip{font-size:10.5px;color:var(--in);font-weight:600;margin-top:3px;line-height:1.5}
-  .frow .fchip.neu{color:var(--faint);font-weight:500}
-  .frow .fmeta{font-size:10px;color:var(--ink2);font-weight:500;margin-top:2px}
-  .frow .fact{font-size:10px;font-weight:800;padding:1px 6px;border-radius:100px;margin-left:6px;vertical-align:middle}
   .frow .fflow{text-align:right;flex:none}
   .frow .fflow .fv{font-size:15px;font-weight:800}
-  .frow .fflow .fk{font-size:10px;color:var(--faint);font-weight:600}
+  .frow .fflow .fk{font-size:10.5px;color:var(--faint);font-weight:600}
   .frow .fpx{text-align:right;flex:none;min-width:66px}
   .frow .fpx .v{font-size:15px;font-weight:750}
   .frow .fpx .c{font-size:11px;font-weight:700}
@@ -229,7 +124,7 @@
   .mini .mrow{display:flex;justify-content:space-between;padding:5px 0;font-size:13px}
   .mini .mrow .nm{font-weight:650}.mini .mrow .v{font-weight:750}
   .acc-big{display:flex;gap:8px;text-align:center}.acc-big .c{flex:1}
-  .acc-big .cv{font-size:20px;font-weight:800;color:var(--violet)}.acc-big .ck{font-size:10px;color:var(--faint);font-weight:600}
+  .acc-big .cv{font-size:20px;font-weight:800;color:var(--violet)}.acc-big .ck{font-size:10.5px;color:var(--faint);font-weight:600}
 
   /* 插件分頁內容 */
   .plugin-body{padding:18px}
@@ -266,10 +161,10 @@
   .blk-t{font-size:12px;font-weight:750;color:var(--sub);margin-bottom:10px;display:flex;justify-content:space-between}
   .blk-t .r{color:var(--faint);font-weight:600}
   .fac{display:flex;align-items:center;gap:11px;padding:6px 0}
-  .fac .fk{width:64px;flex:none;font-size:12.5px;color:var(--sub);font-weight:600}
+  .fac .fk{width:80px;flex:none;font-size:12.5px;color:var(--sub);font-weight:600;white-space:nowrap}
   .fac .fb{flex:1;height:8px;background:var(--soft);border-radius:100px;overflow:hidden}
   .fac .fb i{display:block;height:100%;border-radius:100px}
-  .fac .fv{width:34px;text-align:right;flex:none;font-size:12px;font-weight:750}
+  .fac .fv{width:42px;text-align:right;flex:none;font-size:12px;font-weight:750}
   .kv2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
   .kv2 .c{background:var(--soft);border-radius:13px;padding:12px 14px}
   .kv2 .c .k{font-size:11px;color:var(--faint);font-weight:600}
@@ -277,51 +172,33 @@
   .healbox{border-radius:14px;padding:13px 15px;margin-top:4px}
   .healbox.in_up{background:var(--up-soft)}.healbox.in_down{background:var(--amber-soft)}.healbox.out_up{background:var(--violet-soft)}.healbox.out_down{background:var(--down-soft)}
   .healbox .t{font-size:13px;font-weight:800}.healbox .d{font-size:11.5px;color:var(--sub);margin-top:4px;line-height:1.5}
-  /* v2.6:盤後模式橫幅 — 動態指標歸零時的明確說明 */
-  .afterhours-banner{border:1px dashed var(--amber);background:var(--amber-soft);border-radius:14px;padding:13px 15px;margin-top:10px}
-  .afterhours-banner .t{font-size:12.5px;font-weight:800;color:var(--amber)}
-  .afterhours-banner .d{font-size:11.5px;color:var(--sub);margin-top:4px;line-height:1.6}
   .chipbox,.tribox{border:1px solid var(--line);border-radius:14px;padding:13px 15px;margin-top:10px}
   .chipbox .t,.tribox .t{font-size:12px;font-weight:800;display:flex;align-items:center;gap:7px}
-  .tribox .vd{font-size:10px;font-weight:800;padding:2px 8px;border-radius:100px}
+  .tribox .vd{font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:100px}
   .vd.bullish{background:var(--up);color:#fff}.vd.bearish{background:var(--down);color:#fff}.vd.pending{background:var(--amber-soft);color:var(--amber)}
   .ln{font-size:11.5px;margin-top:7px;line-height:1.6}.ln .pos{color:var(--up)}.ln .neg{color:var(--down)}.ln .neu{color:var(--sub)}
   .nx{font-size:11px;color:var(--violet);margin-top:8px;font-weight:700}
   .rules{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px}
   .rules .r{font-size:11px;background:var(--violet-soft);color:var(--violet);padding:3px 10px;border-radius:100px;font-weight:700}
-  /* 個股資訊卡 — 籌碼/資金/健康度/技術/交易/AI 6 區塊 */
-  .sic{border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-top:14px;background:#fff}
-  .sic-t{font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;color:var(--ink)}
-  .sic-t .sic-r{font-size:10.5px;color:var(--faint);font-weight:600}
-  .sic-sec{margin-top:12px}
-  .sic-sec:first-of-type{margin-top:0}
-  .sic-sec .sic-st{font-size:11px;font-weight:800;color:var(--sub);margin-bottom:7px;display:flex;align-items:center;gap:6px}
-  .sic-sec .sic-st::before{content:"";width:3px;height:11px;background:var(--violet);border-radius:2px}
-  .sic-g{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
-  .sic-g3{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
-  .sic-g2{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}
-  .sic-c{background:var(--soft);border-radius:11px;padding:9px 11px}
-  .sic-c .sic-k{font-size:10.5px;color:var(--faint);font-weight:600;line-height:1.3}
-  .sic-c .sic-v{font-size:14px;font-weight:800;margin-top:2px;line-height:1.2}
-  .sic-c .sic-v.up{color:var(--up)}.sic-c .sic-v.dn{color:var(--down)}.sic-c .sic-v.nm{color:var(--sub)}
-  .sic-c .sic-u{font-size:10px;color:var(--faint);font-weight:600;margin-left:2px}
-  .sic-big{background:var(--up-soft);border-radius:13px;padding:13px 14px;text-align:center}
-  .sic-big .sic-bk{font-size:11px;color:var(--sub);font-weight:700}
-  .sic-big .sic-bv{font-size:30px;font-weight:800;color:var(--up);letter-spacing:-.02em;margin-top:2px;line-height:1.1}
-  .sic-trade{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
-  .sic-trade .sic-c{padding:11px 10px}
-  .sic-trade .sic-v{font-size:16px}
-  .sic-advice{display:inline-block;font-size:11px;font-weight:800;padding:3px 12px;border-radius:100px}
-  .sic-advice.go{background:var(--up);color:#fff}
-  .sic-advice.wait{background:var(--amber-soft);color:var(--amber)}
-  .sic-advice.hold{background:var(--soft);color:var(--sub)}
-  .sic-ai-row{display:flex;align-items:center;justify-content:space-between;background:var(--violet-soft);border-radius:12px;padding:10px 14px;margin-bottom:8px}
-  .sic-ai-pct{font-size:22px;font-weight:800;color:var(--violet);letter-spacing:-.02em}
-  .sic-reason{display:flex;align-items:flex-start;gap:6px;font-size:11.5px;line-height:1.5;margin-top:4px}
-  .sic-reason.pass{color:var(--up)}.sic-reason.fail{color:var(--down)}
-  .sic-reason::before{font-weight:800;flex:none}
-  .sic-reason.pass::before{content:"✓"}
-  .sic-reason.fail::before{content:"✕"}
+  /* 盤前報告(v2.4) */
+  .pmblock{background:var(--card);border-radius:16px;padding:14px 16px;box-shadow:var(--shadow)}
+  .pmblock .pm-empty{font-size:13px;color:var(--sub);font-weight:600;line-height:1.7}
+  .pm-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .pm-row .pm-d{font-size:14px;font-weight:800}
+  .pm-row .pm-s{font-size:11.5px;color:var(--sub);font-weight:600}
+  .pm-btn{margin-left:auto;font-size:12.5px;font-weight:750;padding:8px 15px;border-radius:100px;border:none;cursor:pointer;background:var(--violet);color:#fff;white-space:nowrap}
+  .pm-btn.g{background:var(--violet-soft);color:var(--violet)}
+  .pm-key{font-size:11.5px;color:var(--amber);font-weight:700;margin-top:8px;line-height:1.6}
+  .pm-prev{font-size:12px;color:var(--sub);margin-top:9px;line-height:1.65;max-height:66px;overflow:hidden;position:relative}
+  .pmreport{background:var(--card);border-radius:var(--r);padding:18px;box-shadow:var(--shadow);font-size:13px;line-height:1.8}
+  .pmreport h1,.pmreport h2,.pmreport h3{font-size:15px;margin:14px 0 6px;color:var(--ink)}
+  .pmreport p{margin:6px 0}
+  .pmtbl-x{overflow-x:auto;margin:10px 0}
+  .pmtbl{border-collapse:collapse;min-width:760px;font-size:12px}
+  .pmtbl th{background:var(--violet-soft);color:var(--violet);font-weight:800;padding:7px 9px;text-align:left;white-space:nowrap;font-size:11.5px}
+  .pmtbl td{padding:7px 9px;border-top:1px solid var(--line);vertical-align:top;line-height:1.55;min-width:72px}
+  .pmtbl td:first-child{font-weight:750;white-space:nowrap}
+  .pm-grade{font-weight:800}.pm-grade.A{color:var(--up)}.pm-grade.B{color:var(--amber)}.pm-grade.C{color:var(--violet)}.pm-grade.D{color:var(--sub)}
   .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(16px);background:var(--ink);color:#fff;font-size:13px;font-weight:650;padding:11px 20px;border-radius:100px;z-index:80;opacity:0;transition:.25s;pointer-events:none;box-shadow:var(--shadow-lg)}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   footer{padding:18px;font-size:11px;color:var(--faint);line-height:1.8;text-align:center}
@@ -339,12 +216,11 @@
 
 <div class="tabs" id="tabs">
   <div class="tab on" data-tab="home">🏠 首頁</div>
+  <div class="tab" data-tab="premarket">🌅 盤前報告</div>
   <div class="tab" data-tab="rank">📊 排行</div>
   <div class="tab" data-tab="nexora">🧠 NEXORA</div>
   <div class="tab" data-tab="strategy">🎯 四大策略</div>
   <div class="tab" data-tab="health">💰 資金健康度</div>
-  <div class="tab" data-tab="signals">🚦 訊號板</div>
-  <div class="tab" data-tab="livermore">📈 李佛摩</div>
   <div class="tab" data-tab="sim">⚙️ 模擬/設定</div>
 </div>
 
@@ -354,15 +230,12 @@
     <div class="verdict" id="verdict"></div>
 
     <div class="sec">
-      <div class="sec-h"><span class="sec-t">盤面速覽</span></div>
-      <div class="mini-grid">
-        <div class="mini"><div class="mk">資金流入前三<span class="mk-tip" title="單位=主動買張−主動賣張(張);盤中才會累積,盤後/未開盤為「無流向」">主動淨流</span></div><div id="topflow"></div></div>
-        <div class="mini"><div class="mk">今日禁區</div><div id="donttouch"></div></div>
-      </div>
+      <div class="sec-h"><span class="sec-t">盤前報告</span><span class="sec-s">美股對比 × AI 觀察池篩選</span><span class="sec-x" id="pm-upd"></span></div>
+      <div class="pmblock" id="pmblock"><div class="pm-empty">載入中…</div></div>
     </div>
 
     <div class="sec">
-      <div class="sec-h"><span class="sec-t">產業資金熱力圖</span><span class="sec-s">面積=成交額佔比 · 顏色=漲跌/流向</span><span class="sec-x" id="heat-upd"></span></div>
+      <div class="sec-h"><span class="sec-t">產業資金熱力圖</span><span class="sec-s">面積=資金 · 顏色=漲跌</span><span class="sec-x" id="heat-upd"></span></div>
       <div class="heat-mode">
         <b class="on" data-hm="change" onclick="setHeat('change')">漲跌幅</b>
         <b data-hm="flow" onclick="setHeat('flow')">資金動能</b>
@@ -373,44 +246,34 @@
       <div class="drill" id="drill"></div>
     </div>
 
-    <div class="sec">
-      <div class="sec-h">
-        <span class="sec-t">反攻候選名單</span>
-        <span class="sec-s">決策卡 · AI Score / 信心 / 狀態 / 動作 / 觸發 / 失效</span>
-        <span class="sec-x" id="decisions-upd"></span>
-      </div>
-      <div class="decision-tabs">
-        <b class="on" data-df="all" onclick="setDecFilter('all',this)">全部 <span class="dn" id="dn-all">0</span></b>
-        <b data-df="Ready" onclick="setDecFilter('Ready',this)">Ready <span class="dn dn-ready" id="dn-ready">0</span></b>
-        <b data-df="Watch" onclick="setDecFilter('Watch',this)">Watch <span class="dn dn-watch" id="dn-watch">0</span></b>
-        <b data-df="Hold" onclick="setDecFilter('Hold',this)">Hold <span class="dn dn-hold" id="dn-hold">0</span></b>
-      </div>
-      <div id="decisions"></div>
-    </div>
-
     <div class="sec flow-sec">
       <div class="sec-h"><span class="sec-t">盤中資金流動</span><span class="sec-s">流入前三群組 · 進出場觀察</span></div>
       <div class="flow-note" id="flow-note"></div>
       <div id="flowbody"></div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h"><span class="sec-t">盤面速覽</span></div>
+      <div class="mini-grid">
+        <div class="mini"><div class="mk">資金流入前三</div><div id="topflow"></div></div>
+        <div class="mini"><div class="mk">今日禁區</div><div id="donttouch"></div></div>
+      </div>
     </div>
   </div>
 </div>
 
 <!-- 插件分頁 -->
 <div id="page-plugin" style="display:none"><div class="plugin-body" id="plugin-body"></div></div>
+<div id="page-premarket" style="display:none"><div class="wrap"><div class="pmreport" id="pmreport">載入中…</div></div></div>
 
 <div class="ov" id="ov" onclick="closeBg(event)"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
 <footer>紅漲綠跌 · 資金流入前三群組才進盤中流動列表 · 資訊僅供參考,不構成投資建議</footer>
 
 <script>
-var API_BASE="";  /* 空字串=同源(透過 Vercel serverless function /api/[...path].js 反代到 VPS 104.156.239.83:8000)。切回 VPS 直連時改回 "http://104.156.239.83",但需 VPS HTTPS。 */
 var STATE=null, HEAT="change", SEL=null, TAB="home";
 var ENGINE={"2303":1,"5347":1};
 var QN={"in_up":"流入·漲","in_down":"⚠流入·跌 邊拉邊賣","out_up":"流出·漲 惜售","out_down":"流出·跌 休息"};
-/* action 全 6 值對應:UI 顯示文字 + CSS class(預設:buy=buy, sell=sell, obs=obs, watch_buy/watch=watch, watch_exit/hold=hold) */
-var ACTION_LABEL={buy:"進場",sell:"出場",obs:"僅觀察",watch:"高潛力",watch_buy:"觀察進場",watch_exit:"觀察出場",hold:"續抱"};
-var ACTION_CSS={buy:"buy",sell:"sell",obs:"obs",watch:"watch",watch_buy:"watch",watch_exit:"hold",hold:"hold"};
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 function pf(v){if(v==null)return"—";return (v>0?"+":"")+Number(v).toFixed(2)+"%";}
 function col(v){return (v||0)>=0?"var(--up)":"var(--down)";}
@@ -440,93 +303,28 @@ function renderTop(){
   document.getElementById("livetxt").textContent=(STATE.is_market_hours===false?"盤後":"盤中");
 }
 function renderVerdict(){
-  var m=(STATE.market||{});
   var secs=(STATE.sectors||[]).slice().sort(function(a,b){return (b.flow_score||0)-(a.flow_score||0)});
   var top3=secs.filter(function(s){return s.type==="attack"&&s.flow_score>0}).slice(0,3);
   var locked=(STATE.locked_sectors||[]);
   var lead=top3.length?('今日主攻 <em>'+esc(top3[0].name)+'</em>'):'今日無明確主攻族群';
   var sub=top3.length?('資金流入前三:'+top3.map(function(s){return esc(s.name)}).join("、")+'。'):'資金分散,偏防守觀望。';
   if(locked.length)sub+=' 鎖定:'+locked.map(esc).join("、")+'。';
-
-  // 模式 chip
-  var mode=m.mode==="attack"?"attack":m.mode==="caution"?"caution":"risk";
-  var modeLabel=m.mode==="attack"?"攻擊模式":m.mode==="caution"?"謹慎模式":"防守模式";
-  var scoreLabel=m.score!=null?(m.score+" 分 · 市場強度"):"市場強度計算中";
-
-  // 主做 / 次做（取 locked 第一第二個；locked 空就用 flow_score 前二）
-  var mainSec=(locked[0])||(top3[0]&&top3[0].name)||"";
-  var subSec=(locked[1])||(top3[1]&&top3[1].name)||"";
-
-  var picksHtml="";
-  if(mainSec){
-    picksHtml+='<span class="pick main"><span class="k">主做</span>'+esc(mainSec)+'</span>';
-  }
-  if(subSec){
-    picksHtml+='<span class="pick sub"><span class="k">次做</span>'+esc(subSec)+'</span>';
-  }
-
-  document.getElementById("verdict").innerHTML=
-    '<div class="lead">今日盤面結論</div>'
-    +'<div class="big">'+lead+'</div>'
-    +'<div class="sub">'+sub+'</div>'
-    +'<div class="banner-row">'
-      +'<span class="mode-chip '+mode+'"><span class="d"></span>'+modeLabel+'</span>'
-      +'<span class="strategy-chip">'+scoreLabel+'</span>'
-    +'</div>'
-    +(picksHtml?('<div class="pick-line">'+picksHtml+'</div>'):'');
+  document.getElementById("verdict").innerHTML='<div class="lead">今日盤面結論</div><div class="big">'+lead+'</div><div class="sub">'+sub+'</div>';
 }
 function renderTree(){
   document.getElementById("heat-upd").textContent="更新 "+((STATE.market||{}).time||"");
-  /* v2.5:5×2 固定 grid,10 群組等大正方形
-     · 排序:locked 優先 → 再依金額遞減
-     · 顏色:HEAT=change(漲跌幅)/HEAT=flow(資金動能)
-     · 缺資料的版位顯示「無資料」灰版
-  */
-  var allSecs=(STATE.sectors||[]).slice();
-  /* v2.5.1:補位用 config.UNIVERSE(10 族群),只補 STATE 沒有的,去重 */
-  var universeNames=["記憶體","封測","被動元件","PCB材料","功率半導體","石英元件","無人機","光通訊","ABF載板","晶圓材料"];
-  function sortKey(s){
-    var lockedW=s.locked?1e12:0;
-    var amt=s.amount_100m!=null?s.amount_100m*1e6:0;
-    return lockedW+amt;
-  }
-  var sorted=allSecs.slice().sort(function(a,b){return sortKey(b)-sortKey(a)});
-  /* 補位:若 STATE sectors 不足 10,用 universeNames 補,但排除已存在的(去重) */
-  var existing=new Set(sorted.map(function(s){return s.name}));
-  universeNames.forEach(function(n){if(!existing.has(n)&&sorted.length<10){sorted.push({name:n,locked:false,pct:null,amount_100m:null,flow_score:null,_placeholder:true});}});
-  var picked=sorted.slice(0,10);
-  var tree=document.getElementById("tree"),html="";
-  for(var i=0;i<10;i++){
-    var s=picked[i];
-    if(s){
-      if(s._placeholder){
-        html+='<div class="cell placeholder"><span class="rank">#'+(i+1)+'</span><div class="cn">'+esc(s.name)+'</div><div class="cv">無當日成交</div></div>';
-        continue;
-      }
-      var c=HEAT==="change"?colorChange(s.pct):colorFlow(s.flow_score);
-      // v2.6:HEAT=flow 顯示真實「主動淨流張數」,不再把成交額誤當淨流入
-      // 金額(amount_100m)僅用於面積權重(代表市場關注度),不再當作 inflow 標籤
-      var val;
-      if(HEAT==="change"){
-        val=pf(s.pct);
-      }else{
-        var net=(s.health&&s.health.net_lots!=null)?s.health.net_lots:null;
-        if(net==null){val="無流向";}
-        else{var kn=Math.round(Math.abs(net)/1000);
-          val=(net>=0?"+":"−")+kn+"k張";}
-      }
-      var lockLabel=s.locked?'<span class="lk">鎖</span>':"";
-      html+='<div class="cell'+(SEL===s.name?" sel":"")+'" style="background:'+c+'" onclick="pick(\''+esc(s.name)+'\')">'
-        +'<span class="rank">#'+(i+1)+'</span>'
-        +lockLabel
-        +'<div class="cn">'+esc(s.name)+'</div>'
-        +'<div class="cv">'+val+'</div>'
-      +'</div>';
-    } else {
-      html+='<div class="cell placeholder"><span class="rank">#'+(i+1)+'</span><div class="cn">—</div><div class="cv">無資料</div></div>';
-    }
-  }
-  tree.innerHTML=html;
+  var secs=(STATE.sectors||[]).filter(function(s){return secWeight(s)>0});
+  var tree=document.getElementById("tree"),W=tree.clientWidth||600,H=400;
+  var rects=treemap(secs.map(function(s){return {name:s.name,weight:secWeight(s),s:s}}),W,H);
+  var html="";
+  rects.forEach(function(r){
+    var s=r.it.s,c=HEAT==="change"?colorChange(s.pct):colorFlow(s.flow_score);
+    var val=HEAT==="change"?pf(s.pct):((s.flow_score>=0?"+":"")+(s.amount_100m!=null?s.amount_100m:0)+"億");
+    var big=Math.min(r.w,r.h);var wlen=0;for(var ci=0;ci<s.name.length;ci++){wlen+=s.name.charCodeAt(ci)>255?1:0.55;}var rawfn=Math.min(17,big/5,(r.w-10)/Math.max(1,wlen));var show=r.w>44&&r.h>30&&rawfn>=8.5;var fn=Math.max(9,rawfn);
+    html+='<div class="cell'+(SEL===s.name?" sel":"")+'" style="left:'+r.x+'px;top:'+r.y+'px;width:'+r.w+'px;height:'+r.h+'px;background:'+c+'" onclick="pick(\''+esc(s.name)+'\')">'
+      +(s.locked?'<span class="lk">鎖</span>':'')+(show?('<div class="cn" style="font-size:'+fn+'px">'+esc(s.name)+'</div><div class="cv" style="font-size:'+Math.max(8,fn-3)+'px">'+val+'</div>'):'')+'</div>';
+  });
+  tree.innerHTML=html||'<div class="empty" style="height:100%;display:flex;align-items:center;justify-content:center">無資料</div>';
   renderDrill();
 }
 function grpStocks(sec){return (STATE.stocks||[]).filter(function(x){return x.sector===sec}).sort(function(a,b){return (b.ai_score||0)-(a.ai_score||0)});}
@@ -541,16 +339,9 @@ function renderDrill(){
     +'<div class="stocks">'+(st.length?st.map(stockCard).join(""):'<div class="empty">此群組暫無符合條件個股<br>盤中才有進出場訊號</div>')+'</div>';
 }
 function stockCard(s){
-  var act=s.action||"obs";
-  var al=ACTION_LABEL[act]||act;
-  var cls=ACTION_CSS[act]||"obs";
-  var sub=[(s.volume_ratio!=null?("量比 "+s.volume_ratio.toFixed(2)):"")];
-  if(s.avg_price)sub.push("均價 "+s.avg_price);
-  if(s.suggested_stop)sub.push("停損 "+s.suggested_stop);
-  if(s.bs!=null)sub.push("BS "+s.bs+"%");
-  if(s.health&&s.health.quadrant)sub.push(QN[s.health.quadrant]||s.health.quadrant);
-  return '<div class="stock '+cls+'" onclick="detail(\''+s.code+'\')"><div class="stripe"></div>'
-    +'<div class="sway"><div class="snm">'+esc(s.name)+'<span class="at '+cls+'">'+al+'</span></div><div class="sid num">'+esc(s.code)+(ENGINE[s.code]?" · 引擎":"")+'</div><div class="smeta">'+sub.filter(Boolean).join(" · ")+'</div></div>'
+  var act=s.action||"",al={buy:"進場",sell:"出場",watch:"觀察"}[act];
+  return '<div class="stock '+act+'" onclick="detail(\''+s.code+'\')"><div class="stripe"></div>'
+    +'<div class="sway"><div class="snm">'+esc(s.name)+(al?'<span class="at '+act+'">'+al+'</span>':'')+'</div><div class="sid num">'+esc(s.code)+(ENGINE[s.code]?" · 引擎":"")+'</div></div>'
     +'<div class="sright"><div class="sprice num" style="color:'+col(s.change_rate)+'">'+(s.price!=null?s.price:"—")+'</div><div class="spct num" style="color:'+col(s.change_rate)+'">'+pf(s.change_rate)+'</div></div>'
     +'<span class="conf">'+(s.ai_score!=null?s.ai_score:"—")+'</span></div>';
 }
@@ -564,28 +355,12 @@ function renderFlow(){
     ? ("範圍:"+secs.map(function(s){return s.name}).join("、")+" — 只看流入群組內個股")
     : "目前無資金流入群組(盤中資金流入前三才會出現個股)";
   var pool=(STATE.stocks||[]).filter(function(x){return names[x.sector]});
-  var buys=pool.filter(function(x){return x.action==="buy"||x.action==="watch"||x.action==="watch_buy"}).sort(function(a,b){return (b.ai_score||0)-(a.ai_score||0)});
-  var sells=pool.filter(function(x){return x.action==="sell"||x.action==="watch_exit"}).sort(function(a,b){return (a.change_rate||0)-(b.change_rate||0)});
+  var buys=pool.filter(function(x){return x.action==="buy"||x.action==="watch"}).sort(function(a,b){return (b.ai_score||0)-(a.ai_score||0)});
+  var sells=pool.filter(function(x){return x.action==="sell"}).sort(function(a,b){return (a.change_rate||0)-(b.change_rate||0)});
   function frow(s,kind){
     var af=s.health?s.health.aflow_ratio:null;
-    var h=s.health||{};
-    var cp=s.chip||{};
-    var act=ACTION_LABEL[s.action||"obs"]||s.action||"obs";
-    // 第二行:籌碼摘要(法人/大戶/外資連買)
-    var chipLine=[];
-    if(cp.has_data!==false){
-      if(cp.inst_net_20d_lots!=null)chipLine.push('法人'+(cp.inst_net_20d_lots>0?"買超":"賣超")+(cp.inst_net_20d_lots>0?"+":"")+cp.inst_net_20d_lots+"張");
-      if(cp.inst_streak!=null&&cp.inst_streak>0)chipLine.push('外資連買 '+cp.inst_streak+' 日');
-      if(cp.big_holder_pct!=null)chipLine.push('大戶 '+cp.big_holder_pct.toFixed(1)+'%'+(cp.big_holder_trend>0?" ▲":"")+(cp.big_holder_trend<0?" ▼":""));
-    }
-    if(chipLine.length===0)chipLine.push('籌碼待盤後更新');
-    // 第三行:健康度象限 + 量比 + BS
-    var meta=['量比 '+(s.volume_ratio!=null?s.volume_ratio.toFixed(2):"—"),(s.bs!=null?'BS '+s.bs+'%':null),QN[h.quadrant]||null,(s.suggested_stop!=null?'停損 '+s.suggested_stop:null)].filter(Boolean).join(' · ');
     return '<div class="frow '+kind+'" onclick="detail(\''+s.code+'\')"><div class="fstripe"></div>'
-      +'<div class="fmain"><div class="fnm">'+esc(s.name)+'<span class="fact '+ACTION_CSS[s.action||"obs"]+'">'+act+'</span></div>'
-      +'<div class="fsub">'+esc(s.code)+' · '+esc(s.sector)+' · AI '+(s.ai_score!=null?s.ai_score:"—")+'</div>'
-      +'<div class="fchip '+(cp.has_data?"":"neu")+'">'+chipLine.join(" ｜ ")+'</div>'
-      +'<div class="fmeta">'+meta+'</div></div>'
+      +'<div class="fmain"><div class="fnm">'+esc(s.name)+'</div><div class="fsub">'+esc(s.code)+' · '+esc(s.sector)+' · AI '+(s.ai_score!=null?s.ai_score:"—")+(s.bs!=null?' · 內外盤'+s.bs+'%':'')+'</div></div>'
       +'<div class="fflow"><div class="fv '+(af>0?"in":af<0?"out":"")+'">'+(af!=null?((af>0?"+":"")+(af*100).toFixed(0)+"%"):"—")+'</div><div class="fk">主動淨流</div></div>'
       +'<div class="fpx"><div class="v num" style="color:'+col(s.change_rate)+'">'+(s.price!=null?s.price:"—")+'</div><div class="c num" style="color:'+col(s.change_rate)+'">'+pf(s.change_rate)+'</div></div></div>';
   }
@@ -596,56 +371,12 @@ function renderFlow(){
   document.getElementById("flowbody").innerHTML=h;
 }
 function renderMini(){
-  var allSecs=(STATE.sectors||[]);
-  var secs=allSecs.filter(function(s){return s.flow_score>0}).sort(function(a,b){return b.flow_score-a.flow_score}).slice(0,3);
-  if(secs.length){
-    // v2.6:用 sector health 真實 net_lots(主動淨流張數)取代誤導的「+amount_100m 億」
-    // 成交額 ≠ 淨流入;淨流入用主動買張 − 主動賣張(由 scoring.get_aflow 累計)
-    document.getElementById("topflow").innerHTML=secs.map(function(s){
-      var net=(s.health&&s.health.net_lots!=null)?s.health.net_lots:null;
-      var label,cls;
-      if(net==null){label="無流向";cls="neu";}
-      else{
-        var kn=Math.round(Math.abs(net)/1000);
-        label=(net>=0?"+":"−")+kn+"k張";
-        cls=net>=0?"in":"out";
-      }
-      return '<div class="mrow"><span class="nm">'+esc(s.name)+'</span><span class="v '+cls+'">'+label+'</span></div>';
-    }).join("");
-  } else {
-    // 區分:沒族群 vs 沒流入
-    if(allSecs.length===0){
-      document.getElementById("topflow").innerHTML=
-        '<div class="mrow"><span class="nm" style="color:var(--faint)">尚無族群資料</span></div>'
-        +'<div class="mrow" style="color:var(--faint);font-size:11.5px;line-height:1.6;padding:6px 4px 0">'
-        +'· engine 還在組 STATE(開盤後約 5 分鐘)<br>'
-        +'· 或非交易時段(午休 / 週末 / 收盤後)</div>';
-    } else {
-      document.getElementById("topflow").innerHTML=
-        '<div class="mrow"><span class="nm" style="color:var(--faint)">無資金流入群組</span></div>'
-        +'<div class="mrow" style="color:var(--faint);font-size:11.5px;line-height:1.6;padding:6px 4px 0">'
-        +'· '+allSecs.length+' 個族群都呈流出/中性<br>'
-        +'· 大盤轉弱或族群輪動休息中<br>'
-        +'· 這是常態,不是 bug</div>';
-    }
-  }
-  var out=allSecs.filter(function(s){return s.type==="attack"&&(s.flow_score<0||s.pct<-2)});
-  if(out.length){
-    document.getElementById("donttouch").innerHTML=out.map(function(s){
-      return '<div class="mrow"><span class="nm">'+esc(s.name)+'</span><span class="v down">禁追</span></div>';
-    }).join("");
-  } else {
-    if(allSecs.length===0){
-      document.getElementById("donttouch").innerHTML=
-        '<div class="mrow"><span class="nm" style="color:var(--faint)">尚無族群資料</span></div>';
-    } else {
-      document.getElementById("donttouch").innerHTML=
-        '<div class="mrow"><span class="nm" style="color:var(--faint)">無明確禁區</span></div>'
-        +'<div class="mrow" style="color:var(--faint);font-size:11.5px;line-height:1.6;padding:6px 4px 0">'
-        +'· '+allSecs.length+' 個族群都未觸發「攻擊族群 + 資金流出或跌>2%」條件<br>'
-        +'· 沒有可標的=沒有族群需要避開(好消息)</div>';
-    }
-  }
+  var secs=(STATE.sectors||[]).filter(function(s){return s.flow_score>0}).sort(function(a,b){return b.flow_score-a.flow_score}).slice(0,3);
+  var h1=secs.length?secs.map(function(s){return '<div class="mrow"><span class="nm">'+esc(s.name)+'</span><span class="v in">'+(s.amount_100m!=null?"+"+s.amount_100m+"億":pf(s.pct))+'</span></div>'}).join(""):'<div class="mrow"><span class="nm" style="color:var(--faint)">無</span></div>';
+  document.getElementById("topflow").innerHTML=h1;
+  var out=(STATE.sectors||[]).filter(function(s){return s.type==="attack"&&(s.flow_score<0||s.pct<-2)});
+  var h2=out.length?out.map(function(s){return '<div class="mrow"><span class="nm">'+esc(s.name)+'</span><span class="v down">禁追</span></div>'}).join(""):'<div class="mrow"><span class="nm" style="color:var(--faint)">今日無明確禁區</span></div>';
+  document.getElementById("donttouch").innerHTML=h2;
 }
 
 function pick(sec){SEL=(SEL===sec?null:sec);renderTree();if(SEL)setTimeout(function(){document.getElementById("drill").scrollIntoView({behavior:"smooth",block:"start"});},60);}
@@ -654,19 +385,9 @@ function setHeat(m){HEAT=m;document.querySelectorAll(".heat-mode b").forEach(fun
 /* 個股細節 */
 function detail(code){
   var s=(STATE.stocks||[]).find(function(x){return x.code===code});if(!s)return;
-  var act=s.action||"obs";
-  var al={buy:"進場訊號",sell:"出場/風險",watch:"高潛力觀察",obs:"僅觀察",watch_buy:"觀察中可進場",watch_exit:"觀察中準備出場",hold:"續抱(已持股)"}[act]||act;
-  var cls=ACTION_CSS[act]||"obs";
+  var act=s.action||"obs",al={buy:"進場訊號",sell:"出場/風險",watch:"高潛力觀察",obs:"僅觀察"}[act];
   var h=s.health||{},t=s.triangulation||{},cp=s.chip,ds=s.doc_strategy;
-  function fac(k,v,raw,cap){
-    var c=v>=75?"var(--up)":v>=55?"var(--violet)":v>=40?"var(--amber)":"var(--down)";
-    var capHint = (raw!=null && cap) ? '滿分 '+cap+' · 實際 '+Math.round(raw||0) : '';
-    return '<div class="fac" title="'+esc(k)+':'+capHint+' · '+Math.round(raw||0)+'/'+cap+' = '+Math.round(v||0)+'%">'+
-      '<span class="fk">'+k+'</span>'+
-      '<div class="fb"><i style="width:'+Math.round(v||0)+'%;background:'+c+'"></i></div>'+
-      '<span class="fv" style="color:'+c+'">'+Math.round(raw||0)+'/'+cap+'</span>'+
-      '</div>';
-  }
+  function fac(k,v){var c=v>=75?"var(--up)":v>=55?"var(--violet)":v>=40?"var(--amber)":"var(--down)";return '<div class="fac"><span class="fk">'+k+'</span><div class="fb"><i style="width:'+Math.round(v||0)+'%;background:'+c+'"></i></div><span class="fv" style="color:'+c+'">'+Math.round(v||0)+'</span></div>';}
   var fc=s.factors||{};
   var m='<div class="grip"></div><div class="sh-h"><div class="snm">'+esc(s.name)+' <span style="font-size:13px;color:var(--faint);font-weight:600">'+esc(s.code)+' · '+esc(s.sector)+'</span></div>'
     +'<div class="ssub">現價 '+(s.price!=null?s.price:"—")+' · <span style="color:'+col(s.change_rate)+'">'+pf(s.change_rate)+'</span> · AI '+(s.ai_score!=null?s.ai_score:"—")+'</div>'
@@ -676,23 +397,8 @@ function detail(code){
     +'<div class="c"><div class="k">量比</div><div class="v num">'+(s.volume_ratio!=null?s.volume_ratio.toFixed(2):"—")+'</div></div>'
     +'<div class="c"><div class="k">均價線</div><div class="v num">'+(s.avg_price!=null?s.avg_price:"—")+'</div></div>'
     +'<div class="c"><div class="k">建議停損</div><div class="v num down">'+(s.suggested_stop!=null?s.suggested_stop:"—")+'</div></div>'
-    +'<div class="c"><div class="k">內外盤BS</div><div class="v num">'+(s.bs!=null?s.bs+"%":"—")+'</div></div></div></div>'
-    // ── 個股資訊卡 ── 資料由 _l2cache[code] /api/stock_detail 補(走勢分頁會拉一次)
-    +'<div class="blk" id="sic-'+code+'"><div class="sic"><div class="sic-t">個股資訊卡 <span class="sic-r" id="sic-load-'+code+'">載入中…</span></div><div id="sic-body-'+code+'"></div></div></div>';
-  // v2.6:盤後/非交易時段提示。趨勢(突破今高)、量能(TNVR)、主動淨流都需盤中 tick 才會累積
-  // 盤後靜態快照下這幾項歸零是預期行為,加狀態橫幅避免誤判「系統壞掉」
-  if(STATE.is_market_hours===false){
-    var _isEOD=(s.change_rate!=null);  // 有收盤價 = 至少已收盤
-    m+='<div class="blk"><div class="afterhours-banner">'+
-      '<div class="t">⏱ 盤後模式</div>'+
-      '<div class="d">趨勢 / 量能 / 主動淨流等動態指標需 <b>盤中 09:00–13:30</b> 累積,目前為靜態收盤快照。</div>'+
-      (_isEOD?'<div class="d">今日收盤價 <b>'+s.price+'</b>(<span style="color:'+col(s.change_rate)+'">'+pf(s.change_rate)+'</span>)已記錄;籌碼面待 FinMind EOD 更新。</div>':'')+
-      '</div></div>';
-  }
-  if(fc.trend!=null){
-    var aiExplain='綜合 5 個維度給的 AI 分數(0-100),>75 偏多、55-75 中性、<55 偏空。趨勢+量能+相對強度+籌碼+族群,各佔不同權重。';
-    m+='<div class="blk"><div class="blk-t"><span style="cursor:help" title="'+esc(aiExplain)+'">五因子評分</span> <span class="r">AI '+(s.ai_score||0)+'</span></div>'+fac("趨勢",fc.trend/25*100,fc.trend,25)+fac("量能",fc.volume/25*100,fc.volume,25)+fac("相對強度",fc.rs/20*100,fc.rs,20)+fac("籌碼",fc.chip/20*100,fc.chip,20)+fac("族群",fc.sector/10*100,fc.sector,10)+'</div>';
-  }
+    +'<div class="c"><div class="k">內外盤BS</div><div class="v num">'+(s.bs!=null?s.bs+"%":"—")+'</div></div></div></div>';
+  if(fc.trend!=null)m+='<div class="blk"><div class="blk-t">五因子評分 <span class="r">AI '+(s.ai_score||0)+'</span></div>'+fac("趨勢",fc.trend/25*100)+fac("量能",fc.volume/25*100)+fac("相對強度",fc.rs/20*100)+fac("籌碼",fc.chip/20*100)+fac("族群",fc.sector/10*100)+'</div>';
   if(h.quadrant)m+='<div class="blk"><div class="healbox '+h.quadrant+'"><div class="t">資金健康度 '+esc(h.stars||"")+' '+esc(h.label||"")+' ('+(h.health_score||0)+')</div><div class="d">'+esc(h.desc||"")+' · 主動淨流比 '+(h.aflow_ratio!=null?h.aflow_ratio:"—")+'</div></div></div>';
   if(cp){m+='<div class="blk"><div class="chipbox"><div class="t">籌碼面</div>';
     if(cp.has_data)m+='<div class="ln">法人近月買超 <b class="'+((cp.inst_net_20d_lots||0)>=0?"pos":"neg")+'">'+(cp.inst_net_20d_lots!=null?(cp.inst_net_20d_lots>0?"+":"")+cp.inst_net_20d_lots+" 張":"—")+'</b> ｜ 外資連買 '+(cp.inst_streak!=null?cp.inst_streak+" 日":"—")+'</div><div class="ln">千張大戶 '+(cp.big_holder_pct!=null?cp.big_holder_pct+"%":"—")+'（趨勢 '+(cp.big_holder_trend!=null?(cp.big_holder_trend>0?"+":"")+cp.big_holder_trend+"pp":"—")+'）</div>';
@@ -705,243 +411,26 @@ function detail(code){
   if(ds){var yn=function(b){return b?'<span class="pos">✓</span>':'<span class="neg">✗</span>';};
     m+='<div class="blk"><div class="tribox"><div class="t">文件四大策略 <span class="vd '+(ds.pass?"bullish":"pending")+'">'+(ds.pass?"通過":ds.score+"分")+'</span></div><div class="ln">'+yn(ds.c1_market)+' 大盤 ｜ '+yn(ds.c2_chip)+' 籌碼 ｜ '+yn(ds.c3_tech)+' 技術MA20 ｜ '+yn(ds.c4_bs)+' BS盤</div><div class="nx">對比策略,與AI分並列驗證誰準</div></div></div>';}
   if(s.rules&&s.rules.length)m+='<div class="blk"><div class="rules">'+s.rules.map(function(r){return '<span class="r">'+esc(r)+'</span>'}).join("")+'</div></div>';
-
-  // 第二層:走勢 tab + sparkline placeholder(資料由 /api/stock_detail 補)
-  var _l2id='l2-'+s.code;
-  var snap=s;  // 從 STATE 拿
-  m+='<div class="sh-l2">'
-    +'<div class="blk-t" style="margin-bottom:10px;font-size:13px;font-weight:750;color:var(--sub)">走勢與細節 <span style="font-size:10.5px;color:var(--faint);font-weight:600;margin-left:6px">資料源:Shioaji kbar + FinMind</span></div>'
-    +'<div class="l2-tabs" id="'+_l2id+'-tabs">'
-      +'<b class="on" data-pane="td" onclick="l2Switch(\''+_l2id+'\',\'td\')">分時</b>'
-      +'<b data-pane="dk" onclick="l2Switch(\''+_l2id+'\',\'dk\')">日K</b>'
-      +'<b data-pane="chip" onclick="l2Switch(\''+_l2id+'\',\'chip\')">法人/大戶</b>'
-      +'<b data-pane="depth" onclick="l2Switch(\''+_l2id+'\',\'depth\')">五檔報價</b>'
-    +'</div>'
-    +'<div class="spark" id="'+_l2id+'-pane">'
-      +'<span class="ph-label" id="'+_l2id+'-loading">載入中…</span>'
-    +'</div>'
-    +'<div class="l2-grid">'
-      +'<div class="l2-cell"><div class="k">開盤</div><div class="v num">'+(snap.open!=null?snap.open:"—")+'</div></div>'
-      +'<div class="l2-cell"><div class="k">最高</div><div class="v num up">'+(snap.high!=null?snap.high:"—")+'</div></div>'
-      +'<div class="l2-cell"><div class="k">最低</div><div class="v num down">'+(snap.low!=null?snap.low:"—")+'</div></div>'
-      +'<div class="l2-cell"><div class="k">均價</div><div class="v num">'+(snap.avg_price!=null?snap.avg_price:"—")+'</div></div>'
-      +'<div class="l2-cell"><div class="k">累積量</div><div class="v num">'+(snap.total_volume!=null?(snap.total_volume/1000).toFixed(0)+' <span class="sub">張</span>':"—")+'</div></div>'
-      +'<div class="l2-cell"><div class="k">累積金額</div><div class="v num">'+(snap.total_amount!=null?(snap.total_amount/1e8).toFixed(2)+' <span class="sub">億</span>':"—")+'</div></div>'
-    +'</div>'
-  +'</div>';
-
   m+='</div>';
   document.getElementById("sheet").innerHTML=m;
   document.getElementById("ov").className="ov open";
-  // 觸發個股資訊卡渲染 — 用 _l2cache 已有資料就免再 fetch
-  _renderSic(code);
 }
 function closeBg(e){if(e.target.id==="ov")document.getElementById("ov").className="ov";}
-
-/* 個股資訊卡渲染 — 6 區塊(籌碼/資金/健康度/技術/交易/AI 結論) */
-function _sicCell(k, v, cls){
-  var vStr = (v==null||v===undefined) ? "—" : v;
-  var vCls = (cls==="up"||cls==="down") ? cls : "nm";
-  return '<div class="sic-c"><div class="sic-k">'+k+'</div><div class="sic-v '+vCls+'">'+vStr+'</div></div>';
-}
-function _sicSigned(v, suffix){
-  if(v==null)return "—";
-  var sign = v>0?"+":"";
-  return sign+v+(suffix||"");
-}
-function _sicDir(v){
-  if(v==null)return "—";
-  return v>0?'<span class="sic-v up">↑</span>':(v<0?'<span class="sic-v dn">↓</span>':'<span class="sic-v nm">→</span>');
-}
-function _renderSic(code){
-  var body = document.getElementById("sic-body-"+code);
-  var load = document.getElementById("sic-load-"+code);
-  if(!body)return;
-  var apply = function(d){
-    if(load)load.textContent = "資料源:FinMind + Shioaji kbar";
-    body.innerHTML = _buildSicHtml(d);
-  };
-  if(_l2cache[code]){apply(_l2cache[code]);return;}
-  fetch(API_BASE+"/api/stock_detail/"+encodeURIComponent(code))
-    .then(function(r){return r.json()})
-    .then(function(d){_l2cache[code]=d;apply(d);})
-    .catch(function(e){if(load)load.textContent="載入失敗:"+(e&&e.message);});
-}
-function _buildSicHtml(d){
-  var chips = (d&&d.chips)||{};
-  var bs = (d&&d.buy_sell)||{};
-  var ind = (d&&d.indicators)||{};
-  var hl = (d&&d.health)||{};
-  var tg = (d&&d.targets)||{};
-  var ar = (d&&d.ai_reasons)||{passes:[],fails:[]};
-  function val(v,dec){if(v==null)return "—";if(dec!=null)return Number(v).toFixed(dec);return v;}
-  // ── 籌碼面 ──
-  var chipsHtml = '<div class="sic-sec">'
-    +'<div class="sic-st">籌碼面</div>'
-    +'<div class="sic-g">'
-      +_sicCell("外資", _sicSigned(chips.foreign_net_20d, " 張"))
-      +_sicCell("投信", _sicSigned(chips.trust_net_20d, " 張"))
-      +_sicCell("自營", _sicSigned(chips.dealer_net_20d, " 張"))
-      +_sicCell("主力", _sicSigned(chips.main_force_net_20d, " 張"))
-    +'</div>'
-    +'<div class="sic-g3" style="margin-top:7px">'
-      +_sicCell("大戶持股", chips.holder_400_pct!=null?(chips.holder_400_pct+"%"):"—")
-      +_sicCell("400張以上", chips.holder_400_pct!=null?(chips.holder_400_pct+"%"+(chips.holder_400_trend>0?" ▲":chips.holder_400_trend<0?" ▼":"")):"—")
-      +_sicCell("千張大戶", chips.big_holder_pct!=null?(chips.big_holder_pct+"%"+(chips.big_holder_trend>0?" ▲":chips.big_holder_trend<0?" ▼":"")):"—")
-    +'</div></div>';
-  // ── 資金 ──
-  var moneyHtml = '<div class="sic-sec">'
-    +'<div class="sic-st">資金</div>'
-    +'<div class="sic-g2">'
-      +_sicCell("主動買", bs.active_buy_pct!=null?(bs.active_buy_pct+"%"):"—", bs.active_buy_pct>=50?"up":"nm")
-      +_sicCell("主動賣", bs.active_sell_pct!=null?(bs.active_sell_pct+"%"):"—", bs.active_sell_pct<50?"up":"nm")
-    +'</div>'
-    +'<div class="sic-g2" style="margin-top:7px">'
-      +_sicCell("5日資金流", _sicDir(chips.inst_5d))
-      +_sicCell("10日資金流", _sicDir(chips.inst_10d))
-    +'</div></div>';
-  // ── 個股健康度 ──
-  var hlHtml = '<div class="sic-sec">'
-    +'<div class="sic-st">個股健康度</div>'
-    +'<div class="sic-big">'
-      +'<div class="sic-bk">綜合健康分數</div>'
-      +'<div class="sic-bv">'+val(hl.health_score)+'</div>'
-    +'</div></div>';
-  // ── 技術 ──
-  var indHtml = '<div class="sic-sec">'
-    +'<div class="sic-st">技術</div>'
-    +'<div class="sic-g3">'
-      +_sicCell("MA5", ind.ma5!=null?ind.ma5.toFixed(2):"—")
-      +_sicCell("MA10", ind.ma10!=null?ind.ma10.toFixed(2):"—")
-      +_sicCell("MA20", ind.ma20!=null?ind.ma20.toFixed(2):"—")
-    +'</div>'
-    +'<div class="sic-g3" style="margin-top:7px">'
-      +_sicCell("MACD", ind.macd_state||"—", ind.macd_state==="黃金交叉"||ind.macd_state==="多頭"?"up":(ind.macd_state==="死亡交叉"||ind.macd_state==="空頭"?"dn":"nm"))
-      +_sicCell("KD", ind.kd_k!=null?Math.round(ind.kd_k):"—")
-      +_sicCell("RSI", ind.rsi!=null?Math.round(ind.rsi):"—")
-    +'</div>'
-    +'<div class="sic-g3" style="margin-top:7px">'
-      +_sicCell("ATR", ind.atr!=null?ind.atr.toFixed(2):"—")
-    +'</div></div>';
-  // ── 交易 ──
-  var adviceCls = tg.advice==="可進場"?"go":(tg.advice==="等待回測"?"wait":"hold");
-  var tradeHtml = '<div class="sic-sec">'
-    +'<div class="sic-st">交易</div>'
-    +'<div style="margin-bottom:8px">建議 <span class="sic-advice '+adviceCls+'">'+esc(tg.advice||"等待")+'</span></div>'
-    +'<div class="sic-trade">'
-      +_sicCell("買點", tg.buy!=null?tg.buy.toFixed(2):"—", "up")
-      +_sicCell("停損", tg.stop!=null?tg.stop.toFixed(2):"—", "dn")
-      +_sicCell("T1", tg.t1!=null?tg.t1.toFixed(2):"—", "up")
-    +'</div>'
-    +'<div class="sic-trade" style="margin-top:7px">'
-      +_sicCell("T2", tg.t2!=null?tg.t2.toFixed(2):"—", "up")
-      +_sicCell("RR", tg.rr!=null?tg.rr.toFixed(2):"—")
-    +'</div></div>';
-  // ── AI 結論 ──
-  var aiPct = ar.ai_score!=null?ar.ai_score+"%":"—";
-  var reasonHtml = '';
-  (ar.passes||[]).forEach(function(x){reasonHtml += '<div class="sic-reason pass">'+esc(x)+'</div>';});
-  (ar.fails||[]).forEach(function(x){reasonHtml += '<div class="sic-reason fail">'+esc(x)+'</div>';});
-  var aiHtml = '<div class="sic-sec">'
-    +'<div class="sic-st">AI 結論</div>'
-    +'<div class="sic-ai-row"><span style="font-size:12px;font-weight:700;color:var(--violet)">AI</span><span class="sic-ai-pct">'+aiPct+'</span></div>'
-    +(reasonHtml?'<div style="margin-top:6px"><div style="font-size:11px;color:var(--sub);font-weight:700;margin-bottom:4px">原因</div>'+reasonHtml+'</div>':'')
-    +'</div>';
-  return chipsHtml + moneyHtml + hlHtml + indHtml + tradeHtml + aiHtml;
-}
-
-/* 第二層走勢 · 用 code 當 seed 製造穩定假 sparkline */
-/* l2 切換:打 /api/stock_detail 拉一次(有 cache),然後依 pane 渲染 */
-var _l2cache={};
-function l2Switch(id,pane){
-  var root=document.getElementById(id);
-  if(!root)return;
-  var tabs=root.querySelectorAll(".l2-tabs b");
-  for(var i=0;i<tabs.length;i++)tabs[i].className=(tabs[i].getAttribute("data-pane")===pane?"on":"");
-  var p=document.getElementById(id+"-pane");
-  if(!p)return;
-  var code=id.replace(/^l2-/,"");
-  p.innerHTML='<span class="ph-label">載入中…</span>';
-  var apply=function(d){
-    p.innerHTML="";
-    if(pane==="td"){p.innerHTML=_l2RenderTd(d);}
-    else if(pane==="dk"){p.innerHTML=_l2RenderDk(d);}
-    else if(pane==="chip"){p.innerHTML=_l2RenderChip(d);}
-    else if(pane==="depth"){p.innerHTML=_l2RenderDepth(d);}
-  };
-  if(_l2cache[code]){apply(_l2cache[code]);return;}
-  fetch(API_BASE+"/api/stock_detail/"+encodeURIComponent(code)).then(function(r){return r.json()}).then(function(d){_l2cache[code]=d;apply(d);}).catch(function(e){p.innerHTML='<span class="ph-label neu">載入失敗:'+(e&&e.message)+'</span>';});
-}
-function _l2SparkSvg(path,w,h,opts){
-  opts=opts||{};var stroke=opts.stroke||"var(--up)",fill=opts.fill||"rgba(244,63,94,.08)";
-  var max=Math.max.apply(null,path),min=Math.min.apply(null,path),rng=Math.max(1e-6,max-min);
-  var step=(w-4)/(path.length-1),pts=path.map(function(v,i){var x=2+i*step,y=h-2-((v-min)/rng)*(h-4);return [x,y];});
-  var dline=pts.map(function(p,i){return (i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1);}).join(" ");
-  var darea=dline+" L "+(w-2).toFixed(1)+" "+(h-2).toFixed(1)+" L 2 "+(h-2).toFixed(1)+" Z";
-  return '<svg viewBox="0 0 '+w+" "+h+'" preserveAspectRatio="none" style="width:100%;height:'+h+'px;display:block"><path d="'+darea+'" fill="'+fill+'"/><path d="'+dline+'" fill="none" stroke="'+stroke+'" stroke-width="1.5"/></svg>';
-}
-function _l2RenderTd(d){
-  var snap=d.snapshot||{};
-  var path=[];for(var i=0;i<30;i++){var t=snap.change_rate||0;path.push(snap.price||0+(i-15)*t*0.3);}
-  return '<div class="l2-chart">' + _l2SparkSvg(path,300,90) + '</div>'
-    +'<div class="l2-stat-row">'
-    +l2s("開",snap.open)+l2s("高",snap.high,"up")+l2s("低",snap.low,"down")+l2s("均",snap.avg_price)
-    +'</div>'
-    +'<div class="ph-note">盤中分時需 tick stream · 示意走勢(以均價/開盤推算)</div>';
-}
-function _l2RenderDk(d){
-  var kbars=d.kbars||[];
-  if(!kbars.length)return '<div class="ph-label neu">無日K資料(可能非交易日或合約查無)</div>';
-  var closes=kbars.map(function(k){return k.close;}).filter(function(v){return v!=null;});
-  if(!closes.length)return '<div class="ph-label neu">K 資料不完整</div>';
-  var last=closes[closes.length-1];
-  return '<div class="l2-chart">' + _l2SparkSvg(closes,300,90) + '</div>'
-    +'<div class="l2-stat-row">'
-    +l2s("最新",last)+(kbars[kbars.length-1].ma20!=null?l2s("MA20",kbars[kbars.length-1].ma20):"")
-    +(kbars[kbars.length-1].ma60!=null?l2s("MA60",kbars[kbars.length-1].ma60):"")
-    +l2s("K線",kbars.length+" 根")
-    +'</div>'
-    +'<div class="ph-note">資料源:Shioaji kbar · MA20/MA60 即時算</div>';
-}
-function _l2RenderChip(d){
-  var c=d.chips||{};
-  var bs=d.buy_sell||{};
-  if(!c.has_data && bs.bs_pct==null){
-    return '<div class="ph-label neu">⚠ 籌碼無資料(FinMind token 未設 或 非交易時段) · 三角驗證此維度不計</div>';
-  }
-  return '<div class="l2-stat-row">'
-    +(c.inst_net_20d_lots!=null?l2s("法人20日",(c.inst_net_20d_lots>0?"+":"")+c.inst_net_20d_lots+"張",(c.inst_net_20d_lots>=0?"up":"down")):l2s("法人20日","—","neu"))
-    +(c.inst_streak!=null?l2s("外資連"+Math.abs(c.inst_streak)+"日",c.inst_streak>0?"買超":"賣超",c.inst_streak>0?"up":"down"):l2s("外資連買","—","neu"))
-    +(c.big_holder_pct!=null?l2s("千張大戶",c.big_holder_pct.toFixed(1)+"%"+(c.big_holder_trend>0?" ▲":"")+(c.big_holder_trend<0?" ▼":""),c.big_holder_trend>0?"up":c.big_holder_trend<0?"down":"neu"):l2s("千張大戶","—","neu"))
-    +(c.big_holder_trend!=null?l2s("大戶趨勢",(c.big_holder_trend>0?"+":"")+c.big_holder_trend.toFixed(2)+"pp",c.big_holder_trend>=0?"up":"down"):"")
-    +(bs.bs_pct!=null?l2s("BS %",bs.bs_pct+"%",bs.bs_pct>=50?"up":"down"):l2s("BS %","—","neu"))
-    +(bs.buy_volume_lots?l2s("外盤量",bs.buy_volume_lots+"張"):"")
-    +(bs.sell_volume_lots?l2s("內盤量",bs.sell_volume_lots+"張","down"):"")
-    +'</div>'
-    +'<div class="ph-note">資料源:FinMind 法人/大戶持股 + Shioaji BS 累計</div>';
-}
-function _l2RenderDepth(d){
-  return '<div class="ph-label neu">⚠ 五檔報價需 Shioaji bid/ask stream · 本機 API 不公開訂單簿,需開盤中訂閱</div>'
-    +'<div class="ph-note">建議:盤中訂閱 bid/ask callback 寫進 tick tracker · 工程中(不在本次範圍)</div>';
-}
-function l2s(k,v,cls){
-  return '<div class="l2-cell"><div class="k">'+esc(k)+'</div><div class="v num '+(cls||"")+'">'+esc(v)+'</div></div>';
-}
 
 /* 分頁 */
 var PLUGINS={
   rank:{t:"排行插件",d:"觀察池 50 股五榜(熱門/漲幅/跌幅/量能/創高)+ 隔日結果標記。盤後資料來自 EOD 管線。",link:"/rankings"},
   nexora:{t:"NEXORA 八層盤後報告",d:"資金流/Money Quality/市場結構/承接/賣壓來源/Smart Money/隔日機率/自我驗證,12 節完整報告。",link:"/api/nexora"},
   strategy:{t:"四大策略對比",d:"照你文件的四大條件(MA20/乖離率/量>5日均/收>昨高 + 籌碼 + BS動態倍數)獨立評分,與主系統 AI 分數 A/B 對比。點個股細節可看逐條。",link:null},
-  health:{t:"資金健康度",d:"資金流向×漲跌四象限 + 三角交叉驗證。真籌碼接 FinMind,無資料明確標示。點個股細節查看。",link:null},
-  signals:{t:"進出場訊號板",d:"全觀察池即時進出場動作 + 每檔四條件命中度,盤中動態刷新。",link:"/signals"},
-  livermore:{t:"李佛摩六點轉向",d:"經典 Jesse Livermore 關鍵點位篩選:趨勢/自然回撤/突破/跌破/量能/警示。買點=回測 50%/突破 60 日高+量增,賣點=跌破 60 日低+量增。",link:null}
+  health:{t:"資金健康度",d:"資金流向×漲跌四象限 + 三角交叉驗證。真籌碼接 FinMind,無資料明確標示。點個股細節查看。",link:null}
 };
 function switchTab(tab){
   TAB=tab;
   document.querySelectorAll(".tab").forEach(function(b){b.className="tab"+(b.getAttribute("data-tab")===tab?" on":"")});
-  var home=document.getElementById("page-home"),plug=document.getElementById("page-plugin");
+  var home=document.getElementById("page-home"),plug=document.getElementById("page-plugin"),pm=document.getElementById("page-premarket");
+  pm.style.display="none";
   if(tab==="home"){home.style.display="";plug.style.display="none";return;}
+  if(tab==="premarket"){home.style.display="none";plug.style.display="none";pm.style.display="";renderPmReport();return;}
   home.style.display="none";plug.style.display="";
   var body=document.getElementById("plugin-body");
   if(tab==="sim"){
@@ -951,353 +440,69 @@ function switchTab(tab){
       +'<p style="margin-top:10px">狀態:<b id="simstat">'+(simOn?"模擬中":"即時 /api/state")+'</b></p></div>';
     return;
   }
-  if(tab==="strategy"){renderStrategy();return;}
-  if(tab==="livermore"){renderLivermore();return;}
-  if(tab==="nexora"){renderNexora();return;}
-  if(tab==="health"){renderHealth();return;}
   var p=PLUGINS[tab];
   if(p){body.innerHTML='<div class="plugin-card"><h3>'+p.t+'</h3><p>'+p.d+'</p>'+(p.link?'<a class="lnk" href="'+p.link+'" target="_blank">開啟 '+p.link+' ↗</a>':'<p style="color:var(--violet);font-weight:700;margin-top:10px">→ 回首頁點任一個股卡片,細節彈窗即含此插件分析</p>')+'</div>';}
 }
-
-/* ── 資金健康度 tab 渲染(2026-07-09 v3) ── */
-function renderHealth(){
-  var body=document.getElementById("plugin-body");
-  body.innerHTML='<div class="plugin-card">'
-    +'<h3>💰 資金健康度</h3>'
-    +'<p>資金流向 × 漲跌 四象限 + Level 8.1 三角交叉驗證 + Chip Score(法人買賣超)。'
-    +'健康度不是單日評分,而是時間序列:連續買超天數、健康分昨日 vs 今日、命中率統計都在這頁。</p>'
-    +'<div id="health-body" style="margin-top:14px">載入中…</div>'
-    +'</div>';
-  fetch(API_BASE+"/api/money_health").then(function(r){return r.json()}).then(function(d){
-    var box=document.getElementById("health-body");
-    if(d.error){
-      box.innerHTML='<div class="empty" style="padding:24px;color:var(--out)">載入失敗:'+esc(d.error)+'</div>';
-      return;
-    }
-    if(!d.cards||!d.cards.length){
-      box.innerHTML='<div class="empty" style="padding:24px;line-height:1.8;text-align:center">'
-        +'<div style="font-size:15px;font-weight:800;color:var(--ink)">尚無個股資料</div>'
-        +'<div style="color:var(--faint);font-size:12.5px;margin-top:6px">/api/money_health 還沒回資料,或觀察池 0 檔</div>'
-        +'<div style="color:var(--violet);font-weight:700;font-size:12px;margin-top:10px">等 server 跑滿一輪(盤中才有 watchlist)</div>'
-        +'</div>';
-      return;
-    }
-
-    /* ─── 1) 4 象限圖 ─── */
-    var quads = {in_up:[],in_down:[],out_up:[],out_down:[],unknown:[]};
-    d.cards.forEach(function(c){ (quads[c.quadrant||'unknown']=quads[c.quadrant||'unknown']).push(c); });
-    var quadLbl = {in_up:'健康 (流入+漲)',in_down:'假紅 (流入+跌)',out_up:'惜售 (流出+漲)',out_down:'休息 (流出+跌)',unknown:'未連線'};
-    var quadCls = {in_up:'up',in_down:'down',out_up:'warn',out_down:'down',unknown:'neu'};
-    var quadHtml = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">';
-    ['in_up','in_down','out_up','out_down','unknown'].forEach(function(q){
-      var list = quads[q];
-      if(!list.length) return;
-      var avg_hs = 0, n = 0;
-      list.forEach(function(c){ if(c.health_score!=null){avg_hs+=c.health_score; n++;} });
-      avg_hs = n ? Math.round(avg_hs/n) : 0;
-      var chips_avg = 0, cn = 0;
-      list.forEach(function(c){
-        var cs = (c.chip||{}).chip_score;
-        if(cs && cs.score!=null){ chips_avg+=cs.score; cn++; }
-      });
-      chips_avg = cn ? (chips_avg/cn).toFixed(1) : '—';
-      quadHtml += '<div style="padding:10px 12px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)">'
-        +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-        +'<span style="font-weight:800;font-size:13px">'+esc(quadLbl[q])+'</span>'
-        +'<span style="font-size:11px;color:var(--faint)">'+list.length+' 檔</span>'
-        +'</div>'
-        +'<div style="display:flex;gap:12px;font-size:11.5px">'
-        +'<span>均健康分 <b style="color:var(--ink)">'+avg_hs+'</b></span>'
-        +'<span>均 Chip <b style="color:var(--ink)">'+chips_avg+'</b></span>'
-        +'</div>'
-        +'<div style="margin-top:6px;font-size:11px;color:var(--faint)">'
-        +list.slice(0,4).map(function(c){return esc(c.name||c.code);}).join('、')
-        +(list.length>4?' 等 '+list.length+' 檔':'')
-        +'</div>'
-        +'</div>';
-    });
-    quadHtml += '</div>';
-
-    /* ─── 2) 命中率統計(若有 ≥2 快照) ─── */
-    var hitHtml = '';
-    if(d.hit_rate && d.hit_rate.by_health_score){
-      var h = d.hit_rate.by_health_score;
-      var q2 = d.hit_rate.by_quadrant || {};
-      hitHtml += '<div style="background:rgba(124,108,255,0.06);border:1px solid rgba(124,108,255,0.18);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px">'
-        +'<div style="font-weight:800;color:var(--ink);font-size:13px;margin-bottom:6px">📊 模型命中率驗證</div>'
-        +'<div style="color:var(--faint);margin-bottom:6px">用過去快照統計健康分三組 + 四象限的隔日報酬率('+d.hit_rate.snapshots_n+' 個交易日,'+d.hit_rate.pairs_n+' 組配對)</div>'
-        +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px">';
-      function hrCell(name, st){
-        if(!st||!st.n) return '<div style="opacity:0.6"><b>'+name+'</b>: 資料不足</div>';
-        var wr = st.win_rate!=null?st.win_rate+'%':'—';
-        var ar = st.avg_ret!=null?((st.avg_ret>=0?'+':'')+st.avg_ret+'%'):'—';
-        var cls = st.avg_ret>0?'color:var(--up)':(st.avg_ret<0?'color:var(--out)':'color:var(--ink)');
-        return '<div><b>'+name+'</b>: n='+st.n+' 勝率 '+wr+' 均報酬 <span style="'+cls+'">'+ar+'</span></div>';
-      }
-      hitHtml += hrCell('健康分≥65', h.high_ge_65);
-      hitHtml += hrCell('50-64', h.mid_50_64);
-      hitHtml += hrCell('<50', h.low_lt_50);
-      hitHtml += '</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:11px;color:var(--faint)">'
-        +'<div>in_up '+((q2.in_up&&q2.in_up.avg_ret!=null)?((q2.in_up.avg_ret>=0?'+':'')+q2.in_up.avg_ret+'%'):'—')+'</div>'
-        +'<div>in_down '+((q2.in_down&&q2.in_down.avg_ret!=null)?((q2.in_down.avg_ret>=0?'+':'')+q2.in_down.avg_ret+'%'):'—')+'</div>'
-        +'<div>out_up '+((q2.out_up&&q2.out_up.avg_ret!=null)?((q2.out_up.avg_ret>=0?'+':'')+q2.out_up.avg_ret+'%'):'—')+'</div>'
-        +'<div>out_down '+((q2.out_down&&q2.out_down.avg_ret!=null)?((q2.out_down.avg_ret>=0?'+':'')+q2.out_down.avg_ret+'%'):'—')+'</div>'
-        +'</div></div>';
-    } else if (d.hit_rate && d.hit_rate.note) {
-      hitHtml += '<div style="background:rgba(124,108,255,0.06);border:1px solid rgba(124,108,255,0.18);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--faint)">'
-        +'📊 模型命中率驗證:'+esc(d.hit_rate.note)+'<br><span style="font-size:11px">→ 明天起每日 15:05 自動累積,連續 20-30 日可驗證模型預測力</span></div>';
-    }
-
-    /* ─── 3) 列表報告(每張決策卡) ─── */
-    var cardsHtml = '<div style="font-weight:800;color:var(--ink);font-size:13px;margin:8px 0 10px">📋 個股健康度報告('+d.cards.length+' 檔 · 排序:Ready > Watch > Hold)</div>';
-    d.cards.forEach(function(c){
-      var dd = c.decision||{};
-      var cs = (c.chip||{}).chip_score;
-      var cs_score = cs && cs.score!=null ? cs.score : null;
-      var cs_lvl = cs ? {big_buy:'主力大買',small_buy:'主力小買',neutral:'中性',small_sell:'小賣',big_sell:'大賣',no_data:'無資料'}[cs.level]||cs.level : '無資料';
-      var cs_color = cs_score==null?'var(--faint)':(cs_score>=20?'var(--up)':(cs_score>=10?'var(--violet)':'var(--out)'));
-      var hs = c.health_score!=null ? c.health_score : '—';
-      var hs_color = hs==='—'?'var(--faint)':(hs>=65?'var(--up)':(hs>=50?'var(--violet)':'var(--out)'));
-      var bd = c.health_v3_breakdown||{};
-      var bd_text = bd.chip!=null ? ('資 '+(bd.fund!=null?bd.fund:0).toFixed(0)+' / 價 '+(bd.pv!=null?bd.pv:0).toFixed(0)+' / 族 '+(bd.sector!=null?bd.sector:0)+' / Chip '+(bd.chip!=null?bd.chip:0)) : '';
-      var chg = c.change_rate!=null ? c.change_rate : 0;
-      var chgCls = chg>=0?'up':'down';
-      var chgStr = (chg>=0?'+':'')+chg.toFixed(2)+'%';
-      var conf_color = (dd.confidence>=85)?'var(--up)':((dd.confidence>=65)?'var(--violet)':'var(--out)');
-      var ai_color = (dd.ai_score>=75)?'var(--up)':((dd.ai_score>=55)?'var(--violet)':'var(--out)');
-
-      cardsHtml += '<div style="background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px">';
-      // header
-      cardsHtml += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap">'
-        +'<div><b style="font-size:15px;color:var(--ink)">'+esc(c.name||c.code)+'</b>'
-        +'<span style="color:var(--faint);font-size:11.5px;margin-left:6px">'+esc(c.code||'')+'</span>'
-        +(c.sector?'<span style="background:rgba(124,108,255,0.15);color:var(--violet);padding:1px 8px;border-radius:100px;font-size:11px;margin-left:6px">'+esc(c.sector)+'</span>':'')
-        +'<span style="background:var(--ink);color:#fff;padding:2px 10px;border-radius:100px;font-size:11px;margin-left:6px">'+esc(dd.state||"—")+'</span></div>'
-        +'<div style="text-align:right">'
-        +'<b style="font-size:15px;color:var(--ink)">'+esc(c.price!=null?c.price:"—")+'</b>'
-        +'<span style="margin-left:8px;font-weight:700;color:'+(chg>=0?'var(--up)':'var(--out)')+'">'+chgStr+'</span>'
-        +'</div></div>';
-
-      // 5 欄 metrics
-      cardsHtml += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px;font-size:11.5px">';
-      cardsHtml += '<div style="text-align:center;padding:6px;background:rgba(255,255,255,0.04);border-radius:6px"><div style="color:var(--faint)">AI Score</div><div style="font-size:18px;font-weight:800;color:'+ai_color+'">'+esc(dd.ai_score!=null?dd.ai_score:"—")+'</div></div>';
-      cardsHtml += '<div style="text-align:center;padding:6px;background:rgba(255,255,255,0.04);border-radius:6px"><div style="color:var(--faint)">信心</div><div style="font-size:18px;font-weight:800;color:'+conf_color+'">'+esc(dd.confidence!=null?dd.confidence:"—")+'%</div></div>';
-      cardsHtml += '<div style="text-align:center;padding:6px;background:rgba(255,255,255,0.04);border-radius:6px"><div style="color:var(--faint)">象限</div><div style="font-size:13px;font-weight:700;color:var(--ink)">'+esc(c.label||"—")+'</div></div>';
-      cardsHtml += '<div style="text-align:center;padding:6px;background:rgba(255,255,255,0.04);border-radius:6px"><div style="color:var(--faint)">Chip 分</div><div style="font-size:18px;font-weight:800;color:'+cs_color+'">'+(cs_score!=null?cs_score+'/25':'—')+'</div><div style="font-size:10px;color:var(--faint)">'+esc(cs_lvl)+'</div></div>';
-      cardsHtml += '<div style="text-align:center;padding:6px;background:rgba(255,255,255,0.04);border-radius:6px"><div style="color:var(--faint)">健康分 v3</div><div style="font-size:18px;font-weight:800;color:'+hs_color+'">'+hs+'/100</div>'+(bd_text?'<div style="font-size:9.5px;color:var(--faint);margin-top:2px">'+esc(bd_text)+'</div>':'')+'</div>';
-      cardsHtml += '</div>';
-
-      // Chip 評語
-      if(cs && cs.reason){
-        cardsHtml += '<div style="font-size:11.5px;color:var(--violet);background:rgba(124,108,255,0.08);padding:6px 10px;border-radius:6px;margin-bottom:6px">📈 Chip 評語:'+esc(cs.reason)+'</div>';
-      }
-
-      // Action / Trigger / Invalidation
-      cardsHtml += '<div style="font-size:12px;color:var(--ink);margin:6px 0"><b>▶ Action:</b> '+esc(dd.action||"—")+'</div>';
-      cardsHtml += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11.5px">';
-      cardsHtml += '<div style="padding:6px 8px;background:rgba(124,108,255,0.08);border-radius:6px"><b style="color:var(--violet)">觸發:</b> '+esc(dd.trigger||"—")+'</div>';
-      cardsHtml += '<div style="padding:6px 8px;background:rgba(255,80,80,0.08);border-radius:6px"><b style="color:var(--out)">失效:</b> '+esc(dd.invalidation||"—")+'</div>';
-      cardsHtml += '</div>';
-
-      // 進場/停損/目標
-      if(dd.entry||dd.stop||dd.target){
-        cardsHtml += '<div style="display:flex;gap:12px;font-size:12px;margin-top:6px;color:var(--sub)">'
-          +'<span>進場 <b style="color:var(--ink)">'+esc(dd.entry||"—")+'</b></span>'
-          +'<span>停損 <b style="color:var(--out)">'+esc(dd.stop||"—")+'</b></span>'
-          +'<span>目標 <b style="color:var(--up)">'+esc(dd.target||"—")+'</b></span>'
-          +'</div>';
-      }
-
-      // 時間序列(若有)
-      var ts = c.time_series||[];
-      if(ts.length>=2){
-        cardsHtml += '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:11.5px;color:var(--violet);font-weight:700">📊 健康分時間序列(近 '+ts.length+' 日)</summary>';
-        cardsHtml += '<div style="margin-top:4px;font-size:11px">';
-        ts.forEach(function(p){
-          var phs = p.health_score!=null?p.health_score:'—';
-          var phsC = phs==='—'?'var(--faint)':(phs>=65?'var(--up)':(phs>=50?'var(--violet)':'var(--out)'));
-          var pqL = {in_up:'健康',in_down:'假紅',out_up:'惜售',out_down:'休息',unknown:'未連線'};
-          cardsHtml += '<div style="display:flex;justify-content:space-between;padding:3px 8px;border-bottom:1px dashed rgba(255,255,255,0.06)">'
-            +'<span style="color:var(--faint);width:80px">'+esc(p.date||'')+'</span>'
-            +'<span style="color:'+phsC+';font-weight:700;width:40px;text-align:right">'+phs+'</span>'
-            +'<span style="flex:1;color:var(--ink)">'+esc(pqL[p.quadrant]||p.quadrant||'—')+'</span>'
-            +'<span style="color:var(--faint)">當日 '+(p.change_rate!=null?((p.change_rate>=0?'+':'')+p.change_rate.toFixed(2)+'%'):'—')+'</span>'
-            +'</div>';
-        });
-        cardsHtml += '</div></details>';
-      }
-
-      cardsHtml += '</div>';
-    });
-
-    // 名詞表
-    cardsHtml += '<div style="margin-top:14px;padding:10px 12px;background:rgba(255,255,255,0.04);border-radius:8px;font-size:11.5px;line-height:1.7;color:var(--sub)">'
-      +'<div style="font-weight:800;color:var(--ink);margin-bottom:4px">📖 名詞速查</div>'
-      +'<b>象限</b>=資金流向×漲跌的交叉:<b>健康</b>=流入+漲(真攻擊)、<b>假紅</b>=流入+跌(主力邊拉邊賣)、<b>惜售</b>=流出+漲(量縮惜售)、<b>休息</b>=流出+跌(退潮)、<b>未連線</b>=tick 資料缺。<br>'
-      +'<b>Chip 分</b>(0-25)=法人近20日買賣超張數:大買≥+5000張→25、小買+500~+5000→15、中性±500→10、小賣-5000~-500→5、大賣≤-5000→0;再依外資連買/連賣日數 ±3~±5。<br>'
-      +'<b>健康分 v3</b>=資金流(0-50)+價量(0-20)+族群(0-5)+Chip(0-25),總分100。<b>時間序列</b>看健康度是延續還是反轉。<br>'
-      +'<b>命中率驗證</b>=過去快照隔日報酬率,30 日後驗證模型預測力。<br>'
-      +'<b>狀態</b>=<b>Ready</b>=現在可布局、<b>Watch</b>=等觸發、<b>Hold</b>=不進場。'
-      +'</div>';
-
-    box.innerHTML = quadHtml + hitHtml + cardsHtml;
-
-    // 更新標題時間
-    var updEl = document.getElementById('decisions-upd');
-    if(updEl) updEl.textContent = '更新 '+((d.as_of||'')).slice(11,16);
-  }).catch(function(e){
-    document.getElementById('health-body').innerHTML='<div class="empty" style="padding:24px;color:var(--out)">連線失敗:'+esc(String(e))+'</div>';
-  });
-}
-
-/* ── NEXORA 渲染 ── */
-function renderNexora(){
-  var body=document.getElementById("plugin-body");
-  body.innerHTML='<div class="plugin-card"><h3>🧠 NEXORA 八層盤後報告</h3><p>資金流 / Money Quality / 市場結構 / 承接 / 賣壓來源 / Smart Money / 隔日機率 / 自我驗證,12 節完整報告。</p><div id="nexora-body" style="margin-top:14px">載入中…</div></div>';
-  fetch(API_BASE+"/api/nexora").then(function(r){return r.json()}).then(function(d){
-    var box=document.getElementById("nexora-body");
-    if(!d||!d.report){
-      var note=d&&d.note?d.note:"尚無報告";
-      var why="";
-      var hint="";
-      if((d&&d.error)||!d){
-        why="NEXORA 模組讀檔失敗(可能 reports/ 目錄權限問題)";
-        hint="看 server.py /api/nexora 路由的 traceback";
-      } else if(d.note&&d.note.indexOf("15:05")>=0){
-        why="after_hours.run() 15:05 才會跑 NEXORA 報告管線,現在是盤中";
-        hint="等 15:05 後再來,或手動觸發 after_hours.run()";
-      } else {
-        why="盤後報告尚未產出";
-        hint="確認 after_hours 排程是否正常(看 server.log)";
-      }
-      box.innerHTML='<div class="empty" style="padding:24px 14px;line-height:1.8">'
-        +'<div style="font-size:15px;font-weight:800;color:var(--ink)">尚無 NEXORA 盤後報告</div>'
-        +'<div style="color:var(--faint);font-size:12.5px;margin-top:6px">'+esc(note)+'</div>'
-        +'<div style="color:var(--faint);font-size:12px;margin-top:6px">'+why+'</div>'
-        +'<div style="color:var(--violet);font-weight:700;font-size:12px;margin-top:10px">'+hint+'</div>'
-        +'</div>';
-      return;
-    }
-    // 簡單 markdown 渲染:標題/段落
-    var md=d.report;
-    var html=md.split("\n").map(function(line){
-      if(/^# (.+)$/.test(line)) return '<h3 style="margin:14px 0 6px;font-size:15px;font-weight:800">'+esc(line.slice(2))+'</h3>';
-      if(/^## (.+)$/.test(line)) return '<h4 style="margin:12px 0 4px;font-size:14px;font-weight:800;color:var(--violet)">'+esc(line.slice(3))+'</h4>';
-      if(line.trim()==="") return "<br>";
-      return '<div style="line-height:1.7;font-size:13px;color:var(--ink)">'+esc(line)+'</div>';
-    }).join("");
-    box.innerHTML='<div style="font-size:11.5px;color:var(--faint);margin-bottom:8px">檔案: '+esc(d.file||"—")+'</div><div style="background:var(--soft);padding:14px;border-radius:10px;line-height:1.7">'+html+'</div>';
-  }).catch(function(e){
-    document.getElementById("nexora-body").innerHTML='<div class="empty" style="padding:24px 14px;line-height:1.8">'
-      +'<div style="font-size:15px;font-weight:800;color:var(--ink)">載入失敗</div>'
-      +'<div style="color:var(--faint);font-size:12px;margin-top:6px">'+esc(e)+'</div>'
-      +'</div>';
-  });
-}
-
-/* ── 四大策略對比渲染 ── */
-function renderStrategy(){
-  var body=document.getElementById("plugin-body");
-  body.innerHTML='<div class="plugin-card"><h3>🎯 四大策略對比</h3><p>文件原文四條件(MA20/乖離率/量>5日均/收>昨高 + 籌碼) vs 主系統 AI Score,A/B 對比每檔命中度。'+(simOn?'(模擬資料)':'(即時 STATE)')+'</p><div id="str-rows">載入中…</div></div>';
-  fetch(API_BASE+"/api/strategy_compare").then(function(r){return r.json()}).then(function(d){
-    var rows=d.rows||[];
-    if(!rows.length){document.getElementById("str-rows").innerHTML='<div class="empty">觀察池尚無資料</div>';return;}
-    var html='<div style="display:flex;gap:8px;margin:10px 4px;font-size:12px;color:var(--sub)"><span><b style="color:var(--up)">A=B</b> 雙強共識</span><span>·</span><span><b style="color:var(--in)">A&gt;B</b> AI 強</span><span>·</span><span><b style="color:var(--violet)">B&gt;A</b> 條件強</span></div>';
-    html+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">';
-    html+='<tr style="background:var(--soft);text-align:left"><th style="padding:8px 6px">股</th><th style="padding:8px 4px">AI</th><th style="padding:8px 4px">B分</th><th style="padding:8px 4px">命中</th><th style="padding:8px 4px">MA20</th><th style="padding:8px 4px">乖離</th><th style="padding:8px 4px">量>5</th><th style="padding:8px 4px">收高</th><th style="padding:8px 4px">籌碼</th><th style="padding:8px 4px">BS</th><th style="padding:8px 4px">共識</th></tr>';
-    rows.forEach(function(r){
-      var yn=function(b){return b?'<span style="color:var(--up);font-weight:800">✓</span>':'<span style="color:var(--faint)">·</span>';};
-      var agreeColor=r.agree==="A=B"?"var(--up)":(r.agree==="A>B"?"var(--in)":"var(--violet)");
-      html+='<tr style="border-top:1px solid var(--line)">'
-        +'<td style="padding:7px 6px"><b>'+esc(r.name||r.code)+'</b><br><small style="color:var(--faint)">'+esc(r.code)+'·'+esc(r.sector||"—")+'</small></td>'
-        +'<td style="padding:7px 4px;font-weight:800">'+r.ai_score+'</td>'
-        +'<td style="padding:7px 4px;font-weight:800;color:var(--violet)">'+r.doc_score+'</td>'
-        +'<td style="padding:7px 4px;font-weight:800">'+r.doc_pass+'/5</td>'
-        +'<td style="padding:7px 4px">'+yn(r.cond_ma20)+'</td>'
-        +'<td style="padding:7px 4px">'+yn(r.cond_bias)+'</td>'
-        +'<td style="padding:7px 4px">'+yn(r.cond_vol5)+'</td>'
-        +'<td style="padding:7px 4px">'+yn(r.cond_high)+'</td>'
-        +'<td style="padding:7px 4px">'+yn(r.cond_chip)+'</td>'
-        +'<td style="padding:7px 4px;color:var(--sub)">'+(r.bs_mult!=null?r.bs_mult:'—')+'</td>'
-        +'<td style="padding:7px 4px;font-weight:800;color:'+agreeColor+'">'+esc(r.agree)+'</td>'
-        +'</tr>';
-    });
-    html+='</table></div>';
-
-    // 如果全部都 A=B(同向共識)且 doc_pass 都很低,給統一說明
-    const allLow=rows.every(r=>(r.doc_pass||0)<=2);
-    const allAB=rows.every(r=>r.agree==="A=B");
-    if(rows.length>0 && allLow && allAB){
-      html+=`<div style="margin-top:14px;padding:12px 14px;background:var(--violet-soft);border-radius:12px;font-size:12.5px;color:var(--violet);line-height:1.7">
-        <b>📋 為什麼 A=B 共識分都很低?</b><br>
-        文件四大條件需要 4/5 命中才算「條件強」,AI 分數要 ≥ 70 才算「AI 強」。<br>
-        目前 ${rows.length} 檔都低標 → 主系統跟文件策略都判定「不進場」。這是雙策略共識的「防守訊號」,不是 bug。
-      </div>`;
-    } else if(rows.length>0 && rows.filter(r=>r.doc_pass>=4).length===0 && rows.filter(r=>r.ai_score>=70).length===0){
-      html+=`<div style="margin-top:14px;padding:12px 14px;background:var(--amber-soft);border-radius:12px;font-size:12.5px;color:var(--amber);line-height:1.7">
-        <b>📋 目前沒有任何檔達到「進場標準」</b><br>
-        · 文件條件命中 0/5 條件: ${rows.filter(r=>r.doc_pass===0).length} 檔<br>
-        · AI Score ≥ 70: 0 檔<br>
-        繼續觀察,等任一檔跨過門檻就會出現在表格頂部。
-      </div>`;
-    }
-    document.getElementById("str-rows").innerHTML=html;
-  }).catch(function(e){
-    document.getElementById("str-rows").innerHTML='<div class="empty">載入失敗:'+esc(e)+'</div>';
-  });
-}
-
-/* ── 李佛摩渲染 ── */
-function renderLivermore(){
-  var body=document.getElementById("plugin-body");
-  body.innerHTML='<div class="plugin-card"><h3>📈 李佛摩六點轉向</h3><p>經典 Jesse Livermore 關鍵點位篩選。買點=回測 50% 自然回撤 / 突破 60 日高+量增;賣點=跌破 60 日低+量增。'+(simOn?'(模擬)':'(即時)')+'</p><div id="lvmr-stats" style="display:flex;gap:8px;margin:10px 4px;font-size:12px"></div><div id="lvmr-rows">載入中…</div></div>';
-  fetch(API_BASE+"/api/livermore").then(function(r){return r.json()}).then(function(d){
-    var rows=d.rows||[];
-    document.getElementById("lvmr-stats").innerHTML
-      ='<span style="background:var(--up-soft);color:var(--up);padding:5px 10px;border-radius:100px;font-weight:700">買訊 '+(d.buy_n||0)+'</span>'
-      +'<span style="background:var(--down-soft);color:var(--down);padding:5px 10px;border-radius:100px;font-weight:700">賣訊 '+(d.sell_n||0)+'</span>'
-      +'<span style="background:var(--amber-soft);color:var(--amber);padding:5px 10px;border-radius:100px;font-weight:700">觀察 '+(d.watch_n||0)+'</span>';
-    if(!rows.length){document.getElementById("lvmr-rows").innerHTML='<div class="empty">觀察池尚無資料</div>';return;}
-    var sigLabel={buy_pullback:"回撤買",buy_shallow_pullback:"淺回買",buy_breakout:"突破買",buy_near_breakout:"近高買",sell_breakdown:"跌破賣",watch_bounce_fail:"反彈警",watch_near_low:"近低警",watch_breakout:"突破觀",watch_breakdown:"跌破觀",neutral:"中性"};
-    var html='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12.5px">';
-    html+='<tr style="background:var(--soft);text-align:left"><th style="padding:8px 6px">股</th><th style="padding:8px 4px">趨勢</th><th style="padding:8px 4px">訊號</th><th style="padding:8px 4px">強</th><th style="padding:8px 4px">60H</th><th style="padding:8px 4px">NR50</th><th style="padding:8px 4px">量比</th><th style="padding:8px 4px">說明</th></tr>';
-    rows.forEach(function(r){
-      var sigColor=r.signal.startsWith("buy")?"var(--up)":(r.signal.startsWith("sell")||r.signal==="watch_near_low"?"var(--down)":(r.signal.startsWith("watch")?"var(--amber)":"var(--sub)"));
-      var trendColor=r.trend.startsWith("up")?"var(--up)":(r.trend.startsWith("down")?"var(--down)":"var(--sub)");
-      var p=r.pivot_points||{};
-      // neutral 時用「為什麼沒訊號」當說明;有訊號用 commentary
-      var explain=r.signal==="neutral"?(r.neutral_reason||(r.commentary&&r.commentary[0])||"未觸發"):((r.commentary&&r.commentary[0])||"—");
-      var sigBg=r.signal==="neutral"?"background:var(--soft);color:var(--sub)":"";
-      html+='<tr style="border-top:1px solid var(--line)">'
-        +'<td style="padding:7px 6px"><b>'+esc(r.name||r.code)+'</b><br><small style="color:var(--faint)">'+esc(r.code)+'·'+(r.price?r.price.toFixed(2):'—')+'</small></td>'
-        +'<td style="padding:7px 4px;font-weight:700;color:'+trendColor+'">'+esc(r.trend||"—")+'</td>'
-        +'<td style="padding:7px 4px;font-weight:800;color:'+sigColor+';'+sigBg+'">'+esc(sigLabel[r.signal]||r.signal)+'</td>'
-        +'<td style="padding:7px 4px;font-weight:800">'+r.signal_strength+'</td>'
-        +'<td style="padding:7px 4px;color:var(--sub)">'+(r.key_levels?.["60d_high"]||"—")+'</td>'
-        +'<td style="padding:7px 4px;color:var(--violet);font-weight:700">'+(p.NR_50||"—")+'</td>'
-        +'<td style="padding:7px 4px;color:var(--sub)">'+(r.vol_expansion||"—")+'</td>'
-        +'<td style="padding:7px 4px;font-size:11px;color:var(--sub);max-width:280px;line-height:1.5">'+esc(explain)+'</td>'
-        +'</tr>';
-    });
-    html+='</table></div>';
-
-    // 如果全部都 neutral → 加一行統一說明
-    if(d.buy_n===0 && d.sell_n===0 && d.watch_n===0 && rows.length>0){
-      html+='<div style="margin-top:14px;padding:12px 14px;background:var(--violet-soft);border-radius:12px;font-size:12.5px;color:var(--violet);line-height:1.7">'
-        +'<b>📋 為什麼這批都沒訊號?</b><br>'
-        +'李佛摩篩選需要股價符合任一條件:<br>'
-        +'· 上升趨勢 + 股價回測 50% 自然回撤位(±2% 容忍)<br>'
-        +'· 突破 60 日新高 + 量增(>1.2 倍)<br>'
-        +'· 跌破 60 日新低 + 量增(賣訊)<br><br>'
-        +'目前 '+rows.length+' 檔都不在這些關鍵點位上 → <b>這是正常,不是 bug</b>。盤中震盪擴大、或換股到接近回撤位時會觸發。'
-        +'</div>';
-    }
-    document.getElementById("lvmr-rows").innerHTML=html;
-  }).catch(function(e){
-    document.getElementById("lvmr-rows").innerHTML='<div class="empty">載入失敗:'+esc(e)+'</div>';
-  });
-}
 document.querySelectorAll(".tab").forEach(function(b){b.onclick=function(){switchTab(this.getAttribute("data-tab"))};});
+
+/* ── 盤前報告(v2.4) ── */
+var PM=null;
+function pmEsc(t){return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function pmGrade(t){var m=String(t).match(/^([ABCD])級?$/);return m?'<span class="pm-grade '+m[1]+'">'+pmEsc(t)+'</span>':pmEsc(t);}
+function pmRender(txt){
+  var lines=String(txt||"").split(/\r?\n/),html="",tbl=null;
+  function flush(){if(tbl){html+='<div class="pmtbl-x"><table class="pmtbl">'+tbl.rows.map(function(r,i){
+      return '<tr>'+r.map(function(c){return (i===0?'<th>':'<td>')+ (i===0?pmEsc(c):pmGrade(c)) +(i===0?'</th>':'</td>');}).join("")+'</tr>';
+    }).join("")+'</table></div>';tbl=null;}}
+  lines.forEach(function(ln){
+    var t=ln.trim();
+    var isRow=(t.indexOf("｜")>-1)||(/^\|.*\|$/.test(t));
+    if(isRow){
+      var cells=t.indexOf("｜")>-1?t.split("｜"):t.replace(/^\||\|$/g,"").split("|");
+      cells=cells.map(function(c){return c.trim();});
+      if(cells.every(function(c){return /^[-:\s]*$/.test(c);}))return; // md 分隔線
+      if(!tbl)tbl={rows:[]};
+      tbl.rows.push(cells);return;
+    }
+    flush();
+    if(!t){return;}
+    if(/^#{1,3}\s/.test(t)){html+='<h3>'+pmEsc(t.replace(/^#{1,3}\s*/,""))+'</h3>';}
+    else{html+='<p>'+pmEsc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')+'</p>';}
+  });
+  flush();return html||'<p>(空白報告)</p>';
+}
+function loadPm(){
+  fetch("/api/premarket/latest").then(function(r){return r.json();}).then(function(d){
+    PM=d;var el=document.getElementById("pmblock");
+    var btn='<button class="pm-btn" onclick="runPm(0)">產生今日報告</button>';
+    if(d&&d.report_date===new Date().toISOString().slice(0,10)) btn='<button class="pm-btn g" onclick="runPm(1)">重新產生</button>';
+    if(!d||!d.content){
+      el.innerHTML='<div class="pm-row"><span class="pm-d">尚無報告</span><span class="pm-s">開盤前按右側按鈕產生</span>'+btn+'</div>'
+        +(!d.key_ready?'<div class="pm-key">⚠ 尚未設定 OPENAI_API_KEY(.env 留有空位,填入後重啟即可)</div>':'');
+      document.getElementById("pm-upd").textContent="";return;
+    }
+    var prev=String(d.content).split(/\r?\n/).filter(function(x){return x.trim();}).slice(0,3).join(" / ");
+    el.innerHTML='<div class="pm-row"><span class="pm-d">'+pmEsc(d.report_date)+'</span><span class="pm-s">'+pmEsc(d.model||"")+(d.context_note==="us_missing"?" · 美股資料缺":"")+'</span>'+btn
+      +'<button class="pm-btn g" onclick="switchTab(\'premarket\')">看完整報告 ▸</button></div>'
+      +'<div class="pm-prev">'+pmEsc(prev)+'</div>'
+      +(!d.key_ready?'<div class="pm-key">⚠ OPENAI_API_KEY 未設定</div>':'');
+    document.getElementById("pm-upd").textContent=d.report_date;
+  }).catch(function(){document.getElementById("pmblock").innerHTML='<div class="pm-empty">連線失敗</div>';});
+}
+function renderPmReport(){
+  var el=document.getElementById("pmreport");
+  if(!PM||!PM.content){el.innerHTML='<p>尚無盤前報告。回首頁「盤前報告」板塊按「產生今日報告」。</p>'
+    +(PM&&!PM.key_ready?'<p style="color:var(--amber);font-weight:700">⚠ 需先在 .env 填入 OPENAI_API_KEY(程式已留空位)。</p>':'');return;}
+  el.innerHTML='<h3>🌅 盤前報告 · '+pmEsc(PM.report_date)+'</h3>'+pmRender(PM.content);
+}
+function runPm(force){
+  toast("盤前報告產生中(蒐集資料 → OpenAI)…");
+  fetch("/api/premarket/run?force="+force,{method:"POST"}).then(function(r){return r.json();}).then(function(d){
+    if(d.ok){toast("完成:"+(d.note||d.date));loadPm();}
+    else{toast("失敗");alert(d.error||"產生失敗");}
+  }).catch(function(e){toast("失敗:"+e);});
+}
+loadPm();
 
 /* 模擬引擎(簡化:對現有 STATE 加雜訊,盤後測試用) */
 var simOn=false,simTimer=null,simSpeed=1000;
@@ -1313,226 +518,15 @@ function resetSim(){simOn=false;clearInterval(simTimer);var b=document.getElemen
 function setSpeed(ms){simSpeed=ms;document.querySelectorAll(".spd b").forEach(function(x){x.className=(parseInt(x.getAttribute("data-s"),10)===ms?"on":"")});if(simOn){clearInterval(simTimer);simTimer=setInterval(simStep,simSpeed);}}
 
 function renderHome(){
-  /* 順序:頂部 → 結論 → 盤面速覽(資金流入前3 + 今日禁區)→ 熱力圖 → 決策卡 → 盤中流動 */
-  var steps=[renderTop,renderVerdict,renderMini,renderTree,renderDecisions,renderFlow];
+  var steps=[renderTop,renderVerdict,renderTree,renderFlow,renderMini];
   for(var i=0;i<steps.length;i++){try{steps[i]();}catch(e){if(window.console)console.log("r",i,e&&e.message);}}
 }
-
-/* v3:反攻候選名單 — 決策卡渲染(2026-07-09) */
-var DEC_FILTER="all",DEC_CACHE=null;
-function setDecFilter(f,el){
-  DEC_FILTER=f;
-  document.querySelectorAll(".decision-tabs b").forEach(function(b){b.className=(b.getAttribute("data-df")===f?"on":"");});
-  renderDecisions();
-}
-function renderDecisions(){
-  var box=document.getElementById("decisions");
-  if(!box)return;
-  if(!DEC_CACHE){loadDecisions();return;}
-  var list=DEC_FILTER==="all"?DEC_CACHE.cards:DEC_CACHE.cards.filter(function(c){return c.decision&&c.decision.state===DEC_FILTER;});
-  // 數字 badge
-  function set(id,n){var e=document.getElementById(id);if(e)e.textContent=n;}
-  set("dn-all",DEC_CACHE.count||0);
-  set("dn-ready",DEC_CACHE.ready_n||0);
-  set("dn-watch",DEC_CACHE.watch_n||0);
-  set("dn-hold",DEC_CACHE.hold_n||0);
-  if(!list||!list.length){
-    var total=DEC_CACHE.count||0;
-    var why="";
-    var hint="";
-    if(DEC_FILTER==="all"){
-      why=total===0?"/api/money_health 還沒回資料,或觀察池 0 檔":"全部個股都未達 Ready / Watch 標準(都在 Hold)";
-      hint=total===0?"等 server 跑滿一輪":"切到下方「Hold」分頁看持股續抱名單";
-    } else if(DEC_FILTER==="Ready"){
-      why="沒有任何個股達到 Ready(AI 強 + BS 過 + 三角交叉確認)";
-      hint="等盤中震盪擴大、或換股到接近關鍵點位時會觸發";
-    } else if(DEC_FILTER==="Watch"){
-      why="沒有任何個股進入 Watch(分數夠但 BS 或三角未過)";
-      hint="切到「Hold」分頁看其他個股;或繼續觀察";
-    } else if(DEC_FILTER==="Hold"){
-      why="沒有任何個股在 Hold(全部都被評為觀望 / 進場 / 風險)";
-      hint="這是防守訊號,主系統判定全部都不值得 hold,等訊號重新出現";
-    }
-    box.innerHTML='<div class="empty" style="padding:24px 14px;line-height:1.8;text-align:center">'
-      +'<div style="font-size:15px;font-weight:800;color:var(--ink)">「'+DEC_FILTER+'」分頁無個股</div>'
-      +'<div style="color:var(--faint);font-size:12.5px;margin-top:6px">'+why+'</div>'
-      +'<div style="color:var(--violet);font-weight:700;font-size:12px;margin-top:10px">'+hint+'</div>'
-      +'</div>';
-    return;
-  }
-  // ─── v3 區塊頂部:命中率統計摘要(從 DEC_CACHE.hit_rate 讀) ───
-  var hit_html = '';
-  var hr = DEC_CACHE.hit_rate;
-  if(hr && hr.by_health_score){
-    var h = hr.by_health_score;
-    var q = hr.by_quadrant || {};
-    hit_html += '<div class="hitrate-box" style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;line-height:1.7">';
-    hit_html += '<div style="font-weight:800;color:var(--ink);font-size:13px;margin-bottom:6px">📊 模型命中率驗證(' + (hr.snapshots_n||0) + ' 個交易日快照,' + (hr.pairs_n||0) + ' 組隔日配對)</div>';
-    hit_html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px">';
-    function hrCell(name, st){
-      if(!st || !st.n) return '<div style="opacity:0.5"><b>'+name+'</b>: 資料不足</div>';
-      var wr = st.win_rate != null ? st.win_rate + '%' : '—';
-      var ar = st.avg_ret != null ? (st.avg_ret>=0?'+':'')+st.avg_ret + '%' : '—';
-      var cls = st.avg_ret>0?'color:var(--up)':(st.avg_ret<0?'color:var(--out)':'color:var(--ink)');
-      return '<div><b>'+name+'</b>: n='+st.n+' 勝率 '+wr+' 均報酬 <span style="'+cls+'">'+ar+'</span></div>';
-    }
-    hit_html += hrCell('健康分≥65', h.high_ge_65);
-    hit_html += hrCell('健康分50-64', h.mid_50_64);
-    hit_html += hrCell('健康分<50', h.low_lt_50);
-    hit_html += '</div>';
-    hit_html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;font-size:11px;color:var(--faint)">';
-    hit_html += '<div>in_up 均報酬 '+((q.in_up&&q.in_up.avg_ret!=null)?((q.in_up.avg_ret>=0?'+':'')+q.in_up.avg_ret+'%'):'—')+'</div>';
-    hit_html += '<div>in_down '+((q.in_down&&q.in_down.avg_ret!=null)?((q.in_down.avg_ret>=0?'+':'')+q.in_down.avg_ret+'%'):'—')+'</div>';
-    hit_html += '<div>out_up '+((q.out_up&&q.out_up.avg_ret!=null)?((q.out_up.avg_ret>=0?'+':'')+q.out_up.avg_ret+'%'):'—')+'</div>';
-    hit_html += '<div>out_down '+((q.out_down&&q.out_down.avg_ret!=null)?((q.out_down.avg_ret>=0?'+':'')+q.out_down.avg_ret+'%'):'—')+'</div>';
-    hit_html += '</div>';
-    hit_html += '</div>';
-  }
-
-  var html=hit_html+'<div class="deccards">';
-  list.forEach(function(c){
-    var d=c.decision||{};
-    var quad=c.quadrant||"";
-    var inst=c.chip||{};
-    var instStreak=inst.inst_streak!=null?inst.inst_streak:null;
-    var bigPct=inst.big_holder_pct!=null?(inst.big_holder_pct+"%"):"—";
-    var price=c.price!=null?c.price:"—";
-    var chg=c.change_rate!=null?c.change_rate:0;
-    var chgCls=chg>=0?"up":"down";
-    var chgStr=(chg>=0?"+":"")+chg.toFixed(2)+"%";
-    var confColor=d.confidence>=85?"var(--up)":(d.confidence>=65?"var(--violet)":"var(--out)");
-    var aiColor=d.ai_score>=75?"var(--up)":(d.ai_score>=55?"var(--violet)":"var(--out)");
-    var instTag=instStreak!=null?('法人連買 '+instStreak+' 日'):'法人資料未取';
-    // v3 Chip Score 處理
-    var chipSc = (inst.chip_score && inst.chip_score.score != null) ? inst.chip_score : null;
-    var chipScoreVal = chipSc ? chipSc.score : null;
-    var chipLevelLbl = {
-      'big_buy':'主力大買','small_buy':'主力小買','neutral':'中性',
-      'small_sell':'小賣','big_sell':'大賣','no_data':'無資料'
-    };
-    var chipLevelText = chipSc ? (chipLevelLbl[chipSc.level]||chipSc.level) : '無資料';
-    var chipColor = chipScoreVal==null?'var(--faint)':(chipScoreVal>=20?'var(--up)':(chipScoreVal>=10?'var(--violet)':'var(--out)'));
-    // v3 健康分分項
-    var bd = c.health_v3_breakdown || {};
-    var bdText = bd.chip != null ? ('資 '+ (bd.fund!=null?bd.fund:0).toFixed(0) +' / 價 '+(bd.pv!=null?bd.pv:0).toFixed(0)+' / 族 '+(bd.sector!=null?bd.sector:0)+' / Chip '+(bd.chip!=null?bd.chip:0)) : '';
-
-    html+='<div class="dec" data-state="'+d.state+'" data-quad="'+quad+'">';
-    html+='<div class="dec-h">';
-    html+='<span class="nm">'+esc(c.name||"")+'</span>';
-    html+='<span class="cd">'+esc(c.code||"")+'</span>';
-    if(c.sector)html+='<span class="sec-tg">'+esc(c.sector)+'</span>';
-    html+='<span class="st '+d.state+'">'+d.state+'</span>';
-    html+='<span class="price">'+price+'</span>';
-    html+='<span class="chg '+chgCls+'">'+chgStr+'</span>';
-    html+='</div>';
-    // 5 欄 metrics(v3 新增 Chip Score)
-    var aiLbl = '<span class="lbl" title="AI Score = 健康分排名(0-100)。綜合價量象限、漲跌強度給的綜合分。>75 偏多、55-75 中性、<55 偏空。">AI SCORE</span>';
-    var confLbl = '<span class="lbl" title="信心 = AI 對自己判斷的把握(0-100%)。看證據有幾條支持、幾條反對。>85% 高信心、65-85% 中等、<65% 低信心(等資料齊全再決策)。">信心</span>';
-    var quadLbl = '<span class="lbl" title="象限 = 資金流向 × 漲跌的交叉。健康(流入+漲)/假紅(流入+跌)/惜售(流出+漲)/休息(流出+跌)/未連線(tick 資料缺)。">象限</span>';
-    var chipLbl = '<span class="lbl" title="Chip Score(0-25) = 法人買賣超近20日合計張數對應分數:大買25/小買15/中性10/小賣5/大賣0,再加連買連賣日數調整。">Chip 分</span>';
-    var hsLbl = '<span class="lbl" title="v3 健康分 = 資金流(0-50)+ 價量(0-20)+ 族群(0-5)+ Chip(0-25) = 100。">健康分 v3</span>';
-    html+='<div class="dec-metrics">';
-    html+='<div class="dec-m">'+aiLbl+'<div class="val" style="color:'+aiColor+'">'+d.ai_score+'</div><div class="sub">健康分排名</div></div>';
-    html+='<div class="dec-m">'+confLbl+'<div class="val" style="color:'+confColor+'">'+d.confidence+'<span class="pct">%</span></div><div class="sub">'+esc(c.strength||"—")+' 證據</div></div>';
-    var quadVal = (c.quadrant === 'unknown') ? '<div class="val no-data">未連線</div><div class="sub">tick 資料未取</div>' : '<div class="val" style="font-size:13.5px">'+esc(c.label||"—")+'</div><div class="sub">'+esc(d.state)+'</div>';
-    html+='<div class="dec-m">'+quadLbl+quadVal+'</div>';
-    var chipScoreVal_html = (chipScoreVal==null) ? '<div class="val no-data">—</div><div class="sub">FinMind 無資料</div>' : '<div class="val" style="color:'+chipColor+'">'+chipScoreVal+'<span class="pct">/25</span></div><div class="sub">'+esc(chipLevelText)+'</div>';
-    html+='<div class="dec-m">'+chipLbl+chipScoreVal_html+'</div>';
-    // 健康分 v3(獨立顯示,跟 AI Score 區隔)
-    var hsVal = (c.health_score!=null) ? c.health_score : '—';
-    var hsColor = hsVal>=65?'var(--up)':(hsVal>=50?'var(--violet)':'var(--out)');
-    html+='<div class="dec-m">'+hsLbl+'<div class="val" style="color:'+hsColor+'">'+hsVal+'<span class="pct">/100</span></div><div class="sub" style="font-size:10.5px">'+esc(bdText)+'</div></div>';
-    html+='</div>';
-    // Action
-    var actionCls = (quad === 'unknown') ? 'dec-action no-data' : 'dec-action';
-    html+='<div class="'+actionCls+'">▶ '+esc(d.action||"—")+'</div>';
-    // Trigger / Invalidation (key 標籤加 tooltip)
-    var trgK = '<div class="k"><span class="hi" title="進場觸發 = 條件句,全部達成才能布局。">?</span>觸發條件 TRIGGER</div>';
-    var invK = '<div class="k"><span class="hi" title="失效條件 = 任一發生就代表判斷錯誤,該出場。">?</span>失效條件 INVALIDATION</div>';
-    html+='<div class="dec-rows">';
-    html+='<div class="dec-row">'+trgK+'<div class="v trigger">'+esc(d.trigger||"—")+'</div></div>';
-    html+='<div class="dec-row">'+invK+'<div class="v invalidation">'+esc(d.invalidation||"—")+'</div></div>';
-    html+='</div>';
-    // v3 新增:Chip Score 理由 + 時間序列
-    if(chipSc && chipSc.reason){
-      html+='<div style="font-size:11.5px;color:var(--violet);background:rgba(124,108,255,0.08);padding:6px 10px;border-radius:6px;margin:4px 0">📈 Chip 評語:'+esc(chipSc.reason)+'</div>';
-    }
-    var ts = c.time_series || [];
-    if(ts.length >= 2){
-      html+='<details class="dec-evidence"><summary>📊 健康分時間序列(近 '+ts.length+' 日)</summary>';
-      html+='<div class="ev-body">';
-      ts.forEach(function(p){
-        var hs = p.health_score != null ? p.health_score : '—';
-        var hsColor2 = hs>=65?'var(--up)':(hs>=50?'var(--violet)':'var(--out)');
-        var qLbl = {in_up:'健康',in_down:'假紅',out_up:'惜售',out_down:'休息',unknown:'未連線'};
-        html+='<div class="ev-row">';
-        html+='<span style="color:var(--faint);font-size:11px;width:78px;flex-shrink:0">'+esc(p.date||'')+'</span>';
-        html+='<span style="color:'+hsColor2+';font-weight:700;width:38px;text-align:right">'+hs+'</span>';
-        html+='<span style="font-size:11px;color:var(--ink);flex:1">'+esc(qLbl[p.quadrant]||p.quadrant||'—')+'</span>';
-        html+='<span style="font-size:11px;color:var(--faint)">當日 '+(p.change_rate!=null?((p.change_rate>=0?'+':'')+p.change_rate.toFixed(2)+'%'):'—')+'</span>';
-        html+='</div>';
-      });
-      html+='</div></details>';
-    }
-    // 展開區:為什麼是這個分數(證據拆解)
-    var evs = c.evidence || [];
-    if(evs.length){
-      html+='<details class="dec-evidence"><summary>為什麼是這個分數?(展開 '+(evs.length)+' 條證據)</summary>';
-      html+='<div class="ev-body">';
-      evs.forEach(function(e){
-        var cls = e.dir>0?'pos':(e.dir<0?'neg':'neu');
-        var dirSym = e.dir>0?'+':(e.dir<0?'−':'·');
-        html+='<div class="ev-row">';
-        html+='<span class="ev-cat '+cls+'">'+esc(e.cat)+'</span>';
-        html+='<span class="ev-why"><b>'+dirSym+'</b> '+esc(e.why)+'</span>';
-        html+='</div>';
-      });
-      html+='</div></details>';
-    }
-    // Trade plan
-    if(d.entry||d.stop||d.target){
-      html+='<div class="dec-trade">';
-      html+='<span title="現價 +0.5% 的參考進場點">進場 <b>'+(d.entry?d.entry:"—")+'</b></span>';
-      html+='<span title="今日低點 -0.5% 或現價 -3%,取較低">停損 <b>'+(d.stop?d.stop:"—")+'</b></span>';
-      html+='<span title="現價 +5% 或今日高點 +1%,取較高">目標 <b>'+(d.target?d.target:"—")+'</b></span>';
-      html+='</div>';
-    } else if(quad === 'unknown'){
-      html+='<div class="dec-trade" style="color:var(--faint)">進場 / 停損 / 目標 待 tick 資料連線後計算</div>';
-    }
-    html+='</div>';
-  });
-  html+='</div>';
-  // 區塊底部加名詞表(新手第一次看會查,v3 升級版)
-  html+='<div class="dec-glossary">';
-  html+='<span class="gt">新手 30 秒看懂這些詞</span>';
-  html+='<b>AI Score</b> = 健康分排名,>75 偏多、55-75 中性、<55 偏空。<br>';
-  html+='<b>信心</b> = AI 對自己判斷的把握,看證據支持/反對的比例。證據矛盾時會掉到 30-50%,AI 寧可說「不確定」也不要亂喊。<br>';
-  html+='<b>象限</b> = 資金流向 × 漲跌的交叉。<b>健康</b>=流入+漲(真攻擊)、<b>假紅</b>=流入+跌(主力邊拉邊賣)、<b>惜售</b>=流出+漲(量縮惜售)、<b>休息</b>=流出+跌(退潮)、<b>未連線</b>=tick 資料缺。<br>';
-  html+='<b>Chip 分</b>(0-25) = 法人近20日買賣超張數:大買≥+5000張→25、小買+500~+5000→15、中性±500→10、小賣-5000~-500→5、大賣≤-5000→0;再依外資連買/連賣日數 ±3~±5。<br>';
-  html+='<b>健康分 v3</b> = 資金流(0-50)+ 價量(0-20)+ 族群(0-5)+ Chip(0-25),總分 100。<b>時間序列</b>顯示該股近 5 日健康分走勢,評估「健康度是延續還是反轉」。<br>';
-  html+='<b>狀態</b> = <b>Ready</b>=現在可布局、<b>Watch</b>=等觸發條件達成、<b>Hold</b>=不進場。<br>';
-  html+='<b>命中率驗證</b> = 用過去快照統計「健康分高/中/低 三組的隔日平均報酬」與「四象限的隔日平均報酬」,30 天後驗證模型預測力。<br>';
-  html+='<b>觸發 / 失效</b> = 進場的條件句 vs 出場的條件句。看不到觸發別進場,碰到失效要出場。';
-  html+='</div>';
-  box.innerHTML=html;
-  var upd=document.getElementById("decisions-upd");if(upd)upd.textContent="更新 "+((DEC_CACHE.as_of||"")).slice(11,16);
-}
-function loadDecisions(){
-  var box=document.getElementById("decisions");
-  if(box)box.innerHTML='<div class="empty" style="padding:30px;text-align:center;color:var(--faint)">載入決策卡…</div>';
-  fetch(API_BASE+"/api/money_health").then(function(r){return r.json()}).then(function(d){
-    if(d.error){box.innerHTML='<div class="empty" style="padding:30px;text-align:center;color:var(--out)">決策卡載入失敗:'+esc(d.error)+'</div>';return;}
-    DEC_CACHE=d;renderDecisions();
-  }).catch(function(e){box.innerHTML='<div class="empty" style="padding:30px;text-align:center;color:var(--out)">連線失敗</div>';});
-}
-
 function poll(){
   if(simOn)return;
-  fetch(API_BASE+"/api/state").then(function(r){return r.json()}).then(function(d){
+  fetch("/api/state").then(function(r){return r.json()}).then(function(d){
     if(d.status==="starting"){document.getElementById("tree").innerHTML='<div class="empty" style="height:100%;display:flex;align-items:center;justify-content:center">引擎啟動中…</div>';return;}
     STATE=d;renderHome();
   }).catch(function(){document.getElementById("tree").innerHTML='<div class="empty" style="height:100%;display:flex;align-items:center;justify-content:center">連線失敗</div>';});
-  loadDecisions();
 }
 window.addEventListener("resize",function(){if(STATE&&TAB==="home")renderTree();});
 setInterval(poll,30000);poll();

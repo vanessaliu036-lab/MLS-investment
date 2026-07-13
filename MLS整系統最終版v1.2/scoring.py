@@ -43,20 +43,37 @@ def tnvr(total_volume, avg5_volume, now=None):
 
 
 # ── 盤中主動買賣淨流(跨輪累積) ─────────────────────────
-_prev_vol = {}      # code → 上一輪累積量
-_aflow = {}         # code → 主動淨流(股;+主動買 −主動賣)
+# 修正紀錄(v2.2):batch_snapshots() 用 Shioaji 批次快照 API,
+# 其 tick_type 欄位在快照模式下不是真逐筆內外盤判定(常態 0/None),
+# 導致舊版 sign 幾乎恆為 0、aflow 永遠卡在 0(+0.00/-0.00 bug)。
+# 修法:優先用 broker 已在抓的 buy_volume/sell_volume(外盤/內盤累積量)
+# 兩輪增量差,這是快照 API 真正可靠的欄位;tick_type 僅在兩者缺值時
+# 當退回法(相容舊呼叫)。
+_prev_vol = {}       # code → 上一輪累積總量(tick_type 退回法用)
+_prev_buy = {}       # code → 上一輪外盤(主動買)累積量
+_prev_sell = {}      # code → 上一輪內盤(主動賣)累積量
+_aflow = {}          # code → 主動淨流(股;+主動買 −主動賣)
+_ratio_hist = {}      # code → 最近 N 輪 aflow_ratio(供資金流速計算)
 
 
-def update_aflow(code, total_volume, tick_type):
+def update_aflow(code, total_volume, tick_type=None,
+                 buy_volume=None, sell_volume=None):
     """
-    每輪掃描呼叫:把兩輪之間的量增量,依當前 tick_type 記為主動買/賣。
-    tick_type: Shioaji 1=賣盤成交(內盤) 2=買盤成交(外盤);FinMind 同義。
-    近似法——盤中無逐筆時的最佳估計。
-    若 total_volume 或 tick_type 是 None → 標記 None,不要累積 0 假資料。
+    每輪掃描呼叫。
+    優先法:buy_volume/sell_volume(broker 快照已提供的外盤/內盤累積量)
+           兩輪增量差 → 可靠,不受快照 tick_type 限制。
+    退回法:兩者缺值時才用舊 tick_type 記號法(相容舊呼叫/測試)。
     """
-    if total_volume is None or tick_type is None:
-        _aflow[code] = None
-        return None
+    if buy_volume is not None and sell_volume is not None:
+        pb = _prev_buy.get(code, buy_volume)
+        ps = _prev_sell.get(code, sell_volume)
+        db_ = max(0, (buy_volume or 0) - pb)
+        ds_ = max(0, (sell_volume or 0) - ps)
+        _prev_buy[code] = buy_volume or 0
+        _prev_sell[code] = sell_volume or 0
+        _aflow[code] = _aflow.get(code, 0) + (db_ - ds_)
+        return _aflow[code]
+    # ── 退回法(舊邏輯,保留相容) ──
     prev = _prev_vol.get(code, total_volume)
     delta = max(0, (total_volume or 0) - prev)
     _prev_vol[code] = total_volume or 0
@@ -70,108 +87,33 @@ def update_aflow(code, total_volume, tick_type):
     return _aflow[code]
 
 
+def push_flow_ratio(code, ratio, maxlen=6):
+    """money_health 每輪算完 aflow_ratio 後呼叫,累積供資金流速判斷。"""
+    h = _ratio_hist.setdefault(code, [])
+    h.append(ratio)
+    if len(h) > maxlen:
+        h.pop(0)
+
+
+def flow_velocity(code):
+    """資金流速:近 N 輪 aflow_ratio 的變化量(轉強為正/轉弱為負)。"""
+    h = _ratio_hist.get(code) or []
+    if len(h) < 2:
+        return 0.0
+    return round(h[-1] - h[0], 3)
+
+
 def reset_aflow():
     """每日開盤前清空。"""
     _prev_vol.clear()
+    _prev_buy.clear()
+    _prev_sell.clear()
     _aflow.clear()
+    _ratio_hist.clear()
 
 
 def get_aflow(code):
-    """
-    取得主動淨流股數。回傳 None 表示「無 tick 資料」,不要當 0 處理。
-    None 的來源:broker 沒回 total_volume / tick_type,update_aflow 累積 0。
-    為了區分「真 0」和「沒資料」,_aflow 內部用 None 標記未連線。
-    """
-    return _aflow.get(code, None)
-
-
-# ─────────────────────────────────────────────────────────────
-# Tick 軌跡追蹤器(第四條件根基:deque + BS ratio + 5 分鐘近端)
-# 對應文件二:「累積比 + 近5分比」即時觸發
-from collections import deque
-import time as _time
-
-class TickTracker:
-    """
-    對單檔股票:追蹤每筆 tick,提供:
-      - add_tick(price, volume, ts=None): 加一筆(price, volume)
-        · 若外部已給 buy/sell 歸類 → 用外部歸類
-        · 否則 fallback 用價差歸類(>前價=買,<前價=賣)
-      - 5min_buy / 5min_sell:近 300 秒內買賣量
-      - cum_buy / cum_sell:開盤以來總買賣量
-      - cum_ratio / recent_5min_ratio
-    用 deque 防記憶體肥大,每次 add_tick 順手 popleft 過期資料。
-    """
-    def __init__(self, window_sec=300):
-        self.tick_history = deque()             # [(ts, price, volume, side)]  side:+1=buy / -1=sell / 0=中立
-        self.total_buy_vol = 0
-        self.total_sell_vol = 0
-        self.last_price = None
-        self.window_sec = window_sec
-
-    def add_tick(self, price, volume, ts=None, side=None):
-        if ts is None:
-            ts = _time.time()
-        # 過期清理
-        while self.tick_history and (ts - self.tick_history[0][0] > self.window_sec):
-            old = self.tick_history.popleft()
-            # 從總量扣掉已滑出視窗的買賣量(避免遺留)
-            if old[3] == 1 and self.total_buy_vol >= old[2]:
-                self.total_buy_vol -= old[2]
-            elif old[3] == -1 and self.total_sell_vol >= old[2]:
-                self.total_sell_vol -= old[2]
-        # 決定方向
-        if side is None:
-            if self.last_price is None:
-                side = 0
-            elif price > self.last_price:
-                side = 1
-            elif price < self.last_price:
-                side = -1
-            else:
-                side = 0
-        self.last_price = price
-        self.tick_history.append((ts, price, volume, side))
-        if side == 1:
-            self.total_buy_vol += volume
-        elif side == -1:
-            self.total_sell_vol += volume
-
-    @property
-    def cum_ratio(self):
-        """累積買賣比(文件二:主 BS 比);若 sell=0 視為 inf,改回傳大值。"""
-        return (self.total_buy_vol / self.total_sell_vol) if self.total_sell_vol > 0 else float('inf')
-
-    def recent_5min_buy(self):
-        return sum(v for (t, _, v, side) in self.tick_history if side == 1)
-
-    def recent_5min_sell(self):
-        return sum(v for (t, _, v, side) in self.tick_history if side == -1)
-
-    @property
-    def recent_5min_ratio(self):
-        s = self.recent_5min_sell()
-        return (self.recent_5min_buy() / s) if s > 0 else float('inf')
-
-    def reset(self):
-        self.tick_history.clear()
-        self.total_buy_vol = 0
-        self.total_sell_vol = 0
-        self.last_price = None
-
-
-# 全域 tracker dict(每個 code 一個 TickTracker)
-_trackers = {}
-
-def get_tracker(code):
-    """取得(或建立)指定股票的 TickTracker。跨盤中持續累積,隔日由 reset_all_trackers() 清空。"""
-    if code not in _trackers:
-        _trackers[code] = TickTracker()
-    return _trackers[code]
-
-def reset_all_trackers():
-    """開盤日切換時呼叫(08:30 / 跨日)。"""
-    _trackers.clear()
+    return _aflow.get(code, 0)
 
 
 # ── BS Ratio 主動買賣盤濾網(第四道關卡) ─────────────────
@@ -245,8 +187,7 @@ def divergence(change_rate, aflow, total_volume):
     pull_sell: 價漲但主動淨流為負 → 邊拉邊賣(拉高出貨)
     淨流須達當日量 8% 才算顯著,避免雜訊。
     """
-    # 2026-07-09 hotfix:任一為 None / 0 都不要算 ratio,免炸 TypeError
-    if not total_volume or aflow is None:
+    if not total_volume:
         return None, ""
     ratio = aflow / total_volume
     if change_rate <= -1.0 and ratio > 0.08:
@@ -296,14 +237,10 @@ def score_stock(s, *, sector_median, market_pct, locked, abab_a_day,
         F["trend"] += 5
 
     # 量能 25(TNVR 分段)
-    # 2026-07-09 hotfix:加 1.0 階梯。今日 5 檔全部 tnvr 1.06~1.21 落在 1.3 以下掛零,
-    # 連帶拖累整體 score,讓該進場的漲停股卡在 entry_min 之下。降階止血,
-    # 長期改全市場百分位排名(Phase A)。
     if tnvr_val is not None:
         if tnvr_val >= 2.5:   F["volume"] = 25
         elif tnvr_val >= 1.8: F["volume"] = 18
         elif tnvr_val >= 1.3: F["volume"] = 10
-        elif tnvr_val >= 1.0: F["volume"] = 6   # hotfix 階
 
     # 相對強度 20
     rs_sec = chg - sector_median
@@ -313,14 +250,10 @@ def score_stock(s, *, sector_median, market_pct, locked, abab_a_day,
     if rs_mkt > 0:    F["rs"] += 8
 
     # 籌碼 20(盤後快取)
-    # 2026-07-09 hotfix:chip 缺資料時給 3 分中性 baseline,不要直接跳過整個區塊,
-    # 否則像 2337/2344 這種 FinMind 沒抓到籌碼的,籌碼分永遠 0 拖累總分。
-    if chip and any(chip.get(k) for k in ("inst_net_20d_lots", "inst_streak", "big_holder_trend")):
+    if chip:
         if (chip.get("inst_net_20d_lots") or 0) > 0: F["chip"] += 10
         if (chip.get("inst_streak") or 0) >= 3:      F["chip"] += 5
         if (chip.get("big_holder_trend") or 0) > 0:  F["chip"] += 5
-    else:
-        F["chip"] = 3   # 缺資料 baseline(中性,避免被誤判為弱)
 
     # 族群 10
     if locked:      F["sector"] += 8
@@ -340,96 +273,3 @@ def score_stock(s, *, sector_median, market_pct, locked, abab_a_day,
     raw = sum(F[k] * _weights[k] for k in F) - pen_pts
     score = int(max(1, min(99, raw * MODE_MULT.get(mode, 1.0))))
     return score, F, pen, div_flag
-
-
-# ─────────────────────────────────────────────────────────────
-# 即時觸發條件(文件二:四條件進場判斷)
-# · cond1:大盤現價 > 大盤開盤價
-# · cond2:股價現價 > 今日前 30 分最高價
-# · cond3:預估量 > 昨日量 × 1.2
-# · cond4(本檔新增):累積比 + 近5分比,寬鬆/嚴苛兩模式(開盤30分鐘切換)
-#
-# 觸發時機:每秒或每分鐘被 add_tick 餵入後呼叫 evaluate_realtime(...)。
-# 回傳 dict:{cond1..cond4: bool, fired: bool, reasons: [str], mode: 'loose'|'strict'}
-
-from datetime import datetime, timedelta
-try:
-    _TW_TZ = timezone(timedelta(hours=8))
-except Exception:
-    _TW_TZ = None
-
-def _elapsed_min_from_open(now=None):
-    """距離 09:00 開盤已過幾分鐘。"""
-    if now is None:
-        now = datetime.now(_TW_TZ) if _TW_TZ else datetime.now()
-    open_dt = now.replace(hour=9, minute=0, second=0, microsecond=0)
-    delta = (now - open_dt).total_seconds() / 60
-    return max(0, int(delta))
-
-def condition4_realtime(tracker, *, loose_first_30min=True):
-    """
-    第四條件:雙重 BS 保險(累積比 + 近 5 分比)
-    開盤 30 分鐘內寬鬆,之後嚴苛。
-      寬鬆:累積 > 1.1 且 近5分 > 1.2
-      嚴苛:累積 > 1.2 且 近5分 > 1.5
-    """
-    elapsed = _elapsed_min_from_open()
-    cum = tracker.cum_ratio
-    rec = tracker.recent_5min_ratio
-    if loose_first_30min and elapsed <= 30:
-        return (cum > 1.1) and (rec > 1.2), elapsed, "loose"
-    return (cum > 1.2) and (rec > 1.5), elapsed, "strict"
-
-
-def evaluate_realtime(*, code, current_price, market_open_price, market_current_price,
-                      day_30m_high, est_volume, prev_day_volume, tracker=None,
-                      loose_first_30min=True):
-    """
-    文件二的四條件總判斷。
-    cond1 大盤現價 > 大盤開盤價
-    cond2 個股現價 > 今日前 30 分鐘最高價
-    cond3 預估量 > 昨日量 × 1.2
-    cond4 TickTracker 累積比 + 近5分比(寬鬆/嚴苛模式)
-    """
-    cond1 = (market_current_price or 0) > (market_open_price or 0)
-    cond2 = (current_price or 0) > (day_30m_high or 0)
-    cond3 = (est_volume or 0) > (prev_day_volume or 0) * 1.2
-    reasons = []
-    if not cond1: reasons.append("cond1 大盤未過開盤價")
-    if not cond2: reasons.append("cond2 未破前30分高")
-    if not cond3: reasons.append("cond3 預估量不足")
-
-    cond4_passed = False
-    elapsed = 0
-    mode = "strict"
-    if tracker is not None:
-        cond4_passed, elapsed, mode = condition4_realtime(tracker,
-                                                          loose_first_30min=loose_first_30min)
-        if not cond4_passed:
-            cum = tracker.cum_ratio
-            rec = tracker.recent_5min_ratio
-            rsn = []
-            try:
-                if cum != float('inf'): rsn.append(f"累積{cum:.2f}")
-            except Exception: pass
-            try:
-                if rec != float('inf'): rsn.append(f"近5分{rec:.2f}")
-            except Exception: pass
-            reasons.append(f"cond4 {'寬鬆' if mode=='loose' else '嚴苛'}未過 ({','.join(rsn) or '資料不足'}, 開盤第{elapsed}分)")
-    else:
-        reasons.append("cond4 無 TickTracker")
-
-    fired = cond1 and cond2 and cond3 and cond4_passed
-    return {
-        "code": code,
-        "fired": fired,
-        "cond1": cond1,
-        "cond2": cond2,
-        "cond3": cond3,
-        "cond4": cond4_passed,
-        "elapsed_min": elapsed,
-        "mode": mode,
-        "reasons": reasons,
-        "cum_ratio": (tracker.cum_ratio if tracker else None),
-        "recent_ratio": (tracker.recent_5min_ratio if tracker else None),
-    }

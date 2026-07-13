@@ -45,16 +45,6 @@ def _load_disk():
     try:
         with open(CACHE_FILE) as f:
             _cache = json.load(f)
-        # schema 升級:舊 cache 缺新欄位 → 補 None,避免 frontend 拿到 undefined
-        _NEW_KEYS = [
-            "foreign_net_20d", "trust_net_20d", "dealer_net_20d", "main_force_net_20d",
-            "foreign_5d", "foreign_10d", "inst_5d", "inst_10d",
-            "holder_400_pct", "holder_400_trend",
-        ]
-        for code, v in (_cache.get("stocks") or {}).items():
-            if isinstance(v, dict):
-                for k in _NEW_KEYS:
-                    v.setdefault(k, None)
     except Exception:
         pass
 
@@ -78,75 +68,42 @@ def get_chips(code):
       inst_streak         外資連續買超天數(負值=連賣)
       big_holder_pct      千張大戶持股比例(%)
       big_holder_trend    大戶比例近4週變化(百分點)
-      foreign_net_20d     外資近20日合計(張)
-      trust_net_20d       投信近20日合計(張)
-      dealer_net_20d      自營近20日合計(張)
-      main_force_net_20d  主力 = 外資+投信+自營 近20日合計(張)
-      foreign_5d / 10d    外資近5/10日合計(張),代理「N日資金流」
-      holder_400_pct      400張以上大戶持股比例(%)
-      holder_400_trend    400張大戶比例近4週變化(百分點)
-      inst_5d / inst_10d  三大法人近5/10日合計(張)
     查無資料時對應值為 None。結果快取至當日。
+    v2.2 修正:補 global 宣告——舊版函式尾端 `_cache = {...}` 賦值
+    使 _cache 被判為區域變數,開頭讀取即 UnboundLocalError,
+    導致籌碼快取層從未正常運作(所有呼叫端只拿到例外)。
     """
+    global _cache
     _load_disk()
     today = _today_key()
-    global _cache
     if _cache.get("date") == today and code in _cache.get("stocks", {}):
         return _cache["stocks"][code]
 
     result = {
         "inst_net_20d_lots": None, "inst_streak": None,
         "big_holder_pct": None, "big_holder_trend": None,
-        "foreign_net_20d": None, "trust_net_20d": None, "dealer_net_20d": None,
-        "main_force_net_20d": None,
-        "foreign_5d": None, "foreign_10d": None,
-        "inst_5d": None, "inst_10d": None,
-        "holder_400_pct": None, "holder_400_trend": None,
     }
 
-    # ── 法人買賣超(近70日抓,留 20 / 10 / 5 三個分窗) ──────
+    # ── 法人買賣超(近40日抓,取最近20交易日) ──────────
     try:
-        start = (datetime.now() - timedelta(days=100)).strftime("%Y-%m-%d")
+        start = (datetime.now() - timedelta(days=70)).strftime("%Y-%m-%d")
         rows = _finmind("TaiwanStockInstitutionalInvestorsBuySell", code, start)
-        # 欄位: date, stock_id, name(Foreign_Investor/Investment_Trust/Dealer), buy, sell
+        # 欄位: date, stock_id, name(Foreign_Investor/Investment_Trust/...), buy, sell
         by_date = {}
         for r in rows:
-            who = r.get("name")
-            if who not in ("Foreign_Investor", "Investment_Trust", "Dealer"):
-                continue
-            d = r["date"]
-            net_lots = (r.get("buy", 0) - r.get("sell", 0)) / 1000  # 股→張
-            by_date.setdefault(d, {"foreign": 0, "trust": 0, "dealer": 0})
-            if who == "Foreign_Investor":
-                by_date[d]["foreign"] += net_lots
-            elif who == "Investment_Trust":
-                by_date[d]["trust"] += net_lots
-            elif who == "Dealer":
-                by_date[d]["dealer"] += net_lots
-        dates = sorted(by_date.keys())
+            if r.get("name") in ("Foreign_Investor", "Investment_Trust"):
+                d = r["date"]
+                by_date.setdefault(d, {"net": 0, "foreign_net": 0})
+                net = (r.get("buy", 0) - r.get("sell", 0)) / 1000  # 股→張
+                by_date[d]["net"] += net
+                if r["name"] == "Foreign_Investor":
+                    by_date[d]["foreign_net"] += net
+        dates = sorted(by_date.keys())[-INST_DAYS:]
         if dates:
-            last20 = dates[-20:]
-            last10 = dates[-10:]
-            last5 = dates[-5:]
-            result["inst_net_20d_lots"] = round(
-                sum(by_date[d]["foreign"] + by_date[d]["trust"] for d in last20))
-            result["foreign_net_20d"] = round(sum(by_date[d]["foreign"] for d in last20))
-            result["trust_net_20d"] = round(sum(by_date[d]["trust"] for d in last20))
-            result["dealer_net_20d"] = round(sum(by_date[d]["dealer"] for d in last20))
-            result["main_force_net_20d"] = round(
-                sum(by_date[d]["foreign"] + by_date[d]["trust"] + by_date[d]["dealer"]
-                    for d in last20))
-            result["inst_5d"] = round(
-                sum(by_date[d]["foreign"] + by_date[d]["trust"] + by_date[d]["dealer"]
-                    for d in last5))
-            result["inst_10d"] = round(
-                sum(by_date[d]["foreign"] + by_date[d]["trust"] + by_date[d]["dealer"]
-                    for d in last10))
-            result["foreign_5d"] = round(sum(by_date[d]["foreign"] for d in last5))
-            result["foreign_10d"] = round(sum(by_date[d]["foreign"] for d in last10))
+            result["inst_net_20d_lots"] = round(sum(by_date[d]["net"] for d in dates))
             streak = 0
-            for d in reversed(last20):
-                f = by_date[d]["foreign"]
+            for d in reversed(dates):
+                f = by_date[d]["foreign_net"]
                 if streak == 0:
                     streak = 1 if f > 0 else (-1 if f < 0 else 0)
                 elif (streak > 0 and f > 0):
@@ -165,9 +122,91 @@ def get_chips(code):
         rows = _finmind("TaiwanStockHoldingSharesPer", code, start)
         # 欄位: date, stock_id, HoldingSharesLevel, people, percent, unit
         # 千張大戶 = level "1,000,001-5,000,000" 以上各級距 percent 加總
-        # 400張以上 = level "400,001-..." 各級距 percent 加總
-        weeks_big = {}        # 千張
-        weeks_400 = {}        # 400張以上
+        weeks = {}
+        for r in rows:
+            lvl = str(r.get("HoldingSharesLevel", ""))
+            first = lvl.split("-")[0].replace(",", "")
+            try:
+                min_shares = int(first)
+            except ValueError:
+                continue  # 排除 "total" 等
+            if min_shares >= BIG_HOLDER_LEVEL * 1000:  # 張→股
+                weeks.setdefault(r["date"], 0)
+                weeks[r["date"]] += float(r.get("percent", 0))
+        wd = sorted(weeks.keys())
+        if wd:
+            result["big_holder_pct"] = round(weeks[wd[-1]], 2)
+            if len(wd) >= 2:
+                result["big_holder_trend"] = round(weeks[wd[-1]] - weeks[wd[0]], 2)
+    except Exception as e:
+        print(f"[chips] 大戶 {code} 失敗: {e}")
+
+    if _cache.get("date") != today:
+        _cache = {"date": today, "stocks": {}}
+    _cache["stocks"][code] = result
+    _save_disk()
+    return result
+
+
+# ════════════════════════════════════════════════════════
+# v2.3 新增:個股資訊卡細項籌碼(get_chips 保持不變,零影響)
+# ════════════════════════════════════════════════════════
+def get_chips_detail(code):
+    """
+    資訊卡籌碼面。回傳 dict(查無資料的欄位為 None,不假造):
+      foreign_net_d / trust_net_d / dealer_net_d  最新一日外資/投信/自營買賣超(張)
+      foreign_net_20d                             外資近20日合計(張)
+      big400_pct / big400_delta                   400張以上持股% / 近4週變化(pp)
+      big1000_pct / big1000_delta                 千張大戶持股% / 近4週變化(pp)
+      main_force_net                              主力(分點)= None,FinMind 免費層無此資料,
+                                                  接 premium 籌碼商後由 chip_provider 供給
+    資料週期誠實標記:法人=日資料;大戶級距=集保週資料。
+    """
+    global _cache
+    _load_disk()
+    today = _today_key()
+    key = f"detail:{code}"
+    if _cache.get("date") == today and key in _cache.get("stocks", {}):
+        return _cache["stocks"][key]
+
+    result = {"foreign_net_d": None, "trust_net_d": None, "dealer_net_d": None,
+              "foreign_net_20d": None,
+              "big400_pct": None, "big400_delta": None,
+              "big1000_pct": None, "big1000_delta": None,
+              "main_force_net": None}
+
+    # ── 三大法人單日 + 外資20日(日資料) ──────────────
+    try:
+        start = (datetime.now() - timedelta(days=70)).strftime("%Y-%m-%d")
+        rows = _finmind("TaiwanStockInstitutionalInvestorsBuySell", code, start)
+        by_date = {}
+        for r in rows:
+            d = r["date"]
+            net = (r.get("buy", 0) - r.get("sell", 0)) / 1000     # 股→張
+            nm = r.get("name", "")
+            g = by_date.setdefault(d, {"f": 0, "t": 0, "dl": 0})
+            if nm == "Foreign_Investor":
+                g["f"] += net
+            elif nm == "Investment_Trust":
+                g["t"] += net
+            elif nm.startswith("Dealer"):                          # 自營(自行+避險)
+                g["dl"] += net
+        dates = sorted(by_date.keys())
+        if dates:
+            last = by_date[dates[-1]]
+            result["foreign_net_d"] = round(last["f"])
+            result["trust_net_d"] = round(last["t"])
+            result["dealer_net_d"] = round(last["dl"])
+            result["foreign_net_20d"] = round(
+                sum(by_date[d]["f"] for d in dates[-INST_DAYS:]))
+    except Exception as e:
+        print(f"[chips] 法人細項 {code} 失敗: {e}")
+
+    # ── 大戶級距(集保週資料):400張 / 1000張 ─────────
+    try:
+        start = (datetime.now() - timedelta(days=45)).strftime("%Y-%m-%d")
+        rows = _finmind("TaiwanStockHoldingSharesPer", code, start)
+        w400, w1000 = {}, {}
         for r in rows:
             lvl = str(r.get("HoldingSharesLevel", ""))
             first = lvl.split("-")[0].replace(",", "")
@@ -175,29 +214,24 @@ def get_chips(code):
                 min_shares = int(first)
             except ValueError:
                 continue
-            d = r["date"]
             pct = float(r.get("percent", 0))
-            weeks_big.setdefault(d, 0)
-            weeks_400.setdefault(d, 0)
-            if min_shares >= 1000 * 1000:           # 千張以上
-                weeks_big[d] += pct
-            if min_shares >= 400 * 1000:            # 400張以上(包含千張)
-                weeks_400[d] += pct
-        wd = sorted(weeks_big.keys())
-        if wd:
-            result["big_holder_pct"] = round(weeks_big[wd[-1]], 2)
-            if len(wd) >= 2:
-                result["big_holder_trend"] = round(weeks_big[wd[-1]] - weeks_big[wd[0]], 2)
-        wd400 = sorted(weeks_400.keys())
-        if wd400:
-            result["holder_400_pct"] = round(weeks_400[wd400[-1]], 2)
-            if len(wd400) >= 2:
-                result["holder_400_trend"] = round(weeks_400[wd400[-1]] - weeks_400[wd400[0]], 2)
+            d = r["date"]
+            if min_shares >= 400 * 1000:
+                w400[d] = w400.get(d, 0) + pct
+            if min_shares >= 1000 * 1000:
+                w1000[d] = w1000.get(d, 0) + pct
+        for weeks, pk, dk in ((w400, "big400_pct", "big400_delta"),
+                              (w1000, "big1000_pct", "big1000_delta")):
+            wd = sorted(weeks.keys())
+            if wd:
+                result[pk] = round(weeks[wd[-1]], 2)
+                if len(wd) >= 2:
+                    result[dk] = round(weeks[wd[-1]] - weeks[wd[0]], 2)
     except Exception as e:
-        print(f"[chips] 大戶 {code} 失敗: {e}")
+        print(f"[chips] 大戶級距 {code} 失敗: {e}")
 
     if _cache.get("date") != today:
         _cache = {"date": today, "stocks": {}}
-    _cache["stocks"][code] = result
+    _cache["stocks"][key] = result
     _save_disk()
     return result

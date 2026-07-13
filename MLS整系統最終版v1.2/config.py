@@ -18,11 +18,6 @@ LEADERS_PER_SECTOR = 1          # 每族群龍頭數(前三族群共3檔)
 # 龍頭分數 = 成交金額*0.5 + 漲幅*0.3 + 量比*0.2(族群內排名)
 LEADER_W = {"amount": 0.5, "change": 0.3, "vr": 0.2}
 
-# ── 觀察池寬度(2026-07-09 Vanessa 決定) ─────────────────
-# 觀察池 3 → 30+ 的兩個開關,只動切片/排序,**不動任何評分邏輯**
-HEATMAP_TOP_N = 30              # engine.py table[:HEATMAP_TOP_N] 上限(已排序)
-LOCKED_SECTOR_MEMBERS_PER_GROUP = 3  # 攻擊族群內納入候選的個股數(各族群前N名)
-
 # ── 第一層廣掃(進攻優先,寧濫勿缺) ─────────────────────
 W1_CHANGE_RATE = 1.5            # 漲幅門檻 %
 W2_VOLUME_RATIO = 1.3           # 量比門檻
@@ -99,6 +94,24 @@ SECTOR_MAP = {
 }
 
 UNIVERSE = sorted(SECTOR_MAP.keys())
+
+# ── v3.0 動態角色:engine_roles.json 覆寫寫死名單(engine_review 維護) ──
+import json as _json, os as _os
+_ROLE_FILE = _os.path.join(_os.path.dirname(__file__), "engine_roles.json")
+
+def reload_roles():
+    """熱載角色檔;引擎/攻擊是玩法標籤,不是進場資格(v3.0)。"""
+    global ENGINE_STOCKS, SECTOR_MAP
+    try:
+        if _os.path.exists(_ROLE_FILE):
+            data = _json.load(open(_ROLE_FILE, encoding="utf-8"))
+            ENGINE_STOCKS = set(data.get("engines", []))
+            SECTOR_MAP = {c: (sec, "engine" if c in ENGINE_STOCKS else "attack")
+                          for c, (sec, _t) in SECTOR_MAP.items()}
+    except Exception as e:
+        print(f"[config] 角色檔載入失敗,沿用預設:{e}")
+
+reload_roles()
 
 NAME_MAP = {
     "3006":"晶豪科","2337":"旺宏","2344":"華邦電","2408":"南亞科","8028":"昇陽半導體",

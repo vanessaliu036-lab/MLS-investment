@@ -359,10 +359,44 @@ def run(last_state):
     except Exception as e:
         print(f"[plugin/eod] 跳過:{e}")
 
+    # ── 插件掛鉤:李佛摩六欄紀錄(盤後選股中心,每日15:00後存檔) ──
+    livermore_out = None
+    try:
+        import livermore
+        livermore_out = livermore.record_today()       # 六欄紀錄落地 mls.db
+        sp = livermore.six_point_scan()                # 六點轉向:盤後選股中心
+        livermore_out["sixpoint_qualified"] = len(sp["qualified"])
+        notifier.push_summary(
+            f"📈 李佛摩已存 {livermore_out.get('date')} · "
+            f"{livermore_out.get('saved', 0)} 檔｜六點合格 {len(sp['qualified'])} 檔"
+            f"(頁面 /livermore)")
+    except Exception as e:
+        print(f"[plugin/livermore] 跳過:{e}")
+
+    # ── 插件掛鉤:引擎角色週審查(每週五;跟著主流輪替,v3.0) ──
+    try:
+        from datetime import datetime as _dt
+        if _dt.now().weekday() == 4:
+            import engine_review
+            rev = engine_review.review()
+            notifier.push_summary(engine_review.summary_text(rev))
+    except Exception as e:
+        print(f"[plugin/engine_review] 跳過:{e}")
+
+    # ── 插件掛鉤:MLS 資金決策 v2.2(觀察→驗證→勝率統計閉環) ──
+    decision_out = None
+    try:
+        import decision_v22
+        decision_out = decision_v22.run_report(last_state)
+        notifier.push_summary(decision_out["summary"])
+    except Exception as e:
+        print(f"[plugin/decision] 跳過:{e}")
+
     return {"review": review, "tomorrow_watchlist": wl,
             "rotation": rotation_reports, "new_weights": new_w,
             "precision": precision_report, "nexora": nexora_out,
-            "eod": eod_out}
+            "eod": eod_out, "livermore": livermore_out,
+            "decision": decision_out}
 
 
 # ══════════════════════════════════════════════════════

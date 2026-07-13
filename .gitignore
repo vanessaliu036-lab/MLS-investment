@@ -38,6 +38,15 @@ chips_cache.json
 .DS_Store
 Thumbs.db
 
+# ── 歷史複本資料夾(v3.0 起不再入版,本地留存參考) ──────
+MLS 完整系統 v1 10 李佛摩插件/
+MLS 完整系統 v1.5.1 族群卡/
+MLS 完整系統 v1.7 熱力圖首頁/
+MLS 完整系統 v1.9 四大策略 資金流向/
+盤後資金健康度/
+api_workflow.py
+watchlist_screener.py
+
 # ── IDE ──────────────────────────────────────────────────
 .vscode/
 .idea/

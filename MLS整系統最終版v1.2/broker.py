@@ -78,11 +78,6 @@ def batch_snapshots(codes):
             print(f"[broker] snapshots 批次失敗: {e}")
             time.sleep(1)
             continue
-        # DEBUG: 標記從 server vs 手動跑
-        import os as _os
-        _who = "[srv]" if "server.py" in _os.path.abspath("") else "[manual]"
-        if not snaps:
-            print(f"[broker-DBG] {_who} batch[{i}:{i+400}] 回 0 個 snapshot, contracts 數={len(contracts[i:i+400])}")
         for s in snaps:
             out.append({
                 "code": s.code,
@@ -134,6 +129,8 @@ def daily_kbars(code, days=70):
         daily = pd.DataFrame({
             "close": g["Close"].last(),
             "high": g["High"].max(),
+            "low": g["Low"].min(),      # v2.4.1:補真實低點(六點50%回測/KD/ATR 轉精確)
+            "open": g["Open"].first(),
             "volume": g["Volume"].sum(),
         }).tail(days)
         return daily.reset_index().to_dict("records")
