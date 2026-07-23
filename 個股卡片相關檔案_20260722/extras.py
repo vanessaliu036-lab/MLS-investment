@@ -26,20 +26,33 @@ for p in (str(_BASE), str(_ROOT)):
 import config as C  # 0722 自己的 config
 import stock_card
 import vps_intraday_test as VIT  # 內含 51 檔 / Shioaji 訂閱查詢
+import broker  # VPS Shioaji 訂閱 buffer
 
 
 def _now_tw() -> str:
     return _dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _raw_rows() -> List[Dict[str, Any]]:
+    """從 broker buffer 拿真實 snap、餵給 vps_intraday_test._row 計算 group/aflow。
+    跟 /api/intraday-test endpoint 共用同一邏輯。"""
+    try:
+        raw = broker.raw_buffer_snapshots()
+        return [VIT._row(item) for item in raw]
+    except Exception:
+        return []
+
+
 # ── /api/stock/{code} ──────────────────────────────────────
 def build_stock_card(code: str) -> Dict[str, Any]:
-    """組單檔個股決策卡。優先吃 vps_intraday_test 內的 snap；
+    """組單檔個股決策卡。優先從 broker buffer 找該檔 snap；
     缺資料時降級到 stock_card.build_card 自己 fetch 行情。"""
     snap = None
     try:
-        snap = VIT._row({"code": code, "price": 0, "change_rate": 0,
-                         "buy_volume": 0, "sell_volume": 0, "total_volume": 0})
+        for item in broker.raw_buffer_snapshots():
+            if str(item.get("code", "")) == str(code):
+                snap = VIT._row(item)
+                break
     except Exception:
         snap = None
     try:
@@ -50,58 +63,43 @@ def build_stock_card(code: str) -> Dict[str, Any]:
                 "sector": C.SECTOR_MAP.get(code, ("其他",))[0]}
     return {"ok": True, "code": code, "updated_at": _now_tw(),
             "card": card, "name": C.NAME_MAP.get(code, code),
-            "sector": C.SECTOR_MAP.get(code, ("其他",))[0]}
+            "sector": C.SECTOR_MAP.get(code, ("其他",))[0],
+            "live": snap or {}}
 
 
 # ── /api/report ────────────────────────────────────────────
 def build_report() -> Dict[str, Any]:
-    """今日 / 昨日的盤後報告。
-    - 從 vps_intraday_test 的 _load 拿當下 STATE（51 檔狀態）
-    - 從 /api/review 風格的本地 REVIEW 收集命中率（如果有）
-    """
-    try:
-        # 從 vps_intraday_test 的內部邏輯重組（不依賴 FastAPI Request）
-        import broker
-        raw = broker.raw_buffer_snapshots()
-        rows = [VIT._row(item) for item in raw]
-    except Exception as e:
-        rows = []
-
-    # 簡易聚合：可操作 / 觀察 / 排除
+    """今日 / 昨日的盤後報告 — 從 broker buffer 拿 51 檔真實 rows。"""
+    rows = _raw_rows()
     groups = {"可操作": 0, "觀察": 0, "排除": 0}
     for r in rows:
         g = r.get("group", "")
         if g in groups:
             groups[g] += 1
-
     return {
         "ok": True,
         "updated_at": _now_tw(),
         "asof_date": _dt.datetime.utcnow().strftime("%Y-%m-%d"),
         "rows": rows,
         "groups": groups,
+        "count": len(rows),
         "note": "mls-intraday 盤中即時觀察池摘要；盤後正式報告由 after_hours 模組補完",
     }
 
 
 # ── /api/watchpool ────────────────────────────────────────
 def build_watchpool() -> Dict[str, Any]:
-    """51 檔觀察池全集 — 直接從 config 拉、附上 Shioaji 即時報價。"""
+    """51 檔觀察池全集 — 從 broker buffer 抓真實 rows，
+    沒回報的檔用 config 補上 name/sector。"""
+    rows_map = {str(r.get("code", "")): r for r in _raw_rows()}
     try:
-        import broker
         subs = set(getattr(broker, "_SUBSCRIBED", set())) or set(C.UNIVERSE)
     except Exception:
         subs = set(C.UNIVERSE)
 
     items: List[Dict[str, Any]] = []
     for code in C.UNIVERSE:
-        snap = {}
-        try:
-            snap = VIT._row({"code": code, "price": 0, "change_rate": 0,
-                             "buy_volume": 0, "sell_volume": 0,
-                             "total_volume": 0})
-        except Exception:
-            pass
+        snap = rows_map.get(str(code), {})
         items.append({
             "code": code,
             "name": C.NAME_MAP.get(code, code),
@@ -112,6 +110,8 @@ def build_watchpool() -> Dict[str, Any]:
             "change_rate": snap.get("change_rate"),
             "aflow": snap.get("aflow"),
             "group": snap.get("group"),
+            "volume_ratio": snap.get("volume_ratio"),
+            "has_data": bool(snap.get("price")),
         })
     return {
         "ok": True,
