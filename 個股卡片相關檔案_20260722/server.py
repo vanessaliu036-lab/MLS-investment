@@ -922,6 +922,20 @@ def api_watchpool():
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
 
 
+@app.get("/api/card_page")
+def api_card_page(code: str = "2337"):
+    """個股卡片 HTML — 給 NEXORA 決策頁的 openStock popup iframe 用。
+    讀 deepseek_stock_card.html 注入 ?code= query。"""
+    try:
+        p = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                          "deepseek_stock_card.html")
+        with open(p, "r", encoding="utf-8") as f:
+            html = f.read()
+        return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
+    except Exception as exc:
+        return HTMLResponse(f"<h1>個股卡片載入失敗:{exc}</h1>", status_code=500)
+
+
 if __name__ == "__main__":
     db.init()
     # 行情排程獨立程序執行；Shioaji／資料抓取即使阻塞，也不能卡住 HTTP。
