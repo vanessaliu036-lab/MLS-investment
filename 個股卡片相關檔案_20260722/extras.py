@@ -232,6 +232,7 @@ def _five_factors(snap, chip, sector_avg, market_pct, sector_name):
     score = round(sum(v for v in F.values() if v is not None), 1)
     return {"factors": F, "notes": N, "score": score,
             "source": "最近交易日官方收盤＋FinMind 盤後籌碼",
+            "data_date": _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).date().isoformat(),
             "missing": [k for k, v in F.items() if v is None]}
 
 
@@ -397,6 +398,7 @@ def build_stock_card(code: str) -> Dict[str, Any]:
         if _chg is not None and _mkt_pct is not None:
             snap.setdefault("vs_market", round(float(_chg) - float(_mkt_pct), 2))
         snap.setdefault("rel_source", "族群=固定池成分股官方收盤平均；大盤=TWSE 官方")
+        snap.setdefault("rel_date", _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).date().isoformat())
         card["factors5"] = _five_factors(snap, card.get("chip") or {},
                                          _sec_avg, _mkt_pct, _sec_name)
         card["decision"] = _decision_factors(card, snap)

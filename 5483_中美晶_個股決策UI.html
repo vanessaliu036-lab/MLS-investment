@@ -633,7 +633,13 @@ function goHome(){
     const useEngine=Object.keys(F).length>0;
     const FF=useEngine?F:(f5b.factors||{}),NN=useEngine?N:(f5b.notes||{});
     const srcLabel=useEngine?'盤中決策引擎(每輪重算)':(f5b.source||'最近交易日官方收盤＋FinMind 盤後籌碼');
-    const srcTag=document.querySelector('#factors5 .source');if(srcTag)srcTag.textContent=srcLabel;
+    const dBadge=x=>x?`<span class="d-badge">📅 ${String(x).slice(5).replace('-','/')}</span>`:'';
+    const srcTag=document.querySelector('#factors5 .source');if(srcTag)srcTag.innerHTML=E(srcLabel)+dBadge(useEngine?(state.updated_at||'').slice(0,10):f5b.data_date);
+    // 每區塊標題壓資料日期:規範=就算前一天也要有值+日期,不准空白
+    const chipD=(scard.card&&scard.card.chip)||{};
+    const secDates={'#market':pm.source_date||scard.data_date,'#chips':chipD.source_date||scard.data_date,'#validation':scard.data_date,'#risk':scard.data_date,'#plan':pm.source_date||scard.data_date,'#summary':scard.data_date};
+    for(const [sel,dt] of Object.entries(secDates)){const s=document.querySelector(sel+' .section-head .source');if(s&&dt)s.innerHTML=E(s.textContent)+dBadge(dt);}
+    const relN=document.querySelector('.notice');if(relN&&pm.rel_date)relN.insertAdjacentHTML('beforeend',` ${dBadge(pm.rel_date)}`);
     const fbox=document.getElementById('f5-factors');
     if(fbox)fbox.innerHTML='<div class="f5-grid">'+DEF.map(([k,lab,max])=>{
       const v=FF[k],note=NN[k];
@@ -731,3 +737,5 @@ h1,h2,h3{line-height:1.3}
 .f5-card .section-title{font-size:14px!important;margin-bottom:4px}
 .f5-card .rows .row{padding:3px 0!important;border:0!important}
 </style>
+
+<style>.d-badge{display:inline-block;font-size:10px;color:#7c8698;background:#eef1f7;border:1px solid #e2e7f0;border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:middle;white-space:nowrap}</style>
