@@ -35,6 +35,10 @@ try:
     from mls_intraday import classify  # noqa: E402
 except ImportError:
     from app import classify  # noqa: E402
+try:
+    import review_rules  # noqa: E402  (盤後驗證：分類規則命中率，自動累積)
+except ImportError:
+    review_rules = None
 
 router = APIRouter()
 HISTORY_DB = BASE / "intraday_eod.db"
@@ -397,6 +401,13 @@ def intraday_test():
             result["notes"].append("首次收盤後讀取：由主服務保留的最後盤中 state 補存，與盤後篩選分離")
         if rows:
             _write_intraday_snapshot(result)
+        # 盤後驗證：只記即時 buffer 的分類訊號，快照/回退來源不記，
+        # 避免把舊資料當成今日訊號。
+        if rows and not fallback_source and review_rules is not None:
+            try:
+                review_rules.record(rows)
+            except Exception as exc:
+                print(f"[review_rules] 記錄失敗: {exc}", flush=True)
         print(f"[diag][http] intraday_test.end rows={len(rows)} elapsed_ms={round((time.time()-started)*1000,1)}", flush=True)
         return result
     except Exception as exc:
@@ -458,6 +469,17 @@ def intraday_watchpool():
         }
     except Exception as exc:
         return {"ok": False, "source": "固定 51 檔觀察池 + VPS Shioaji 盤中觀察邏輯", "error": str(exc)}
+
+
+@router.get("/api/review/rules")
+def review_rules_api():
+    """盤後驗證頁：分類規則命中率（自動版盤後驗證.py）。"""
+    if review_rules is None:
+        return {"ok": False, "error": "review_rules 模組未載入"}
+    try:
+        return review_rules.api_payload()
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 @router.get("/intraday-test", response_class=HTMLResponse)
