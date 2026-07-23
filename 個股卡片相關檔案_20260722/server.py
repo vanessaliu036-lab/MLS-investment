@@ -1050,10 +1050,15 @@ import extras as _extras  # noqa: E402
 
 
 def _read_html(filename: str) -> str:
-    """中文檔名安全的 HTML 讀取 — Path.with_name 在某些 locale 會壞。"""
-    p = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), filename)
-    with open(p, "r", encoding="utf-8") as f:
-        return f.read()
+    """中文檔名安全的 HTML 讀取 — Path.with_name 在某些 locale 會壞。
+    先找 server.py 同層，找不到再回退 repo 根目錄（第一層 UI 等檔在根目錄）。"""
+    here = _os.path.dirname(_os.path.abspath(__file__))
+    for base in (here, _os.path.dirname(here)):
+        p = _os.path.join(base, filename)
+        if _os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                return f.read()
+    raise FileNotFoundError(f"{filename} 不在 {here} 或其上層目錄")
 
 
 @app.get("/watch-first-layer")
