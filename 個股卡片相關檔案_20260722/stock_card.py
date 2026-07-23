@@ -48,7 +48,7 @@ def _bars(code, days=80, injected=None):
     out = []
     for r in raw:
         cl = r.get("close")
-        out.append({"date": str(r.get("date"))[:10], "close": cl,
+        out.append({"date": str(r.get("date") or r.get("ts") or r.get("index"))[:10], "close": cl,
                     "high": r.get("high"), "low": r.get("low"),
                     "volume": r.get("volume", 0)})
     return out
@@ -96,11 +96,21 @@ def build_card(code, snap=None, health=None, grade=None,
     chip_block = {
         "foreign": cd.get("foreign_net_d"), "trust": cd.get("trust_net_d"),
         "dealer": cd.get("dealer_net_d"),
+        "foreign_net_5d": cd.get("foreign_net_5d"),
+        "trust_net_5d": cd.get("trust_net_5d"),
+        "dealer_net_5d": cd.get("dealer_net_5d"),
+        "inst_net_5d_lots": cd.get("inst_net_5d_lots"),
+        "inst_streak": cd.get("inst_streak"),
+        "foreign_net_20d": cd.get("foreign_net_20d"),
         "main_force": cd.get("main_force_net"),     # premium 才有,現為 None
         "big400_delta": cd.get("big400_delta"),
         "big1000_delta": cd.get("big1000_delta"),
         "big_holder_delta": cd.get("big400_delta"),  # 卡片「大戶持股」= 400張級距變化
-        "source": cd.get("source"),
+        "margin_change_d": cd.get("margin_change_d"),
+        "margin_change_5d": cd.get("margin_change_5d"),
+        "margin_balance": cd.get("margin_balance"),
+        "margin_source_date": cd.get("margin_source_date"),
+        "source": cd.get("source") or "FinMind 盤後法人",
         "source_url": cd.get("source_url"),
         "source_date": cd.get("source_date"),
         "sources": cd.get("sources"),
@@ -112,6 +122,8 @@ def build_card(code, snap=None, health=None, grade=None,
     sv = (snap or {}).get("sell_volume") or 0
     tot = bv + sv
     flow_block = {
+        "net_active": (snap or {}).get("aflow"),
+        "net_active_source": "intraday_eod.db 盤後蓋章" if (snap or {}).get("aflow") is not None else None,
         "active_buy_pct": round(bv / tot * 100, 1) if tot else None,
         "active_sell_pct": round(sv / tot * 100, 1) if tot else None,
         "flow_5d": _flow_days(bars, 5),
@@ -208,6 +220,11 @@ def build_card(code, snap=None, health=None, grade=None,
         "price": (snap or {}).get("price") or (closes[-1] if closes else None),
         "change_rate": (snap or {}).get("change_rate"),
         "health_score": hs, "grade": grade,
+        "health_module_scores": (health or {}).get("module_scores") if health else None,
+        "health_quadrant": (health or {}).get("quadrant") if health else None,
+        "health_label": (health or {}).get("label") if health else None,
+        "health_stars": (health or {}).get("stars") if health else None,
+        "chip_quality": (health or {}).get("chip_quality") if health else None,
         "chip": chip_block, "flow": flow_block, "tech": tech_block,
         "trade": trade_block,
         "ai": {"pct": ai_pct, "reasons": reasons},

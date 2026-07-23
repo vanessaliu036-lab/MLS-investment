@@ -12,6 +12,12 @@ import threading
 from datetime import datetime
 import shioaji as sj
 
+def _diag(label, **fields):
+    """低成本診斷記錄：不碰行情資料，只記時間、階段與耗時欄位。"""
+    stamp = datetime.now().astimezone().isoformat(timespec="milliseconds")
+    extra = " ".join(f"{k}={v}" for k, v in fields.items())
+    print(f"[diag][broker] {stamp} {label} {extra}", flush=True)
+
 _api = None
 _last_login = 0
 RELOGIN_SEC = 20 * 3600   # Shioaji 需每24h重登,提前於20h重連
@@ -39,6 +45,8 @@ _QUOTE_BUF = {}
 _QUOTE_LOCK = threading.Lock()
 _SUBSCRIBED = set()             # 已送出訂閱的 code,避免重複訂閱
 _QUOTE_CB_BOUND = False         # callback 是否已綁定(只綁一次)
+_LOGIN_LOCK = threading.Lock()  # 防止多個 HTTP request 同時 login
+_SUBSCRIBE_LOCK = threading.Lock()  # 防止多個 HTTP request 同時 subscribe
 
 
 def _today_str():
@@ -91,31 +99,38 @@ def get_api():
     """取得已登入的 Shioaji 實例;超過20小時自動重登。
     [保險閥] 額度超過 QUOTA_LIMIT_MB 拒絕 login,逼上層用 cache 或報錯。"""
     global _api, _last_login
+    _diag("get_api.begin", has_api=_api is not None)
     if _api is not None and (time.time() - _last_login) < RELOGIN_SEC:
+        _diag("get_api.reuse")
         return _api
-    _check_quota_or_refuse()  # 只在「要重登」時檢查(已登入的瞬間直接 return)
-    if _api is not None:
+    with _LOGIN_LOCK:
+        # double-check：等待前一個 request 登入完成後直接共用同一 instance
+        if _api is not None and (time.time() - _last_login) < RELOGIN_SEC:
+            _diag("get_api.reuse_after_lock")
+            return _api
+        _check_quota_or_refuse()  # 只在「要重登」時檢查
+        if _api is not None:
+            try:
+                _api.logout()
+            except Exception:
+                pass
+        login_started = time.time(); _diag("shioaji.login.begin")
+        _api = sj.Shioaji(simulation=False)   # 測試時可改 True
         try:
-            _api.logout()
-        except Exception:
-            pass
-    _api = sj.Shioaji(simulation=False)   # 測試時可改 True
-    # shioaji 1.7+ 拿掉 fetch_contract 參數,合約自動載入;1.5/1.6 仍接受
-    try:
-        _api.login(
-            api_key=os.environ["SHIOAJI_API_KEY"],
-            secret_key=os.environ["SHIOAJI_SECRET_KEY"],
-            fetch_contract=True,
-        )
-    except TypeError:
-        # 1.7+ 簽名:不支援 fetch_contract,改用預設(合約自動背景載入)
-        _api.login(
-            api_key=os.environ["SHIOAJI_API_KEY"],
-            secret_key=os.environ["SHIOAJI_SECRET_KEY"],
-        )
-    _last_login = time.time()
-    print("[broker] Shioaji 登入成功")
-    return _api
+            _api.login(
+                api_key=os.environ["SHIOAJI_API_KEY"],
+                secret_key=os.environ["SHIOAJI_SECRET_KEY"],
+                fetch_contract=True,
+            )
+        except TypeError:
+            _api.login(
+                api_key=os.environ["SHIOAJI_API_KEY"],
+                secret_key=os.environ["SHIOAJI_SECRET_KEY"],
+            )
+        _last_login = time.time()
+        _diag("shioaji.login.end", elapsed_ms=round((time.time()-login_started)*1000, 1))
+        print("[broker] Shioaji 登入成功")
+        return _api
 
 
 def _bind_quote_callback():
@@ -123,6 +138,7 @@ def _bind_quote_callback():
     global _QUOTE_CB_BOUND
     if _QUOTE_CB_BOUND:
         return
+    started = time.time(); _diag("bind_callback.begin")
     api = get_api()
 
     @api.on_tick_stk_v1()
@@ -167,30 +183,46 @@ def _bind_quote_callback():
             except Exception as e:
                 print(f"[broker] tick direct callback 綁定失敗:{e}")
 
+    event_setter = getattr(getattr(api, "quote", None), "set_on_event_callback", None)
+    if event_setter:
+        def _on_event(resp_code, event_code, info, event):
+            _diag("shioaji.event", resp_code=resp_code, event_code=event_code, info=info, event=event)
+            if event_code == 13:
+                _diag("shioaji.reconnected")
+        try:
+            event_setter(_on_event)
+            _diag("event_callback.bound")
+        except Exception as e:
+            _diag("event_callback.bind_failed", error=repr(e))
+
     _QUOTE_CB_BOUND = True
+    _diag("bind_callback.end", elapsed_ms=round((time.time()-started)*1000, 1))
     print("[broker] 行情 callback 已綁定")
 
 
 def ensure_subscribed(codes=None):
     """對固定池訂閱行情(只訂一次)。codes 預設為 config.UNIVERSE 那 51 檔。
     訂閱推播不計流量;絕不訂閱全市場。"""
-    import config as C
-    _bind_quote_callback()
-    api = get_api()
-    target = list(codes) if codes else list(getattr(C, "UNIVERSE", []))
-    # 安全上限:防手滑訂到全市場(Shioaji 連線/訂閱有上限)
-    if len(target) > getattr(C, "MAX_SUBSCRIBE", 180):
-        print(f"[broker] ⚠ 訂閱數 {len(target)} 超過上限,截斷保護")
-        target = target[:getattr(C, "MAX_SUBSCRIBE", 180)]
-    for code in target:
-        if code in _SUBSCRIBED:
-            continue
-        try:
-            api.subscribe(api.Contracts.Stocks[code], quote_type="tick")
-            api.subscribe(api.Contracts.Stocks[code], quote_type="bidask")
-            _SUBSCRIBED.add(code)
-        except Exception as e:
-            print(f"[broker] 訂閱 {code} 失敗: {e}")
+    started = time.time(); _diag("subscribe.begin", requested=len(codes or []))
+    with _SUBSCRIBE_LOCK:
+        import config as C
+        _bind_quote_callback()
+        api = get_api()
+        target = list(codes) if codes else list(getattr(C, "UNIVERSE", []))
+        # 安全上限:防手滑訂到全市場
+        if len(target) > getattr(C, "MAX_SUBSCRIBE", 180):
+            print(f"[broker] ⚠ 訂閱數 {len(target)} 超過上限,截斷保護")
+            target = target[:getattr(C, "MAX_SUBSCRIBE", 180)]
+        for code in target:
+            if code in _SUBSCRIBED:
+                continue
+            try:
+                api.subscribe(api.Contracts.Stocks[code], quote_type="tick")
+                api.subscribe(api.Contracts.Stocks[code], quote_type="bidask")
+                _SUBSCRIBED.add(code)
+            except Exception as e:
+                print(f"[broker] 訂閱 {code} 失敗: {e}")
+    _diag("subscribe.end", subscribed=len(_SUBSCRIBED), elapsed_ms=round((time.time()-started)*1000, 1))
     print(f"[broker] 已訂閱 {len(_SUBSCRIBED)} 檔(不計流量)")
 
 
@@ -205,9 +237,12 @@ def buffer_snapshots(codes):
 
 def raw_buffer_snapshots():
     """Return every latest tick in the callback buffer, without code/filter gating."""
+    started = time.time(); _diag("buffer.read.begin", size=len(_QUOTE_BUF))
     ensure_subscribed()
     with _QUOTE_LOCK:
-        return [dict(v) for v in _QUOTE_BUF.values()]
+        out = [dict(v) for v in _QUOTE_BUF.values()]
+    _diag("buffer.read.end", size=len(out), elapsed_ms=round((time.time()-started)*1000, 1))
+    return out
 
 
 def market_scan_codes():

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import sys
 import datetime as _dt
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -29,8 +30,97 @@ import vps_intraday_test as VIT  # 內含 51 檔 / Shioaji 訂閱查詢
 import broker  # VPS Shioaji 訂閱 buffer
 
 
+def _health_for_card(code: str, snap: Dict[str, Any], all_rows: List[Dict[str, Any]]):
+    """盤後卡片的健康度 fallback；不讀 Shioaji 即時 buffer。"""
+    try:
+        import money_health
+        import scoring
+        # 盤後卡片沒有盤中 aflow；固定使用已落地的盤後資料，缺值就維持 0。
+        scoring._aflow[str(code)] = int(snap.get("aflow") or 0)
+        members = [r for r in all_rows
+                   if C.SECTOR_MAP.get(str(r.get("code")), (None,))[0]
+                   == C.SECTOR_MAP.get(str(code), (None,))[0]]
+        changes = [r.get("change_rate") for r in members
+                   if isinstance(r.get("change_rate"), (int, float))]
+        sector_pct = (sum(changes) / len(changes)) if changes else None
+        src = dict(snap)
+        src["code"] = str(code)
+        src["avg_price"] = snap.get("avg_price") or snap.get("price")
+        src["high"] = snap.get("high") or snap.get("price")
+        src["volume_ratio"] = snap.get("volume_ratio") or 0
+        return money_health.stock_health(src, sector_pct=sector_pct)
+    except Exception as exc:
+        print(f"[extras] health {code} 失敗: {exc}", flush=True)
+        return None
+
+
+def _decision_factors(card: Dict[str, Any], live: Dict[str, Any]) -> Dict[str, Any]:
+    """把卡片目前已取得的真實資料對齊七因子欄位。
+
+    承接品質以可追溯的法人、融資、主動買賣與大戶代理欄位計算；
+    若任一必要來源沒有值，保留 None，不用 UI 預設數字掩蓋資料缺口。
+    """
+    chip = card.get("chip") or {}
+    hs = card.get("health_score")
+    active = live.get("aflow")
+    buy_pct = (card.get("flow") or {}).get("active_buy_pct")
+    margin5 = chip.get("margin_change_5d")
+    foreign20 = chip.get("foreign_net_20d")
+    big_delta = chip.get("big400_delta")
+    factors = {}
+    if hs is not None:
+        factors["money_health"] = {"points": round(30 * float(hs) / 100, 1), "max": 30, "status": "已接入"}
+    else:
+        factors["money_health"] = {"points": None, "max": 30, "status": "缺資料"}
+    if active is not None:
+        factors["net_active"] = {"points": round(22 * max(0, min(1, float(active) / 50000)), 1), "max": 22, "status": "已接入"}
+    else:
+        factors["net_active"] = {"points": None, "max": 22, "status": "缺資料"}
+    evidence = [buy_pct, foreign20, margin5, big_delta]
+    if all(v is not None for v in evidence):
+        votes = sum((buy_pct >= 50, foreign20 > 0, margin5 <= 0, big_delta >= 0))
+        absorption = round(votes / 4 * 100, 1)
+        factors["absorption"] = {"points": round(18 * absorption / 100, 1), "max": 18,
+                                  "status": "已接入", "raw_score": absorption,
+                                  "source": "Shioaji＋FinMind法人/融資/大戶代理"}
+    else:
+        factors["absorption"] = {"points": None, "max": 18, "status": "缺資料"}
+    ma20 = live.get("ma20")
+    price = live.get("price")
+    if price is not None and ma20:
+        factors["vs_ma20"] = {"points": 12 if float(price) >= float(ma20) else 0, "max": 12, "status": "已接入"}
+    else:
+        factors["vs_ma20"] = {"points": None, "max": 12, "status": "缺資料"}
+    streak = None
+    if foreign20 is not None:
+        # 連買日由 get_chips() 的同一 FinMind 來源供應；未帶入時不猜測。
+        streak = chip.get("inst_streak")
+    if streak is not None:
+        factors["inst_streak"] = {"points": round(10 * max(0, min(1, float(streak) / 5)), 1), "max": 10, "status": "已接入"}
+    else:
+        factors["inst_streak"] = {"points": None, "max": 10, "status": "缺資料"}
+    if margin5 is not None:
+        factors["margin"] = {"points": 8 if margin5 < 0 else 0, "max": 8, "status": "已接入"}
+    else:
+        factors["margin"] = {"points": None, "max": 8, "status": "缺資料"}
+    available = sum(v["max"] for v in factors.values() if v["points"] is not None)
+    score = round(sum(v["points"] or 0 for v in factors.values()), 1)
+    return {"factors": factors, "score": score, "score_max": 100,
+            "score_available": available,
+            "missing": [k for k, v in factors.items() if v["points"] is None],
+            "rule": "screen intraday.py 六因子 100 分制；缺資料不補分。"}
+
+
 def _now_tw() -> str:
-    return _dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    return _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).isoformat(timespec="seconds")
+
+
+def _post_market_asof() -> tuple[str, bool]:
+    """盤後資料的有效日期：每日 18:00 前固定看前一交易日。"""
+    now = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8)))
+    ready = now.hour >= 18
+    limit = now.date() if ready else (now.date() - _dt.timedelta(days=1))
+    return limit.isoformat(), ready
 
 
 def _raw_rows() -> List[Dict[str, Any]]:
@@ -45,26 +135,143 @@ def _raw_rows() -> List[Dict[str, Any]]:
 
 # ── /api/stock/{code} ──────────────────────────────────────
 def build_stock_card(code: str) -> Dict[str, Any]:
-    """組單檔個股決策卡。優先從 broker buffer 找該檔 snap；
-    缺資料時降級到 stock_card.build_card 自己 fetch 行情。"""
+    """組單檔盤後固定卡片。
+
+    這條路由刻意不呼叫 broker.raw_buffer_snapshots()；盤中即時資料只在
+    /api/intraday-test 與 /api/intraday-watchpool 使用。卡片使用最近完整日 K、
+    FinMind 盤後法人/融資，以及已落地的 eod_state 健康度。
+    """
+    asof_limit, official_ready = _post_market_asof()
     snap = None
+    all_rows: List[Dict[str, Any]] = []
+    post_health = None
+    post_source = "盤後日K＋FinMind盤後資料"
+    eod_flow = None
+    eod_flow_date = None
+    eod_group = None
+    eod_quadrant = None
+    post_ratio = None
+    post_ratio_source = None
+    post_health_row = None
     try:
-        for item in broker.raw_buffer_snapshots():
-            if str(item.get("code", "")) == str(code):
-                snap = VIT._row(item)
+        import sqlite3
+        eod_db = _BASE / "intraday_eod.db"
+        if eod_db.exists():
+            with sqlite3.connect(eod_db) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    "SELECT * FROM intraday_eod WHERE code=? AND trade_date<=? "
+                    "ORDER BY trade_date DESC LIMIT 1", (str(code),)
+                ).fetchone()
+            if row:
+                eod_flow = row["aflow"]
+                eod_flow_date = row["trade_date"]
+                eod_group = row["group_name"]
+                eod_quadrant = row["quadrant"]
+    except Exception as exc:
+        print(f"[extras] intraday_eod {code} 讀取失敗: {exc}", flush=True)
+    # 舊版盤後資料庫的固定資料：ratio 是主動資金比，不冒充 net_active 差值。
+    eod_candidates = [os.environ.get("MLS_EOD_DB"),
+                      "/opt/mls-v4-new/app/data/mls.db",
+                      str(_BASE / "mls.db")]
+    for db_path in [p for p in eod_candidates if p and os.path.exists(p)]:
+        try:
+            import sqlite3
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    "SELECT * FROM dec_health WHERE code=? AND trade_date<=? "
+                    "ORDER BY trade_date DESC LIMIT 1", (str(code), asof_limit)
+                ).fetchone()
+            if row:
+                post_health_row = dict(row)
+                post_ratio = row["ratio"]
+                post_ratio_source = row["ratio_src"]
+                eod_quadrant = eod_quadrant or row["quad"]
+                eod_group = eod_group or {"Ready": "可操作", "Watch": "觀察", "Hold": "排除"}.get(row["grade"])
+                if not post_health:
+                    post_health = {
+                        "health_score": row["score"], "score": row["score"],
+                        "quadrant": row["quad"], "label": row["grade"],
+                        "stars": row["stars"], "chip_quality": row["chip_note"],
+                    }
+                post_source = f"盤後固定 DB dec_health（{row['trade_date']}）＋FinMind"
                 break
-    except Exception:
-        snap = None
+        except Exception as exc:
+            print(f"[extras] dec_health {db_path} 讀取失敗: {exc}", flush=True)
     try:
-        card = stock_card.build_card(code, snap=snap)
+        import eod_state
+        eod = eod_state.build(date=asof_limit)
+        for item in eod.get("stocks") or []:
+            if str(item.get("code")) == str(code):
+                h = item.get("health") or {}
+                if not post_health:
+                    post_health = {
+                        "health_score": h.get("health_score") or item.get("ai_score"),
+                        "score": h.get("health_score") or item.get("ai_score"),
+                        "quadrant": h.get("quadrant"), "label": h.get("label"),
+                        "stars": h.get("stars"), "chip_quality": (item.get("chip") or {}).get("source"),
+                    }
+                    post_source = "mls.db 盤後固定資料＋FinMind盤後資料"
+                break
+    except Exception as exc:
+        print(f"[extras] eod_state {code} 失敗: {exc}", flush=True)
+    try:
+        bars = stock_card._bars(code, days=80)
+        valid = [b for b in bars
+                 if b.get("close") is not None and str(b.get("date") or "")[:10] <= asof_limit]
+        if valid:
+            last = valid[-1]
+            prev = valid[-2] if len(valid) > 1 else None
+            close = float(last["close"])
+            prev_close = float(prev["close"]) if prev else None
+            snap = {
+                "code": str(code), "price": close,
+                "change_rate": round((close / prev_close - 1) * 100, 2)
+                if prev_close else None,
+                "high": last.get("high"), "low": last.get("low"),
+                "avg_price": close, "total_volume": last.get("volume") or 0,
+                "buy_volume": None, "sell_volume": None,
+                "data_mode": "post_market_daily_kbar",
+                "source_date": last.get("date"),
+                "aflow": eod_flow,
+                "aflow_ratio": post_ratio,
+                "aflow_ratio_source": post_ratio_source,
+                "aflow_source_date": eod_flow_date,
+                "quadrant": eod_quadrant,
+                "group": eod_group,
+            }
+            closes = [float(b["close"]) for b in valid[-20:]
+                      if b.get("close") is not None]
+            if len(closes) >= 20:
+                snap["ma20"] = round(sum(closes[-20:]) / 20, 2)
+            all_rows.append(snap)
+    except Exception as exc:
+        print(f"[extras] post kbar {code} 失敗: {exc}", flush=True)
+    try:
+        health = post_health or (_health_for_card(code, snap or {"code": code}, all_rows) if snap else None)
+        grade_map = {"可操作": "Ready", "觀察": "Watch", "排除": "Hold"}
+        grade = grade_map.get((snap or {}).get("group"))
+        card = stock_card.build_card(code, snap=snap, health=health, grade=grade)
+        card["decision"] = _decision_factors(card, snap or {})
     except Exception as e:
         return {"ok": False, "code": code, "error": f"build_card failed: {e}",
                 "name": C.NAME_MAP.get(code, code),
                 "sector": C.SECTOR_MAP.get(code, ("其他",))[0]}
+    data_date = (snap or {}).get("source_date") or eod_flow_date
+    status = ("今日官方盤後資料已更新" if official_ready and data_date == _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).date().isoformat()
+              else "等待今日 18:00 官方更新，目前顯示前一交易日資料")
     return {"ok": True, "code": code, "updated_at": _now_tw(),
+            "data_date": data_date or asof_limit,
+            "data_timestamp": _now_tw(),
+            "official_ready": official_ready,
+            "data_status": status,
+            "official_update_rule": "每日 18:00 後才切換當日官方盤後資料",
             "card": card, "name": C.NAME_MAP.get(code, code),
             "sector": C.SECTOR_MAP.get(code, ("其他",))[0],
-            "live": snap or {}}
+            "post_market": snap or {},
+            "data_source": post_source,
+            "intraday": {"available": False, "note": "盤中即時欄位：等收盤驗證；卡片只讀盤後固定資料"}}
 
 
 # ── /api/report ────────────────────────────────────────────
@@ -97,9 +304,59 @@ def build_watchpool() -> Dict[str, Any]:
     except Exception:
         subs = set(C.UNIVERSE)
 
+    # 盤後固定資金比只作為 aflow 缺少蓋章時的明確替代欄位，
+    # 不改名冒充主動買賣差。
+    ratio_map: Dict[str, Dict[str, Any]] = {}
+    for db_path in [os.environ.get("MLS_EOD_DB"),
+                    "/opt/mls-v4-new/app/data/mls.db",
+                    str(_BASE / "mls.db")]:
+        if not db_path or not os.path.exists(db_path):
+            continue
+        try:
+            import sqlite3
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                for row in conn.execute(
+                    "SELECT code, ratio, ratio_src, trade_date FROM dec_health"
+                ).fetchall():
+                    ratio_map[str(row["code"])] = {
+                        "aflow_ratio": row["ratio"],
+                        "aflow_ratio_source": row["ratio_src"],
+                        "aflow_ratio_date": row["trade_date"],
+                    }
+            break
+        except Exception as exc:
+            print(f"[extras] watchpool dec_health 讀取失敗: {exc}", flush=True)
+
     items: List[Dict[str, Any]] = []
     for code in C.UNIVERSE:
         snap = rows_map.get(str(code), {})
+        ratio = ratio_map.get(str(code), {})
+        # 固定觀察池不能因 Shioaji 未回報就顯示空白；盤中回報優先，
+        # 沒有即時回報時回退到該股最近完整日 K。這裡只補價格欄位，
+        # 不把日 K 冒充盤中 aflow 或盤中分類。
+        if not snap.get("price"):
+            try:
+                bars = [b for b in stock_card._bars(str(code), days=3)
+                        if b.get("close") is not None]
+                if bars:
+                    last = bars[-1]
+                    prev = bars[-2] if len(bars) > 1 else None
+                    close = float(last["close"])
+                    prev_close = float(prev["close"]) if prev else None
+                    snap = {
+                        **snap,
+                        "price": close,
+                        "change_rate": round((close / prev_close - 1) * 100, 2)
+                        if prev_close else None,
+                        "high": last.get("high"),
+                        "low": last.get("low"),
+                        "total_volume": last.get("volume"),
+                        "source_date": last.get("date"),
+                        "data_mode": "post_market_daily_kbar",
+                    }
+            except Exception as exc:
+                print(f"[extras] watchpool {code} 日K回退失敗: {exc}", flush=True)
         items.append({
             "code": code,
             "name": C.NAME_MAP.get(code, code),
@@ -109,9 +366,14 @@ def build_watchpool() -> Dict[str, Any]:
             "price": snap.get("price"),
             "change_rate": snap.get("change_rate"),
             "aflow": snap.get("aflow"),
+            "aflow_ratio": ratio.get("aflow_ratio"),
+            "aflow_ratio_source": ratio.get("aflow_ratio_source"),
+            "aflow_ratio_date": ratio.get("aflow_ratio_date"),
             "group": snap.get("group"),
             "volume_ratio": snap.get("volume_ratio"),
             "has_data": bool(snap.get("price")),
+            "data_mode": snap.get("data_mode") or ("intraday_shioaji" if snap.get("price") else None),
+            "source_date": snap.get("source_date"),
         })
     return {
         "ok": True,

@@ -820,15 +820,16 @@ try:
         """v2.3 個股資訊卡:籌碼/資金/技術/交易計畫/AI 結論。"""
         _init_tables()
         try:
-            import stock_card
-            snap = None
-            try:
-                if broker is not None:
-                    ss = broker.batch_snapshots([code])
-                    snap = ss[0] if ss else None
-            except Exception:
-                pass
-            return stock_card.build_card(code, snap=snap)
+            import extras
+            result = extras.build_stock_card(code)
+            if not result.get("ok"):
+                return JSONResponse(result, status_code=500)
+            card = result.get("card") or {}
+            card.update({k: result.get(k) for k in (
+                "data_date", "data_timestamp", "data_status",
+                "official_ready", "official_update_rule", "data_source"
+            )})
+            return card
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=500)
 

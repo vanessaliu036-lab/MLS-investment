@@ -159,6 +159,8 @@ def get_chips_detail(code):
     資訊卡籌碼面。回傳 dict(查無資料的欄位為 None,不假造):
       foreign_net_d / trust_net_d / dealer_net_d  最新一日外資/投信/自營買賣超(張)
       foreign_net_20d                             外資近20日合計(張)
+      foreign_net_5d / trust_net_5d / dealer_net_5d 近5日各法人合計(張)
+      inst_net_5d_lots / inst_streak              近5日合計/外資連買天數
       big400_pct / big400_delta                   400張以上持股% / 近4週變化(pp)
       big1000_pct / big1000_delta                 千張大戶持股% / 近4週變化(pp)
       main_force_net                              主力(分點)= None,FinMind 免費層無此資料,
@@ -169,14 +171,22 @@ def get_chips_detail(code):
     _load_disk()
     today = _today_key()
     key = f"detail:{code}"
-    if _cache.get("date") == today and key in _cache.get("stocks", {}):
+    if (_cache.get("date") == today and key in _cache.get("stocks", {})
+            and _cache["stocks"][key].get("source_date")
+            and "margin_source_date" in _cache["stocks"][key]
+            and "inst_streak" in _cache["stocks"][key]):
         return _cache["stocks"][key]
 
     result = {"foreign_net_d": None, "trust_net_d": None, "dealer_net_d": None,
-              "foreign_net_20d": None,
+              "foreign_net_5d": None, "trust_net_5d": None,
+              "dealer_net_5d": None, "inst_net_5d_lots": None,
+              "foreign_net_20d": None, "inst_streak": None,
+              "source": None, "source_date": None,
               "big400_pct": None, "big400_delta": None,
               "big1000_pct": None, "big1000_delta": None,
-              "main_force_net": None}
+              "main_force_net": None,
+              "margin_change_d": None, "margin_change_5d": None,
+              "margin_balance": None, "margin_source_date": None}
 
     # ── 三大法人單日 + 外資20日(日資料) ──────────────
     try:
@@ -197,11 +207,30 @@ def get_chips_detail(code):
         dates = sorted(by_date.keys())
         if dates:
             last = by_date[dates[-1]]
+            result["source_date"] = dates[-1]
+            result["source"] = "FinMind 盤後法人"
             result["foreign_net_d"] = round(last["f"])
             result["trust_net_d"] = round(last["t"])
             result["dealer_net_d"] = round(last["dl"])
+            recent5 = dates[-5:]
+            result["foreign_net_5d"] = round(sum(by_date[d]["f"] for d in recent5))
+            result["trust_net_5d"] = round(sum(by_date[d]["t"] for d in recent5))
+            result["dealer_net_5d"] = round(sum(by_date[d]["dl"] for d in recent5))
+            result["inst_net_5d_lots"] = round(sum(
+                by_date[d]["f"] + by_date[d]["t"] + by_date[d]["dl"]
+                for d in recent5))
             result["foreign_net_20d"] = round(
                 sum(by_date[d]["f"] for d in dates[-INST_DAYS:]))
+            streak = 0
+            for d in reversed(dates):
+                f = by_date[d]["f"]
+                if streak == 0:
+                    streak = 1 if f > 0 else (-1 if f < 0 else 0)
+                elif (streak > 0 and f > 0) or (streak < 0 and f < 0):
+                    streak += 1 if streak > 0 else -1
+                else:
+                    break
+            result["inst_streak"] = streak
     except Exception as e:
         print(f"[chips] 法人細項 {code} 失敗: {e}")
 
@@ -230,6 +259,27 @@ def get_chips_detail(code):
                 sum(by_date[d] for d in ds[-20:]) - sum(by_date[d] for d in ds[-40:-20]))
     except Exception as e:
         print(f"[chips] 大戶級距 {code} 失敗: {e}")
+
+    # ── 融資融券(日資料) ───────────────────────────────
+    try:
+        start = (datetime.now() - timedelta(days=20)).strftime("%Y-%m-%d")
+        rows = _finmind("TaiwanStockMarginPurchaseShortSale", code, start)
+        rows = sorted(rows, key=lambda r: r.get("date", ""))
+        if rows:
+            latest = rows[-1]
+            result["margin_source_date"] = latest.get("date")
+            result["margin_balance"] = latest.get("MarginPurchaseTodayBalance")
+            result["margin_change_d"] = (
+                (latest.get("MarginPurchaseTodayBalance") or 0)
+                - (latest.get("MarginPurchaseYesterdayBalance") or 0)
+            )
+            if len(rows) >= 6:
+                result["margin_change_5d"] = (
+                    (latest.get("MarginPurchaseTodayBalance") or 0)
+                    - (rows[-6].get("MarginPurchaseTodayBalance") or 0)
+                )
+    except Exception as e:
+        print(f"[chips] 融資 {code} 失敗: {e}")
 
     if _cache.get("date") != today:
         _cache = {"date": today, "stocks": {}}

@@ -73,7 +73,46 @@ _did_eod_stamp = ""                # 已完成盤後歷史蓋章的日期
 _last_full_state = None            # 收盤前最後一輪(供盤後複查)
 LIVE_STATE = None                  # 最後一次有效盤中 live state
 LIVE_STATE_UPDATE = 0.0            # LIVE_STATE 寫入時間
+INTRADAY_SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "intraday_live_snapshot.json"
+
+
+def _persist_intraday_snapshot(state, trade_date):
+    """盤中主迴圈直接保存最後有效快照，和盤後篩選結果分離。"""
+    try:
+        raw = list(state.get("_snaps") or [])
+        if not raw:
+            return
+        import vps_intraday_test as _vit
+        rows = [_vit._row(item) for item in raw]
+        rows = [row for row in rows if row.get("code") and row.get("price") is not None]
+        if not rows:
+            return
+        groups = {}
+        for row in rows:
+            groups[row["group"]] = groups.get(row["group"], 0) + 1
+        result = {
+            "ok": True,
+            "source": "VPS scheduler persisted last intraday state",
+            "read_only": True,
+            "updated_at": datetime.now(TW_TZ).isoformat(timespec="seconds"),
+            "trade_date": trade_date,
+            "count": len(rows),
+            "rows": rows,
+            "category_counts": groups,
+            "snapshot": True,
+            "notes": ["盤中累積資料收盤後凍結；與盤後籌碼篩選分離，不歸零"],
+        }
+        payload = {"trade_date": trade_date,
+                   "saved_at": datetime.now(TW_TZ).isoformat(timespec="seconds"),
+                   "result": result}
+        tmp = INTRADAY_SNAPSHOT_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, default=str, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(INTRADAY_SNAPSHOT_PATH)
+        print(f"[snapshot] ✅ 保存盤中凍結快照 rows={len(rows)} date={trade_date}", flush=True)
+    except Exception as exc:
+        print(f"[snapshot] 保存盤中凍結快照失敗: {exc}", flush=True)
 SHARED_STATE_PATH = Path(__file__).with_name("live_state.json")
+MA20_CACHE_PATH = Path(__file__).with_name("ma20_cache.json")
 _sig_watch = {}                    # code → {"stop":x, "failed":bool} 今日訊號追蹤
 _consec_fails = 0                  # 連續停損計數(回撤斷路器)
 _breaker_on = False                # True=當日停發新進場訊號
@@ -87,6 +126,31 @@ _breaker_on = False                # True=當日停發新進場訊號
 _mh_cache = {"payload": None, "ts": 0.0, "computing": False}
 _MH_TTL_INTRADAY = 60.0            # 盤中快取壽命(秒)
 _mh_lock = threading.Lock()       # 防止併發重算
+
+
+def _eod_state_latest():
+    """eod_state.build() 今日無落地資料時，自動退到資料庫最近一個交易日。
+
+    規範:「就算當日還沒更新，也應該採用最新數據，而不是空白」。
+    eod_state.py 是規則 22 鎖定檔，回退補丁一律放 server.py。"""
+    import eod_state
+    st = eod_state.build()
+    if st.get("stocks") or st.get("sectors"):
+        return st
+    try:
+        with db._lock, db._conn() as c:
+            r = c.execute("SELECT MAX(trade_date) d FROM health_daily").fetchone()
+            latest = r["d"] if r else None
+        if latest:
+            st2 = eod_state.build(date=latest)
+            if st2.get("stocks") or st2.get("sectors"):
+                st2 = dict(st2)
+                st2["data_date"] = latest
+                st2["latest_fallback"] = True
+                return st2
+    except Exception as e:
+        print(f"[server] eod_state 最新日回退失敗:{e}")
+    return st
 
 
 def _now():
@@ -119,7 +183,10 @@ def refresh_ma20_cache(today=None):
     """盤前一次性建立 MA20；失敗個股留 None，不影響主行情服務。"""
     global _ma20_cache, _ma20_cache_date, _ma20_cache_status
     import broker
-    from mls_intraday import prefetch_ma20
+    try:
+        from mls_intraday import prefetch_ma20
+    except ImportError:
+        from app import prefetch_ma20
 
     universe = set(getattr(C, "SECTOR_MAP", {}).keys())
     universe.update(getattr(C, "ENGINE_STOCKS", set()))
@@ -133,6 +200,11 @@ def refresh_ma20_cache(today=None):
         _ma20_cache_date = today or db.today()
         ready = sum(value is not None for value in cache.values())
         _ma20_cache_status = f"已建立 {ready}/{len(cache)} 檔"
+        MA20_CACHE_PATH.write_text(json.dumps({
+            "date": _ma20_cache_date,
+            "cache": cache,
+            "status": _ma20_cache_status,
+        }, ensure_ascii=False), encoding="utf-8")
         print(f"[server] MA20 快取 {_ma20_cache_status}，盤中只讀")
     except Exception as exc:
         _ma20_cache_status = f"建立失敗: {exc}"
@@ -141,10 +213,20 @@ def refresh_ma20_cache(today=None):
 
 def get_ma20(code):
     """盤中只讀 MA20；不在此處呼叫行情 API。"""
+    if not _ma20_cache and MA20_CACHE_PATH.exists():
+        try:
+            saved = json.loads(MA20_CACHE_PATH.read_text(encoding="utf-8"))
+            _ma20_cache.update(saved.get("cache") or {})
+            globals()["_ma20_cache_date"] = saved.get("date", "")
+            globals()["_ma20_cache_status"] = saved.get("status", "已載入共享快取")
+        except Exception as exc:
+            print(f"[server] MA20 共享快取讀取失敗: {exc}")
     return _ma20_cache.get(str(code))
 
 
 def ma20_cache_status():
+    if not _ma20_cache and MA20_CACHE_PATH.exists():
+        get_ma20("__status_probe__")
     return {"date": _ma20_cache_date, "status": _ma20_cache_status,
             "ready": sum(value is not None for value in _ma20_cache.values()),
             "total": len(_ma20_cache)}
@@ -269,7 +351,12 @@ def scheduler_loop():
            _last_sector_snapshot, _last_full_state, _pushed_lock_sectors, \
            LIVE_STATE, LIVE_STATE_UPDATE
 
+    print(f"[diag][scheduler] start ts={datetime.now().astimezone().isoformat(timespec='milliseconds')}", flush=True)
     load_today_watchlist()
+    if not _ma20_cache or _ma20_cache_date != db.today():
+        print("[diag][scheduler] ma20_cache.bootstrap.begin", flush=True)
+        refresh_ma20_cache(db.today())
+        print("[diag][scheduler] ma20_cache.bootstrap.end", flush=True)
 
     while True:
         try:
@@ -303,7 +390,10 @@ def scheduler_loop():
 
             # ── 09:00–13:35 盤中主迴圈 ────────────────
             if "09:00" <= hm <= "13:35":
+                _op_started = time.time()
+                print(f"[diag][scheduler] build_state.begin hm={hm}", flush=True)
                 state = engine.build_state(watchlist_codes=_watchlist_codes)
+                print(f"[diag][scheduler] build_state.end elapsed_ms={round((time.time()-_op_started)*1000,1)} raw={len(state.get('_snaps') or [])}", flush=True)
                 # 開盤初期 broker 容易回空(< 30 檔),走 eod_state 兜底避免整頁空白
                 # 等下一輪 broker 拿到足夠資料自動切回真實 STATE
                 _snaps = state.get("_snaps") or []
@@ -346,6 +436,7 @@ def scheduler_loop():
                 if is_live:
                     LIVE_STATE = dict(state)
                     LIVE_STATE_UPDATE = time.time()
+                    _persist_intraday_snapshot(state, today)
                     print(f"[scheduler] ✅ 寫入 live state: stocks={stocks_count}, raw={raw_count}")
                 elif LIVE_STATE and (time.time() - LIVE_STATE_UPDATE) < 300:
                     state = dict(LIVE_STATE)
@@ -354,7 +445,12 @@ def scheduler_loop():
                 _last_full_state = state
                 if hm >= "13:30" and _did_eod_stamp != today:
                     try:
-                        stamp_intraday_eod(state, today)
+                        # 收盤瞬間 Shioaji buffer 可能已清空；必須使用最後一輪
+                        # 有效盤中快照蓋章，不能把空 state 寫成盤後資料。
+                        stamp_state = state
+                        if not (stamp_state.get("_snaps") or stamp_state.get("stocks")):
+                            stamp_state = LIVE_STATE or _last_full_state
+                        stamp_intraday_eod(stamp_state, today)
                         _did_eod_stamp = today
                     except Exception as exc:
                         print(f"[server] 盤後歷史蓋章失敗，下一輪重試: {exc}")
@@ -383,30 +479,48 @@ def scheduler_loop():
                 time.sleep(C.SCAN_INTERVAL_SEC)
                 continue
 
-            # ── 15:05 盤後複查(一天一次;state 為空時兜底重抓) ──
-            if hm >= "15:05" and _did_afterhours != today:
+            # ── 18:00 官方盤後資料完成後複查(一天一次;state 為空時兜底重抓) ──
+            if hm >= "18:00" and _did_afterhours != today:
                 state_for_eod = _last_full_state
                 if state_for_eod is None:
-                    print("[server] 盤中 state 缺失,EOD 兜底重抓收盤快照…")
+                    # 服務若在收盤後才重啟，記憶體沒有盤中 state；
+                    # 兜底順序:broker buffer(未重啟仍留最後值)→ 盤中快照檔。
+                    print("[server] 盤中 state 缺失,EOD 兜底:讀最後盤中快照…")
                     try:
-                        import eod_pipeline
-                        snaps = eod_pipeline.fetch_eod_snaps()
-                        import engine as _e
-                        secs = _e.compute_sector_flow(snaps)
+                        snaps = []
                         try:
-                            money_health.annotate(snaps, secs)
+                            import broker as _bk
+                            snaps = _bk.raw_buffer_snapshots()
                         except Exception as e:
-                            print(f"[money_health] EOD 兜底注入失敗:{e}")
-                        state_for_eod = {"_snaps": snaps,
-                                         "_sectors_full": [
-                                             {k: v for k, v in s.items() if k != "members"}
-                                             for s in secs],
-                                         "stocks": [], "sectors": []}
+                            print(f"[server] 兜底 broker buffer 失敗:{e}")
+                        if not snaps and INTRADAY_SNAPSHOT_PATH.exists():
+                            _p = json.loads(INTRADAY_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+                            if _p.get("trade_date") == today:
+                                snaps = ((_p.get("result") or {}).get("rows")) or []
+                        for s in snaps:
+                            if not s.get("sector"):
+                                _sec = C.SECTOR_MAP.get(str(s.get("code")))
+                                s["sector"] = _sec[0] if _sec else "其他"
+                        if snaps:
+                            secs = engine.compute_sector_flow(snaps)
+                            try:
+                                money_health.annotate(snaps, secs)
+                            except Exception as e:
+                                print(f"[money_health] EOD 兜底注入失敗:{e}")
+                            state_for_eod = {"_snaps": snaps,
+                                             "_sectors_full": [
+                                                 {k: v for k, v in s.items() if k != "members"}
+                                                 for s in secs],
+                                             "stocks": [], "sectors": []}
+                        else:
+                            print("[server] 兜底失敗:今日無任何盤中快照，明日觀察沿用最近名單")
                     except Exception as e:
-                        print(f"[server] 兜底重抓失敗:{e}")
+                        print(f"[server] 兜底組裝失敗:{e}")
                 if state_for_eod is not None:
-                    print("[server] 執行盤後複查…")
+                    _op_started = time.time()
+                    print("[diag][scheduler] after_hours.begin", flush=True)
                     after_hours.run(state_for_eod)
+                    print(f"[diag][scheduler] after_hours.end elapsed_ms={round((time.time()-_op_started)*1000,1)}", flush=True)
                     _did_afterhours = today
                 time.sleep(60)
                 continue
@@ -416,8 +530,7 @@ def scheduler_loop():
             # 從 mls.db 真實落地的 health_daily / sector_daily 組 STATE,
             # 首頁熱力圖/資金流動/盤面速覽全亮起來。
             try:
-                import eod_state
-                state = eod_state.build()
+                state = _eod_state_latest()
                 # BUG-1 修補(2026-07-15):eod_state 官方價覆蓋 stock 時沒重算
                 # suggested_stop,會用 avg=100 的舊價算出 106 之類的離譜值。
                 # 這裡對齊 engine.py:340-342 的 stop 公式重算
@@ -449,6 +562,29 @@ def scheduler_loop():
 
 # ══════════════════════════════════════════════════════
 app = FastAPI(title="MLS Standard")
+_scheduler_started = False
+
+
+def _scheduler_worker():
+    time.sleep(3)
+    scheduler_loop()
+
+
+def _launch_scheduler():
+    """無論由 python server.py 或 uvicorn server:app 啟動，都只開一個排程。"""
+    global _scheduler_started
+    if _scheduler_started:
+        return
+    _scheduler_started = True
+    db.init()
+
+    multiprocessing.Process(target=_scheduler_worker, daemon=True).start()
+    print("[diag][scheduler] process launched", flush=True)
+
+
+@app.on_event("startup")
+async def _startup_scheduler():
+    _launch_scheduler()
 # 盤中隔離測試頁：只讀既有 broker buffer，不另開行情連線。
 import sys as _sys, pathlib as _pl, os as _os
 _INTRADAY_ROOT = _pl.Path(__file__).resolve().parent.parent
@@ -658,54 +794,61 @@ _funnel_eod_done = set()
 
 @app.get("/api/funnel")
 def api_funnel(date: str = None):
-    """四關漏斗兩梯隊(盤後產出)。首頁『明日觀察』短名單讀這支。
-    🔴第一梯隊=四關全過;🟡第二梯隊=過三關差一關;零檔誠實顯零。
-    盤後若表內尚無今日結果 → 用 FinMind EOD 產一次(當日僅一次)。"""
+    """明日觀察清單(盤後 18:00 after_hours.run 產出，存 SQLite watchlist)。
+
+    規則:指定日期 → 明日 → 今日 → 資料庫最近一次。永遠回最新可用
+    名單並標明資料日，不回空白;真的一筆都沒有才回空(誠實顯零)。"""
     try:
-        import funnel
-        try:
-            res = funnel.latest(date)
-        except AttributeError:
-            res = {"date": None, "tier1": [], "tier2": [], "note": "funnel.latest 未實作(funnel 模組鎖死)"}
-            return JSONResponse(res)
-        need = (not res.get("tier1")) and (not res.get("tier2"))
-        if need and date is None:
-            import eod_source
-            today = eod_source._today()
-            if today not in _funnel_eod_done:
-                _funnel_eod_done.add(today)
-                try:
-                    import after_hours, money_health, health_timeseries
-                    est = eod_source.eod_state()
-                    snaps, sectors = est["_snaps"], est["_sectors_full"]
-                    if snaps:
-                        money_health.annotate(snaps, sectors)
-                        try:
-                            health_timeseries.enrich_and_persist(snaps)
-                        except Exception:
-                            pass
-                        rotation, resilient = after_hours.rotation_analysis(sectors, snaps)
-                        wl = after_hours.build_tomorrow_watchlist(sectors, snaps)
-                        funnel.run(est, rotation_reports=rotation, resilient=resilient,
-                                   watchlist=wl, sixpoint=None)
-                        res = funnel.latest()
-                        res["source"] = "eod"
-                except Exception as e:
-                    res["note"] = (res.get("note") or "") + f"(EOD 產生失敗:{e})"
-        return JSONResponse(json.loads(json.dumps(res, default=str, ensure_ascii=False)))
+        candidates = []
+        if date:
+            candidates.append(date)
+        else:
+            candidates.extend([after_hours.next_trade_date(), db.today()])
+        rows, used_date, is_latest_fallback = [], None, False
+        for day in candidates:
+            rows = db.load_watchlist(day)
+            if rows:
+                used_date = day
+                break
+        if not rows:
+            with db._lock, db._conn() as c:
+                latest = c.execute(
+                    "SELECT MAX(trade_date) d FROM watchlist").fetchone()
+                latest_day = latest["d"] if latest else None
+            if latest_day:
+                rows = db.load_watchlist(latest_day)
+                used_date = latest_day
+                is_latest_fallback = True
+        tier1 = [{
+            "code": r.get("stock_id"), "stock_id": r.get("stock_id"),
+            "name": r.get("stock_name"), "stock_name": r.get("stock_name"),
+            "sector": r.get("sector"), "reason": r.get("reason"),
+            "tier": "明日觀察", "hit": bool(r.get("hit")),
+            "demoted": bool(r.get("demoted")),
+        } for r in rows]
+        note = None
+        if is_latest_fallback:
+            note = f"今日盤後名單尚未產出，顯示最近一次（{used_date}）"
+        elif not rows:
+            note = "資料庫尚無任何盤後名單；18:00 盤後複查完成後自動產出"
+        return JSONResponse(json.loads(json.dumps({
+            "date": used_date, "tier1": tier1, "tier2": [],
+            "latest_fallback": is_latest_fallback, "note": note,
+        }, default=str, ensure_ascii=False)))
     except Exception as e:
         return JSONResponse({"date": None, "tier1": [], "tier2": [],
-                             "note": f"漏斗讀取失敗:{e}"})
+                             "note": f"名單讀取失敗:{e}"})
 
 
 @app.get("/api/market/official")
-def api_market_official():
+def api_market_official(date: str = None):
     """官方三大法人買賣超 + 大盤(給首頁 banner;有官方不自算)。"""
     try:
         import official_source as o
+        d = datetime.strptime(date, "%Y-%m-%d") if date else None
         return JSONResponse(json.loads(json.dumps({
-            "institutional": o.institutional_net(),
-            "index": o.market_index(),
+            "institutional": o.institutional_net(d),
+            "index": o.market_index(d),
         }, default=str, ensure_ascii=False)))
     except Exception as e:
         return JSONResponse({"error": f"官方源讀取失敗:{e}"})
@@ -775,8 +918,7 @@ def api_state():
         if not STATE or STATE.get("status") in (None, "starting") \
                 or (not STATE.get("sectors") and not STATE.get("stocks")):
             try:
-                import eod_state
-                _fallback = eod_state.build()
+                _fallback = _eod_state_latest()
                 # BUG-1 修補(2026-07-15):eod_state 官方價覆蓋 stock 時沒重算
                 # suggested_stop,這層在 server.py 補丁,避免動規則 22 鎖定檔。
                 for st in (_fallback.get("stocks") or []):
@@ -874,13 +1016,13 @@ def api_nexora():
         return JSONResponse({"report": None, "error": str(e)})
 
 
+# ══════════════════════════════════════════════════════════
 @app.get("/")
 def home():
-    html = Path(__file__).with_name("index.html").read_text(encoding="utf-8")
+    html = (Path(__file__).resolve().parent.parent / "intraday_decision.html").read_text(encoding="utf-8")
     return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
 
 
-# ══════════════════════════════════════════════════════════
 # /api/stock/{code} /api/report /api/watchpool — 給 NEXORA 決策頁內
 # 側邊欄的「個股卡片」「每日報告」「觀察池 51 檔」分頁呼叫。
 # 沒獨立的 /card /report /watchpool HTML 路由 — 全部走 /intraday-test。
@@ -893,6 +1035,12 @@ def _read_html(filename: str) -> str:
     p = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), filename)
     with open(p, "r", encoding="utf-8") as f:
         return f.read()
+
+
+@app.get("/watch-first-layer")
+def watch_first_layer():
+    """固定 51 檔觀察池第一層 UI；點擊個股再進完整卡片。"""
+    return HTMLResponse(_read_html("個股第一層ＵＩ.html"), headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @app.get("/api/stock/{code}")
@@ -925,10 +1073,9 @@ def api_watchpool():
 @app.get("/api/card_page")
 def api_card_page(code: str = "2337"):
     """個股卡片 HTML — 給 NEXORA 決策頁的 openStock popup iframe 用。
-    讀 deepseek_stock_card.html 注入 ?code= query。"""
+    直接回傳正式個股決策 UI，避免舊 redirect 指向不存在的檔案。"""
     try:
-        p = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
-                          "deepseek_stock_card.html")
+        p = _INTRADAY_ROOT / "5483_中美晶_個股決策UI.html"
         with open(p, "r", encoding="utf-8") as f:
             html = f.read()
         return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
@@ -937,10 +1084,5 @@ def api_card_page(code: str = "2337"):
 
 
 if __name__ == "__main__":
-    db.init()
-    # 行情排程獨立程序執行；Shioaji／資料抓取即使阻塞，也不能卡住 HTTP。
-    def _start_scheduler_delayed():
-        time.sleep(3)
-        scheduler_loop()
-    multiprocessing.Process(target=_start_scheduler_delayed, daemon=True).start()
+    _launch_scheduler()
     uvicorn.run(app, host="0.0.0.0", port=8000)
