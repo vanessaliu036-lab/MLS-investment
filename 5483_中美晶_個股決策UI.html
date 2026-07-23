@@ -343,11 +343,13 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 30px}
           <div class="section-head"><div class="section-title">五大因子（盤中決策引擎）</div><div class="source">/api/state 即時引擎</div></div>
           <div class="section-body">
             <div id="f5-compare" class="card" style="margin-bottom:12px"><div class="section-title" style="font-size:14px;margin-bottom:8px">📊 個股 vs 族群 vs 大盤</div><div class="rows muted">等待盤中引擎資料…</div></div>
-            <div id="f5-factors" class="data-grid"></div>
-            <div id="f5-conclusion" class="card" style="margin-top:12px"></div>
-            <div id="f5-discipline" class="card" style="margin-top:12px"></div>
-            <div id="f5-triangle" class="card" style="margin-top:12px"></div>
-            <div id="f5-doc" class="card" style="margin-top:12px"></div>
+            <div id="f5-factors"></div>
+            <div class="f5-two">
+              <div id="f5-conclusion" class="f5-card"></div>
+              <div id="f5-discipline" class="f5-card"></div>
+              <div id="f5-triangle" class="f5-card"></div>
+              <div id="f5-doc" class="f5-card"></div>
+            </div>
           </div>
         </section>
 
@@ -633,13 +635,13 @@ function goHome(){
     const srcLabel=useEngine?'盤中決策引擎(每輪重算)':(f5b.source||'最近交易日官方收盤＋FinMind 盤後籌碼');
     const srcTag=document.querySelector('#factors5 .source');if(srcTag)srcTag.textContent=srcLabel;
     const fbox=document.getElementById('f5-factors');
-    if(fbox)fbox.innerHTML=DEF.map(([k,lab,max])=>{
+    if(fbox)fbox.innerHTML='<div class="f5-grid">'+DEF.map(([k,lab,max])=>{
       const v=FF[k],note=NN[k];
       const w=v==null?0:Math.min(100,Number(v)/max*100);
-      return `<div class="card"><div class="rows"><div class="row"><div class="k">${lab}</div><div class="v">${v??'—'} / ${max}</div></div></div>
-        <div style="height:6px;background:#edf0f5;border-radius:9px;overflow:hidden;margin:8px 0"><i style="display:block;height:100%;width:${w}%;background:#6366f1"></i></div>
-        <div class="muted" style="font-size:12px;line-height:1.6">${E(note||'官方資料回補中')}</div></div>`;
-    }).join('')+`<div class="card"><div class="rows"><div class="row"><div class="k">AI 總分</div><div class="v">${row.ai_score??f5b.score??'—'}</div></div></div><div class="muted" style="font-size:12px">五大因子加總（滿分 100）；${E(srcLabel)}。</div></div>`;
+      return `<div class="f5-cell"><div class="f5-t"><span>${lab}</span><b>${v??'—'} / ${max}</b></div>
+        <div class="f5-bar"><i style="width:${w}%"></i></div>
+        <div class="f5-n">${E(note||'官方資料回補中')}</div></div>`;
+    }).join('')+`<div class="f5-cell"><div class="f5-t"><span>AI 總分</span><b>${row.ai_score??f5b.score??'—'} / 100</b></div><div class="f5-bar"><i style="width:${Math.min(100,Number(row.ai_score??f5b.score??0))}%"></i></div><div class="f5-n">五大因子加總；${E(srcLabel)}</div></div>`+'</div>';
     // 最終結論
     const act=row.action||'obs';
     const LBL={buy:'進場訊號',watch:'高潛力觀察',sell:'出場/風險',obs:'僅觀察'};
@@ -709,8 +711,23 @@ h1,h2,h3{line-height:1.3}
 @media(min-width:1100px){
   #stock5483{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
   #stock5483>.hero,#stock5483>.toolbar,#stock5483>#factors5{grid-column:1/-1}
-  #f5-conclusion,#f5-discipline{display:inline-block;width:calc(50% - 6px);vertical-align:top}
-  #f5-triangle,#f5-doc{display:inline-block;width:calc(50% - 6px);vertical-align:top}
 }
 .toolbar{margin:8px 0!important;padding:6px 0!important}
+</style>
+
+<style>
+/* ══ 五大因子區 scoped 版面(取代先前補丁) ══ */
+#factors5 .f5-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+@media(max-width:900px){#factors5 .f5-grid{grid-template-columns:repeat(2,1fr)}}
+.f5-cell{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff;min-width:0}
+.f5-t{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--muted)}
+.f5-t b{font-size:16px;color:var(--ink,#182033)}
+.f5-bar{height:5px;background:#edf0f5;border-radius:9px;overflow:hidden;margin:7px 0 6px}
+.f5-bar i{display:block;height:100%;background:#6366f1}
+.f5-n{font-size:11px;color:var(--muted);line-height:1.55;word-break:break-word}
+.f5-two{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+@media(max-width:900px){.f5-two{grid-template-columns:1fr}}
+.f5-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff;min-width:0;font-size:13px;line-height:1.6}
+.f5-card .section-title{font-size:14px!important;margin-bottom:4px}
+.f5-card .rows .row{padding:3px 0!important;border:0!important}
 </style>
