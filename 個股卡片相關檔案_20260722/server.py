@@ -450,6 +450,10 @@ def scheduler_loop():
 # ══════════════════════════════════════════════════════
 app = FastAPI(title="MLS Standard")
 # 盤中隔離測試頁：只讀既有 broker buffer，不另開行情連線。
+import sys as _sys, pathlib as _pl
+_INTRADAY_ROOT = _pl.Path(__file__).resolve().parent.parent
+if str(_INTRADAY_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_INTRADAY_ROOT))
 try:
     import vps_intraday_test
     app.include_router(vps_intraday_test.router)
