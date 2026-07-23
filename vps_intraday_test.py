@@ -175,6 +175,13 @@ def home():
                         headers={"Cache-Control": "no-store, max-age=0"})
 
 
+@router.get("/intraday-test/v2", response_class=HTMLResponse)
+def home_v2():
+    """強制重整版 — URL 變了瀏覽器必抓新 HTML。"""
+    return HTMLResponse((BASE / "intraday_decision.html").read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store, max-age=0, must-revalidate"})
+
+
 @router.get("/api/intraday-history/dates")
 async def history_dates():
     eod_stamp = _eod_module()
