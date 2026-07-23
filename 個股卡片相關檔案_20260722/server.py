@@ -889,10 +889,8 @@ import extras as _extras  # noqa: E402
 @app.get("/card")
 def stock_card_page():
     """個股決策卡片 UI（依 query ?code=xxxx 顯示單檔）。"""
-    p = os.path.join(os.path.dirname(__file__), "deepseek_stock card.html")
-    with open(p, "r", encoding="utf-8") as f:
-        html = f.read()
-    return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
+    return HTMLResponse(_read_html("deepseek_stock card.html"),
+                        headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @app.get("/api/stock/{code}")
