@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>NEXORA 觀察池 51 檔</title>
+<style>
+:root{
+  --bg:#f4f5f8;--card:#fff;--line:#dfe4ec;--ink:#171c26;--sub:#6e788b;
+  --up:#e83e5b;--up-bg:#fff0f3;--down:#0c9b6b;--down-bg:#eaf8f2;
+  --amber:#b7770d;--amber-bg:#fff5df;--blue:#3f67d5;--blue-bg:#edf2ff;
+  --violet:#6758d8;--violet-bg:#f0edff;--navy:#172139
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif}
+body{padding:10px}
+.page{max-width:1600px;margin:auto}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:10px}
+.title h1{margin:0;font-size:26px;letter-spacing:-.03em}
+.title p{margin:4px 0 0;color:var(--sub);font-size:12px}
+.live{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:900;color:var(--down)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--down);box-shadow:0 0 0 5px rgba(12,155,107,.12)}
+.summary{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:10px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.kpi label{display:block;font-size:10px;color:var(--sub);font-weight:900}
+.kpi strong{display:block;font-size:22px;margin-top:2px}
+.controls{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.filters{display:flex;gap:6px;flex-wrap:wrap}
+.filter{border:1px solid var(--line);background:#fff;color:var(--sub);padding:7px 11px;border-radius:8px;font-size:12px;font-weight:900}
+.filter.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.search{width:260px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 10px}
+.table-card{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 6px 18px rgba(22,33,57,.05)}
+.table-wrap{overflow:auto;max-height:calc(100vh - 190px)}
+table{width:100%;border-collapse:collapse;min-width:1480px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{position:sticky;top:0;z-index:5;background:#f8f9fb;color:var(--sub);font-size:10px;font-weight:900}
+td{font-size:12px}
+tbody tr.data{cursor:pointer}
+tbody tr.data:hover{background:#fafbfe}
+.stock b{display:block;font-size:13px}
+.stock span{font-size:9px;color:var(--sub)}
+.up{color:var(--up)}.down{color:var(--down)}
+.state{display:inline-block;padding:4px 7px;border-radius:7px;font-size:10px;font-weight:900}
+.ready{background:var(--down-bg);color:var(--down)}.wait{background:var(--amber-bg);color:var(--amber)}.risk{background:var(--up-bg);color:var(--up)}
+.factor-mini{display:flex;gap:3px}
+.fc{min-width:34px;padding:3px 4px;border-radius:6px;background:#f1f3f7;text-align:center}
+.fc b{display:block;font-size:10px}.fc span{font-size:7px;color:var(--sub)}
+.detail-row td{padding:0}
+.detail{display:none;background:#f8fafc;padding:10px}
+.detail.open{display:block}
+.detail-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.panel{background:#fff;border:1px solid var(--line);border-radius:9px;padding:9px}
+.panel h4{margin:0 0 6px;font-size:12px}
+.kv{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px dashed #eef1f5;font-size:10.5px}
+.kv span{color:var(--sub)}
+.factor-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px}
+.factor{background:#fff;border:1px solid var(--line);border-radius:9px;padding:8px;text-align:center}
+.factor .head{display:flex;justify-content:space-between;font-size:9px;font-weight:900}
+.factor .num{font-size:18px;font-weight:900;margin-top:2px}
+.bar{height:4px;background:#edf0f5;border-radius:99px;overflow:hidden;margin-top:5px}
+.bar i{display:block;height:100%;background:var(--blue)}
+.note{margin-top:7px;background:var(--violet-bg);border-left:3px solid var(--violet);padding:8px 9px;font-size:10.5px;line-height:1.45}
+@media(max-width:900px){
+  body{padding:0}.page{max-width:none}.top,.controls{padding:10px;margin:0}
+  .summary{grid-template-columns:repeat(3,1fr);padding:0 10px}
+  .search{width:100%}.controls{align-items:stretch;flex-direction:column}
+  .detail-grid,.factor-grid{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="top">
+    <div class="title"><h1>觀察池 51 檔</h1><p>即時價格、資金、技術、籌碼、族群與風險集中顯示。</p></div>
+    <div class="live"><span class="dot"></span>Shioaji 即時連線</div>
+  </div>
+
+  <div class="summary">
+    <div class="kpi"><label>觀察池</label><strong>51</strong></div>
+    <div class="kpi"><label>可操作</label><strong class="down">18</strong></div>
+    <div class="kpi"><label>等待確認</label><strong>21</strong></div>
+    <div class="kpi"><label>風險</label><strong class="up">12</strong></div>
+    <div class="kpi"><label>資金翻正</label><strong class="down">26</strong></div>
+    <div class="kpi"><label>站上 VWAP</label><strong>29</strong></div>
+  </div>
+
+  <div class="controls">
+    <div class="filters">
+      <button class="filter active" onclick="setFilter('all',this)">全部</button>
+      <button class="filter" onclick="setFilter('ready',this)">可操作</button>
+      <button class="filter" onclick="setFilter('wait',this)">等待確認</button>
+      <button class="filter" onclick="setFilter('risk',this)">風險</button>
+    </div>
+    <input id="search" class="search" placeholder="搜尋代碼、名稱、族群" oninput="render()">
+  </div>
+
+  <div class="table-card">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>股票</th><th>現價</th><th>漲跌%</th><th>成交量</th><th>aflow</th><th>吸籌%</th>
+            <th>VWAP</th><th>量比</th><th>BS</th><th>五大因子</th><th>AI</th><th>象限</th><th>狀態</th><th>資料</th>
+          </tr>
+        </thead>
+        <tbody id="body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const seed=[{"code": "2303", "name": "聯電", "sector": "晶圓代工"}, {"code": "6182", "name": "合晶", "sector": "晶圓材料"}, {"code": "2327", "name": "國巨", "sector": "被動元件"}, {"code": "5347", "name": "世界", "sector": "晶圓代工"}, {"code": "2344", "name": "華邦電", "sector": "記憶體"}, {"code": "8150", "name": "南茂", "sector": "IC封測"}, {"code": "2337", "name": "旺宏", "sector": "記憶體"}, {"code": "2481", "name": "強茂", "sector": "功率半導體"}, {"code": "5425", "name": "台半", "sector": "功率半導體"}, {"code": "6488", "name": "環球晶", "sector": "晶圓材料"}, {"code": "5483", "name": "中美晶", "sector": "晶圓材料"}, {"code": "3016", "name": "嘉晶", "sector": "晶圓材料"}, {"code": "2408", "name": "南亞科", "sector": "記憶體"}, {"code": "3006", "name": "晶豪科", "sector": "IC設計"}, {"code": "3374", "name": "精材", "sector": "IC封測"}, {"code": "3264", "name": "欣銓", "sector": "IC封測"}, {"code": "2449", "name": "京元電子", "sector": "IC封測"}, {"code": "6239", "name": "力成", "sector": "IC封測"}, {"code": "6274", "name": "台燿", "sector": "PCB材料"}, {"code": "1815", "name": "富喬", "sector": "PCB材料"}, {"code": "2383", "name": "台光電", "sector": "PCB材料"}, {"code": "2368", "name": "金像電", "sector": "PCB"}, {"code": "3037", "name": "欣興", "sector": "載板"}, {"code": "8046", "name": "南電", "sector": "載板"}, {"code": "3189", "name": "景碩", "sector": "載板"}, {"code": "2492", "name": "華新科", "sector": "被動元件"}, {"code": "6173", "name": "信昌電", "sector": "被動元件"}, {"code": "3026", "name": "禾伸堂", "sector": "被動元件"}, {"code": "3105", "name": "穩懋", "sector": "光通訊"}, {"code": "3363", "name": "上詮", "sector": "光通訊"}, {"code": "4979", "name": "華星光", "sector": "光通訊"}, {"code": "3081", "name": "聯亞", "sector": "光通訊"}, {"code": "2454", "name": "聯發科", "sector": "IC設計"}, {"code": "3034", "name": "聯詠", "sector": "IC設計"}, {"code": "3661", "name": "世芯-KY", "sector": "IC設計"}, {"code": "3443", "name": "創意", "sector": "IC設計"}, {"code": "2049", "name": "上銀", "sector": "無人機"}, {"code": "2359", "name": "所羅門", "sector": "無人機"}, {"code": "4576", "name": "大銀微系統", "sector": "無人機"}, {"code": "1519", "name": "華城", "sector": "重電"}, {"code": "1503", "name": "士電", "sector": "重電"}, {"code": "1513", "name": "中興電", "sector": "重電"}, {"code": "6174", "name": "安碁", "sector": "電子零組件"}, {"code": "6117", "name": "迎廣", "sector": "機殼"}, {"code": "2413", "name": "環科", "sector": "電子零組件"}, {"code": "4764", "name": "雙鍵", "sector": "化工"}, {"code": "1727", "name": "中華化", "sector": "化工"}, {"code": "2376", "name": "技嘉", "sector": "AI伺服器"}, {"code": "2356", "name": "英業達", "sector": "AI伺服器"}, {"code": "3231", "name": "緯創", "sector": "AI伺服器"}, {"code": "6669", "name": "緯穎", "sector": "AI伺服器"}];
+let active='all';
+
+const data=seed.map((s,i)=>{
+  const trend=5+((i*5)%21),volume=5+((i*7)%21),rs=5+((i*3)%16),chip=6+((i*4)%15),sectorScore=3+((i*2)%8);
+  const ai=Math.min(100,trend+volume+rs+chip+sectorScore);
+  const status=i%7===0?'risk':(i%3===0?'wait':'ready');
+  const quadrant=status==='risk'?(i%2?'in_down':'out_down'):(i%4===0?'out_up':'in_up');
+  return {...s,
+    price:(48+((i*19)%250)).toFixed(1),
+    chg:((((i*37)%190)-95)/10).toFixed(2),
+    volume:(1400+((i*983)%68000)).toLocaleString(),
+    aflow:((i*791)%22000)-7000,
+    absorb:8+((i*13)%58),
+    vwap:i%3!==0?'站上':'未站上',
+    vr:(.62+((i*11)%130)/100).toFixed(2),
+    bs:32+((i*7)%41),
+    trend,volumeScore:volume,rs,chip,sectorScore,ai,status,quadrant,
+    quality:i>47?'待推播':'即時',
+    foreign:((i*337)%9000)-2600,trust:((i*113)%1800)-500,dealer:((i*79)%900)-400,
+    ma20:(80+((i*29)%820)).toFixed(2),trigger:(70+((i*31)%760)).toFixed(1),stop:(65+((i*23)%700)).toFixed(1),
+    relSector:((((i*17)%90)-30)/10).toFixed(2),relMarket:((((i*13)%75)-20)/10).toFixed(2)
+  };
+});
+
+function setFilter(f,el){
+  active=f;
+  document.querySelectorAll('.filter').forEach(x=>x.classList.remove('active'));
+  el.classList.add('active');
+  render();
+}
+function signed(v){return(v>0?'+':'')+Number(v).toLocaleString()}
+function fc(label,val,max){return `<div class="fc"><b>${val}</b><span>${label}/${max}</span></div>`}
+function factor(label,val,max){return `<div class="factor"><div class="head"><span>${label}</span><span>${val}/${max}</span></div><div class="num">${val}</div><div class="bar"><i style="width:${val/max*100}%"></i></div></div>`}
+
+function render(){
+  const q=(document.getElementById('search').value||'').toLowerCase();
+  const body=document.getElementById('body');
+  body.innerHTML='';
+  data.filter(s=>(active==='all'||s.status===active)&&(s.code+s.name+s.sector).toLowerCase().includes(q)).forEach(s=>{
+    const statusText=s.status==='ready'?'可操作':s.status==='wait'?'等待確認':'風險';
+    const tr=document.createElement('tr');
+    tr.className='data';
+    tr.innerHTML=`
+      <td class="stock"><b>${s.code} ${s.name}</b><span>${s.sector}</span></td>
+      <td><b>${s.price}</b></td>
+      <td class="${+s.chg>=0?'up':'down'}">${+s.chg>=0?'+':''}${s.chg}%</td>
+      <td>${s.volume}</td>
+      <td class="${s.aflow>=0?'up':'down'}">${signed(s.aflow)}</td>
+      <td>${s.absorb}%</td>
+      <td>${s.vwap}</td>
+      <td>${s.vr}</td>
+      <td>${s.bs}%</td>
+      <td><div class="factor-mini">${fc('趨',s.trend,25)}${fc('量',s.volumeScore,25)}${fc('RS',s.rs,20)}${fc('籌',s.chip,20)}${fc('族',s.sectorScore,10)}</div></td>
+      <td><b>${s.ai}</b></td>
+      <td>${s.quadrant}</td>
+      <td><span class="state ${s.status}">${statusText}</span></td>
+      <td>${s.quality}</td>`;
+    const dtr=document.createElement('tr');
+    dtr.className='detail-row';
+    const td=document.createElement('td');
+    td.colSpan=14;
+    td.innerHTML=`
+      <div class="detail" id="d-${s.code}">
+        <div class="factor-grid">
+          ${factor('趨勢',s.trend,25)}${factor('量能',s.volumeScore,25)}${factor('相對強度',s.rs,20)}${factor('籌碼',s.chip,20)}${factor('族群',s.sectorScore,10)}
+        </div>
+        <div class="detail-grid">
+          <div class="panel"><h4>即時資金</h4><div class="kv"><span>aflow</span><b>${signed(s.aflow)}</b></div><div class="kv"><span>吸籌</span><b>${s.absorb}%</b></div><div class="kv"><span>BS</span><b>${s.bs}%</b></div><div class="kv"><span>VWAP</span><b>${s.vwap}</b></div></div>
+          <div class="panel"><h4>技術位置</h4><div class="kv"><span>MA20</span><b>${s.ma20}</b></div><div class="kv"><span>觸發價</span><b>${s.trigger}</b></div><div class="kv"><span>停損</span><b>${s.stop}</b></div><div class="kv"><span>量比</span><b>${s.vr}</b></div></div>
+          <div class="panel"><h4>法人 T-1</h4><div class="kv"><span>外資</span><b>${signed(s.foreign)}張</b></div><div class="kv"><span>投信</span><b>${signed(s.trust)}張</b></div><div class="kv"><span>自營</span><b>${signed(s.dealer)}張</b></div><div class="kv"><span>大戶</span><b>週資料</b></div></div>
+          <div class="panel"><h4>相對強弱</h4><div class="kv"><span>vs族群</span><b>${s.relSector}pp</b></div><div class="kv"><span>vs大盤</span><b>${s.relMarket}pp</b></div><div class="kv"><span>族群</span><b>${s.sector}</b></div><div class="kv"><span>象限</span><b>${s.quadrant}</b></div></div>
+          <div class="panel"><h4>決策結果</h4><div class="kv"><span>AI</span><b>${s.ai}</b></div><div class="kv"><span>狀態</span><b>${statusText}</b></div><div class="kv"><span>資料</span><b>${s.quality}</b></div><div class="kv"><span>軌道</span><b>攻擊軌</b></div></div>
+        </div>
+        <div class="note">點擊同一列可收起。此頁只重整觀察池資訊顯示，不修改原始評分、象限、Ready／Watch、停損與篩選邏輯。</div>
+      </div>`;
+    dtr.appendChild(td);
+    tr.onclick=()=>{
+      const box=td.querySelector('.detail');
+      const open=box.classList.contains('open');
+      document.querySelectorAll('.detail.open').forEach(x=>x.classList.remove('open'));
+      if(!open)box.classList.add('open');
+    };
+    body.appendChild(tr);body.appendChild(dtr);
+  });
+}
+render();
+</script>
+</body>
+</html>

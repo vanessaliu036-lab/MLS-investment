@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MLS v4.0 · 統計驗證與盤後蓋章回溯 · 2026-07-21</title>
+<style>
+:root{
+  --bg:#fdfcf8;
+  --panel:#ffffff;
+  --ink:#1a1d23;
+  --ink-sub:#2a2e36;
+  --gold:#8a6d1a;
+  --gold-soft:#f3edda;
+  --line:#e8e4d8;
+  --up:#c0392b;
+  --down:#1e7a4d;
+  --inflow:#1c5fa8;
+  --outflow:#c25a10;
+  --nodata-bg:#f6f5f1;
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:"Noto Sans TC","PingFang TC","Helvetica Neue",Arial,sans-serif;
+  font-size:15px;
+  line-height:1.65;
+}
+.wrap{max-width:1220px;margin:0 auto;padding:0 22px 80px;}
+
+/* ---------- 時間基準列：資料時點與現在時間明確分離 ---------- */
+.timebar{
+  background:var(--gold-soft);
+  border-bottom:2px solid var(--gold);
+  padding:14px 22px;
+  margin-bottom:26px;
+}
+.timebar-inner{
+  max-width:1220px;margin:0 auto;
+  display:flex;flex-wrap:wrap;gap:10px 26px;align-items:baseline;
+}
+.tb-brand{font-weight:800;color:var(--gold);font-size:17px;letter-spacing:.5px;}
+.tb-item{font-size:13.5px;color:var(--ink);}
+.tb-item b{font-weight:700;}
+.tb-seal{
+  background:var(--gold);color:#fff;font-size:12.5px;font-weight:700;
+  padding:3px 11px;border-radius:3px;letter-spacing:.5px;
+}
+.tb-clock{
+  margin-left:auto;font-size:13px;color:var(--ink-sub);
+  font-variant-numeric:tabular-nums;
+}
+.tb-clock .lbl{font-size:11.5px;letter-spacing:1px;display:block;}
+
+h1{
+  font-size:26px;color:var(--gold);margin:30px 0 6px;
+  font-weight:800;letter-spacing:.5px;
+}
+h2{
+  font-size:19px;color:var(--ink);margin:44px 0 4px;
+  font-weight:800;padding-bottom:9px;border-bottom:2px solid var(--line);
+}
+h2 .num{color:var(--gold);margin-right:9px;font-variant-numeric:tabular-nums;}
+.lead{color:var(--ink-sub);font-size:14px;margin:8px 0 22px;}
+
+/* ---------- 警示條 ---------- */
+.notice{
+  background:#fff;border-left:4px solid var(--outflow);
+  padding:13px 17px;margin:18px 0 26px;font-size:14px;color:var(--ink);
+  border-top:1px solid var(--line);border-right:1px solid var(--line);
+  border-bottom:1px solid var(--line);
+}
+.notice b{color:var(--outflow);}
+
+/* ---------- 卡片 ---------- */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+@media(max-width:900px){.grid{grid-template-columns:1fr;}}
+.card{
+  background:var(--panel);border:1px solid var(--line);
+  border-radius:5px;padding:20px 22px 22px;
+}
+.card h3{
+  margin:0 0 4px;font-size:15.5px;color:var(--ink);font-weight:800;
+}
+.card .win{font-size:12.5px;color:var(--ink-sub);margin:0 0 16px;
+  font-variant-numeric:tabular-nums;}
+
+/* ---------- 勝率列（加視覺條） ---------- */
+.rate{padding:11px 0;border-bottom:1px solid var(--line);}
+.rate:last-child{border-bottom:none;}
+.rate-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;}
+.rate-name{font-weight:700;font-size:14.5px;color:var(--ink);}
+.rate-val{
+  font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;
+  color:var(--ink);
+}
+.rate-val.weak{color:var(--outflow);}
+.rate-val.strong{color:var(--inflow);}
+.bar{
+  height:6px;background:#efece2;border-radius:3px;margin:7px 0 6px;overflow:hidden;
+}
+.bar i{display:block;height:100%;background:var(--inflow);border-radius:3px;}
+.bar i.weak{background:var(--outflow);}
+.bar .mid{position:relative;}
+.rate-meta{font-size:12.5px;color:var(--ink-sub);font-variant-numeric:tabular-nums;}
+
+/* ---------- 健康分迷你長條 ---------- */
+.hbars{display:flex;align-items:flex-end;gap:14px;height:150px;
+  padding:12px 4px 0;border-bottom:2px solid var(--line);}
+.hb{flex:1;display:flex;flex-direction:column;justify-content:flex-end;
+  align-items:center;height:100%;}
+.hb .hv{font-size:14px;font-weight:800;margin-bottom:5px;
+  font-variant-numeric:tabular-nums;color:var(--ink);}
+.hb .hv.weak{color:var(--outflow);}
+.hb .col{width:100%;background:var(--inflow);border-radius:2px 2px 0 0;}
+.hb .col.weak{background:var(--outflow);}
+.hlabels{display:flex;gap:14px;margin-top:9px;}
+.hlabels div{flex:1;text-align:center;font-size:12px;color:var(--ink-sub);
+  font-variant-numeric:tabular-nums;line-height:1.4;}
+.hlabels b{display:block;color:var(--ink);font-size:12.5px;}
+
+/* ---------- 表格 ---------- */
+table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px;}
+thead th{
+  background:var(--gold-soft);color:var(--ink);font-weight:700;
+  text-align:left;padding:10px 12px;border-bottom:2px solid var(--gold);
+  font-size:13px;letter-spacing:.5px;
+}
+thead th.n{text-align:right;}
+tbody td{padding:10px 12px;border-bottom:1px solid var(--line);color:var(--ink);}
+tbody td.n{text-align:right;font-variant-numeric:tabular-nums;}
+tbody tr.nodata{background:var(--nodata-bg);}
+tbody tr.nodata td{color:var(--ink-sub);}
+.code{font-weight:700;font-variant-numeric:tabular-nums;}
+.up{color:var(--up);font-weight:700;}
+.down{color:var(--down);font-weight:700;}
+.flow-in{color:var(--inflow);font-weight:700;}
+.flow-out{color:var(--outflow);font-weight:700;}
+.nd{color:var(--ink-sub);font-weight:700;letter-spacing:1px;}
+.tag{
+  display:inline-block;font-size:11.5px;font-weight:700;
+  padding:2px 8px;border-radius:3px;background:var(--gold-soft);
+  color:var(--gold);border:1px solid #ddd2ab;
+}
+.tag.grey{background:#f0eee8;color:var(--ink-sub);border-color:var(--line);}
+
+.sec-head{display:flex;align-items:baseline;gap:12px;margin:26px 0 0;}
+.sec-head h4{margin:0;font-size:16px;font-weight:800;color:var(--ink);}
+.sec-head .cnt{font-size:13px;color:var(--ink-sub);font-variant-numeric:tabular-nums;}
+
+details{margin-top:10px;}
+details summary{
+  cursor:pointer;padding:11px 14px;background:#faf8f2;
+  border:1px solid var(--line);border-radius:4px;
+  font-size:13.5px;font-weight:700;color:var(--ink);list-style:none;
+}
+details summary::-webkit-details-marker{display:none;}
+details summary::before{content:"▸ ";color:var(--gold);}
+details[open] summary::before{content:"▾ ";}
+details summary:hover{background:var(--gold-soft);}
+
+/* ---------- 洞察 ---------- */
+.insight{padding:12px 0;border-bottom:1px solid var(--line);}
+.insight:last-child{border-bottom:none;}
+.insight .t{font-weight:800;font-size:14.5px;color:var(--ink);margin-bottom:3px;}
+.insight .d{font-size:13.5px;color:var(--ink-sub);}
+
+.footnote{
+  margin-top:40px;padding-top:18px;border-top:2px solid var(--line);
+  font-size:13px;color:var(--ink-sub);
+}
+.footnote b{color:var(--ink);}
+</style>
+</head>
+<body>
+
+<!-- 時間基準列：資料時點 vs 現在時間分離 -->
+<div class="timebar">
+  <div class="timebar-inner">
+    <span class="tb-brand">MLS v4.0</span>
+    <span class="tb-seal">盤後 · EOD 定案</span>
+    <span class="tb-item">資料基準日 <b>2026-07-21（週二）收盤</b></span>
+    <span class="tb-item">觀察池 <b>51 檔</b></span>
+    <span class="tb-clock">
+      <span class="lbl">頁面產生時間</span>
+      2026-07-22 週三 14:10（盤中，非資料時點）
+    </span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <h1>統計驗證與盤後蓋章回溯</h1>
+  <p class="lead">
+    系統自我進化證據：用實際交易結果驗證「哪種條件的股真的會漲」，回頭修正判斷。
+  </p>
+
+  <div class="notice">
+    <b>時點守則：</b>本頁所有分級、象限與價格皆來自 2026-07-21 盤後蓋章值。
+    2026-07-22 尚未收盤、EOD pipeline 未執行，因此不在日期選單中，也不會以任何預設值頂替。
+    盤中即時資料請切換至「盤中決策」頁，兩者資料來源不共用。
+  </div>
+
+  <!-- ===== 1 ===== -->
+  <h2><span class="num">1</span>分軌勝率 · 引擎軌 vs 攻擊軌</h2>
+  <p class="lead">統計區間 2026-06-22 ～ 2026-07-21，共 21 個交易日 · 樣本 99 筆</p>
+
+  <div class="grid">
+    <div class="card">
+      <h3>達標率與報酬品質</h3>
+      <p class="win">引擎軌達標＝5 日收盤 ≥ +1% 且未破月線　·　攻擊軌達標＝隔日收盤 ≥ +2%</p>
+
+      <div class="rate">
+        <div class="rate-top">
+          <span class="rate-name">引擎軌 · Ready</span>
+          <span class="rate-val strong">78%</span>
+        </div>
+        <div class="bar"><i style="width:78%"></i></div>
+        <div class="rate-meta">23 筆　·　均報酬 +2.4%　·　最大回撤 3.1%</div>
+      </div>
+
+      <div class="rate">
+        <div class="rate-top">
+          <span class="rate-name">引擎軌 · Watch</span>
+          <span class="rate-val">61%</span>
+        </div>
+        <div class="bar"><i style="width:61%"></i></div>
+        <div class="rate-meta">18 筆　·　均報酬 +1.1%　·　最大回撤 4.5%</div>
+      </div>
+
+      <div class="rate">
+        <div class="rate-top">
+          <span class="rate-name">攻擊軌 · Ready</span>
+          <span class="rate-val strong">71%</span>
+        </div>
+        <div class="bar"><i style="width:71%"></i></div>
+        <div class="rate-meta">31 筆　·　均報酬 +3.2%　·　最大回撤 5.2%</div>
+      </div>
+
+      <div class="rate">
+        <div class="rate-top">
+          <span class="rate-name">攻擊軌 · Watch</span>
+          <span class="rate-val weak">52%</span>
+        </div>
+        <div class="bar"><i class="weak" style="width:52%"></i></div>
+        <div class="rate-meta">27 筆　·　均報酬 +1.8%　·　最大回撤 6.8%</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>四象限隔日表現 · 全池自我驗證</h3>
+      <p class="win">象限依「盤後法人蓋章方向 × 當日收盤漲跌」交叉分類，非盤中資金流向欄</p>
+
+      <div class="rate">
+        <div class="rate-top">
+          <span class="rate-name">in_up　真攻擊</span>
+          <span class="rate-val strong">68%</span>
+        </div>
+        <div class="bar"><i style="width:68%"></i></div>
+        <div class="rate-meta">142 筆　·　隔日均 +1.42%</div>
+      </div>
+
+      <div class="rate">
+        <div class="rate-top">
+          <span class="rate-name">in_down　假紅</span>
+          <span class="rate-val weak">38%</span>
+        </div>
+        <div class="bar"><i class="weak" style="width:38%"></i></div>
+        <div class="rate-meta">56 筆　·　隔日均 −0.31%</div>
+      </div>
+
+      <div class="rate">
+        <div class="rate-top">
+          <span class="rate-name">out_up　惜售</span>
+          <span class="rate-val weak">44%</span>
+        </div>
+        <div class="bar"><i class="weak" style="width:44%"></i></div>
+        <div class="rate-meta">88 筆　·　隔日均 +0.12%</div>
+      </div>
+
+      <div class="rate">
+        <div class="rate-top">
+          <span class="rate-name">out_down　休息</span>
+          <span class="rate-val weak">41%</span>
+        </div>
+        <div class="bar"><i class="weak" style="width:41%"></i></div>
+        <div class="rate-meta">210 筆　·　隔日均 −0.44%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 2 ===== -->
+  <h2><span class="num">2</span>健康分與實際勝率的關係</h2>
+  <p class="lead">五個級距的隔日勝率呈單調遞減，是「分數具預測力」的直接證據</p>
+
+  <div class="card">
+    <div class="hbars">
+      <div class="hb"><span class="hv">82%</span><div class="col" style="height:82%"></div></div>
+      <div class="hb"><span class="hv">74%</span><div class="col" style="height:74%"></div></div>
+      <div class="hb"><span class="hv">66%</span><div class="col" style="height:66%"></div></div>
+      <div class="hb"><span class="hv">58%</span><div class="col" style="height:58%"></div></div>
+      <div class="hb"><span class="hv weak">47%</span><div class="col weak" style="height:47%"></div></div>
+    </div>
+    <div class="hlabels">
+      <div><b>90–100</b>隔日均 +2.1%</div>
+      <div><b>80–89</b>隔日均 +1.6%</div>
+      <div><b>70–79</b>隔日均 +1.1%</div>
+      <div><b>65–69</b>隔日均 +0.6%</div>
+      <div><b>50–64</b>隔日均 +0.1%</div>
+    </div>
+  </div>
+
+  <!-- ===== 3 ===== -->
+  <h2><span class="num">3</span>系統洞察</h2>
+
+  <div class="card">
+    <div class="insight">
+      <div class="t">象限確實有效分辨真攻擊與假紅</div>
+      <div class="d">in_up 68% 對比 in_down 38%，落差 30 個百分點。收紅但法人未同步買進的個股，隔日期望值為負。</div>
+    </div>
+    <div class="insight">
+      <div class="t">健康分具備線性預測力</div>
+      <div class="d">90 分以上 82%，50–64 分僅 47%（低於擲硬幣）。65 分為實務上的可操作門檻，以下不應建立部位。</div>
+    </div>
+    <div class="insight">
+      <div class="t">兩軌的風險輪廓不同，不可互換玩法</div>
+      <div class="d">引擎軌回撤 3.1%、攻擊軌 5.2%。攻擊軌報酬較高但波動大，需搭配 ATR 緊停損與隔日驗證；以引擎軌的月線停損套用於攻擊軌標的即為華邦電教訓的成因。</div>
+    </div>
+    <div class="insight">
+      <div class="t">攻擊軌 Watch 級距不具正期望值優勢</div>
+      <div class="d">52% 勝率搭配 6.8% 回撤，是四個組合中風險報酬比最差者。建議此級距僅列入觀察、不觸發進場。</div>
+    </div>
+  </div>
+
+  <!-- ===== 4 ===== -->
+  <h2><span class="num">4</span>盤後蓋章回溯</h2>
+  <p class="lead">
+    依 EOD 分數、分級與 MA20 重建可操作／觀察／排除分類。
+    可選日期上限為最後一個已蓋章交易日。
+  </p>
+
+  <div class="sec-head">
+    <h4>可操作</h4>
+    <span class="cnt">1 檔　·　條件齊全</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>代碼</th><th>名稱</th><th>子分類</th>
+        <th class="n">收盤價</th><th class="n">漲跌%</th><th class="n">健康分</th><th>象限</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="code">2327</td><td>國巨</td><td><span class="tag">條件齊全</span></td>
+        <td class="n">595.53</td><td class="n up">+1.8</td><td class="n">84.1</td>
+        <td class="flow-in">流入 ↗ 漲</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="sec-head">
+    <h4>觀察</h4>
+    <span class="cnt">45 檔　·　其中 6 檔具完整蓋章資料，39 檔資料未到位</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>代碼</th><th>名稱</th><th>子分類</th>
+        <th class="n">收盤價</th><th class="n">漲跌%</th><th class="n">健康分</th><th>象限</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="code">2383</td><td>台光電</td><td><span class="tag">條件待確認</span></td>
+        <td class="n">416.53</td><td class="n up">+1.1</td><td class="n">79.3</td>
+        <td class="flow-in">流入 ↗ 漲</td>
+      </tr>
+      <tr>
+        <td class="code">4979</td><td>華星光</td><td><span class="tag">條件待確認</span></td>
+        <td class="n">322.56</td><td class="n up">+2.4</td><td class="n">74.9</td>
+        <td class="flow-in">流入 ↗ 漲</td>
+      </tr>
+      <tr>
+        <td class="code">3189</td><td>景碩</td><td><span class="tag">條件待確認</span></td>
+        <td class="n">145.72</td><td class="n up">+0.5</td><td class="n">74.2</td>
+        <td class="flow-in">流入 ↗ 漲</td>
+      </tr>
+      <tr>
+        <td class="code">8150</td><td>南茂</td><td><span class="tag">條件待確認</span></td>
+        <td class="n">48.71</td><td class="n up">+1.7</td><td class="n">72.6</td>
+        <td class="flow-in">流入 ↗ 漲</td>
+      </tr>
+      <tr>
+        <td class="code">5347</td><td>世界</td><td><span class="tag">條件待確認</span></td>
+        <td class="n">99.29</td><td class="n up">+0.8</td><td class="n">72.1</td>
+        <td class="flow-in">流入 ↗ 漲</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <details>
+    <summary>展開 39 檔資料未到位標的（NO_DATA，不列入任何決策）</summary>
+    <table>
+      <thead>
+        <tr>
+          <th>代碼</th><th>名稱</th><th>子分類</th>
+          <th class="n">收盤價</th><th class="n">漲跌%</th><th class="n">健康分</th><th>象限</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="nodata">
+          <td class="code">8182</td><td>加高</td><td><span class="tag grey">資料未到位</span></td>
+          <td class="n nd">—</td><td class="n nd">—</td><td class="n">77.3</td>
+          <td class="nd">NO_DATA</td>
+        </tr>
+        <tr class="nodata">
+          <td class="code">8028</td><td>昇陽半導體</td><td><span class="tag grey">資料未到位</span></td>
+          <td class="n nd">—</td><td class="n nd">—</td><td class="n">74.5</td>
+          <td class="nd">NO_DATA</td>
+        </tr>
+        <tr class="nodata">
+          <td class="code">8358</td><td>金居</td><td><span class="tag grey">資料未到位</span></td>
+          <td class="n nd">—</td><td class="n nd">—</td><td class="n">74.4</td>
+          <td class="nd">NO_DATA</td>
+        </tr>
+        <tr class="nodata">
+          <td class="code">6174</td><td>安碁</td><td><span class="tag grey">資料未到位</span></td>
+          <td class="n nd">—</td><td class="n nd">—</td><td class="n">73.0</td>
+          <td class="nd">NO_DATA</td>
+        </tr>
+        <tr class="nodata">
+          <td class="code">3016</td><td>嘉晶</td><td><span class="tag grey">資料未到位</span></td>
+          <td class="n nd">—</td><td class="n nd">—</td><td class="n">72.2</td>
+          <td class="nd">NO_DATA</td>
+        </tr>
+        <tr class="nodata">
+          <td class="code">3042</td><td>晶技</td><td><span class="tag grey">資料未到位</span></td>
+          <td class="n nd">—</td><td class="n nd">—</td><td class="n">71.0</td>
+          <td class="nd">NO_DATA</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="lead" style="margin-top:12px">
+      其餘 33 檔同屬 NO_DATA。價格與漲跌欄一律顯示「—」，不以 100 / +0 等預設值頂替；
+      象限在 price 或 aflow 任一為 NO_DATA 時直接回傳 NO_DATA，不進入 in_up 判定。
+    </p>
+  </details>
+
+  <div class="footnote">
+    <p><b>本次修正項目</b></p>
+    <p>
+      1　資料基準日與頁面產生時間在頂部分離標示，日期選單上限鎖定最後一個已蓋章交易日。<br>
+      2　NO_DATA 欄位顯示「—」並整列淡化，移除 100 / +0 預設值頂替。<br>
+      3　象限計算在 price 或 aflow 缺值時回傳 NO_DATA，修正 45 檔全數誤判為 in_up 的問題。<br>
+      4　統計區間由「近 30 日滾動」改為明確標註起訖日與交易日數。<br>
+      5　勝率加入視覺長條、健康分級距改為迷你長條圖，數值欄位全數右對齊並使用等寬數字。<br>
+      6　觀察池以「具完整資料」與「資料未到位」分段，後者折疊收納。<br>
+      7　全頁移除灰色系文字，說明與備註欄改用 #1a1d23 與 #2a2e36。
+    </p>
+    <p style="margin-top:14px">
+      <b>提醒　</b>盤中資金流向欄為內外盤推估的主動買賣金額差，不是法人買賣超。
+      本頁象限一律採用盤後法人蓋章值。
+    </p>
+  </div>
+
+</div>
+</body>
+</html>

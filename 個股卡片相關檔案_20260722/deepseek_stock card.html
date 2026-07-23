@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>一魔醫藥 · 個股決策卡片</title>
+<style>
+:root{
+  --bg:#f4f5f8;--card:#fff;--line:#dfe4ec;--ink:#171c26;--sub:#6e788b;
+  --up:#e83e5b;--up-bg:#fff0f3;--down:#0c9b6b;--down-bg:#eaf8f2;
+  --amber:#b7770d;--amber-bg:#fff5df;--blue:#3f67d5;--blue-bg:#edf2ff;
+  --violet:#6758d8;--violet-bg:#f0edff;--dark:#172139
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif}
+body{padding:12px;display:flex;justify-content:center;align-items:center;min-height:100vh}
+.wrap{max-width:1480px;width:100%;margin:auto}
+
+.board{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 6px 18px rgba(22,33,57,.05)}
+.row{display:grid;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.cell{padding:10px 12px;border-right:1px solid var(--line);min-width:0}
+.cell:last-child{border-right:0}
+.r-top{grid-template-columns:1.1fr .7fr 1.45fr}
+.r-5{grid-template-columns:repeat(5,1fr)}
+.r-4{grid-template-columns:repeat(4,1fr)}
+.r-3{grid-template-columns:repeat(3,1fr)}
+.r-2{grid-template-columns:repeat(2,1fr)}
+.r-wide{grid-template-columns:1.2fr .8fr}
+.sec-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.sec-title h3{margin:0;font-size:15px;line-height:1.2}
+.src{font-size:10px;color:var(--sub);font-weight:800;white-space:nowrap}
+.header-main{display:flex;align-items:center;justify-content:space-between;gap:14px}
+.stock-id{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.stock-id .code{font-size:13px;color:var(--sub);font-weight:900}
+.stock-id .name{font-size:28px;font-weight:900;letter-spacing:-.03em}
+.tag{padding:4px 8px;border-radius:8px;background:#f0f2f6;color:#566176;font-size:11px;font-weight:900}
+.stars{font-size:18px;color:#d69c11;letter-spacing:1px;margin-top:3px}
+.quick4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:9px}
+.q{border:1px solid var(--line);border-radius:9px;padding:7px 8px;text-align:center;background:#fafbfc}
+.q label{display:block;font-size:10px;color:var(--sub);font-weight:900}
+.q b{display:block;font-size:15px;margin-top:2px}
+.ai-box{display:flex;align-items:center;justify-content:center;gap:12px;height:100%}
+.score{width:78px;height:78px;border-radius:18px;background:var(--amber-bg);color:var(--amber);display:grid;place-items:center;font-size:28px;font-weight:900}
+.ai-copy{text-align:center}.ai-copy h2{margin:0;font-size:21px}.ai-copy p{margin:3px 0 0;font-size:11px;color:var(--sub);line-height:1.45}
+.state{display:inline-block;margin-top:6px;padding:5px 9px;border-radius:8px;background:var(--amber-bg);color:var(--amber);font-size:11px;font-weight:900}
+.funnel{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;height:100%;align-content:center}
+.layer{border:1px solid var(--line);border-radius:9px;padding:8px;text-align:center}
+.layer .k{font-size:10px;color:var(--sub);font-weight:900}.layer .v{font-size:13px;font-weight:900;margin-top:2px}.layer .d{font-size:9px;color:var(--sub);margin-top:2px}
+.layer.pass{border-color:var(--down);background:var(--down-bg)}.layer.pass .v{color:var(--down)}
+.layer.fail{border-color:var(--up);background:var(--up-bg)}.layer.fail .v{color:var(--up)}
+.layer.warn{border-color:var(--amber);background:var(--amber-bg)}.layer.warn .v{color:var(--amber)}
+
+/* 靜態因子 */
+.factor{padding:12px 8px 10px;text-align:center;border-right:1px solid var(--line)}
+.factor:last-child{border-right:0}
+.factor .fhead{display:flex;justify-content:center;gap:8px;align-items:baseline;font-size:12px;font-weight:900}
+.factor .num{font-size:26px;font-weight:900;margin-top:2px;color:var(--blue)}
+.factor .max-label{font-size:9px;color:var(--sub);font-weight:800;display:block;margin-top:2px}
+.factor .bar{height:6px;background:#edf0f5;border-radius:99px;overflow:hidden;margin:6px auto 0;max-width:130px}
+.factor .bar i{display:block;height:100%;background:var(--blue)}
+.factor p{margin:4px auto 0;font-size:9px;line-height:1.3;color:var(--sub)}
+
+.kvs{display:grid;grid-template-columns:1fr 1fr;column-gap:14px}
+.kv{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:29px;padding:4px 0;border-bottom:1px dashed #edf0f4;font-size:12px}
+.kv span{color:var(--sub)}.kv b{text-align:right}
+.up{color:var(--up)}.down{color:var(--down)}
+.compare{display:grid;grid-template-columns:1.15fr repeat(3,1fr);border:1px solid var(--line);border-radius:9px;overflow:hidden;font-size:11px}
+.compare div{padding:7px 6px;text-align:center;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.compare div:nth-child(4n){border-right:0}.compare .h{background:#f8f9fb;color:var(--sub);font-weight:900}
+.modules{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.mod{border:1px solid var(--line);border-radius:9px;padding:8px;text-align:center}
+.mod .k{font-size:10px;color:var(--sub);font-weight:900}.mod .v{font-size:12px;font-weight:900;margin-top:3px}
+.good{background:var(--down-bg);color:var(--down)}.bad{background:var(--up-bg);color:var(--up)}.mid{background:var(--amber-bg);color:var(--amber)}
+.timeline{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap}
+.tl{padding:5px 8px;border-radius:8px;background:var(--blue-bg);color:var(--blue);font-size:10px;font-weight:900}
+.risks{display:flex;justify-content:flex-start;gap:6px;flex-wrap:wrap;min-height:32px;padding:2px 0}
+.risk{padding:6px 9px;border-radius:8px;font-size:10px;font-weight:900;white-space:nowrap}
+.risk.hard{background:var(--up-bg);color:var(--up)}
+.risk.soft{background:var(--amber-bg);color:var(--amber)}
+.plan{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
+.plan .p{border:1px solid var(--line);border-radius:10px;padding:10px;text-align:center}
+.plan label{display:block;color:var(--sub);font-size:11px;font-weight:900}
+.plan b{display:block;font-size:20px;margin-top:3px}
+.summary{width:100%;background:var(--violet-bg);border-left:4px solid var(--violet);padding:11px 13px;font-size:13px;line-height:1.6;margin:0}
+.footer{padding:9px 12px;font-size:10px;color:var(--sub);text-align:center;background:#fafbfc}
+
+@media(max-width:980px){
+  .r-top,.r-5,.r-4,.r-3,.r-2,.r-wide{grid-template-columns:1fr 1fr}
+  .r-top .cell:last-child{grid-column:1/-1}
+}
+@media(max-width:640px){
+  body{padding:0}.board{border-radius:0;border-left:0;border-right:0}
+  .r-top,.r-5,.r-4,.r-3,.r-2,.r-wide{grid-template-columns:1fr}
+  .cell{border-right:0!important}
+  .quick4,.funnel,.modules,.plan{grid-template-columns:1fr 1fr}
+  .kvs{grid-template-columns:1fr}
+  .factor{border-right:0;border-bottom:1px solid var(--line)}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="board">
+
+<!-- 第一列：標題＋快訊＋漏斗 -->
+<div class="row r-top">
+  <section class="cell">
+    <div class="header-main">
+      <div>
+        <div class="stock-id"><span class="code">6472</span><span class="name">一魔醫藥</span><span class="tag">生技醫療</span><span class="tag">攻擊軌</span></div>
+        <div class="stars">★★★★★</div>
+      </div>
+    </div>
+    <div class="quick4">
+      <div class="q"><label>今日</label><b class="up">+6.32%</b></div>
+      <div class="q"><label>法人20日</label><b class="up">+2,180張</b></div>
+      <div class="q"><label>vs族群</label><b class="up">+2.11%</b></div>
+      <div class="q"><label>象限</label><b class="up">流入↗漲</b></div>
+    </div>
+  </section>
+  <section class="cell">
+    <div class="ai-box">
+      <div class="score">66</div>
+      <div class="ai-copy"><h2>Watch</h2><p>五因子加權<br>信心 76%</p><span class="state">列觀察</span></div>
+    </div>
+  </section>
+  <section class="cell">
+    <div class="funnel">
+      <div class="layer pass"><div class="k">L1 根本過濾</div><div class="v">通過</div><div class="d">剔除假紅/休息</div></div>
+      <div class="layer pass"><div class="k">L2 計分篩選</div><div class="v">2 單位</div><div class="d">健康分門檻</div></div>
+      <div class="layer pass"><div class="k">L3 象限確認</div><div class="v">Ready ✓</div><div class="d">僅 in_up 開火</div></div>
+    </div>
+  </section>
+</div>
+
+<!-- 五項因子（純靜態，無滑塊） -->
+<div class="row r-5">
+  <div class="cell factor">
+    <div class="fhead"><span>趨勢</span><span>20 / 25</span></div>
+    <div class="num">20</div>
+    <div class="bar"><i style="width:80%"></i></div>
+    <span class="max-label">均線排列</span>
+    <p>多頭排列，趨勢強勁</p>
+  </div>
+  <div class="cell factor">
+    <div class="fhead"><span>量能</span><span>12 / 25</span></div>
+    <div class="num">12</div>
+    <div class="bar"><i style="width:48%"></i></div>
+    <span class="max-label">量價配合</span>
+    <p>量比溫和，待增溫</p>
+  </div>
+  <div class="cell factor">
+    <div class="fhead"><span>相對強度</span><span>15 / 20</span></div>
+    <div class="num">15</div>
+    <div class="bar"><i style="width:75%"></i></div>
+    <span class="max-label">vs 族群/大盤</span>
+    <p>明顯領先大盤</p>
+  </div>
+  <div class="cell factor">
+    <div class="fhead"><span>籌碼</span><span>14 / 20</span></div>
+    <div class="num">14</div>
+    <div class="bar"><i style="width:70%"></i></div>
+    <span class="max-label">法人/大戶</span>
+    <p>外資連買，大戶增持</p>
+  </div>
+  <div class="cell factor">
+    <div class="fhead"><span>族群</span><span>5 / 10</span></div>
+    <div class="num">5</div>
+    <div class="bar"><i style="width:50%"></i></div>
+    <span class="max-label">族群主攻</span>
+    <p>生技為次主流</p>
+  </div>
+</div>
+
+<!-- 技術／資金／族群 -->
+<div class="row r-3">
+  <section class="cell">
+    <div class="sec-title"><h3>技術面</h3><span class="src">K線</span></div>
+    <div class="kvs">
+      <div class="kv"><span>收盤 / 昨收</span><b>186.5 / 175.2</b></div><div class="kv"><span>當日高 / 低</span><b>189.0 / 174.5</b></div>
+      <div class="kv"><span>MA20</span><b>172.3</b></div><div class="kv"><span>站上 MA20</span><b class="up">✓ 站上</b></div>
+      <div class="kv"><span>乖離</span><b class="up">+8.2%</b></div><div class="kv"><span>觸發價</span><b>178.5</b></div>
+    </div>
+  </section>
+  <section class="cell">
+    <div class="sec-title"><h3>資金面</h3><span class="src">TWSE</span></div>
+    <div class="kvs">
+      <div class="kv"><span>主動買賣差</span><b>0.312</b></div><div class="kv"><span>象限</span><b class="up">流入↗漲</b></div>
+      <div class="kv"><span>法人連續</span><b class="up">+5日</b></div><div class="kv"><span>量比</span><b>1.15</b></div>
+      <div class="kv"><span>BS</span><b>55%</b></div><div class="kv"><span>主動淨流</span><b class="up">+2.1%</b></div>
+    </div>
+  </section>
+  <section class="cell">
+    <div class="sec-title"><h3>族群面 · 相對強弱</h3><span class="src">成分股</span></div>
+    <div class="compare">
+      <div class="h">項目</div><div class="h">個股</div><div class="h">族群</div><div class="h">大盤</div>
+      <div>漲跌幅</div><div class="up">+6.32%</div><div class="up">+4.21%</div><div class="up">+1.82%</div>
+      <div>相對差</div><div class="up">+2.11pp</div><div>—</div><div class="up">+4.50pp</div>
+    </div>
+  </section>
+</div>
+
+<!-- 籌碼／承接／三角 -->
+<div class="row r-4">
+  <section class="cell">
+    <div class="sec-title"><h3>籌碼 · 5日</h3><span class="src">近5日</span></div>
+    <div class="kvs">
+      <div class="kv"><span>三大法人淨</span><b class="up">+1,892張</b></div><div class="kv"><span>外資</span><b class="up">+1,450 / +5日</b></div>
+      <div class="kv"><span>投信</span><b class="up">+320 / +3日</b></div><div class="kv"><span>自營</span><b class="down">+122 / +2日</b></div>
+      <div class="kv"><span>融資5日</span><b class="up">+88張</b></div><div class="kv"><span>大戶集保</span><b>56.2%</b></div>
+    </div>
+  </section>
+  <section class="cell">
+    <div class="sec-title"><h3>籌碼 · 20日</h3><span class="src">近20日</span></div>
+    <div class="kvs">
+      <div class="kv"><span>法人淨</span><b class="up">+2,180張</b></div><div class="kv"><span>外資</span><b class="up">+1,800張</b></div>
+      <div class="kv"><span>投信</span><b class="up">+420張</b></div><div class="kv"><span>自營</span><b class="down">-40張</b></div>
+      <div class="kv"><span>外資方向</span><b class="up">連買</b></div><div class="kv"><span>主要承接</span><b>外資</b></div>
+    </div>
+  </section>
+  <section class="cell">
+    <div class="sec-title"><h3>承接品質</h3><span class="src">第五模組</span></div>
+    <div class="modules">
+      <div class="mod good"><div class="k">外資</div><div class="v">✓ 吸收</div></div>
+      <div class="mod good"><div class="k">融資</div><div class="v">✓ 健康</div></div>
+      <div class="mod good"><div class="k">大戶</div><div class="v">✓ 進場</div></div>
+      <div class="mod mid"><div class="k">股價</div><div class="v">◉ 整理</div></div>
+      <div class="mod mid"><div class="k">總評</div><div class="v">★★★★☆</div></div>
+    </div>
+  </section>
+  <section class="cell">
+    <div class="sec-title"><h3>三角交叉驗證</h3><span class="src">偏多 · 強</span></div>
+    <div class="modules">
+      <div class="mod good"><div class="k">B</div><div class="v">站均價</div></div>
+      <div class="mod good"><div class="k">D</div><div class="v">強族群</div></div>
+      <div class="mod good"><div class="k">A</div><div class="v">淨流入</div></div>
+      <div class="mod mid"><div class="k">C</div><div class="v">中性</div></div>
+      <div class="mod good"><div class="k">E</div><div class="v">共振</div></div>
+    </div>
+  </section>
+</div>
+
+<!-- 四層決策 + 時序 -->
+<div class="row r-wide">
+  <section class="cell">
+    <div class="sec-title"><h3>四層決策狀態</h3><span class="src">SOP 運算結果</span></div>
+    <div class="modules">
+      <div class="mod good"><div class="k">L1 根本過濾</div><div class="v">✓ 通過</div></div>
+      <div class="mod good"><div class="k">L2 計分</div><div class="v">2 單位</div></div>
+      <div class="mod good"><div class="k">L3 象限</div><div class="v">✓ Ready</div></div>
+      <div class="mod good"><div class="k">L4 賽道</div><div class="v">攻擊軌</div></div>
+      <div class="mod mid"><div class="k">總評</div><div class="v">★★★☆☆</div></div>
+    </div>
+  </section>
+  <section class="cell">
+    <div class="sec-title"><h3>健康變化 · 象限時序</h3><span class="src">health_timeseries</span></div>
+    <div class="timeline">
+      <span class="tl">流入↗跌</span><span>→</span><span class="tl" style="background:var(--down-bg);color:var(--down)">流入↗漲</span><span class="tl" style="background:var(--down-bg);color:var(--down)">突破</span>
+    </div>
+    <div class="timeline" style="margin-top:7px">
+      <span class="tl" style="background:var(--down-bg);color:var(--down)">↗漲</span>
+      <span class="tl" style="background:var(--down-bg);color:var(--down)">↗漲</span>
+      <span class="tl" style="background:var(--down-bg);color:var(--down)">↗漲</span>
+      <span class="tl" style="background:var(--down-bg);color:var(--down)">↗漲</span>
+      <span class="tl" style="background:var(--down-bg);color:var(--down)">↗漲</span>
+    </div>
+  </section>
+</div>
+
+<!-- 風險 + 交易計畫 -->
+<div class="row r-2">
+  <section class="cell">
+    <div class="sec-title"><h3>風險檢查</h3><span class="src">硬風險 ● ／ 軟風險 ○</span></div>
+    <div class="risks">
+      <span class="risk soft">○ L1通過，資金粗篩合格</span>
+      <span class="risk soft">○ 真攻擊象限，勝率68%</span>
+      <span class="risk soft">○ 健康分中等(66)，等待催化</span>
+      <span class="risk soft">○ 站上MA20，乖離+8.2%</span>
+      <span class="risk soft">○ 乖離略大，潛在拉回</span>
+      <span class="risk soft">○ 量能溫和放大</span>
+      <span class="risk soft">○ 法人連買，但融資增加</span>
+      <span class="risk soft">○ 族群輪動風險</span>
+      <span class="risk soft">○ 大盤系統風險</span>
+    </div>
+  </section>
+  <section class="cell">
+    <div class="sec-title"><h3>交易計畫 · 攻擊軌</h3><span class="src">動態停損/目標</span></div>
+    <div class="plan">
+      <div class="p"><label>觸發價</label><b>178.5</b></div>
+      <div class="p"><label>停損</label><b class="down">-5.2%</b></div>
+      <div class="p"><label>目標價</label><b class="up">190.2</b></div>
+      <div class="p"><label>量能條件</label><b>需 > 昨量</b></div>
+      <div class="p"><label>操作</label><b>等待突破</b></div>
+    </div>
+  </section>
+</div>
+
+<!-- AI 勝率 + 證據 + 為何上漲 -->
+<div class="row r-3">
+  <section class="cell">
+    <div class="sec-title"><h3>AI 勝率 · 滾動</h3><span class="src">模型驗證</span></div>
+    <div class="kvs">
+      <div class="kv"><span>隔日勝率</span><b>71%</b></div><div class="kv"><span>五日勝率</span><b>68%</b></div>
+      <div class="kv"><span>健康分</span><b>66</b></div><div class="kv"><span>信心</span><b>76%</b></div>
+      <div class="kv"><span>入選理由</span><b>共振+法人</b></div><div class="kv"><span>最終狀態</span><b>Watch</b></div>
+    </div>
+  </section>
+  <section class="cell">
+    <div class="sec-title"><h3>關鍵證據</h3><span class="src">完整列示</span></div>
+    <div class="kvs">
+      <div class="kv"><span>法人20日</span><b>+2,180張</b></div><div class="kv"><span>外資20日</span><b>+1,800張</b></div>
+      <div class="kv"><span>投信20日</span><b>+420張</b></div><div class="kv"><span>5日承接</span><b>外資 +1,450</b></div>
+      <div class="kv"><span>融資5日</span><b>+88張</b></div><div class="kv"><span>相對族群</span><b>+2.11%</b></div>
+    </div>
+  </section>
+  <section class="cell">
+    <div class="sec-title"><h3>為何上漲</h3><span class="src">AI判讀</span></div>
+    <div class="summary">法人連續買超，外資主導盤勢，大戶持股提升。股價站穩月線且族群轉強，量能溫和放大，屬健康攻擊格局。</div>
+  </section>
+</div>
+
+<!-- AI 總結 -->
+<div class="row">
+  <section class="cell">
+    <div class="sec-title"><h3>AI 分析總結</h3><span class="src">五因子綜合</span></div>
+    <div class="summary">一魔醫藥目前處於「真攻擊」象限，健康分 66，承接品質 4★。綜合研判列為 Watch，部分共振／外資主導。操作建議：列觀察，等待籌碼蓋章或訊號成立再動作，不預設進場。</div>
+  </section>
+</div>
+
+<div class="footer">純靜態展示 · 所有數據固定 · 無任何可操作元件</div>
+
+</div>
+</div>
+</body>
+</html>

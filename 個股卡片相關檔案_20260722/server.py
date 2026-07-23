@@ -880,6 +880,60 @@ def home():
     return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
 
 
+# ══════════════════════════════════════════════════════════
+# 個股卡片 / 每日報告 / 51 檔觀察池 — extras 模組接的路由
+# ══════════════════════════════════════════════════════════
+import extras as _extras  # noqa: E402
+
+
+@app.get("/card")
+def stock_card_page():
+    """個股決策卡片 UI（依 query ?code=xxxx 顯示單檔）。"""
+    html = Path(__file__).with_name("deepseek_stock card.html").read_text(encoding="utf-8")
+    return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
+
+
+@app.get("/api/stock/{code}")
+def api_stock(code: str):
+    """單檔個股決策卡 — 接 stock_card.build_card() + VPS Shioaji snap。"""
+    try:
+        return JSONResponse(_extras.build_stock_card(code))
+    except Exception as exc:
+        return JSONResponse({"ok": False, "code": code, "error": str(exc)}, status_code=500)
+
+
+@app.get("/report")
+def report_page():
+    """每日報告 UI（盤後驗證摘要）。"""
+    html = Path(__file__).with_name("每日報告 0722.html").read_text(encoding="utf-8")
+    return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
+
+
+@app.get("/api/report")
+def api_report():
+    """每日 / 昨日盤後報告資料。"""
+    try:
+        return JSONResponse(_extras.build_report())
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+@app.get("/watchpool")
+def watchpool_page():
+    """51 檔觀察池 UI。"""
+    html = Path(__file__).with_name("nexora_watchpool_51_standalone (1).html").read_text(encoding="utf-8")
+    return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
+
+
+@app.get("/api/watchpool")
+def api_watchpool():
+    """51 檔觀察池全集 — 從 VPS Shioaji 訂閱 buffer 抓即時報價。"""
+    try:
+        return JSONResponse(_extras.build_watchpool())
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
 if __name__ == "__main__":
     db.init()
     # 行情排程獨立程序執行；Shioaji／資料抓取即使阻塞，也不能卡住 HTTP。

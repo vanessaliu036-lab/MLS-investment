@@ -27,8 +27,8 @@ chips_cache.json
 *.bak
 *.bak.*
 
-# 備用 HTML 工具（不入版、不影響 deploy）
-deepseek_stock card.html
-intraday_decision.html
-nexora_watchpool_51_standalone (1).html
-每日報告 0722.html
+# 備用 HTML 工具（只鎖根目錄的舊版、不鎖 0722 內新版）
+/deepseek_stock card.html
+/intraday_decision.html
+/nexora_watchpool_51_standalone (1).html
+/每日報告 0722.html
