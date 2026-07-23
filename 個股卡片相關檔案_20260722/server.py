@@ -450,7 +450,7 @@ def scheduler_loop():
 # ══════════════════════════════════════════════════════
 app = FastAPI(title="MLS Standard")
 # 盤中隔離測試頁：只讀既有 broker buffer，不另開行情連線。
-import sys as _sys, pathlib as _pl
+import sys as _sys, pathlib as _pl, os as _os
 _INTRADAY_ROOT = _pl.Path(__file__).resolve().parent.parent
 if str(_INTRADAY_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_INTRADAY_ROOT))
@@ -889,7 +889,9 @@ import extras as _extras  # noqa: E402
 @app.get("/card")
 def stock_card_page():
     """個股決策卡片 UI（依 query ?code=xxxx 顯示單檔）。"""
-    html = Path(__file__).with_name("deepseek_stock card.html").read_text(encoding="utf-8")
+    p = os.path.join(os.path.dirname(__file__), "deepseek_stock card.html")
+    with open(p, "r", encoding="utf-8") as f:
+        html = f.read()
     return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
 
 
@@ -902,11 +904,18 @@ def api_stock(code: str):
         return JSONResponse({"ok": False, "code": code, "error": str(exc)}, status_code=500)
 
 
+def _read_html(filename: str) -> str:
+    """中文檔名安全的 HTML 讀取 — Path.with_name 在某些 locale 會壞。"""
+    p = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), filename)
+    with open(p, "r", encoding="utf-8") as f:
+        return f.read()
+
+
 @app.get("/report")
 def report_page():
     """每日報告 UI（盤後驗證摘要）。"""
-    html = Path(__file__).with_name("每日報告 0722.html").read_text(encoding="utf-8")
-    return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
+    return HTMLResponse(_read_html("每日報告.html"),
+                        headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @app.get("/api/report")
@@ -921,8 +930,8 @@ def api_report():
 @app.get("/watchpool")
 def watchpool_page():
     """51 檔觀察池 UI。"""
-    html = Path(__file__).with_name("nexora_watchpool_51_standalone (1).html").read_text(encoding="utf-8")
-    return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
+    return HTMLResponse(_read_html("nexora_watchpool_51_standalone.html"),
+                        headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @app.get("/api/watchpool")
