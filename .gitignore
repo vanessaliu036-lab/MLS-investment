@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+
+# Python
+.venv/
+venv/
+*.egg-info/
+
+# Secrets
+.env
+.env.local
+
+# Logs
+*.log
+
+# DB
+*.db
+mls.db
+mls.db-journal
+intraday_eod.db
+chips_cache.json
+
+# Backups
+*.bak
+*.bak.*
