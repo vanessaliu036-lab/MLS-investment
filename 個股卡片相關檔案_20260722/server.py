@@ -138,9 +138,18 @@ def _eod_state_latest():
     if st.get("stocks") or st.get("sectors"):
         return st
     try:
+        latest = None
         with db._lock, db._conn() as c:
-            r = c.execute("SELECT MAX(trade_date) d FROM health_daily").fetchone()
-            latest = r["d"] if r else None
+            # health_daily 的寫入模組不存在，實際落地的是
+            # sector_snapshot(盤中每5分)與 sector_daily(盤後)。逐表找最近日。
+            for table in ("sector_snapshot", "sector_daily", "health_daily"):
+                try:
+                    r = c.execute(
+                        f"SELECT MAX(trade_date) d FROM {table}").fetchone()
+                    if r and r["d"]:
+                        latest = max(latest, r["d"]) if latest else r["d"]
+                except Exception:
+                    continue
         if latest:
             st2 = eod_state.build(date=latest)
             if st2.get("stocks") or st2.get("sectors"):
@@ -497,6 +506,16 @@ def scheduler_loop():
                             _p = json.loads(INTRADAY_SNAPSHOT_PATH.read_text(encoding="utf-8"))
                             if _p.get("trade_date") == today:
                                 snaps = ((_p.get("result") or {}).get("rows")) or []
+                        if not snaps:
+                            # 冷啟動最後一層:Shioaji 官方 snapshot 收盤後
+                            # 仍回當日收盤值(51 檔、不佔訂閱額度)。
+                            try:
+                                import broker as _bk
+                                snaps = _bk.batch_snapshots(
+                                    [str(c) for c in C.UNIVERSE])
+                                print(f"[server] 兜底改用官方收盤 snapshot {len(snaps)} 檔")
+                            except Exception as e:
+                                print(f"[server] 官方 snapshot 兜底失敗:{e}")
                         for s in snaps:
                             if not s.get("sector"):
                                 _sec = C.SECTOR_MAP.get(str(s.get("code")))
