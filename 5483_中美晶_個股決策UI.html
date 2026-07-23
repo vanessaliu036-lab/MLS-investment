@@ -603,10 +603,12 @@ function goHome(){
   const E=s=>String(s??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const sign=(x,d=2)=>x==null?'—':`${Number(x)>0?'+':''}${Number(x).toFixed(d)}`;
   try{
-    const [state,dcard]=await Promise.all([
+    const [state,dcard,scard]=await Promise.all([
       fetch(API+'/api/state',{cache:'no-store'}).then(r=>r.json()).catch(()=>({})),
-      fetch(API+'/api/dec/card?code='+encodeURIComponent(code),{cache:'no-store'}).then(r=>r.json()).catch(()=>({}))
+      fetch(API+'/api/dec/card?code='+encodeURIComponent(code),{cache:'no-store'}).then(r=>r.json()).catch(()=>({})),
+      fetch(API+'/api/stock/'+encodeURIComponent(code),{cache:'no-store'}).then(r=>r.json()).catch(()=>({}))
     ]);
+    const f5b=(scard.card||{}).factors5||{};const pm=scard.post_market||{};
     const row=(state.stocks||[]).find(x=>String(x.code)===String(code))||{};
     const sec=(state.sectors||[]).find(x=>x.name===row.sector)||{};
     const market=state.market||{};
@@ -616,22 +618,28 @@ function goHome(){
     const pend=Object.keys(F).length===0;
     // 比較表
     const cmp=document.querySelector('#f5-compare .rows');
-    if(cmp)cmp.innerHTML=pend?'<div class="muted">盤中引擎資料未接入（盤後 STATE 無此欄）；明日盤中自動顯示。</div>':`
+    const cChg=row.change_rate??pm.change_rate,cSec=sec.pct??pm.sector_avg,cMkt=market.index_pct??pm.market_pct,cVr=row.volume_ratio??pm.volume_ratio;
+    const cRel=(cChg!=null&&cSec!=null)?Number(cChg)-Number(cSec):null;
+    if(cmp)cmp.innerHTML=(cChg==null)?'<div class="muted">最近交易日官方資料回補中…</div>':`
       <table class="compare-table"><thead><tr><th>項目</th><th>個股</th><th>族群</th><th>大盤</th></tr></thead><tbody>
-      <tr><td>漲跌幅</td><td>${sign(row.change_rate)}%</td><td>${sign(sec.pct)}%</td><td>${sign(market.index_pct)}%</td></tr>
-      <tr><td>量能(量比)</td><td>${row.volume_ratio??'—'}</td><td>${sign(sec.flow_score,1)}</td><td>—</td></tr>
-      <tr><td>相對強度</td><td>${rel==null?'—':sign(rel)+' pp'}</td><td>vs 族群</td><td>vs 大盤 ${sign(row.change_rate)}pp</td></tr>
+      <tr><td>漲跌幅</td><td>${sign(cChg)}%</td><td>${sign(cSec)}%</td><td>${sign(cMkt)}%</td></tr>
+      <tr><td>量能(量比)</td><td>${cVr??'—'}</td><td>${sec.flow_score!=null?sign(sec.flow_score,1):'—'}</td><td>—</td></tr>
+      <tr><td>相對強度</td><td>${cRel==null?'—':sign(cRel)+' pp'}</td><td>vs 族群</td><td>vs 大盤 ${cMkt==null||cChg==null?'—':sign(cChg-cMkt)+'pp'}</td></tr>
       </tbody></table><div class="muted" style="margin-top:6px">資料時間 ${E(stamp)}</div>`;
     // 五大因子 + 小字說明
     const DEF=[['trend','趨勢',25],['volume','量能',25],['rs','相對強度',20],['chip','籌碼',20],['sector','族群',10]];
+    const useEngine=Object.keys(F).length>0;
+    const FF=useEngine?F:(f5b.factors||{}),NN=useEngine?N:(f5b.notes||{});
+    const srcLabel=useEngine?'盤中決策引擎(每輪重算)':(f5b.source||'最近交易日官方收盤＋FinMind 盤後籌碼');
+    const srcTag=document.querySelector('#factors5 .source');if(srcTag)srcTag.textContent=srcLabel;
     const fbox=document.getElementById('f5-factors');
     if(fbox)fbox.innerHTML=DEF.map(([k,lab,max])=>{
-      const v=F[k],note=N[k];
+      const v=FF[k],note=NN[k];
       const w=v==null?0:Math.min(100,Number(v)/max*100);
       return `<div class="card"><div class="rows"><div class="row"><div class="k">${lab}</div><div class="v">${v??'—'} / ${max}</div></div></div>
         <div style="height:6px;background:#edf0f5;border-radius:9px;overflow:hidden;margin:8px 0"><i style="display:block;height:100%;width:${w}%;background:#6366f1"></i></div>
-        <div class="muted" style="font-size:12px;line-height:1.6">${E(note||(pend?'等待盤中引擎計分':'—'))}</div></div>`;
-    }).join('')+`<div class="card"><div class="rows"><div class="row"><div class="k">AI 總分</div><div class="v">${row.ai_score??'—'}</div></div></div><div class="muted" style="font-size:12px">五大因子加總（滿分 100），盤中每輪重算。</div></div>`;
+        <div class="muted" style="font-size:12px;line-height:1.6">${E(note||'官方資料回補中')}</div></div>`;
+    }).join('')+`<div class="card"><div class="rows"><div class="row"><div class="k">AI 總分</div><div class="v">${row.ai_score??f5b.score??'—'}</div></div></div><div class="muted" style="font-size:12px">五大因子加總（滿分 100）；${E(srcLabel)}。</div></div>`;
     // 最終結論
     const act=row.action||'obs';
     const LBL={buy:'進場訊號',watch:'高潛力觀察',sell:'出場/風險',obs:'僅觀察'};
@@ -665,3 +673,44 @@ function goHome(){
   }catch(e){console.warn('factors5',e);}
 })();
 </script>
+
+<style>
+/* ══ MLS 卡片頁字級規範(檔尾統一,消除忽大忽小) ══ */
+.identity-row .name,.brand{font-size:20px!important}
+.identity-row .code{font-size:14px!important}
+.stars{font-size:18px!important}
+.quick .v{font-size:18px!important}.quick .k{font-size:11px!important}
+.decision-title{font-size:22px!important}.decision-sub{font-size:12px!important}
+.factor-top{font-size:12px!important}.factor-score{font-size:22px!important}
+.section-title{font-size:16px!important}.source{font-size:11px!important}
+.rows .k{font-size:12px!important}.rows .v{font-size:13px!important}
+.card{font-size:13px}
+.ai-title{font-size:18px!important}
+.gate .big,.funnel-step .big{font-size:15px!important}
+.evidence-card .v{font-size:16px!important}.evidence-card .k{font-size:11px!important}
+.notice{font-size:12px!important;line-height:1.7}
+table{font-size:13px}
+h1,h2,h3{line-height:1.3}
+</style>
+<style>
+/* ══ MLS 卡片頁密度規範:間距減半＋寬屏雙欄,兩屏內看完 ══ */
+.section{margin-bottom:10px!important}
+.section-head{padding:10px 14px!important}
+.section-body{padding:10px 14px!important}
+.card{padding:10px!important}
+.rows .row{padding:5px 0!important}
+.hero{padding:14px 16px!important}
+.hero .stars{margin:4px 0!important}
+.quick{padding:8px 10px!important}
+.data-grid{gap:8px!important}
+.notice{margin-top:8px!important;padding:8px 10px!important}
+#f5-factors{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+#f5-conclusion,#f5-discipline,#f5-triangle,#f5-doc{margin-top:8px!important}
+@media(min-width:1100px){
+  #stock5483{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
+  #stock5483>.hero,#stock5483>.toolbar,#stock5483>#factors5{grid-column:1/-1}
+  #f5-conclusion,#f5-discipline{display:inline-block;width:calc(50% - 6px);vertical-align:top}
+  #f5-triangle,#f5-doc{display:inline-block;width:calc(50% - 6px);vertical-align:top}
+}
+.toolbar{margin:8px 0!important;padding:6px 0!important}
+</style>

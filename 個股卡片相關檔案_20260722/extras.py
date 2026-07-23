@@ -76,12 +76,19 @@ def _decision_factors(card: Dict[str, Any], live: Dict[str, Any]) -> Dict[str, A
         factors["net_active"] = {"points": round(22 * max(0, min(1, float(active) / 50000)), 1), "max": 22, "status": "已接入"}
     else:
         factors["net_active"] = {"points": None, "max": 22, "status": "缺資料"}
-    evidence = [buy_pct, foreign20, margin5, big_delta]
-    if all(v is not None for v in evidence):
-        votes = sum((buy_pct >= 50, foreign20 > 0, margin5 <= 0, big_delta >= 0))
-        absorption = round(votes / 4 * 100, 1)
+    ev_defs = [("主動買盤佔比", buy_pct, lambda v: v >= 50),
+               ("法人20日", foreign20, lambda v: v > 0),
+               ("融資5日", margin5, lambda v: v <= 0),
+               ("大戶變化", big_delta, lambda v: v >= 0)]
+    present = [(name, val, ok) for name, val, ok in ev_defs if val is not None]
+    if len(present) >= 2:
+        votes = sum(1 for _, val, ok in present if ok(val))
+        absorption = round(votes / len(present) * 100, 1)
+        miss_names = [name for name, val, _ in ev_defs if val is None]
         factors["absorption"] = {"points": round(18 * absorption / 100, 1), "max": 18,
-                                  "status": "已接入", "raw_score": absorption,
+                                  "status": ("已接入" if not miss_names else
+                                             f"以 {len(present)}/4 項證據計分（缺{'、'.join(miss_names)}）"),
+                                  "raw_score": absorption,
                                   "source": "Shioaji＋FinMind法人/融資/大戶代理"}
     else:
         factors["absorption"] = {"points": None, "max": 18, "status": "缺資料"}
@@ -140,10 +147,92 @@ def _sector_market_pct(sector_name: str):
             chs = [s["change_rate"] for s in snaps if s.get("change_rate") is not None]
             _sec_mkt_cache["sector"][sector_name] = (
                 round(sum(chs) / len(chs), 2) if chs else None)
+            _sec_mkt_cache.setdefault("snap", {}).update(
+                {str(s.get("code")): s for s in snaps if s.get("code")})
         except Exception as exc:
             print(f"[extras] 族群 {sector_name} 平均計算失敗: {exc}", flush=True)
             _sec_mkt_cache["sector"][sector_name] = None
     return _sec_mkt_cache["sector"].get(sector_name), _sec_mkt_cache["market"]
+
+
+def _latest_code_snap(code: str):
+    """該檔最近交易日官方收盤 snapshot（含主動買賣量），batch 呼叫已被族群快取吸收。"""
+    return (_sec_mkt_cache.get("snap") or {}).get(str(code))
+
+
+
+def _five_factors(snap, chip, sector_avg, market_pct, sector_name):
+    """五大因子(趨勢25/量能25/相對強度20/籌碼20/族群10)用最近可用資料計分。
+    規範:個股數據一律抓最近日期;每項附計分理由小字,缺一補一、不整片放棄。"""
+    F, N = {}, {}
+    price, ma20 = snap.get("price"), snap.get("ma20")
+    chg = snap.get("change_rate")
+    vr = snap.get("volume_ratio")
+    # 趨勢 25
+    if price and ma20:
+        above = float(price) >= float(ma20)
+        F["trend"] = (25 if above and (chg or 0) > 0 else 15 if above else 0)
+        N["trend"] = f"{'站上' if above else '跌破'}MA20({ma20}) → 趨勢分 {F['trend']}/25"
+    else:
+        F["trend"], N["trend"] = None, "MA20 未接入(盤前快取重建後恢復)"
+    # 量能 25
+    if vr is not None:
+        v = float(vr)
+        F["volume"] = 25 if v >= 1.5 else 18 if v >= 1.0 else 10 if v >= 0.8 else 5
+        note = "放量" if v >= 1.5 else "量能正常" if v >= 1.0 else "量縮"
+        if F["trend"] == 0 and F["volume"] > 5:
+            F["volume"] = max(5, F["volume"] // 2)
+            note += "＋破均線 → 量能打 5 折"
+        N["volume"] = f"量比 {v:.2f}({note}) → 量能 {F['volume']}/25"
+    else:
+        F["volume"], N["volume"] = None, "量比未接入"
+    # 相對強度 20
+    if chg is not None and (sector_avg is not None or market_pct is not None):
+        pts = 0
+        parts = []
+        if sector_avg is not None:
+            d = float(chg) - float(sector_avg)
+            pts += 12 if d >= 1.5 else 8 if d >= 0 else 3
+            parts.append(f"vs 族群 {d:+.2f}pp")
+        if market_pct is not None:
+            d2 = float(chg) - float(market_pct)
+            pts += 8 if d2 >= 1.0 else 5 if d2 >= 0 else 1
+            parts.append(f"vs 大盤 {d2:+.2f}pp")
+        F["rs"] = min(20, pts)
+        N["rs"] = "｜".join(parts) + f" → 相對強度 {F['rs']}/20"
+    else:
+        F["rs"], N["rs"] = None, "族群/大盤官方資料未回補"
+    # 籌碼 20
+    f20 = chip.get("foreign_net_20d")
+    streak = chip.get("inst_streak")
+    m5 = chip.get("margin_change_5d")
+    if f20 is not None or streak is not None:
+        pts = 0
+        parts = []
+        if f20 is not None:
+            pts += 10 if f20 > 0 else 0
+            parts.append(f"法人近月{'買超' if f20 > 0 else '賣超'} {abs(int(f20)):,} 張")
+        if streak is not None:
+            pts += 5 if streak >= 3 else 2 if streak >= 1 else 0
+            parts.append(f"法人連{'買' if streak >= 0 else '賣'} {abs(int(streak))} 日")
+        if m5 is not None:
+            pts += 5 if m5 <= 0 else 0
+            parts.append(f"融資5日 {int(m5):+,} 張")
+        F["chip"] = min(20, pts)
+        N["chip"] = "｜".join(parts) + f" → 籌碼分 {F['chip']}/20"
+    else:
+        F["chip"], N["chip"] = None, "FinMind 法人資料未回補"
+    # 族群 10
+    if sector_avg is not None:
+        F["sector"] = 8 if sector_avg > 0 else 3
+        N["sector"] = (f"{sector_name}族群今日{'上漲' if sector_avg > 0 else '偏弱'}"
+                       f"({sector_avg:+.2f}%) → 族群分 {F['sector']}/10")
+    else:
+        F["sector"], N["sector"] = None, "族群平均未回補"
+    score = round(sum(v for v in F.values() if v is not None), 1)
+    return {"factors": F, "notes": N, "score": score,
+            "source": "最近交易日官方收盤＋FinMind 盤後籌碼",
+            "missing": [k for k, v in F.items() if v is None]}
 
 
 def _post_market_asof() -> tuple[str, bool]:
@@ -294,6 +383,12 @@ def build_stock_card(code: str) -> Dict[str, Any]:
     try:
         _sec_name = C.SECTOR_MAP.get(code, ("其他",))[0]
         _sec_avg, _mkt_pct = _sector_market_pct(_sec_name)
+        _own = _latest_code_snap(code) or {}
+        if snap.get("aflow") is None and _own.get("buy_volume") is not None:
+            snap["aflow"] = int(_own.get("buy_volume") or 0) - int(_own.get("sell_volume") or 0)
+            snap["aflow_source"] = "Shioaji 官方收盤 snapshot(最近交易日)"
+        if snap.get("volume_ratio") in (None, 0) and _own.get("volume_ratio"):
+            snap["volume_ratio"] = _own.get("volume_ratio")
         snap.setdefault("sector_avg", _sec_avg)
         snap.setdefault("market_pct", _mkt_pct)
         _chg = snap.get("change_rate")
@@ -302,6 +397,9 @@ def build_stock_card(code: str) -> Dict[str, Any]:
         if _chg is not None and _mkt_pct is not None:
             snap.setdefault("vs_market", round(float(_chg) - float(_mkt_pct), 2))
         snap.setdefault("rel_source", "族群=固定池成分股官方收盤平均；大盤=TWSE 官方")
+        card["factors5"] = _five_factors(snap, card.get("chip") or {},
+                                         _sec_avg, _mkt_pct, _sec_name)
+        card["decision"] = _decision_factors(card, snap)
     except Exception as exc:
         print(f"[extras] 相對強弱補值失敗: {exc}", flush=True)
     data_date = (snap or {}).get("source_date") or eod_flow_date
