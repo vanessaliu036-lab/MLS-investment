@@ -881,16 +881,18 @@ def home():
 
 
 # ══════════════════════════════════════════════════════════
-# 個股卡片 / 每日報告 / 51 檔觀察池 — extras 模組接的路由
+# /api/stock/{code} /api/report /api/watchpool — 給 NEXORA 決策頁內
+# 側邊欄的「個股卡片」「每日報告」「觀察池 51 檔」分頁呼叫。
+# 沒獨立的 /card /report /watchpool HTML 路由 — 全部走 /intraday-test。
 # ══════════════════════════════════════════════════════════
 import extras as _extras  # noqa: E402
 
 
-@app.get("/card")
-def stock_card_page():
-    """個股決策卡片 UI（依 query ?code=xxxx 顯示單檔）。"""
-    return HTMLResponse(_read_html("deepseek_stock card.html"),
-                        headers={"Cache-Control": "no-store, max-age=0"})
+def _read_html(filename: str) -> str:
+    """中文檔名安全的 HTML 讀取 — Path.with_name 在某些 locale 會壞。"""
+    p = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), filename)
+    with open(p, "r", encoding="utf-8") as f:
+        return f.read()
 
 
 @app.get("/api/stock/{code}")
@@ -902,20 +904,6 @@ def api_stock(code: str):
         return JSONResponse({"ok": False, "code": code, "error": str(exc)}, status_code=500)
 
 
-def _read_html(filename: str) -> str:
-    """中文檔名安全的 HTML 讀取 — Path.with_name 在某些 locale 會壞。"""
-    p = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), filename)
-    with open(p, "r", encoding="utf-8") as f:
-        return f.read()
-
-
-@app.get("/report")
-def report_page():
-    """每日報告 UI（盤後驗證摘要）。"""
-    return HTMLResponse(_read_html("每日報告.html"),
-                        headers={"Cache-Control": "no-store, max-age=0"})
-
-
 @app.get("/api/report")
 def api_report():
     """每日 / 昨日盤後報告資料。"""
@@ -923,13 +911,6 @@ def api_report():
         return JSONResponse(_extras.build_report())
     except Exception as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
-
-
-@app.get("/watchpool")
-def watchpool_page():
-    """51 檔觀察池 UI。"""
-    return HTMLResponse(_read_html("nexora_watchpool_51_standalone.html"),
-                        headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @app.get("/api/watchpool")
