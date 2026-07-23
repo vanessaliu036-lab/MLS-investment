@@ -1,6 +1,59 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
+<script>
+const API_BASE=location.protocol==='file:'?`http://${location.hostname}:8000`:'';
+const DEFAULT_CODE=(location.search.match(/[?&]code=(\d{4})/)||[])[1]||'2337';
+async function loadCard(){
+  const code=DEFAULT_CODE;
+  document.title='個股決策卡片 · '+code;
+  const banner=document.createElement('div');
+  banner.id='live-banner';
+  banner.style.cssText='position:fixed;top:0;left:0;right:0;background:#172139;color:#fff;padding:10px 18px;font:600 13px -apple-system,sans-serif;z-index:9999;display:flex;gap:14px;align-items:center;';
+  banner.innerHTML='<span>資料源:VPS Shioaji 即時 · 代碼 <input id="code-input" value="'+code+'" style="width:70px;padding:3px 6px;border:0;border-radius:4px;margin:0 6px;font:600 13px monospace;color:#172139"/> <button onclick="reload()" style="background:#c9a227;color:#fff;border:0;padding:4px 10px;border-radius:4px;cursor:pointer;font-weight:700;">切換</button></span><span id="live-meta">載入中…</span>';
+  document.body.appendChild(banner);
+  document.body.style.paddingTop='44px';
+  try{
+    const r=await fetch(API_BASE+'/api/stock/'+code,{cache:'no-store'});
+    const d=await r.json();
+    if(!d.ok) throw new Error(d.error||'API 失敗');
+    const c=d.card||{};
+    const live=d.live||{};
+    const chg=Number(live.change_rate)||0;
+    const price=live.price;
+    // 標題列
+    document.querySelector('.stock-id .code').textContent=code;
+    document.querySelector('.stock-id .name').textContent=d.name||code;
+    document.querySelector('.stock-id .tag').textContent=d.sector||'—';
+    // 快訊四格
+    const quick4=document.querySelectorAll('.quick4 .q');
+    const fmt=function(v){return v==null?'—':v};
+    const sign=function(v){return(v>0?'+':'')+Number(v).toFixed(2)};
+    if(quick4[0]){quick4[0].querySelector('label').textContent='今日';quick4[0].querySelector('b').textContent=sign(chg)+'%';quick4[0].querySelector('b').className=chg>=0?'up':'down';}
+    if(quick4[1]){quick4[1].querySelector('label').textContent='現價';quick4[1].querySelector('b').textContent=fmt(price);}
+    if(quick4[2]){quick4[2].querySelector('label').textContent='族群';quick4[2].querySelector('b').textContent=d.sector||'—';}
+    if(quick4[3]){quick4[3].querySelector('label').textContent='分類';quick4[3].querySelector('b').textContent=live.group||'待回報';}
+    // AI 評分
+    const scoreEl=document.querySelector('.ai-box .score');
+    if(scoreEl) scoreEl.textContent=c.health_score??'—';
+    const stateEl=document.querySelector('.ai-box .state');
+    if(stateEl){
+      const g=(c.grade||live.group||'').toString();
+      stateEl.textContent=g==='可操作'?'可進場':g==='觀察'?'高潛力觀察':g==='排除'?'無訊號':(g||'待回報');
+    }
+    // meta
+    document.getElementById('live-meta').textContent=
+      `${d.name||code} · ${d.sector||'—'} · 即時 ${chg>=0?'+':''}${chg.toFixed(2)}% · 現價 ${price||'—'} · 群組 ${live.group||'—'} · ${d.updated_at}`;
+  }catch(e){
+    document.getElementById('live-meta').textContent='讀取失敗:'+e.message;
+  }
+}
+function reload(){
+  const v=document.getElementById('code-input').value.trim();
+  if(v) location.search='?code='+v;
+}
+window.addEventListener('DOMContentLoaded',loadCard);
+</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>一魔醫藥 · 個股決策卡片</title>

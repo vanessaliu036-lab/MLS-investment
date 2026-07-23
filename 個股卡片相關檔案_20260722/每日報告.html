@@ -3,7 +3,30 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MLS v4.0 · 統計驗證與盤後蓋章回溯 · 2026-07-21</title>
+<title>每日報告 · 51 檔觀察池 · 2026-07-23</title>
+<script>
+const API_BASE=location.protocol==='file:'?`http://${location.hostname}:8000`:'';
+async function loadReport(){
+  const banner=document.createElement('div');
+  banner.id='live-banner';
+  banner.style.cssText='position:sticky;top:0;background:#172139;color:#fff;padding:12px 20px;font:600 14px -apple-system,sans-serif;z-index:9999;display:flex;gap:18px;align-items:center;flex-wrap:wrap;';
+  banner.innerHTML='<b>每日報告 · 51 檔觀察池</b><span id="live-meta">載入中…</span>';
+  document.body.insertBefore(banner,document.body.firstChild);
+  try{
+    const r=await fetch(API_BASE+'/api/report',{cache:'no-store'});
+    const d=await r.json();
+    if(!d.ok) throw new Error(d.error||'API 失敗');
+    const g=d.groups||{};
+    document.getElementById('live-meta').innerHTML=
+      `${d.asof_date||'—'} · 可操作 <b style="color:#0b9a6f">${g['可操作']||0}</b> · 觀察 <b style="color:#c78313">${g['觀察']||0}</b> · 排除 <b style="color:#73809a">${g['排除']||0}</b> · 總 ${d.count||0} 檔 · ${d.updated_at}`;
+    const h1=document.querySelector('h1');
+    if(h1) h1.innerHTML='<b>每日報告</b> · 51 檔觀察池即時摘要';
+  }catch(e){
+    document.getElementById('live-meta').textContent='讀取失敗:'+e.message;
+  }
+}
+window.addEventListener('DOMContentLoaded',loadReport);
+</script>
 <style>
 :root{
   --bg:#fdfcf8;
