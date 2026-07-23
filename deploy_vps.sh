@@ -69,7 +69,7 @@ echo "===== 5/5 安裝依賴 + 啟動 server ====="
 ssh -p "${VPS_PORT_SSH}" "${VPS_USER}@${VPS_HOST}" bash <<EOSSH
 set -e
 cd ${VPS_DEPLOY_DIR}/個股卡片相關檔案_20260722
-pip3 install --quiet shioaji fastapi uvicorn pandas python-dotenv 2>&1 | tail -3 || true
+pip3 install --quiet --break-system-packages shioaji fastapi 'uvicorn[standard]' pandas python-dotenv 2>&1 | tail -3 || true
 # 停掉舊的 uvicorn (如果還活著)
 pkill -f 'uvicorn server:app' 2>/dev/null || true
 sleep 1
