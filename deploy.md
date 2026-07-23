@@ -13,15 +13,30 @@
 | VPS `66.42.42.150` | ⚠️ 從未 ssh 過、host key 未 trust |
 | `.ssh/known_hosts` | ⚠️ 沒有 66.42.42.150 記錄 |
 
-## 部署源選擇（先選再 rsync）
+## 部署源選擇 ✅ 已定案 = A
 
 | 選項 | 路徑 | 優 | 缺 |
 |---|---|---|---|
-| A. 整包 | `~/Desktop/mls-intraday/`（含 0722 快照） | 一次到位、/intraday-test 可用 | 0722 是快照、可能跟主線漂移 |
+| **A. 整包** | `~/Desktop/mls-intraday/`（含 0722 快照） ✅ | 一次到位、/intraday-test 可用 | 0722 是快照、可能跟主線漂移 |
 | B. 主線 + 補 config | `app/` + 補 `config.py` | 維護單一 source of truth | 缺 server.py、無法跑主 server |
 | C. 只 0722 | `個股卡片相關檔案_20260722/` | server + config 同源 | 缺 vps_intraday_test.py、/intraday-test 會 disabled |
 
-**建議 A**：一次到位最省事、/intraday-test 可即時驗證 51 檔。
+**2026-07-23 09:11 Vanessa 拍板：選 A**。詳見 commit `97c6386 feat: import full source tree`。
+
+## 一鍵部署（推薦）
+
+```bash
+cd ~/Desktop/mls-intraday
+bash deploy_vps.sh
+```
+
+`deploy_vps.sh` 會自動跑 6 步：
+1. SSH 連通測試（首次自動 trust host key）
+2. 備份現有部署到 `.bak.${TIMESTAMP}`
+3. rsync 源碼到 `/opt/mls-intraday`（已 exclude `.git` `.env` `*.db` `*.bak`）
+4. 推送 `.env`（chmod 600，不印內容）
+5. 安裝 pip 依賴 + 啟動 uvicorn（背景跑、log 在 `/tmp/mls-intraday.log`）
+6. 跑 6 項驗證（HTTP code、51 檔、引擎成員、UI 標題、log）
 
 ## 部署流程（Vanessa 手動跑）
 
