@@ -171,7 +171,8 @@ def intraday_test():
 
 @router.get("/intraday-test", response_class=HTMLResponse)
 def home():
-    return (BASE / "intraday_decision.html").read_text(encoding="utf-8")
+    return HTMLResponse((BASE / "intraday_decision.html").read_text(encoding="utf-8"),
+                        headers={"Cache-Control": "no-store, max-age=0"})
 
 
 @router.get("/api/intraday-history/dates")
