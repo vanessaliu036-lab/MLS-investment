@@ -115,6 +115,37 @@ def _now_tw() -> str:
     return _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).isoformat(timespec="seconds")
 
 
+# 族群平均/大盤漲跌快取（60 秒）:規範=個股數據一律抓最近可用日期計算，
+# 不准顯示「資料缺：不計算」。來源:Shioaji 官方 snapshot(收盤後仍回當日
+# 收盤值)＋official_source 官方大盤。
+_sec_mkt_cache: Dict[str, Any] = {"ts": 0.0, "sector": {}, "market": None}
+
+
+def _sector_market_pct(sector_name: str):
+    """回 (族群平均漲跌%, 大盤漲跌%)，皆為最近可用交易日資料。"""
+    import time as _t
+    now = _t.time()
+    if now - _sec_mkt_cache["ts"] > 60:
+        _sec_mkt_cache["sector"] = {}
+        _sec_mkt_cache["ts"] = now
+        try:
+            import official_source as _O
+            _sec_mkt_cache["market"] = (_O.market_index() or {}).get("change_pct")
+        except Exception as exc:
+            print(f"[extras] 官方大盤讀取失敗: {exc}", flush=True)
+    if sector_name and sector_name not in _sec_mkt_cache["sector"]:
+        try:
+            members = [c for c, (s, _) in C.SECTOR_MAP.items() if s == sector_name]
+            snaps = broker.batch_snapshots(members) if members else []
+            chs = [s["change_rate"] for s in snaps if s.get("change_rate") is not None]
+            _sec_mkt_cache["sector"][sector_name] = (
+                round(sum(chs) / len(chs), 2) if chs else None)
+        except Exception as exc:
+            print(f"[extras] 族群 {sector_name} 平均計算失敗: {exc}", flush=True)
+            _sec_mkt_cache["sector"][sector_name] = None
+    return _sec_mkt_cache["sector"].get(sector_name), _sec_mkt_cache["market"]
+
+
 def _post_market_asof() -> tuple[str, bool]:
     """盤後資料的有效日期：每日 18:00 前固定看前一交易日。"""
     now = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8)))
@@ -161,7 +192,7 @@ def build_stock_card(code: str) -> Dict[str, Any]:
                 conn.row_factory = sqlite3.Row
                 row = conn.execute(
                     "SELECT * FROM intraday_eod WHERE code=? AND trade_date<=? "
-                    "ORDER BY trade_date DESC LIMIT 1", (str(code),)
+                    "ORDER BY trade_date DESC LIMIT 1", (str(code), asof_limit)
                 ).fetchone()
             if row:
                 eod_flow = row["aflow"]
@@ -258,6 +289,21 @@ def build_stock_card(code: str) -> Dict[str, Any]:
         return {"ok": False, "code": code, "error": f"build_card failed: {e}",
                 "name": C.NAME_MAP.get(code, code),
                 "sector": C.SECTOR_MAP.get(code, ("其他",))[0]}
+    # 規範:個股數據一律抓最近日期計算，族群/大盤/相對強度不得「不計算」。
+    snap = snap or {}
+    try:
+        _sec_name = C.SECTOR_MAP.get(code, ("其他",))[0]
+        _sec_avg, _mkt_pct = _sector_market_pct(_sec_name)
+        snap.setdefault("sector_avg", _sec_avg)
+        snap.setdefault("market_pct", _mkt_pct)
+        _chg = snap.get("change_rate")
+        if snap.get("vs_sector") is None and _chg is not None and _sec_avg is not None:
+            snap["vs_sector"] = round(float(_chg) - float(_sec_avg), 2)
+        if _chg is not None and _mkt_pct is not None:
+            snap.setdefault("vs_market", round(float(_chg) - float(_mkt_pct), 2))
+        snap.setdefault("rel_source", "族群=固定池成分股官方收盤平均；大盤=TWSE 官方")
+    except Exception as exc:
+        print(f"[extras] 相對強弱補值失敗: {exc}", flush=True)
     data_date = (snap or {}).get("source_date") or eod_flow_date
     status = ("今日官方盤後資料已更新" if official_ready and data_date == _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).date().isoformat()
               else "等待今日 18:00 官方更新，目前顯示前一交易日資料")

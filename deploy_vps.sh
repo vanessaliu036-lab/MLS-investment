@@ -35,12 +35,13 @@ echo "===== 1/5 SSH 連通測試 ====="
 ssh -p "${VPS_PORT_SSH}" -o StrictHostKeyChecking=accept-new \
     "${VPS_USER}@${VPS_HOST}" "echo ok && uname -a && python3 --version"
 
-# 2. 備份現有部署（如果存在）
+# 2. 備份現有部署（cp 不是 mv：原目錄留在原地，資料檔不動、不用還原）
 echo "===== 2/5 備份現有部署 ====="
 ssh -p "${VPS_PORT_SSH}" "${VPS_USER}@${VPS_HOST}" \
-    "if [ -d '${VPS_DEPLOY_DIR}' ]; then mv '${VPS_DEPLOY_DIR}' '${VPS_DEPLOY_DIR}.bak.${TIMESTAMP}' && echo 'backup: ${VPS_DEPLOY_DIR}.bak.${TIMESTAMP}'; else echo 'no existing deploy'; fi"
+    "if [ -d '${VPS_DEPLOY_DIR}' ]; then cp -a '${VPS_DEPLOY_DIR}' '${VPS_DEPLOY_DIR}.bak.${TIMESTAMP}' && echo 'backup: ${VPS_DEPLOY_DIR}.bak.${TIMESTAMP}'; else echo 'no existing deploy'; fi"
 
-# 3. rsync 源碼
+# 3. rsync 源碼（就地更新；資料檔全列排除，rsync --delete 不會刪被排除的檔，
+#    所以 mls.db / intraday_eod.db / 快照 / 快取會留在 VPS 原地持續累積）
 echo "===== 3/5 推送源碼 (rsync) ====="
 rsync -avz --delete \
   -e "ssh -p ${VPS_PORT_SSH}" \
@@ -51,6 +52,11 @@ rsync -avz --delete \
   --exclude='*.log' \
   --exclude='.DS_Store' \
   --exclude='__pycache__' \
+  --exclude='live_state.json' \
+  --exclude='intraday_live_snapshot.json' \
+  --exclude='ma20_cache.json' \
+  --exclude='chips_cache.json' \
+  --exclude='reports/' \
   "${LOCAL_SRC}/" \
   "${VPS_USER}@${VPS_HOST}:${VPS_DEPLOY_DIR}/"
 
@@ -70,14 +76,12 @@ ssh -p "${VPS_PORT_SSH}" "${VPS_USER}@${VPS_HOST}" bash <<EOSSH
 set -e
 cd ${VPS_DEPLOY_DIR}/個股卡片相關檔案_20260722
 pip3 install --quiet --break-system-packages shioaji fastapi 'uvicorn[standard]' pandas python-dotenv 2>&1 | tail -3 || true
-# 停掉舊的 uvicorn (如果還活著)
-pkill -f 'uvicorn server:app' 2>/dev/null || true
-sleep 1
-nohup python3 -m uvicorn server:app --host 0.0.0.0 --port 8000 \
-  > /tmp/mls-intraday.log 2>&1 &
+# 正式站由 systemd 管理(Restart=always)，不可 pkill；統一走 systemctl
+systemctl restart mls-intraday
 sleep 3
-echo "--- last 20 lines of /tmp/mls-intraday.log ---"
-tail -20 /tmp/mls-intraday.log
+systemctl is-active mls-intraday
+echo "--- journalctl last 20 lines ---"
+journalctl -u mls-intraday -n 20 --no-pager
 EOSSH
 
 # 6. 驗證

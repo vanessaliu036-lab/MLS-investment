@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>盤中歷史 · 盤後蓋章回溯（示意）</title>
+<style>
+  :root{
+    --bg:#f7f4ec; --card:#fffdf8; --line:#e7e0d2; --line2:#efe9dc;
+    --ink:#1a1d23; --ink2:#2a2e36; --gold:#8a6d1a;
+    --up:#c0392b; --down:#1e8449;
+    --inflow:#1f6fb2; --outflow:#d17a1a;
+    --act:#1e8449; --wat:#8a6d1a; --exc:#96602a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+    line-height:1.5;padding:20px 176px 20px 20px;margin:0;font-size:14px}
+  .page-shell{max-width:1080px;margin:0 auto}
+  .back-home{display:inline-flex;align-items:center;gap:5px;color:var(--gold);font-size:13px;
+    font-weight:700;text-decoration:none;margin-bottom:10px;padding:5px 8px;border-radius:6px}
+  .back-home:hover,.back-home:focus-visible{background:#f0e8cf;outline:none}
+  .side-menu{position:fixed;top:20px;right:20px;width:136px;padding:12px;
+    background:var(--card);border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 5px 18px rgba(55,45,25,.08);z-index:10}
+  .side-menu-title{font-size:12px;color:var(--ink2);font-weight:800;margin:0 4px 7px}
+  .side-menu a{display:block;color:var(--ink2);font-size:12px;text-decoration:none;
+    padding:7px 8px;border-radius:6px}
+  .side-menu a:hover,.side-menu a:focus-visible,.side-menu a.active{background:#f0e8cf;color:var(--gold);outline:none}
+  @media (max-width:700px){
+    body{padding:14px}
+    .side-menu{position:static;width:auto;display:flex;align-items:center;gap:4px;margin-bottom:14px;padding:7px}
+    .side-menu-title{margin:0 5px 0 4px;white-space:nowrap}
+    .side-menu a{padding:5px 7px}
+  }
+  h1{color:var(--gold);font-size:22px;font-weight:800}
+  .sub{color:var(--ink2);font-size:12px;margin-top:3px}
+  .bar{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;
+    gap:12px;padding-bottom:12px;border-bottom:2px solid var(--line)}
+  .datepick{display:flex;gap:6px;align-items:center}
+  .datepick label{font-size:12px;color:var(--ink2)}
+  select,input[type=date]{font-size:13px;padding:6px 10px;border:1px solid var(--line);
+    border-radius:8px;background:var(--card);color:var(--ink);font-family:inherit}
+
+  .group-head{display:flex;align-items:center;gap:10px;margin:20px 0 8px}
+  .gtag{font-size:13px;font-weight:800;padding:3px 12px;border-radius:20px}
+  .g-act{background:#eef4f0;color:var(--act);border:1px solid #cfe6d8}
+  .g-wat{background:#f3ecd6;color:var(--wat);border:1px solid #e3d5a8}
+  .g-exc{background:#f0e7dd;color:var(--exc);border:1px solid #ddc9b3}
+  .gcount{font-size:12px;color:var(--ink2)}
+
+  table{width:100%;border-collapse:collapse;background:var(--card);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  th,td{padding:9px 12px;text-align:left;font-size:13px;border-bottom:1px solid var(--line2)}
+  th{background:#faf5e8;color:var(--ink2);font-weight:700;font-size:12px}
+  tr:last-child td{border-bottom:none}
+  tr.clickable{cursor:pointer}
+  tr.clickable:hover{background:#fdf8ea}
+  tr.clickable:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
+  tr.clickable.is-selected{background:#f0e8cf;box-shadow:inset 4px 0 0 var(--gold)}
+  .code{font-weight:800;color:var(--ink)}
+  .nm{color:var(--ink2);font-size:12px;margin-left:4px}
+  .up{color:var(--up)} .down{color:var(--down)}
+  .flow-in{color:var(--inflow);font-weight:700} .flow-out{color:var(--outflow);font-weight:700}
+  .sub-tag{font-size:11px;padding:1px 8px;border-radius:5px;background:#f0ece0;color:var(--ink2)}
+  .unreliable{font-size:11px;color:var(--exc);margin-left:6px}
+  .mono{font-variant-numeric:tabular-nums}
+
+  /* 個股展開跨日 */
+  .drill{background:#fdfaf0;border:1px solid var(--gold);border-radius:10px;
+    margin:6px 0 14px;padding:14px 16px}
+  .drill-head{display:flex;justify-content:space-between;align-items:center;
+    flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .drill-title{font-size:15px;font-weight:800;color:var(--ink)}
+  .trend-badge{font-size:12px;font-weight:700;padding:3px 12px;border-radius:20px}
+  .t-up{background:#eef4f0;color:var(--act);border:1px solid #cfe6d8}
+  .t-flat{background:#f3ecd6;color:var(--wat);border:1px solid #e3d5a8}
+  .t-down{background:#fbecea;color:var(--up);border:1px solid #f0cfca}
+  /* 分類軌跡條 */
+  .track{display:flex;gap:4px;margin:10px 0}
+  .tcell{flex:1;text-align:center;padding:8px 4px;border-radius:6px;font-size:11px}
+  .tc-act{background:#dcefe4;color:var(--act)}
+  .tc-wat{background:#f0e8cf;color:var(--wat)}
+  .tc-exc{background:#e8dccb;color:var(--exc)}
+  .tcell .d{font-size:10px;color:var(--ink2);display:block;margin-bottom:2px}
+  .spark{font-size:12px;color:var(--ink2);margin-top:8px}
+  .note{font-size:12px;color:var(--ink2);margin-top:18px;padding:11px 13px;
+    background:var(--card);border:1px solid var(--line);border-radius:9px}
+  .note b{color:var(--gold)}
+</style>
+</head>
+<body>
+
+<aside class="side-menu" aria-label="頁面選單">
+  <div class="side-menu-title">頁面選單</div>
+  <a href="#model-records" class="active">模型紀錄</a>
+  <a href="#verification-note">盤後驗證說明</a>
+</aside>
+
+<main class="page-shell">
+<a class="back-home" href="/app.html" aria-label="前往完整 MLS 功能頁">← 前往完整 MLS 功能頁</a>
+
+<div class="bar">
+  <div>
+    <h1>盤中歷史 · 盤後蓋章回溯</h1>
+    <div class="sub">資料來源 intraday_eod（收盤定案 · data_stage=eod_stamped）· 示意假數據</div>
+  </div>
+  <div class="datepick">
+    <label>交易日</label>
+    <select id="dateSel">
+    <option value="2026-07-20">2026-07-20</option>
+    <option value="2026-07-18">2026-07-18</option>
+    <option value="2026-07-17">2026-07-17</option>
+    </select>
+    <label>分類</label>
+    <select id="groupSel">
+      <option>全部</option><option>可操作</option><option>觀察</option><option>排除</option>
+    </select>
+  </div>
+</div>
+
+<!-- 可操作 -->
+<section class="history-group" data-group="可操作">
+<div class="group-head" id="model-records">
+  <span class="gtag g-act">可操作</span><span class="gcount">1 檔 · 能進場評估</span>
+</div>
+<table>
+  <tr><th>代碼</th><th>子分類</th><th>現價</th><th>漲跌%</th><th>aflow</th><th>吸籌%</th><th>象限</th></tr>
+  <tr class="clickable" tabindex="0" aria-expanded="false" aria-controls="drill-8261" onclick="toggleDrill(this, 'drill-8261')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleDrill(this, 'drill-8261')}" title="點擊查看模型紀錄">
+    <td><span class="code">8261</span><span class="nm">富鼎</span></td>
+    <td><span class="sub-tag">強惜售抄底</span></td>
+    <td class="mono">251</td><td class="mono">0.0%</td>
+    <td class="mono flow-in">+1,251</td><td class="mono">50.8%</td><td>惜售</td>
+  </tr>
+</table>
+<div class="drill" id="drill-8261" style="display:none">
+  <div class="drill-head">
+    <div class="drill-title">8261 富鼎 · 近 5 日分類軌跡</div>
+    <span class="trend-badge t-up">分類爬升 → 最新可操作</span>
+  </div>
+  <div class="track">
+    <div class="tcell tc-exc"><span class="d">07/14</span>排除</div>
+    <div class="tcell tc-exc"><span class="d">07/15</span>排除</div>
+    <div class="tcell tc-wat"><span class="d">07/16</span>觀察</div>
+    <div class="tcell tc-wat"><span class="d">07/17</span>觀察</div>
+    <div class="tcell tc-act"><span class="d">07/18</span>可操作</div>
+  </div>
+  <div class="spark">aflow 走勢：−320 → −80 → +410 → +890 → +1,251（由流出翻流入、逐日增強）</div>
+</div>
+</section>
+
+<!-- 觀察 -->
+<section class="history-group" data-group="觀察">
+<div class="group-head">
+  <span class="gtag g-wat">觀察</span><span class="gcount">2 檔 · 有亮點未齊 / MA20 待確認</span>
+</div>
+<table>
+  <tr><th>代碼</th><th>子分類</th><th>現價</th><th>漲跌%</th><th>aflow</th><th>吸籌%</th><th>象限</th></tr>
+  <tr class="clickable" tabindex="0" aria-expanded="false" aria-controls="drill-6213" onclick="toggleDrill(this, 'drill-6213')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleDrill(this, 'drill-6213')}" title="點擊查看模型紀錄">
+    <td><span class="code">6213</span><span class="nm">聯茂</span></td>
+    <td><span class="sub-tag">條件待確認</span></td>
+    <td class="mono">328</td><td class="mono up">+2.82%</td>
+    <td class="mono flow-in">+1,722</td><td class="mono">5.4%</td><td>真攻擊</td>
+  </tr>
+  <tr>
+    <td><span class="code">3189</span><span class="nm">景碩</span></td>
+    <td><span class="sub-tag">條件待確認</span></td>
+    <td class="mono">707</td><td class="mono up">+2.02%</td>
+    <td class="mono flow-in">+1,176</td><td class="mono">5.6%</td><td>真攻擊</td>
+  </tr>
+</table>
+<div class="drill" id="drill-6213" style="display:none">
+  <div class="drill-head">
+    <div class="drill-title">6213 聯茂 · 近 5 日分類軌跡</div>
+    <span class="trend-badge t-flat">分類反覆 → 最新觀察</span>
+  </div>
+  <div class="track">
+    <div class="tcell tc-wat"><span class="d">07/14</span>觀察</div>
+    <div class="tcell tc-act"><span class="d">07/15</span>可操作</div>
+    <div class="tcell tc-wat"><span class="d">07/16</span>觀察</div>
+    <div class="tcell tc-exc"><span class="d">07/17</span>排除</div>
+    <div class="tcell tc-wat"><span class="d">07/18</span>觀察</div>
+  </div>
+  <div class="spark">分類在三群間反覆，訊號不穩定，不宜當主力候選</div>
+</div>
+</section>
+
+<!-- 排除 -->
+<section class="history-group" data-group="排除">
+<div class="group-head">
+  <span class="gtag g-exc">排除</span><span class="gcount">2 檔 · 訊號不可信 / 明確不符</span>
+</div>
+</section>
+<table>
+  <tr><th>代碼</th><th>子分類</th><th>現價</th><th>漲跌%</th><th>aflow</th><th>吸籌%</th><th>象限</th></tr>
+  <tr>
+    <td><span class="code">3532</span><span class="nm">台勝科</span>
+        <span class="unreliable">訊號不可信</span></td>
+    <td><span class="sub-tag">極端價失真</span></td>
+    <td class="mono">466</td><td class="mono up">+9.9%</td>
+    <td class="mono flow-out">−1,141</td><td class="mono">—</td><td>假紅</td>
+  </tr>
+  <tr>
+    <td><span class="code">2455</span><span class="nm">全新</span></td>
+    <td><span class="sub-tag">休息略過</span></td>
+    <td class="mono">282</td><td class="mono">0.0%</td>
+    <td class="mono flow-out">−7</td><td class="mono">—</td><td>休息</td>
+  </tr>
+</table>
+
+<div class="note" id="verification-note">
+  <b>單日看分類、點個股看跨日。</b>上表是選定交易日的收盤定案分類（可操作→觀察→排除，群內 aflow 強者在前）。
+  點任一列展開該檔近 N 日分類軌跡：<b>持續可操作</b>是強訊號、<b>分類爬升</b>值得留意、<b>分類反覆</b>訊號不穩。
+  極端價（跌停/漲停）當日標「訊號不可信」，照實存於歷史但吸籌欄顯示「—」。
+  資料來自 intraday_eod，與盤中即時、主站 STATE 完全分離。
+</div>
+
+</main>
+
+<script>
+  // 正式頁面使用盤後 API；不再使用下方示意資料。
+  const API_BASE = location.protocol === 'file:' ? 'http://66.42.42.150:8003' : '';
+  const api = (path) => API_BASE + path;
+  const esc = (value) => String(value ?? '—').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const liveMain = document.querySelector('main');
+  let liveData = null;
+
+  async function renderLiveHistory(date) {
+    liveMain.innerHTML = `<div class="bar"><div><h1>盤中歷史 · 盤後蓋章回溯</h1><div class="sub">資料來源 dec_health（EOD 收盤定案）· 正式資料</div></div><div class="datepick"><label>交易日</label><select id="liveDate"></select><label>分類</label><select id="liveGroup"><option>全部</option><option>可操作</option><option>觀察</option><option>排除</option></select></div></div><div id="liveContent"><div class="note">載入盤後實際資料中…</div></div>`;
+    const response = await fetch(api(`/api/history${date ? `?date=${encodeURIComponent(date)}` : ''}`));
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    liveData = await response.json();
+    const dateSel = document.getElementById('liveDate');
+    dateSel.innerHTML = (liveData.dates || []).map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+    dateSel.value = liveData.date || '';
+    dateSel.addEventListener('change', () => renderLiveHistory(dateSel.value));
+    document.getElementById('liveGroup').addEventListener('change', renderLiveGroups);
+    renderLiveGroups();
+  }
+
+  function renderLiveGroups() {
+    const selected = document.getElementById('liveGroup').value;
+    const groups = ['可操作', '觀察', '排除'];
+    const cls = {'可操作':'g-act', '觀察':'g-wat', '排除':'g-exc'};
+    const html = groups.filter((g) => selected === '全部' || selected === g).map((group) => {
+      const rows = liveData.groups?.[group] || [];
+      return `<section class="history-group"><div class="group-head"><span class="gtag ${cls[group]}">${group}</span><span class="gcount">${rows.length} 檔</span></div><table><tr><th>代碼</th><th>子分類</th><th>現價</th><th>漲跌%</th><th>健康分</th><th>象限</th></tr>${rows.map((x) => `<tr class="clickable" tabindex="0" data-code="${esc(x.code)}"><td><span class="code">${esc(x.code)}</span><span class="nm">${esc(x.name)}</span></td><td><span class="sub-tag">${esc(x.subgroup)}</span></td><td class="mono">${esc(x.close)}</td><td class="mono ${Number(x.chg) >= 0 ? 'up' : 'down'}">${Number(x.chg) >= 0 ? '+' : ''}${esc(x.chg)}%</td><td class="mono">${esc(x.score)}</td><td>${esc(x.quad)}</td></tr>`).join('') || '<tr><td colspan="6">目前沒有資料</td></tr>'}</table></section>`;
+    }).join('');
+    document.getElementById('liveContent').innerHTML = html + `<div class="note"><b>單日看分類、點個股看跨日。</b>以上為選定交易日的實際 EOD 定案資料，與主站盤後決策使用同一份資料庫。</div>`;
+    document.querySelectorAll('#liveContent tr[data-code]').forEach((row) => row.addEventListener('click', () => openLiveTrail(row.dataset.code)));
+    renderLiveLivermore(liveData.date);
+  }
+
+  async function openLiveTrail(code) {
+    const response = await fetch(api(`/api/history?code=${encodeURIComponent(code)}&days=5`));
+    const data = await response.json();
+    const drill = document.createElement('div');
+    drill.className = 'drill';
+    drill.innerHTML = `<div class="drill-head"><div class="drill-title">${esc(code)} · 近 5 日分類軌跡</div><span class="trend-badge t-flat">${esc(data.trend || '分類穩定')}</span></div><div class="track">${(data.trail || []).map((x) => `<div class="tcell ${x.group === '可操作' ? 'tc-act' : x.group === '觀察' ? 'tc-wat' : 'tc-exc'}"><span class="d">${esc(x.date)}</span>${esc(x.group)}<br>${esc(x.score)}分</div>`).join('')}</div>`;
+    document.querySelectorAll('#liveContent .drill').forEach((x) => x.remove());
+    document.getElementById('liveContent').prepend(drill);
+  }
+
+  async function renderLiveLivermore(date) {
+    const host = document.getElementById('liveContent');
+    host.insertAdjacentHTML('beforeend', `<section id="liveLivermore" style="margin-top:20px"><div class="group-head"><span class="gtag g-wat">李佛摩六欄</span><span class="gcount">與選定交易日同步</span></div><div id="liveLivBody" class="note">載入李佛摩逐日紀錄中…</div></section>`);
+    const response = await fetch(api(`/api/livermore?date=${encodeURIComponent(date || '')}`));
+    if (!response.ok) throw new Error(`李佛摩 API HTTP ${response.status}`);
+    const data = await response.json();
+    const colors = data.colors || {};
+    const cols = data.cols || [];
+    const stocks = data.stocks || [];
+    const body = document.getElementById('liveLivBody');
+    if (!stocks.length) { body.textContent = '此交易日尚無李佛摩紀錄'; return; }
+    body.innerHTML = `<select id="liveLivSel" style="width:100%;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)">${stocks.map((x) => `<option value="${esc(x.code)}">${esc(x.name)}（${esc(x.code)}）· ${esc(x.state)}</option>`).join('')}</select><div style="display:flex;gap:5px;flex-wrap:wrap;margin:10px 0">${cols.map((c) => `<span style="background:${colors[c] || '#8a6d1a'};color:white;padding:3px 9px;border-radius:5px;font-size:11px;font-weight:700">${esc(c)}</span>`).join('')}</div><div id="liveLivTable" style="overflow:auto"></div>`;
+    const select = document.getElementById('liveLivSel');
+    select.addEventListener('change', () => drawLiveLivermore(select.value, date, cols, colors));
+    await drawLiveLivermore(stocks[0].code, date, cols, colors);
+  }
+
+  async function drawLiveLivermore(code, date, cols, colors) {
+    const response = await fetch(api(`/api/livermore?code=${encodeURIComponent(code)}&date=${encodeURIComponent(date || '')}&days=20`));
+    if (!response.ok) throw new Error(`李佛摩紀錄 HTTP ${response.status}`);
+    const data = await response.json();
+    const cells = (data.records || []).map((record) => `<div style="display:grid;grid-template-columns:90px repeat(6,minmax(100px,1fr));min-width:690px;border-top:1px solid var(--line2)"><div style="padding:7px;font-size:11px">${esc(record.date)}</div>${cols.map((c) => c === record.state ? `<div style="padding:7px;background:${colors[c] || '#8a6d1a'};color:white;text-align:center;font-size:11px">${esc(record.price)}${record.pivot ? ' ★' : ''}</div>` : '<div></div>').join('')}</div>`).join('');
+    document.getElementById('liveLivTable').innerHTML = `<div style="display:grid;grid-template-columns:90px repeat(6,minmax(100px,1fr));min-width:690px;background:#faf5e8;font-weight:700;font-size:11px"><div style="padding:8px">日期</div>${cols.map((c) => `<div style="padding:8px;text-align:center;background:${colors[c] || '#8a6d1a'};color:white">${esc(c)}</div>`).join('')}</div>${cells || '<div class="note">尚無逐日紀錄</div>'}`;
+  }
+
+  liveMain.innerHTML = '<div class="note">載入盤後實際資料中…</div>';
+  renderLiveHistory().catch((error) => { liveMain.innerHTML = `<div class="note"><b>盤後資料載入失敗</b>：${esc(error.message)}。請使用部署網址或確認後端服務。</div>`; });
+
+  // 停止執行原本的示意頁互動程式。
+  if (false) {
+
+  function toggleDrill(row, id) {
+    const drill = document.getElementById(id);
+    const isOpen = drill.style.display === 'block';
+    document.querySelectorAll('.drill').forEach((item) => { item.style.display = 'none'; });
+    document.querySelectorAll('tr.clickable').forEach((item) => {
+      item.classList.remove('is-selected');
+      item.setAttribute('aria-expanded', 'false');
+    });
+    if (!isOpen) {
+      drill.style.display = 'block';
+      row.classList.add('is-selected');
+      row.setAttribute('aria-expanded', 'true');
+    }
+  }
+
+  const groupSel = document.getElementById('groupSel');
+  const dateSel = document.getElementById('dateSel');
+  const groups = [...document.querySelectorAll('.history-group')];
+  const dataNote = document.querySelector('.sub');
+
+  function applyGroupFilter() {
+    const selected = groupSel.value;
+    groups.forEach((group) => {
+      group.hidden = selected !== '全部' && group.dataset.group !== selected;
+    });
+  }
+
+  function applyDate() {
+    dataNote.textContent = `資料來源 intraday_eod（收盤定案 · data_stage=eod_stamped）· ${dateSel.value} 示意資料`;
+  }
+
+  groupSel.addEventListener('change', applyGroupFilter);
+  dateSel.addEventListener('change', applyDate);
+  applyGroupFilter();
+  applyDate();
+  }
+</script>
+
+</body>
+</html>

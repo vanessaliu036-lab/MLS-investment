@@ -336,8 +336,20 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 30px}
         </section>
 
         <div class="toolbar">
-          <a href="#summary">AI 結論</a><a href="#market">市場資料</a><a href="#chips">籌碼承接</a><a href="#validation">交叉驗證</a><a href="#risk">風險</a><a href="#plan">交易計畫</a>
+          <a href="#factors5">五大因子</a><a href="#summary">AI 結論</a><a href="#market">市場資料</a><a href="#chips">籌碼承接</a><a href="#validation">交叉驗證</a><a href="#risk">風險</a><a href="#plan">交易計畫</a>
         </div>
+
+        <section class="section" id="factors5">
+          <div class="section-head"><div class="section-title">五大因子（盤中決策引擎）</div><div class="source">/api/state 即時引擎</div></div>
+          <div class="section-body">
+            <div id="f5-compare" class="card" style="margin-bottom:12px"><div class="section-title" style="font-size:14px;margin-bottom:8px">📊 個股 vs 族群 vs 大盤</div><div class="rows muted">等待盤中引擎資料…</div></div>
+            <div id="f5-factors" class="data-grid"></div>
+            <div id="f5-conclusion" class="card" style="margin-top:12px"></div>
+            <div id="f5-discipline" class="card" style="margin-top:12px"></div>
+            <div id="f5-triangle" class="card" style="margin-top:12px"></div>
+            <div id="f5-doc" class="card" style="margin-top:12px"></div>
+          </div>
+        </section>
 
         <section class="section" id="summary">
           <div class="section-head"><div class="section-title">AI 最終結論</div><div class="source">五模組綜合</div></div>
@@ -568,7 +580,9 @@ function goHome(){
     const ev=document.querySelectorAll('.evidence-card');[["法人20日淨",chip.foreign_net_20d==null?'待補':`${num(chip.foreign_net_20d)}張`,'FinMind 盤後'],['5日主要承接',chip.trust_net_5d==null?'待補':`${num(chip.trust_net_5d)}張`,'FinMind 盤後'],['融資5日變化',chip.margin_change_5d==null?'待補':`${num(chip.margin_change_5d)}張`,'FinMind 融資'],['相對族群',p.vs_sector==null?'資料缺：不計算':pct(p.vs_sector),'固定池成分股加權']].forEach((x,i)=>{if(ev[i]){setEl(ev[i],'.k',x[0]);setEl(ev[i],'.v',x[1]);setEl(ev[i],'.chip-note',x[2])}});
     const cards=document.querySelectorAll('#market .card');if(cards[0])cards[0].querySelector('.rows').innerHTML=rows([['收盤／昨收',`${price??'—'}／${p.prev_close??'待補'}`],['當日高／低',`${p.high??'—'}／${p.low??'—'}`],['MA20',p.ma20??'待補'],['站上MA20',p.ma20?(price>=p.ma20?'✓ 站上':'✗ 跌破'):'缺資料'],['MA5／MA10',`${tech.ma5??'待補'}／${tech.ma10??'待補'}`],['MA60','待補（尚未接入）'],['RSI／KD',`${tech.rsi??'待補'}／${tech.kd_k??'待補'}`],['ATR',tech.atr??'待補'],['Breakout',trade.buy&&price>=trade.buy?'✓ 已突破':'待確認']]);
     if(cards[1])cards[1].querySelector('.rows').innerHTML=rows([['主動買賣差',p.aflow==null?'等收盤驗證':num(p.aflow)],['BS／內外盤','待補（盤後未蓋章）'],['成交量',p.total_volume??'待補'],['成交值','待補'],['VWAP',p.avg_price??'待補'],['象限',p.quadrant??'等收盤驗證'],['法人連買',chip.inst_streak??'待補']]);
-    if(cards[2])cards[2].querySelector('.rows').innerHTML=rows([['個股 %',pct(change)],['族群 %',p.sector_avg==null?'資料缺：不計算':pct(p.sector_avg)],['大盤 %','資料缺：不計算'],['vs族群',p.vs_sector==null?'資料缺：不計算':pct(p.vs_sector)],['族群排名','待補'],['族群健康／資金流','待補']]);
+    if(cards[2])cards[2].querySelector('.rows').innerHTML=rows([['個股 %',pct(change)],['族群 %',p.sector_avg==null?'待補':pct(p.sector_avg)],['大盤 %',p.market_pct==null?'待補':pct(p.market_pct)],['vs族群',p.vs_sector==null?'待補':pct(p.vs_sector)],['vs大盤',p.vs_market==null?'待補':pct(p.vs_market)],['族群健康／資金流','待補']]);
+    const relNote=document.querySelector('#sector-rel .notice')||document.querySelector('.notice');
+    if(relNote){if(change!=null&&p.sector_avg!=null&&p.market_pct!=null){const vs=p.vs_sector??(change-p.sector_avg),vm=p.vs_market??(change-p.market_pct);relNote.textContent=`個股漲幅 ${pct(change)}，${vs>=0?'高於':'低於'}${d.sector||''}族群 ${pct(p.sector_avg)}，相對${vs>=0?'領先':'落後'} ${pct(Math.abs(vs))}；同時${vm>=0?'高於':'低於'}大盤 ${pct(p.market_pct)}，相對${vm>=0?'領先':'落後'} ${pct(Math.abs(vm))}。（${p.rel_source||'最近交易日官方資料'}）`}else{relNote.textContent='族群／大盤相對強弱：等待最近交易日官方資料回補後自動計算。'}}
     const chips=document.querySelectorAll('#chips .card');if(chips[0])chips[0].querySelector('.rows').innerHTML=rows([['5日三大法人淨',num(chip.inst_net_5d_lots)],['外資5日',num(chip.foreign_net_5d)],['投信5日',num(chip.trust_net_5d)],['自營5日',num(chip.dealer_net_5d)],['融資5日變化',num(chip.margin_change_5d)]]);if(chips[1])chips[1].querySelector('.rows').innerHTML=rows([['法人20日淨',num(chip.foreign_net_20d)],['外資20日',num(chip.foreign_net_20d)],['投信20日','待補'],['自營20日',num(chip.dealer_net_5d)],['大戶集保','待補']]);if(chips[2])chips[2].querySelector('.rows').innerHTML=rows([['綜評',dec.missing?.includes('absorption')?'缺 absorption，無法計算':'已接入'],['法人',num(chip.foreign_net_5d)],['融資',num(chip.margin_change_5d)],['大戶','待補'],['股價',pct(change)] ]);
     const plan=document.querySelectorAll('#plan .plan-item .v');[trade.buy,trade.stop,trade.t1||trade.t2,trade.advice, p.ma20??'待補'].forEach((v,i)=>{if(plan[i])plan[i].textContent=v??'—'});const detail=document.querySelector('#plan .details-content');if(detail)detail.textContent=`目前${group}；盤中欄位收盤後保留作為佐證。${dec.missing?.length?'缺 '+dec.missing.join('、')+'，不補假數字。':'盤後資料已接入。'}`;
     const foot=document.querySelector('footer');if(foot)foot.textContent=`資料來源：Shioaji K線／FinMind 盤後／盤中 aflow 固定快照｜資料時間：${d.updated_at||'—'}`;
@@ -579,3 +593,75 @@ function goHome(){
 </script>
 </body>
 </html>
+
+<script>
+// ══ V1+V2 卡片整合:五大因子/三角驗證/文件四大策略/執行紀律(含全部小字說明) ══
+(async()=>{
+  const API=location.protocol==='file:'?'http://66.42.42.150:8000':'';
+  const code=(new URLSearchParams(location.search).get('code')||document.title.match(/\d{4}/)?.[0]||'').trim();
+  if(!code)return;
+  const E=s=>String(s??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const sign=(x,d=2)=>x==null?'—':`${Number(x)>0?'+':''}${Number(x).toFixed(d)}`;
+  try{
+    const [state,dcard]=await Promise.all([
+      fetch(API+'/api/state',{cache:'no-store'}).then(r=>r.json()).catch(()=>({})),
+      fetch(API+'/api/dec/card?code='+encodeURIComponent(code),{cache:'no-store'}).then(r=>r.json()).catch(()=>({}))
+    ]);
+    const row=(state.stocks||[]).find(x=>String(x.code)===String(code))||{};
+    const sec=(state.sectors||[]).find(x=>x.name===row.sector)||{};
+    const market=state.market||{};
+    const F=row.factors||{},N=row.factor_notes||{};
+    const rel=sec.pct==null||row.change_rate==null?null:Number(row.change_rate)-Number(sec.pct);
+    const stamp=state.updated_at||state.data_date||'';
+    const pend=Object.keys(F).length===0;
+    // 比較表
+    const cmp=document.querySelector('#f5-compare .rows');
+    if(cmp)cmp.innerHTML=pend?'<div class="muted">盤中引擎資料未接入（盤後 STATE 無此欄）；明日盤中自動顯示。</div>':`
+      <table class="compare-table"><thead><tr><th>項目</th><th>個股</th><th>族群</th><th>大盤</th></tr></thead><tbody>
+      <tr><td>漲跌幅</td><td>${sign(row.change_rate)}%</td><td>${sign(sec.pct)}%</td><td>${sign(market.index_pct)}%</td></tr>
+      <tr><td>量能(量比)</td><td>${row.volume_ratio??'—'}</td><td>${sign(sec.flow_score,1)}</td><td>—</td></tr>
+      <tr><td>相對強度</td><td>${rel==null?'—':sign(rel)+' pp'}</td><td>vs 族群</td><td>vs 大盤 ${sign(row.change_rate)}pp</td></tr>
+      </tbody></table><div class="muted" style="margin-top:6px">資料時間 ${E(stamp)}</div>`;
+    // 五大因子 + 小字說明
+    const DEF=[['trend','趨勢',25],['volume','量能',25],['rs','相對強度',20],['chip','籌碼',20],['sector','族群',10]];
+    const fbox=document.getElementById('f5-factors');
+    if(fbox)fbox.innerHTML=DEF.map(([k,lab,max])=>{
+      const v=F[k],note=N[k];
+      const w=v==null?0:Math.min(100,Number(v)/max*100);
+      return `<div class="card"><div class="rows"><div class="row"><div class="k">${lab}</div><div class="v">${v??'—'} / ${max}</div></div></div>
+        <div style="height:6px;background:#edf0f5;border-radius:9px;overflow:hidden;margin:8px 0"><i style="display:block;height:100%;width:${w}%;background:#6366f1"></i></div>
+        <div class="muted" style="font-size:12px;line-height:1.6">${E(note||(pend?'等待盤中引擎計分':'—'))}</div></div>`;
+    }).join('')+`<div class="card"><div class="rows"><div class="row"><div class="k">AI 總分</div><div class="v">${row.ai_score??'—'}</div></div></div><div class="muted" style="font-size:12px">五大因子加總（滿分 100），盤中每輪重算。</div></div>`;
+    // 最終結論
+    const act=row.action||'obs';
+    const LBL={buy:'進場訊號',watch:'高潛力觀察',sell:'出場/風險',obs:'僅觀察'};
+    const RSN={buy:'站上均價、量價同向，符合進場條件。',watch:'結構到位，等量能與法人蓋章。',sell:'跌破停損 / 假紅背離，紀律出場。',obs:'無明顯訊號，持續觀察。'};
+    const con=document.getElementById('f5-conclusion');
+    if(con)con.innerHTML=`<div class="section-title" style="font-size:14px;margin-bottom:6px">📌 最終結論</div>
+      <div style="font-weight:900">${E(row.event_class||LBL[act]||act)}</div>
+      <div style="margin-top:4px">${E(row.reason||RSN[act]||'')}</div>
+      <div class="muted" style="margin-top:6px;font-size:12px">操作：${E(row.operation||(dcard.trade&&dcard.trade.advice)||'列入觀察，等量能與法人蓋章再進場。')}</div>`;
+    // 執行紀律(含小字)
+    const dis=document.getElementById('f5-discipline');
+    if(dis)dis.innerHTML=`<div class="section-title" style="font-size:14px;margin-bottom:6px">🛡 執行紀律</div>
+      <div class="rows"><div class="row"><div class="k">建議停損</div><div class="v">${row.suggested_stop??(dcard.trade&&dcard.trade.stop)??'—'}</div></div>
+      <div class="row"><div class="k">內外盤 BS</div><div class="v">${row.bs!=null?row.bs+'%':'—'}</div></div></div>
+      <div class="muted" style="font-size:12px;line-height:1.6;margin-top:6px">📝 跌破此價代表進場理由失效，紀律出場 — 通常設在均線下緣或前低${row.bs!=null?` ｜ 全場累積外盤買入佔 ${row.bs}% — ${row.bs>=55?'買盤佔優':row.bs<=45?'賣盤略佔優，留意反轉':'買賣力道接近'}`:''}</div>`;
+    // 三角交叉驗證
+    const tri=row.triangulation||{},log=tri.log||{};
+    const tbox=document.getElementById('f5-triangle');
+    if(tbox)tbox.innerHTML=`<div class="section-title" style="font-size:14px;margin-bottom:6px">🔺 三角交叉驗證</div>
+      <div style="font-weight:900">${E(tri.verdict||'等待盤中驗證')} ${E(tri.confidence||'')}</div>
+      ${tri.conflict?`<div class="muted" style="margin-top:4px">${E(tri.conflict)}</div>`:''}
+      <div class="muted" style="font-size:12px;line-height:1.7;margin-top:6px">${[...(log.negative||[]).map(x=>'✗ '+x),...(log.positive||[]).map(x=>'✓ '+x),...(log.neutral||[]).map(x=>'– '+x)].map(E).join('<br>')||'尚無三角驗證資料（盤中引擎產出）'}</div>
+      ${log.negative||log.positive?`<div class="muted" style="font-size:12px;margin-top:4px">${(log.negative||[]).length} 反向 vs ${(log.positive||[]).length} 正向</div>`:''}`;
+    // 文件四大策略
+    const doc=row.doc_strategy||{};
+    const dbox=document.getElementById('f5-doc');
+    const passN=['c1_market','c2_chip','c3_tech','c4_bs'].filter(k=>doc[k]).length;
+    if(dbox)dbox.innerHTML=`<div class="section-title" style="font-size:14px;margin-bottom:6px">📋 文件四大策略 <span class="muted">${doc.score??'—'}分</span></div>
+      <div style="font-weight:800">${doc.c1_market?'✓':'✗'} 大盤 ｜ ${doc.c2_chip?'✓':'✗'} 籌碼 ｜ ${doc.c3_tech?'✓':'✗'} 技術MA20 ｜ ${doc.c4_bs?'✓':'✗'} BS盤</div>
+      <div class="muted" style="font-size:12px;margin-top:6px">📝 四大條件過 ${passN}/4 項 — ${passN===4?'全數通過，符合文件標準':passN===0?'全數未過，不符合文件標準，跳過':'部分通過，等待其餘條件蓋章'}</div>`;
+  }catch(e){console.warn('factors5',e);}
+})();
+</script>

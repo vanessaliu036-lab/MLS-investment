@@ -1,0 +1,19 @@
+services:
+  mls-v4:
+    build: .
+    image: mls-v4:latest
+    container_name: mls-v4
+    restart: unless-stopped
+    ports:
+      - "8003:8000"
+    environment:
+      TZ: Asia/Taipei
+      MLS_DB_PATH: /app/data/mls.db
+      MLS_REPORT_DIR: /app/data/reports
+    env_file:
+      - .env
+    volumes:
+      - mls-v4-data:/app/data
+
+volumes:
+  mls-v4-data:
