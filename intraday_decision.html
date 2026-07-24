@@ -91,7 +91,9 @@ async function openPanel(kind){
       // 絕不拿固定觀察池回填。固定 51 檔只在「觀察池」頁顯示。
       let rows=[...tier1,...tier2],fallback=!!d.latest_fallback;
       window._tomorrowUpdated=d.date||window._tomorrowUpdated||d.updated_at;
-      status.textContent=rows.length?`${d.note?d.note+' · ':''}明日觀察 ${rows.length} 檔 · 名單日 ${d.date||'—'}`:(d.note||'資料庫尚無盤後名單 · 每日 18:00 盤後複查完成後自動產出');
+      window._listMeta=d;
+      title.textContent=d.title||'觀察清單';
+      status.textContent=rows.length?`${d.subtitle||''} · ${rows.length} 檔`:(d.note||'資料庫尚無盤後名單 · 每日 18:00 盤後複查完成後自動產出');
       body.innerHTML=`<div class="decision-groups"><section class="decision-group"><h3>明日觀察清單</h3><div class="group-note">盤後使用今日法人、融資、收盤與盤中累積資料產出；固定池成員不會被移除。${fallback?'目前先顯示固定池最近行情，盤後完成後自動換成正式名單。':''}</div><div class="feature-table"><table><thead><tr><th>代碼</th><th>名稱</th><th>族群</th><th>現價</th><th>漲跌%</th><th>aflow</th><th>狀態</th><th>盤後理由</th></tr></thead><tbody>${rows.map(x=>{const code=x.code||x.stock_id,change=x.change_rate;return `<tr style="cursor:pointer" onclick="closePanel();openStock('${code}')"><td><b>${esc(code||'—')}</b></td><td>${esc(x.name||x.stock_name||'—')}</td><td>${esc(x.sector||'—')}</td><td>${x.price??'—'}</td><td class="${cls(change)}">${change==null?'—':(change>0?'+':'')+change+'%'}</td><td>${x.aflow==null?'—':fmt(x.aflow)}</td><td><span class="pill">${esc(x.tier||(tier1.includes(x)?'第一梯隊':'第二梯隊'))}</span></td><td class="muted">${esc(x.reason||x.note||'盤後條件符合')}</td></tr>`;}).join('')||'<tr><td colspan="8" class="muted">目前沒有固定池資料</td></tr>'}</tbody></table></div></section></div>`;
       renderTomorrowGroups(body,rows,fallback);
     }else if(kind==='timeline'){
@@ -432,3 +434,10 @@ document.querySelector('.sidebar .nav-item.active')?.classList.add('selected');
 .radar-template .sec-v{font-size:17px;font-weight:950;margin-top:3px}
 .radar-template .sec-f{font-size:11px;color:var(--muted);margin-top:2px}
 </style>
+
+<script>
+// 側邊選單「明日觀察清單」依實際名單日正名(今日盯盤/明日觀察)
+(async()=>{try{const d=await(await fetch((location.protocol==='file:'?'http://66.42.42.150:8000':'')+'/api/funnel',{cache:'no-store'})).json();
+  const it=[...document.querySelectorAll('.sidebar .nav-item')].find(x=>x.textContent.includes('觀察清單'));
+  if(it&&d.title)it.textContent=d.title;}catch(e){}})();
+</script>

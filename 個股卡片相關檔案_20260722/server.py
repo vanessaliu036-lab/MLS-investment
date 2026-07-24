@@ -838,20 +838,38 @@ def api_funnel(date: str = None):
                 rows = db.load_watchlist(latest_day)
                 used_date = latest_day
                 is_latest_fallback = True
+        # 名單語意:watchlist 存的是「該交易日要盯的名單」，由前一晚 18:00
+        # 盤後複查產出。因此同一份名單在今天叫「今日盯盤」、在昨晚叫「明日觀察」。
+        _today, _next = db.today(), after_hours.next_trade_date()
+        if used_date == _today:
+            kind, tier_label = "today", "今日盯盤"
+            title = "今日盯盤名單"
+            subtitle = f"昨日 18:00 盤後籌碼定案後產出（名單日 {used_date}）；今晚 18:00 產出明日名單"
+        elif used_date == _next:
+            kind, tier_label = "tomorrow", "明日觀察"
+            title = "明日觀察清單"
+            subtitle = f"今日盤後籌碼已定案，明日（{used_date}）進場候選"
+        else:
+            kind, tier_label = "past", "歷史名單"
+            title = f"{used_date} 名單"
+            subtitle = "較新的盤後名單尚未產出，顯示最近一次可用名單"
         tier1 = [{
             "code": r.get("stock_id"), "stock_id": r.get("stock_id"),
             "name": r.get("stock_name"), "stock_name": r.get("stock_name"),
             "sector": r.get("sector"), "reason": r.get("reason"),
-            "tier": "明日觀察", "hit": bool(r.get("hit")),
+            "tier": tier_label, "hit": bool(r.get("hit")),
             "demoted": bool(r.get("demoted")),
         } for r in rows]
         note = None
         if is_latest_fallback:
-            note = f"今日盤後名單尚未產出，顯示最近一次（{used_date}）"
+            note = f"較新名單尚未產出，顯示最近一次（{used_date}）"
         elif not rows:
             note = "資料庫尚無任何盤後名單；18:00 盤後複查完成後自動產出"
+            title, subtitle = "尚無名單", "每日 18:00 官方籌碼定案後自動產出"
         return JSONResponse(json.loads(json.dumps({
             "date": used_date, "tier1": tier1, "tier2": [],
+            "list_kind": kind, "title": title, "subtitle": subtitle,
+            "today": _today, "next_trade_date": _next,
             "latest_fallback": is_latest_fallback, "note": note,
         }, default=str, ensure_ascii=False)))
     except Exception as e:
