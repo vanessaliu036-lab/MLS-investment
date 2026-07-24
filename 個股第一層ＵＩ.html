@@ -607,7 +607,7 @@ document.querySelectorAll('.expand').forEach(btn=>{
 </script>
 
 <style>
-/* ══ 觀察池搜尋框 ══ */
+/* ══ 觀察池搜尋 / 狀態篩選 ══ */
 .pool-search{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;
   background:#fff;border:1px solid #e5e9f2;border-radius:14px;padding:12px 14px;margin:0 0 14px;
   box-shadow:0 5px 18px #1927470a}
@@ -615,26 +615,69 @@ document.querySelectorAll('.expand').forEach(btn=>{
 .pool-search input{flex:1;min-width:220px;border:1px solid #e5e9f2;border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit}
 .pool-search input:focus{outline:none;border-color:#5b6ff5;box-shadow:0 0 0 3px #5b6ff522}
 .pool-search .pool-count{font-size:12px;font-weight:800;color:#5f6b80;background:#f0f3f8;border-radius:999px;padding:6px 12px;white-space:nowrap}
-.pool-empty{padding:26px;text-align:center;color:#73809a;font-size:13px;border:1px dashed #ccd4e3;border-radius:14px;background:#fbfcff}
+.pool-search .pool-reset{border:1px solid #e5e9f2;background:#fff;border-radius:10px;padding:8px 12px;
+  font-size:12px;font-weight:800;color:#5f6b80;cursor:pointer;font-family:inherit}
+.pool-search .pool-reset:hover{border-color:#5b6ff5;color:#3f56d8}
+.pool-empty{padding:26px;text-align:center;color:#73809a;font-size:13px;border:1px dashed #ccd4e3;border-radius:14px;background:#fbfcff;margin-top:12px}
+/* display 由卡片自己的 grid/flex 決定，hidden 屬性壓不住，一律用 class 隱藏 */
+.pool-hide{display:none!important}
+/* 上方統計卡＝可點的篩選鈕 */
+.summary-card.pool-tile{cursor:pointer;transition:.15s;user-select:none}
+.summary-card.pool-tile:hover{border-color:#5b6ff5;box-shadow:0 6px 18px #5b6ff522}
+.summary-card.pool-tile.active{border-color:#5b6ff5;background:#eef2ff;box-shadow:inset 3px 0 0 #5b6ff5}
+.summary-card.pool-tile .tile-hint{margin-top:4px;font-size:10.5px;color:#9aa4b8;font-weight:700}
 @media(max-width:600px){.pool-search{gap:8px}.pool-search input{min-width:0;width:100%}}
 </style>
 <script>
-// 觀察池搜尋：依代碼／名稱／族群即時過濾，族群檔數與空狀態同步更新。
+// 觀察池：搜尋（代碼／名稱／族群）＋ 上方狀態卡點擊篩選。
+// 兩者是 AND 條件；統計數字一律由畫面上實際的卡片算出來，不會和下方清單對不起來。
 (()=>{
+  const TILE=[null,'可操作','觀察','排除'];              // summary-card 順序
+  const MAP={'Ready':'可操作','Watch':'觀察','Risk':'排除'}; // 卡片狀態 → 分類
+  let status='';                                          // 目前選的狀態篩選
+
   function install(){
     const root=document.querySelector('#sector-root');
     if(!root||!root.querySelector('.stock-card')||document.querySelector('.pool-search'))return false;
+
+    // 1) 每張卡標上分類，之後統計與篩選都用同一個來源
+    root.querySelectorAll('.stock-card').forEach(card=>{
+      const t=(card.querySelector('.decision .status')?.textContent||'').trim();
+      card.dataset.status=MAP[t]||t||'待回報';
+    });
+
+    // 2) 搜尋列
     const bar=document.createElement('div');
     bar.className='pool-search';
     bar.innerHTML='<span class="pool-label">搜尋觀察池</span>'
-      +'<input type="search" placeholder="輸入代碼 / 名稱 / 族群，例如 2330、台積電、記憶體">'
+      +'<input type="search" placeholder="輸入代碼 / 名稱 / 族群，例如 2337、旺宏、記憶體">'
+      +'<button type="button" class="pool-reset">清除篩選</button>'
       +'<span class="pool-count"></span>';
     (document.querySelector('.summary-strip')||root).after(bar);
-    const empty=document.createElement('div');
-    empty.className='pool-empty';empty.hidden=true;
-    empty.textContent='找不到符合的個股，請換個代碼或名稱。';
-    root.after(empty);
     const input=bar.querySelector('input'),count=bar.querySelector('.pool-count');
+
+    const empty=document.createElement('div');
+    empty.className='pool-empty';empty.classList.add('pool-hide');
+    empty.textContent='找不到符合的個股，請換個代碼、名稱或清除篩選。';
+    root.after(empty);
+
+    // 3) 統計卡改成可點的篩選鈕；數字由畫面實際卡片算
+    const tiles=[...document.querySelectorAll('.summary-card')];
+    TILE.forEach((name,i)=>{
+      if(!name||!tiles[i])return;
+      tiles[i].classList.add('pool-tile');
+      tiles[i].dataset.status=name;
+      if(!tiles[i].querySelector('.tile-hint')){
+        const h=document.createElement('div');h.className='tile-hint';h.textContent='點擊只看這類';
+        tiles[i].append(h);
+      }
+      tiles[i].addEventListener('click',()=>{status=(status===name?'':name);apply()});
+    });
+    if(tiles[0]){
+      tiles[0].classList.add('pool-tile');
+      tiles[0].addEventListener('click',()=>{status='';input.value='';apply()});
+    }
+
     const apply=()=>{
       const q=(input.value||'').trim().toLowerCase();
       let shown=0;
@@ -642,24 +685,44 @@ document.querySelectorAll('.expand').forEach(btn=>{
         const title=(sec.querySelector('.sector-title')?.textContent||'').toLowerCase();
         let n=0;
         sec.querySelectorAll('.stock-card').forEach(card=>{
-          const hit=!q||title.includes(q)
-            ||(card.querySelector('.code')?.textContent||'').toLowerCase().includes(q)
-            ||(card.querySelector('.name')?.textContent||'').toLowerCase().includes(q);
-          card.hidden=!hit; if(hit)n++;
+          const text=q?((card.querySelector('.code')?.textContent||'')+(card.querySelector('.name')?.textContent||'')).toLowerCase():'';
+          const hitQ=!q||title.includes(q)||text.includes(q);
+          const hitS=!status||card.dataset.status===status;
+          const hit=hitQ&&hitS;
+          card.classList.toggle('pool-hide',!hit); if(hit)n++;
         });
-        sec.hidden=(n===0);
+        sec.classList.toggle('pool-hide',n===0);
         const badge=sec.querySelector('.sector-head .count');
         if(badge)badge.textContent=n+' 檔';
         shown+=n;
       });
-      count.textContent=q?('符合 '+shown+' 檔'):('共 '+shown+' 檔');
-      empty.hidden=shown>0;
+      // 統計數字＝目前搜尋條件下各分類的實際檔數（和下方清單一定一致）
+      const all=[...root.querySelectorAll('.stock-card')];
+      const inQ=all.filter(card=>{
+        if(!q)return true;
+        const sec=card.closest('.sector');
+        const title=(sec?.querySelector('.sector-title')?.textContent||'').toLowerCase();
+        const text=((card.querySelector('.code')?.textContent||'')+(card.querySelector('.name')?.textContent||'')).toLowerCase();
+        return title.includes(q)||text.includes(q);
+      });
+      TILE.forEach((name,i)=>{
+        if(!name||!tiles[i])return;
+        const v=tiles[i].querySelector('.v');
+        if(v)v.textContent=inQ.filter(c=>c.dataset.status===name).length;
+        tiles[i].classList.toggle('active',status===name);
+      });
+      const filtered=q||status;
+      count.textContent=(filtered?'符合 ':'共 ')+shown+' 檔'+(status?'（'+status+'）':'');
+      empty.classList.toggle('pool-hide',shown>0);
     };
+
     input.addEventListener('input',apply);
+    bar.querySelector('.pool-reset').addEventListener('click',()=>{status='';input.value='';apply()});
     apply();
     return true;
   }
-  // 清單由 JS 非同步渲染，等它出現再掛搜尋框
+
+  // 清單由 JS 非同步渲染，等它出現再掛
   if(!install()){
     const timer=setInterval(()=>{if(install())clearInterval(timer)},200);
     setTimeout(()=>clearInterval(timer),20000);
