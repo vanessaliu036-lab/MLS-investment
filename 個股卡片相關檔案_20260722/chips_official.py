@@ -16,6 +16,7 @@
 """
 
 import json
+import ssl
 import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -33,9 +34,17 @@ def _today():
     return datetime.now(TW_TZ).date()
 
 
+# TPEx 憑證缺 Subject Key Identifier，新版 OpenSSL 會驗不過。
+# 這是公開唯讀的政府行情資料，且僅用於 tpex.org.tw；不放寬其他站台。
+_TPEX_CTX = ssl.create_default_context()
+_TPEX_CTX.check_hostname = False
+_TPEX_CTX.verify_mode = ssl.CERT_NONE
+
+
 def _get_json(url, timeout=20):
     req = urllib.request.Request(url, headers={"User-Agent": UA})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    ctx = _TPEX_CTX if "tpex.org.tw" in url else None
+    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -70,28 +79,33 @@ def _twse_day(d):
 
 
 def _tpex_day(d):
-    """TPEx（上櫃）某日三大法人。欄位順序與 TWSE 不同，解析失敗回空不影響上市。"""
-    roc = f"{d.year - 1911}/{d.month:02d}/{d.day:02d}"
-    url = ("https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php"
-           f"?l=zh-tw&se=EW&t=D&d={roc}&o=json")
+    """TPEx（上櫃）某日三大法人買賣超。
+
+    欄位（24 欄，單位：股）：
+      [10] 外資及陸資合計買賣超  [13] 投信買賣超
+      [22] 自營商合計買賣超      [-1] 三大法人合計
+    """
+    url = ("https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade"
+           f"?type=Daily&sect=EW&date={d.strftime('%Y/%m/%d')}&response=json")
     out = {}
     try:
         j = _get_json(url)
-    except Exception:
+    except Exception as exc:
+        print(f"[chips_official] TPEx {d} 失敗:{exc}", flush=True)
         return out
-    rows = j.get("aaData") or j.get("data") or []
-    for row in rows:
+    tables = j.get("tables") or []
+    rows = tables[0].get("data") if tables else (j.get("aaData") or j.get("data") or [])
+    for row in rows or []:
         try:
             code = str(row[0]).strip()
-            if not code.isdigit():
+            if not code.isdigit() or len(code) != 4:
                 continue
-            # TPEx：外資及陸資合計、投信、自營合計、三大法人合計（單位：股）
-            foreign = (_num(row[10]) or 0) / 1000
-            trust = (_num(row[13]) or 0) / 1000
-            dealer = (_num(row[22]) or 0) / 1000
-            total = (_num(row[-1]) or 0) / 1000
-            out[code] = {"foreign": foreign, "trust": trust,
-                         "dealer": dealer, "total": total}
+            out[code] = {
+                "foreign": (_num(row[10]) or 0) / 1000,
+                "trust": (_num(row[13]) or 0) / 1000,
+                "dealer": (_num(row[22]) or 0) / 1000,
+                "total": (_num(row[-1]) or 0) / 1000,
+            }
         except Exception:
             continue
     return out
