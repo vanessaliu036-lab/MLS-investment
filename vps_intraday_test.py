@@ -149,7 +149,12 @@ def _norm(value, lo, hi):
 
 
 def _seven_factor_score(raw, ma20, chip):
-    """真實欄位才計分；缺資料列入 missing，絕不補 50 或用漲跌幅造分。"""
+    """真實欄位才計分；缺資料列入 missing，絕不補分。
+
+    量級修正（2026-07-24）：net_active 原本用 aflow/50,000,000 正規化，
+    但 aflow 單位是「張」（典型 +300 張），除下來永遠 ≈0 → 全體 0 分，
+    22 分因子等同報廢。改用「主動買賣差 ÷ 當日成交量」的比例計分。
+    """
     price = float(raw.get("price") or 0)
     change = float(raw.get("change_rate") or 0)
     aflow = int(raw.get("buy_volume") or 0) - int(raw.get("sell_volume") or 0)
@@ -157,67 +162,112 @@ def _seven_factor_score(raw, ma20, chip):
     points = 0.0
     missing = []
     factors = {}
+    ev = []          # 支持進場的證據
+    against = []     # 扣分/風險證據
 
-    # 盤中不讀盤後模組；資金健康度、承接品質、融資屬收盤後驗證，
-    # 不得放進盤中「缺資料」或影響盤中觀察分類。
     for key in ("money_health", "absorption"):
         factors[key] = {"points": None, "max": FACTOR_WEIGHTS[key], "status": "盤後驗證"}
 
-    if volume > 0 and aflow is not None:
-        p = FACTOR_WEIGHTS["net_active"] * _norm(aflow, 0, 50_000_000)
-        points += p
-        factors["net_active"] = {"points": round(p, 1), "max": 22, "status": "已接入"}
+    # ── 主動買賣差 22 分：用佔成交量比例，≥8% 給滿分 ──
+    ratio = (aflow / volume) if volume > 0 else None
+    if ratio is not None:
+        p_na = FACTOR_WEIGHTS["net_active"] * _norm(ratio, 0.0, 0.08)
+        points += p_na
+        factors["net_active"] = {
+            "points": round(p_na, 1), "max": 22, "status": "已接入",
+            "detail": f"主動買賣差 {aflow:+,} 張，佔成交量 {ratio*100:+.1f}%",
+        }
+        if ratio >= 0.03:
+            ev.append(f"主動買超佔量 {ratio*100:.1f}%（買盤積極）")
+        elif ratio <= -0.03:
+            against.append(f"主動賣超佔量 {abs(ratio)*100:.1f}%（賣壓沉重）")
     else:
         factors["net_active"] = {"points": None, "max": 22, "status": "缺資料"}
         missing.append("主動買賣差")
 
+    # ── MA20 12 分：站上滿分，跌破依乖離給部分分 ──
     if price > 0 and ma20:
-        p = FACTOR_WEIGHTS["vs_ma20"] if price >= float(ma20) else 0.0
-        points += p
-        factors["vs_ma20"] = {"points": p, "max": 12, "status": "已接入"}
+        dev = (price - float(ma20)) / float(ma20)
+        if dev >= 0:
+            p_ma = FACTOR_WEIGHTS["vs_ma20"]
+            ev.append(f"站上月線（高於 MA20 {dev*100:.1f}%）")
+        else:
+            p_ma = FACTOR_WEIGHTS["vs_ma20"] * max(0.0, 1 + dev / 0.05) * 0.5
+            against.append(f"跌破月線 {abs(dev)*100:.1f}%")
+        points += p_ma
+        factors["vs_ma20"] = {
+            "points": round(p_ma, 1), "max": 12, "status": "已接入",
+            "detail": f"現價 {price} vs MA20 {ma20}（乖離 {dev*100:+.1f}%）",
+        }
     else:
         factors["vs_ma20"] = {"points": None, "max": 12, "status": "缺資料"}
         missing.append("MA20")
 
+    # ── 法人連買 10 分 ──
     streak = chip.get("inst_streak")
     if streak is not None:
-        p = FACTOR_WEIGHTS["inst_streak"] * _norm(streak, 0, 5)
-        points += p
-        factors["inst_streak"] = {"points": round(p, 1), "max": 10, "status": "已接入"}
+        p_st = FACTOR_WEIGHTS["inst_streak"] * _norm(streak, 0, 5)
+        points += p_st
+        factors["inst_streak"] = {
+            "points": round(p_st, 1), "max": 10, "status": "已接入",
+            "detail": f"法人連買 {streak} 日",
+        }
+        if streak >= 3:
+            ev.append(f"法人連買 {streak} 日")
     else:
         factors["inst_streak"] = {"points": None, "max": 10, "status": "缺資料"}
         missing.append("法人連買")
 
-    # 融資只在盤後資料固定後驗證；盤中不列為缺資料。
     factors["margin"] = {"points": None, "max": 8, "status": "盤後驗證"}
+
+    # 盤中可計算上限（扣掉盤後驗證項），分數以此為基準判定門檻
+    avail = sum(v["max"] for v in factors.values() if v["points"] is not None)
+    pct = (points / avail * 100) if avail else None
 
     extreme = abs(change) >= 9.0
     fake_red = change > 0 and aflow < 0
     resting = change <= 0 and aflow < 0
+
+    if change > 0:
+        ev.append(f"股價上漲 {change:+.2f}%")
+    elif change < 0:
+        against.append(f"股價下跌 {change:+.2f}%")
+
     if extreme or fake_red or resting:
         group, subgroup = "排除", "風險訊號"
-        reason = "極端價／假紅／資金流出，不能作進場依據"
-    elif not missing and points >= 65:
-        group, subgroup = "可操作", "七因子達標"
-        reason = "七因子 100 分制達到 65 分門檻"
+        if extreme:
+            why = f"漲跌幅 {change:+.2f}% 已達極端區間，追價風險過高"
+        elif fake_red:
+            why = f"股價漲 {change:+.2f}% 但主動賣超 {abs(aflow):,} 張——假紅、主力邊拉邊出"
+        else:
+            why = f"股價 {change:+.2f}% 且主動賣超 {abs(aflow):,} 張——量價同步走弱"
+        reason = why
+    elif not missing and pct is not None and pct >= 65:
+        group, subgroup = "可操作", "盤中因子達標"
+        reason = (f"盤中可計算 {points:.0f}/{avail:.0f} 分（{pct:.0f}%）達 65% 門檻："
+                  + "；".join(ev[:3]) + "。盤後仍須籌碼與融資蓋章。")
     else:
         group, subgroup = "觀察", "條件待確認"
+        bits = []
+        if ev:
+            bits.append("有利：" + "、".join(ev[:3]))
+        if against:
+            bits.append("不利：" + "、".join(against[:2]))
+        if pct is not None:
+            gap = max(0.0, 0.65 * avail - points)
+            bits.append(f"盤中 {points:.0f}/{avail:.0f} 分（{pct:.0f}%）"
+                        + (f"，差 {gap:.0f} 分達標" if gap > 0 else ""))
         if missing:
-            reason = "；".join(f"等待{m}盤中回報" for m in missing)
-        elif aflow >= 0 and change >= 0:
-            reason = "盤中資金流入、股價同向上漲，持續觀察。"
-        elif aflow >= 0 and change < 0:
-            reason = "盤中資金流入但股價下跌，觀察承接。"
-        elif aflow < 0 and change >= 0:
-            reason = "盤中股價上漲但資金流出，留意假紅。"
-        else:
-            reason = "盤中資金與股價同步偏弱，觀察。"
+            bits.append("待補：" + "、".join(missing))
+        reason = "；".join(bits) + "。"
 
     return {
         "score": round(points, 1), "score_max": 100,
-        "score_available": round(sum(v["max"] for v in factors.values() if v["points"] is not None), 1),
-        "score_rule": "screen intraday.py：六項權重合計 100；65 分以上且無缺資料才可操作",
+        "score_pct": round(pct, 1) if pct is not None else None,
+        "score_available": round(avail, 1),
+        "score_rule": "盤中可計算三因子（主動買賣差22＋MA20 12＋法人連買10）；達可計算分數 65% 且無缺資料才可操作",
         "factors": factors, "score_missing": missing,
+        "evidence": ev, "against": against,
         "group": group, "subgroup": subgroup, "reason": reason,
     }
 
@@ -312,6 +362,9 @@ def _row(raw):
         "score_rule": seven["score_rule"],
         "score_factors": seven["factors"],
         "score_missing": seven["score_missing"],
+        "score_pct": seven["score_pct"],
+        "evidence": seven["evidence"],
+        "against": seven["against"],
         # 雷達是盤中頁：缺資料欄只顯示當下盤中 filter 的缺口，
         # 不把盤後模組(score_missing)倒灌到盤中。
         "filter_no_data": filters["no_data"],
@@ -384,7 +437,9 @@ def intraday_test():
         # v5 分類攤平：可操作→觀察→排除；各群內仍維持漲幅優先，再按 aflow。
         group_order = {"可操作": 0, "觀察": 1, "排除": 2}
         rows.sort(key=lambda x: (group_order.get(x["group"], 9),
-                                 -x["change_rate"], -x["aflow"]))
+                                 -(x.get("score_pct") or 0),
+                                 -(x.get("score") or 0),
+                                 -x["change_rate"]))
         category_counts = {}
         for row in rows:
             category_counts[row["group"]] = category_counts.get(row["group"], 0) + 1
