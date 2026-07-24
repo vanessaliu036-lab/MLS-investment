@@ -294,6 +294,86 @@ def stamp_intraday_eod(state, today):
     return result
 
 
+
+def _live_rows_map():
+    """今日盤中每檔最新判讀（buffer 優先，收盤後用凍結快照），供盯盤名單即時更新。"""
+    rows = {}
+    try:
+        import vps_intraday_test as _vit
+        raw = None
+        try:
+            import broker as _bk
+            raw = _bk.raw_buffer_snapshots()
+        except Exception:
+            raw = None
+        if raw:
+            for item in raw:
+                r = _vit._row(item)
+                if r.get("code"):
+                    rows[str(r["code"])] = r
+        else:
+            saved = _vit._read_intraday_snapshot(allow_prev_day=True) or {}
+            for r in (saved.get("rows") or []):
+                if r.get("code"):
+                    rows[str(r["code"])] = r
+    except Exception as exc:
+        print(f"[watch] 盤中判讀讀取失敗:{exc}")
+    return rows
+
+
+def _watch_verdict(live):
+    """盯盤狀態：名單是昨晚選的，今天盤中表現是否兌現。"""
+    if not live:
+        return "待回報", "尚未收到盤中行情"
+    g = live.get("group")
+    chg = live.get("change_rate")
+    aflow = live.get("aflow")
+    if g == "可操作":
+        return "兌現", f"盤中升級為可操作（{chg:+.2f}%）"
+    if g == "排除":
+        return "反向", f"盤中觸發風險訊號（{chg:+.2f}%），不宜進場"
+    if chg is None:
+        return "觀察中", "等待盤中行情"
+    if chg >= 1.5 and (aflow or 0) >= 0:
+        return "兌現", f"漲幅 {chg:+.2f}% 且資金流入，符合入選預期"
+    if chg <= -1.5:
+        return "反向", f"跌幅 {chg:+.2f}%，與入選預期背離"
+    if (aflow or 0) < 0 and chg > 0:
+        return "留意", f"上漲 {chg:+.2f}% 但資金流出，留意假紅"
+    return "觀察中", f"{chg:+.2f}%，尚未走出方向"
+
+
+def stamp_watch_outcome(today):
+    """收盤把今日盯盤名單的實際結果寫入 watch_outcome 歷史。"""
+    wl = db.load_watchlist(today)
+    if not wl:
+        print("[watch] 今日無盯盤名單，略過收盤蓋章")
+        return 0
+    live = _live_rows_map()
+    rows = []
+    for w in wl:
+        code = str(w.get("stock_id"))
+        lv = live.get(code) or {}
+        verdict, note = _watch_verdict(lv)
+        rows.append({
+            "code": code, "name": w.get("stock_name"), "sector": w.get("sector"),
+            "watch_reason": w.get("reason"),
+            "open_group": lv.get("group"), "close_group": lv.get("group"),
+            "close_price": lv.get("price"), "change_rate": lv.get("change_rate"),
+            "aflow": lv.get("aflow"), "volume_ratio": lv.get("volume_ratio"),
+            "verdict": verdict, "note": note,
+        })
+        if verdict == "兌現":
+            try:
+                db.mark_watch_hit(today, code)
+            except Exception:
+                pass
+    db.save_watch_outcome(today, rows)
+    hits = sum(1 for r in rows if r["verdict"] == "兌現")
+    print(f"[watch] ✅ 收盤蓋章 {len(rows)} 檔，兌現 {hits} 檔 ({today})")
+    return len(rows)
+
+
 def check_stops(state):
     """回撤斷路器:訊號後跌破建議停損=失敗;連3敗當日停發進場。"""
     global _consec_fails, _breaker_on
@@ -460,6 +540,10 @@ def scheduler_loop():
                         if not (stamp_state.get("_snaps") or stamp_state.get("stocks")):
                             stamp_state = LIVE_STATE or _last_full_state
                         stamp_intraday_eod(stamp_state, today)
+                        try:
+                            stamp_watch_outcome(today)
+                        except Exception as exc:
+                            print(f"[watch] 收盤蓋章失敗:{exc}")
                         _did_eod_stamp = today
                     except Exception as exc:
                         print(f"[server] 盤後歷史蓋章失敗，下一輪重試: {exc}")
@@ -853,13 +937,35 @@ def api_funnel(date: str = None):
             kind, tier_label = "past", "歷史名單"
             title = f"{used_date} 名單"
             subtitle = "較新的盤後名單尚未產出，顯示最近一次可用名單"
-        tier1 = [{
-            "code": r.get("stock_id"), "stock_id": r.get("stock_id"),
-            "name": r.get("stock_name"), "stock_name": r.get("stock_name"),
-            "sector": r.get("sector"), "reason": r.get("reason"),
-            "tier": tier_label, "hit": bool(r.get("hit")),
-            "demoted": bool(r.get("demoted")),
-        } for r in rows]
+        # 盯盤名單不是死資料：每列掛上今日盤中即時判讀與狀態。
+        live_map = _live_rows_map() if kind == "today" else {}
+        outcome = {o["stock_id"]: o for o in db.load_watch_outcome(used_date)}
+        tier1 = []
+        for r in rows:
+            code = str(r.get("stock_id"))
+            lv = live_map.get(code) or {}
+            oc = outcome.get(code)
+            if oc:
+                verdict, vnote = oc.get("verdict"), oc.get("note")
+            elif kind == "today":
+                verdict, vnote = _watch_verdict(lv)
+            else:
+                verdict, vnote = "待盤中驗證", "此名單對應交易日尚未開盤"
+            tier1.append({
+                "code": code, "stock_id": code,
+                "name": r.get("stock_name"), "stock_name": r.get("stock_name"),
+                "sector": r.get("sector"), "reason": r.get("reason"),
+                "tier": tier_label, "hit": bool(r.get("hit")),
+                "demoted": bool(r.get("demoted")),
+                "price": lv.get("price") or (oc or {}).get("close_price"),
+                "change_rate": lv.get("change_rate") if lv else (oc or {}).get("change_rate"),
+                "aflow": lv.get("aflow") if lv else (oc or {}).get("aflow"),
+                "group": lv.get("group") or (oc or {}).get("close_group"),
+                "quadrant": lv.get("quadrant"),
+                "ai": lv.get("ai") or lv.get("classification_reason"),
+                "verdict": verdict, "verdict_note": vnote,
+                "stamped": bool(oc),
+            })
         note = None
         if is_latest_fallback:
             note = f"較新名單尚未產出，顯示最近一次（{used_date}）"
@@ -1123,6 +1229,54 @@ def api_card_page(code: str = "2337"):
         return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
     except Exception as exc:
         return HTMLResponse(f"<h1>個股卡片載入失敗:{exc}</h1>", status_code=500)
+
+
+@app.get("/api/watch-history")
+def api_watch_history(date: str = None, days: int = 30):
+    """盯盤名單歷史與準確度：每日名單的收盤結果 + 命中率，用來回頭優化篩選。"""
+    try:
+        rows = db.load_watch_outcome(date, days)
+        by_day = {}
+        for r in rows:
+            by_day.setdefault(r["trade_date"], []).append(r)
+        daily = []
+        for d in sorted(by_day, reverse=True):
+            items = by_day[d]
+            hit = sum(1 for x in items if x.get("verdict") == "兌現")
+            rev = sum(1 for x in items if x.get("verdict") == "反向")
+            chs = [x["change_rate"] for x in items
+                   if isinstance(x.get("change_rate"), (int, float))]
+            daily.append({
+                "trade_date": d, "total": len(items), "hit": hit, "reverse": rev,
+                "hit_rate": round(hit / len(items) * 100, 1) if items else None,
+                "avg_change": round(sum(chs) / len(chs), 2) if chs else None,
+                "items": items,
+            })
+        allc = [x["change_rate"] for x in rows
+                if isinstance(x.get("change_rate"), (int, float))]
+        total, hits = len(rows), sum(1 for x in rows if x.get("verdict") == "兌現")
+        return JSONResponse(json.loads(json.dumps({
+            "ok": True, "days": len(daily), "daily": daily,
+            "overall": {
+                "total": total, "hit": hits,
+                "hit_rate": round(hits / total * 100, 1) if total else None,
+                "avg_change": round(sum(allc) / len(allc), 2) if allc else None,
+            },
+            "note": ("盯盤名單由前一晚 18:00 籌碼定案後產出；收盤 13:30 蓋章實際結果。"
+                     "兌現=盤中升級可操作或漲幅≥1.5%且資金流入；反向=觸發風險或跌幅≥1.5%。"),
+        }, default=str, ensure_ascii=False)))
+    except Exception as e:
+        return JSONResponse({"ok": False, "daily": [], "error": str(e)})
+
+
+@app.post("/api/watch-history/stamp")
+def api_watch_stamp(date: str = None):
+    """手動補蓋章（收盤後若排程漏跑可呼叫）。"""
+    try:
+        n = stamp_watch_outcome(date or db.today())
+        return JSONResponse({"ok": True, "stamped": n})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)})
 
 
 if __name__ == "__main__":

@@ -49,6 +49,16 @@ def init():
           hit INTEGER DEFAULT 0,          -- 收盤驗證:當日是否被鎖定/觸發
           PRIMARY KEY(trade_date, stock_id)
         );
+        CREATE TABLE IF NOT EXISTS watch_outcome(
+          trade_date TEXT, stock_id TEXT, stock_name TEXT, sector TEXT,
+          watch_reason TEXT,              -- 昨晚入選理由
+          open_group TEXT,                -- 盤中首次分類
+          close_group TEXT,               -- 收盤時分類
+          close_price REAL, change_rate REAL, aflow REAL, volume_ratio REAL,
+          verdict TEXT,                   -- 命中 / 未命中 / 反向
+          note TEXT, stamped_at TEXT,
+          PRIMARY KEY(trade_date, stock_id)
+        );
         CREATE TABLE IF NOT EXISTS review_log(
           trade_date TEXT PRIMARY KEY,
           watch_total INTEGER, watch_hit INTEGER, hit_rate REAL,
@@ -194,6 +204,34 @@ def save_watchlist(trade_date, rows):
               (trade_date,stock_id,stock_name,sector,reason)
               VALUES(?,?,?,?,?)""",
               (trade_date, r["code"], r["name"], r["sector"], r["reason"]))
+
+
+def save_watch_outcome(trade_date, rows):
+    """收盤蓋章：把今日盯盤名單的實際結果寫入歷史，供準確度回測。"""
+    with _lock, _conn() as c:
+        for r in rows:
+            c.execute("""INSERT OR REPLACE INTO watch_outcome
+              (trade_date,stock_id,stock_name,sector,watch_reason,open_group,
+               close_group,close_price,change_rate,aflow,volume_ratio,
+               verdict,note,stamped_at)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+              (trade_date, r.get("code"), r.get("name"), r.get("sector"),
+               r.get("watch_reason"), r.get("open_group"), r.get("close_group"),
+               r.get("close_price"), r.get("change_rate"), r.get("aflow"),
+               r.get("volume_ratio"), r.get("verdict"), r.get("note"), now_iso()))
+
+
+def load_watch_outcome(trade_date=None, limit_days=30):
+    with _lock, _conn() as c:
+        if trade_date:
+            return [dict(r) for r in c.execute(
+                "SELECT * FROM watch_outcome WHERE trade_date=? ORDER BY stock_id",
+                (trade_date,))]
+        return [dict(r) for r in c.execute(
+            """SELECT * FROM watch_outcome WHERE trade_date IN
+               (SELECT DISTINCT trade_date FROM watch_outcome
+                ORDER BY trade_date DESC LIMIT ?)
+               ORDER BY trade_date DESC, stock_id""", (limit_days,))]
 
 
 def load_watchlist(trade_date):
