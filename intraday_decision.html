@@ -86,7 +86,11 @@ async function openPanel(kind){
       // 只 render 一次最終版型；舊的兩輪中繼 innerHTML 已移除(閃爍+浪費)。
       renderRadarGroups(body,window._radarGroups);
     }else if(kind==='tomorrow'){
-      const d=await(await fetch(API_BASE+'/api/funnel',{cache:'no-store'})).json();
+      const [d,hist]=await Promise.all([
+        fetch(API_BASE+'/api/funnel',{cache:'no-store'}).then(r=>r.json()),
+        fetch(API_BASE+'/api/watch-history?days=30',{cache:'no-store'}).then(r=>r.json()).catch(()=>({daily:[],overall:{}}))
+      ]);
+      window._watchHist=hist;
       const tier1=d.tier1||[],tier2=d.tier2||[];
       // 明日觀察清單只接受盤後 funnel 結果；沒有收盤蓋章時必須是 0，
       // 絕不拿固定觀察池回填。固定 51 檔只在「觀察池」頁顯示。
@@ -182,7 +186,7 @@ function closeHome(){
   document.querySelector('#featurePanel').hidden=true;
   document.querySelector('#stockDetail').hidden=true;
 }
-document.querySelector('.sidebar .nav-item.active')?.insertAdjacentHTML('afterend','<div class="nav-item" onclick="openPanel(\'tomorrow\')">明日觀察清單</div><div class="nav-item" onclick="openPanel(\'history\')">歷史與準確度</div>');document.querySelector('.sidebar .nav-item.active .count')?.classList.add('live');window.updateFilterCounts=function(){
+document.querySelector('.sidebar .nav-item.active')?.insertAdjacentHTML('afterend','<div class="nav-item" onclick="openPanel(\'tomorrow\')">明日觀察清單</div>');document.querySelector('.sidebar .nav-item.active .count')?.classList.add('live');window.updateFilterCounts=function(){
   const n={'全部':data.length,'可操作':0,'觀察':0,'排除':0};
   for(const x of data)if(n[x.group]!=null)n[x.group]++;
   document.querySelectorAll('.filter').forEach(b=>{
@@ -562,4 +566,50 @@ window.openStock=function(code){
   .radar-template .feature-table table{table-layout:auto;min-width:900px}
   .radar-template .feature-table{overflow-x:auto}
 }
+</style>
+<script>
+// ══ 盯盤名單一頁到底：今日即時 → 收盤蓋章 → 同頁下方歷史與準確度 ══
+window.renderTomorrowGroups=function(body,rows){
+  const E=esc, meta=window._listMeta||{}, hist=window._watchHist||{daily:[],overall:{}};
+  const ov=hist.overall||{}, daily=hist.daily||[];
+  const VC={'兌現':'v-hit','反向':'v-rev','留意':'v-warn'};
+  const stamped=rows.some(x=>x.stamped);
+  const hitN=rows.filter(x=>x.verdict==='兌現').length, revN=rows.filter(x=>x.verdict==='反向').length;
+  const step=(txt,on)=>`<span class="step${on?' active':''}">${txt}</span>`;
+  const flow=`<div class="timeline">${step('前一晚 18:00 籌碼定案產出名單',true)}<span class="arrow">→</span>${step('今日盤中即時追蹤',meta.list_kind==='today'&&!stamped)}<span class="arrow">→</span>${step('13:30 收盤蓋章',stamped)}<span class="arrow">→</span>${step('累積準確度回頭優化篩選',daily.length>0)}</div>`;
+
+  const liveTable=rows.length?`<div class="wt-wrap"><table class="result-table wt"><thead><tr><th>代碼</th><th>名稱</th><th>族群</th><th>現價</th><th>漲跌%</th><th>aflow</th><th>盤中分類</th><th>狀態</th><th>AI 判讀 / 入選理由</th></tr></thead><tbody>${rows.map(x=>{
+      const code=x.code||x.stock_id, ch=x.change_rate;
+      return `<tr style="cursor:pointer" onclick="openStock('${E(code)}')"><td><b>${E(code)}</b></td><td>${E(x.name||x.stock_name||'—')}</td><td>${E(x.sector||'—')}</td><td>${x.price??'—'}</td><td class="${cls(ch)}">${ch==null?'—':(ch>0?'+':'')+ch+'%'}</td><td class="${cls(x.aflow)}">${x.aflow==null?'—':fmt(x.aflow)}</td><td><span class="pill">${E(x.group||'待回報')}</span></td><td><span class="vd ${VC[x.verdict]||'v-obs'}">${E(x.verdict||'—')}</span></td><td class="wt-note"><div>${E(x.verdict_note||'')}</div><div class="wt-sub">入選：${E(x.reason||'—')}</div></td></tr>`;
+    }).join('')}</tbody></table></div>`
+    :`<div class="empty-state"><div class="empty-icon">…</div><h3>今日尚無盯盤名單</h3><p>每日 18:00 官方籌碼定案後，自動產出隔一交易日的盯盤名單。</p></div>`;
+
+  const histBlocks=daily.length?daily.map(day=>`<section class="decision-group"><div class="decision-group-head"><div><h3>${E(day.trade_date)}${day.trade_date===meta.today?'（今日 · 已蓋章）':''}</h3><div class="group-note">兌現 ${day.hit}／${day.total} · 反向 ${day.reverse} · 當日平均 <span class="${cls(day.avg_change)}">${day.avg_change==null?'—':(day.avg_change>0?'+':'')+day.avg_change+'%'}</span></div></div><div class="radar-count">${day.hit_rate==null?'—':day.hit_rate+'%'}</div></div>
+    <div class="feature-table"><table class="wt"><thead><tr><th>代碼</th><th>名稱</th><th>族群</th><th>收盤</th><th>漲跌%</th><th>收盤分類</th><th>結果</th><th>說明 / 入選理由</th></tr></thead><tbody>${(day.items||[]).map(i=>`<tr style="cursor:pointer" onclick="openStock('${E(i.stock_id)}')"><td><b>${E(i.stock_id)}</b></td><td>${E(i.stock_name||'—')}</td><td>${E(i.sector||'—')}</td><td>${i.close_price??'—'}</td><td class="${cls(i.change_rate)}">${i.change_rate==null?'—':(i.change_rate>0?'+':'')+i.change_rate+'%'}</td><td><span class="pill">${E(i.close_group||'—')}</span></td><td><span class="vd ${VC[i.verdict]||'v-obs'}">${E(i.verdict||'—')}</span></td><td class="wt-note"><div>${E(i.note||'')}</div><div class="wt-sub">入選：${E(i.watch_reason||'—')}</div></td></tr>`).join('')}</tbody></table></div></section>`).join('')
+    :`<div class="radar-empty"><strong>尚無收盤驗證紀錄</strong>今日 13:30 收盤會自動把這份名單的實際結果蓋章存檔，明日起即可在此比對準確度。</div>`;
+
+  body.innerHTML=`<div class="radar-template">
+    <div class="radar-summary">
+      <div class="radar-card main"><div class="radar-k">${E(meta.title||'盯盤名單')}</div><div class="radar-v">${E(meta.date||'—')}</div><div class="sec-f">${E(meta.subtitle||'')}</div></div>
+      <div class="radar-card"><div class="radar-k">名單檔數</div><div class="radar-v">${rows.length}</div></div>
+      <div class="radar-card"><div class="radar-k">今日兌現 / 反向</div><div class="radar-v"><span class="v-hit">${hitN}</span> / <span class="v-rev">${revN}</span></div></div>
+      <div class="radar-card"><div class="radar-k">累積命中率</div><div class="radar-v">${ov.hit_rate==null?'尚無':ov.hit_rate+'%'}</div><div class="sec-f">${ov.hit||0}/${ov.total||0} 檔次 · ${hist.days||0} 日</div></div>
+      <div class="radar-card"><div class="radar-k">狀態</div><div class="radar-v">${stamped?'已收盤蓋章':(meta.list_kind==='today'?'盤中即時更新':'等待開盤')}</div></div>
+    </div>
+    <div class="radar-info"><div class="radar-info-title">名單生命週期</div>${flow}
+      <div class="radar-notice">名單由前一晚 18:00 官方籌碼定案後產出；盤中每次重新整理即依即時行情更新狀態與 AI 判讀；13:30 收盤自動蓋章寫入下方歷史。<br><b>兌現</b>＝盤中升級為可操作，或漲幅 ≥1.5% 且資金流入；<b>反向</b>＝觸發風險訊號，或跌幅 ≥1.5%；<b>留意</b>＝上漲但資金流出（假紅）。累積命中率用來回頭檢討篩選是否過鬆或過嚴。</div></div>
+    <section class="decision-group"><div class="decision-group-head"><div><h3>${E(meta.title||'盯盤名單')} · ${E(meta.date||'')}</h3><div class="group-note">盤中即時狀態，點列可開完整個股決策頁</div></div><div class="radar-count">${rows.length} 檔</div></div><div class="feature-table">${liveTable}</div></section>
+    <div class="radar-info-title" style="margin:16px 0 8px">歷史紀錄與準確度（收盤蓋章結果）</div>
+    <div class="decision-groups">${histBlocks}</div>
+  </div>`;
+};
+</script>
+<style>
+.radar-template .wt th,.radar-template .wt td{padding:9px 8px;font-size:13px;vertical-align:top}
+.radar-template .wt td.wt-note{white-space:normal;min-width:260px;line-height:1.55;color:var(--muted)}
+.radar-template .radar-card .sec-f{font-size:10.5px;color:var(--muted);margin-top:4px;line-height:1.5}
+.radar-template .timeline{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.radar-template .step{padding:7px 11px;border-radius:999px;border:1px solid var(--line);background:#fff;font-size:12px;font-weight:850;color:var(--muted)}
+.radar-template .step.active{background:#eef3ff;color:var(--blue);border-color:#cbd8ff}
+.radar-template .arrow{color:#9aa4b8;font-weight:900}
 </style>
