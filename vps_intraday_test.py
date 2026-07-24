@@ -339,6 +339,21 @@ def intraday_test():
     print(f"[diag][http] intraday_test.begin ts={time.strftime('%Y-%m-%dT%H:%M:%S%z')}", flush=True)
     try:
         raw = broker.raw_buffer_snapshots()
+        # 服務重啟會清空 Shioaji tick buffer，盤中清單會瞬間從 51 檔掉到個位數。
+        # 用今日快照補齊尚未回報的檔案（只補不覆蓋），檔數不因重啟而縮水。
+        if raw:
+            try:
+                have = {str(x.get("code")) for x in raw}
+                saved = _read_intraday_snapshot() or {}
+                for row in (saved.get("rows") or []):
+                    code = str(row.get("code") or "")
+                    if code and code not in have and row.get("price") is not None:
+                        merged = dict(row)
+                        merged["stale_row"] = True
+                        raw.append(merged)
+                        have.add(code)
+            except Exception as exc:
+                print(f"[snapshot] 合併快照失敗: {exc}", flush=True)
         if not raw:
             saved = _read_intraday_snapshot()
             if saved:
