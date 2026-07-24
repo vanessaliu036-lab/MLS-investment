@@ -46,6 +46,9 @@ RESILIENT_RATIO = 55.0      # 指數跌但流入占比高於此 → 資金留守
 # 盤中每 5 分鐘落一點日內曲線，避免每輪都寫一筆把表灌爆。
 TICK_BUCKET_MIN = 5
 SESSION = ((8, 55), (13, 35))
+# 服務剛重啟時 Shioaji buffer 可能只有個位數回報，1 檔流入就是 100%。
+# 樣本不足一律不落地，也不准用小樣本蓋掉當日已記錄的大樣本。
+MIN_SAMPLE = 30
 
 
 def _now():
@@ -115,6 +118,9 @@ def compute(rows, index_pct=None):
     total = len(valid)
     in_count = sum(1 for r in valid if float(r.get("aflow") or 0) > 0)
     ratio = round(in_count / total * 100, 1) if total else 0.0
+    # 服務剛重啟時 buffer 可能只有個位數回報，1 檔流入就是 100%，會誤判
+    # Risk On。樣本不足時把占比視為無效（no_data），不落地、不判作戰模式。
+    thin = total < MIN_SAMPLE
     code, title, advice = level_of(ratio)
     state, state_title, state_note = diagnose(ratio, index_pct)
     return {
@@ -129,7 +135,8 @@ def compute(rows, index_pct=None):
         "state": state,
         "state_title": state_title,
         "state_note": state_note,
-        "no_data": total == 0,
+        "thin_sample": thin,
+        "no_data": total == 0 or thin,
     }
 
 

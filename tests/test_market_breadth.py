@@ -65,6 +65,13 @@ def test_缺aflow不計入分母():
     assert b["total"] == 20 and b["ratio_pct"] == 50.0
 
 
+def test_樣本不足不誤判riskon():
+    """服務剛重啟只有 1 檔回報時，1 檔流入不可判成 100% Risk On。"""
+    b = M.compute(rows(1, 0), index_pct=0.0)
+    assert b["ratio_pct"] == 100.0 and b["thin_sample"] and b["no_data"]
+    assert M.record(b, now=at("2026-07-23T10:00:00")) is False
+
+
 def test_時間序列_連續擴散天數():
     for day, n_in in [("2026-07-20", 20), ("2026-07-21", 25),
                       ("2026-07-22", 30), ("2026-07-23", 36)]:
