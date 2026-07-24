@@ -605,5 +605,66 @@ document.querySelectorAll('.expand').forEach(btn=>{
   }catch(e){console.error('first-layer load',e)}
 })();
 </script>
+
+<style>
+/* ══ 觀察池搜尋框 ══ */
+.pool-search{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;
+  background:#fff;border:1px solid #e5e9f2;border-radius:14px;padding:12px 14px;margin:0 0 14px;
+  box-shadow:0 5px 18px #1927470a}
+.pool-search .pool-label{font-size:12px;font-weight:800;color:#73809a}
+.pool-search input{flex:1;min-width:220px;border:1px solid #e5e9f2;border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit}
+.pool-search input:focus{outline:none;border-color:#5b6ff5;box-shadow:0 0 0 3px #5b6ff522}
+.pool-search .pool-count{font-size:12px;font-weight:800;color:#5f6b80;background:#f0f3f8;border-radius:999px;padding:6px 12px;white-space:nowrap}
+.pool-empty{padding:26px;text-align:center;color:#73809a;font-size:13px;border:1px dashed #ccd4e3;border-radius:14px;background:#fbfcff}
+@media(max-width:600px){.pool-search{gap:8px}.pool-search input{min-width:0;width:100%}}
+</style>
+<script>
+// 觀察池搜尋：依代碼／名稱／族群即時過濾，族群檔數與空狀態同步更新。
+(()=>{
+  function install(){
+    const root=document.querySelector('#sector-root');
+    if(!root||!root.querySelector('.stock-card')||document.querySelector('.pool-search'))return false;
+    const bar=document.createElement('div');
+    bar.className='pool-search';
+    bar.innerHTML='<span class="pool-label">搜尋觀察池</span>'
+      +'<input type="search" placeholder="輸入代碼 / 名稱 / 族群，例如 2330、台積電、記憶體">'
+      +'<span class="pool-count"></span>';
+    (document.querySelector('.summary-strip')||root).after(bar);
+    const empty=document.createElement('div');
+    empty.className='pool-empty';empty.hidden=true;
+    empty.textContent='找不到符合的個股，請換個代碼或名稱。';
+    root.after(empty);
+    const input=bar.querySelector('input'),count=bar.querySelector('.pool-count');
+    const apply=()=>{
+      const q=(input.value||'').trim().toLowerCase();
+      let shown=0;
+      root.querySelectorAll('.sector').forEach(sec=>{
+        const title=(sec.querySelector('.sector-title')?.textContent||'').toLowerCase();
+        let n=0;
+        sec.querySelectorAll('.stock-card').forEach(card=>{
+          const hit=!q||title.includes(q)
+            ||(card.querySelector('.code')?.textContent||'').toLowerCase().includes(q)
+            ||(card.querySelector('.name')?.textContent||'').toLowerCase().includes(q);
+          card.hidden=!hit; if(hit)n++;
+        });
+        sec.hidden=(n===0);
+        const badge=sec.querySelector('.sector-head .count');
+        if(badge)badge.textContent=n+' 檔';
+        shown+=n;
+      });
+      count.textContent=q?('符合 '+shown+' 檔'):('共 '+shown+' 檔');
+      empty.hidden=shown>0;
+    };
+    input.addEventListener('input',apply);
+    apply();
+    return true;
+  }
+  // 清單由 JS 非同步渲染，等它出現再掛搜尋框
+  if(!install()){
+    const timer=setInterval(()=>{if(install())clearInterval(timer)},200);
+    setTimeout(()=>clearInterval(timer),20000);
+  }
+})();
+</script>
 </body>
 </html>
