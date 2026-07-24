@@ -389,21 +389,28 @@ def prefetch_chips_cache(force=False):
     today = db.today()
     if CHIPS_PREFETCH_DONE == today and not force:
         return 0
-    try:
-        import chips
-    except Exception as exc:
-        print(f"[chips] 模組載入失敗:{exc}")
-        return 0
     codes = [str(c) for c in getattr(C, "UNIVERSE", [])]
     ok = 0
-    for code in codes:
+    # 官方優先：TWSE T86／TPEx 一次回全市場，免費無上限，51 檔只要 ~20 次請求。
+    try:
+        import chips_official
+        ok = chips_official.build_cache(codes)
+    except Exception as exc:
+        print(f"[chips] 官方來源失敗，改用 FinMind 備援:{exc}")
+    if ok < len(codes) * 0.6:
+        # 官方covered 不足才動用 FinMind（免費額度有限，超量會回 402）
         try:
-            r = chips.get_chips(code) or {}
-            if r.get("inst_streak") is not None or r.get("inst_net_20d_lots") is not None:
-                ok += 1
+            import chips
+            for code in codes:
+                try:
+                    r = chips.get_chips(code) or {}
+                    if r.get("inst_streak") is not None:
+                        ok += 1
+                except Exception:
+                    pass
+                time.sleep(0.35)
         except Exception as exc:
-            print(f"[chips] {code} 取得失敗:{exc}")
-        time.sleep(0.35)          # 尊重 FinMind 速率限制
+            print(f"[chips] FinMind 備援失敗:{exc}")
     CHIPS_PREFETCH_DONE = today
     print(f"[chips] ✅ 籌碼快取建立 {ok}/{len(codes)} 檔（{today}）", flush=True)
     return ok
