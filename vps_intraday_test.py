@@ -39,6 +39,10 @@ try:
     import review_rules  # noqa: E402  (盤後驗證：分類規則命中率，自動累積)
 except ImportError:
     review_rules = None
+try:
+    import market_breadth  # noqa: E402  (市場資金廣度：Risk On/Off 與真假行情)
+except ImportError:
+    market_breadth = None
 
 router = APIRouter()
 HISTORY_DB = BASE / "intraday_eod.db"
@@ -386,6 +390,62 @@ def _current_regime():
     return F.REGIME_RANGE
 
 
+def _index_pct():
+    """加權指數漲跌幅（%）。優先讀同 process 的 state，避免另打行情。"""
+    try:
+        import server
+        for state in (getattr(server, "LIVE_STATE", None), getattr(server, "STATE", None)):
+            if isinstance(state, dict):
+                val = (state.get("market") or {}).get("index_pct")
+                if val is not None:
+                    return float(val)
+    except Exception:
+        pass
+    try:
+        val = (broker.index_snapshot() or {}).get("index_pct")
+        return float(val) if val is not None else None
+    except Exception:
+        return None
+
+
+def _breadth(rows, live=True):
+    """算今日資金廣度；即時來源才落地時間序列（快照／回退不記）。"""
+    if market_breadth is None or not rows:
+        return None
+    try:
+        payload = market_breadth.api_payload(rows=rows, index_pct=_index_pct())
+        if live and not payload.get("stale"):
+            market_breadth.record(payload)
+        return payload
+    except Exception as exc:
+        print(f"[breadth] 計算失敗: {exc}", flush=True)
+        return None
+
+
+@router.get("/api/market-breadth")
+def market_breadth_api():
+    """市場資金廣度：Risk On/Off、指數 vs 廣度背離、日內與日線時間序列。"""
+    if market_breadth is None:
+        return {"ok": False, "error": "market_breadth 模組未載入"}
+    try:
+        rows = []
+        for item in broker.raw_buffer_snapshots():
+            rows.append({"code": str(item.get("code", "")),
+                         "aflow": F.aflow_official(int(item.get("sell_volume") or 0),
+                                                   int(item.get("buy_volume") or 0))})
+        live = bool(rows)
+        if not rows:
+            saved = _read_intraday_snapshot(allow_prev_day=True) or {}
+            rows = [{"code": r.get("code"), "aflow": r.get("aflow")}
+                    for r in (saved.get("rows") or []) if r.get("aflow") is not None]
+        payload = market_breadth.api_payload(rows=rows, index_pct=_index_pct())
+        if live and not payload.get("stale"):
+            market_breadth.record(payload)
+        return payload
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 @router.get("/api/intraday-test")
 def intraday_test():
     started = time.time()
@@ -469,6 +529,7 @@ def intraday_test():
                 f"v4 三態 filter：{regime}；極端價訊號降級 NO_DATA",
             ],
         }
+        result["breadth"] = _breadth(rows, live=not fallback_source)
         if fallback_source:
             result["snapshot"] = True
             result["notes"].append("首次收盤後讀取：由主服務保留的最後盤中 state 補存，與盤後篩選分離")

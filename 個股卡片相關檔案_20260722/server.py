@@ -740,6 +740,39 @@ def _launch_scheduler():
 @app.on_event("startup")
 async def _startup_scheduler():
     _launch_scheduler()
+    _launch_card_prewarm()
+
+
+def _launch_card_prewarm():
+    """開機後把 51 檔個股卡片預先算好寫入快取。
+
+    卡片吃盤後固定資料，同一交易日只需算一次；不預熱的話，重啟後第一個
+    點進個股的人要等 Shioaji 登入＋日K 抓取（實測 ~40 秒）。這裡在背景
+    逐檔慢慢跑（間隔 1 秒），已在快取中的直接跳過，不影響盤中訂閱。
+    """
+    def _worker():
+        import time
+        time.sleep(20)          # 讓行情訂閱先建立完成
+        try:
+            codes = list(getattr(C, "UNIVERSE", []) or [])
+        except Exception:
+            codes = []
+        done = 0
+        for code in codes:
+            try:
+                _extras.build_stock_card(str(code))
+                done += 1
+            except Exception as exc:
+                print(f"[prewarm] {code} 失敗: {exc}", flush=True)
+            time.sleep(1)
+        print(f"[prewarm] 個股卡片預熱完成 {done}/{len(codes)}", flush=True)
+
+    try:
+        import threading
+        threading.Thread(target=_worker, daemon=True, name="card-prewarm").start()
+        print("[prewarm] 個股卡片預熱啟動", flush=True)
+    except Exception as exc:
+        print(f"[prewarm] 啟動失敗: {exc}", flush=True)
 # 盤中隔離測試頁：只讀既有 broker buffer，不另開行情連線。
 import sys as _sys, pathlib as _pl, os as _os
 _INTRADAY_ROOT = _pl.Path(__file__).resolve().parent.parent

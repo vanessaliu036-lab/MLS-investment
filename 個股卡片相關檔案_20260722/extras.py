@@ -254,8 +254,100 @@ def _raw_rows() -> List[Dict[str, Any]]:
         return []
 
 
+# ── 個股卡片快取 ──────────────────────────────────────────
+# 卡片吃的是盤後固定資料（收盤日K＋FinMind＋已落地健康度），同一個交易日
+# 算出來的結果不會變。但每次 systemd 重啟後第一次點個股都要重跑 Shioaji
+# 登入＋日K 抓取，實測要 ~40 秒，使用者體感就是「點不開」。
+# 因此：同一 (code, 盤後有效日) 只算一次，並寫到磁碟，重啟後直接沿用。
+_CARD_MEM: Dict[str, Dict[str, Any]] = {}
+_CARD_DIR = _BASE / "card_cache"
+
+
+def _card_cache_path(code: str, asof: str) -> Path:
+    return _CARD_DIR / f"{asof}_{code}.json"
+
+
+def _card_cache_read(code: str, asof: str) -> Optional[Dict[str, Any]]:
+    key = f"{asof}_{code}"
+    hit = _CARD_MEM.get(key)
+    if hit is not None:
+        return hit
+    path = _card_cache_path(code, asof)
+    if not path.exists():
+        return None
+    try:
+        import json
+        with path.open(encoding="utf-8") as fh:
+            data = json.load(fh)
+        _CARD_MEM[key] = data
+        return data
+    except Exception as exc:
+        print(f"[extras] card cache 讀取失敗 {path.name}: {exc}", flush=True)
+        return None
+
+
+def _card_cache_write(code: str, asof: str, payload: Dict[str, Any]) -> None:
+    _CARD_MEM[f"{asof}_{code}"] = payload
+    try:
+        import json
+        _CARD_DIR.mkdir(exist_ok=True)
+        path = _card_cache_path(code, asof)
+        tmp = path.with_suffix(".tmp")
+        with tmp.open("w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False)
+        tmp.replace(path)
+        # 只留最近 3 個盤後日的檔，不無限長大
+        keep = sorted({p.name[:10] for p in _CARD_DIR.glob("*.json")})[-3:]
+        for old in _CARD_DIR.glob("*.json"):
+            if old.name[:10] not in keep:
+                old.unlink(missing_ok=True)
+    except Exception as exc:
+        print(f"[extras] card cache 寫入失敗 {code}: {exc}", flush=True)
+
+
+def _card_cache_stale(code: str) -> Optional[Dict[str, Any]]:
+    """當日資料算不出來時，退回這檔最近一次算好的卡片，不讓畫面開天窗。"""
+    try:
+        files = sorted(_CARD_DIR.glob(f"*_{code}.json"))
+        if not files:
+            return None
+        import json
+        with files[-1].open(encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return None
+
+
 # ── /api/stock/{code} ──────────────────────────────────────
-def build_stock_card(code: str) -> Dict[str, Any]:
+def build_stock_card(code: str, refresh: bool = False) -> Dict[str, Any]:
+    """對外入口：優先吃快取，沒有才真的重算（見 _build_stock_card）。"""
+    asof_limit, _ready = _post_market_asof()
+    code = str(code)
+    if not refresh:
+        cached = _card_cache_read(code, asof_limit)
+        if cached is not None:
+            cached = dict(cached)
+            cached["cache"] = {"hit": True, "asof": asof_limit,
+                               "note": "盤後固定資料，當日只計算一次"}
+            return cached
+    try:
+        result = _build_stock_card(code)
+    except Exception as exc:
+        stale = _card_cache_stale(code)
+        if stale is not None:
+            stale = dict(stale)
+            stale["cache"] = {"hit": True, "stale": True, "error": str(exc),
+                              "note": "本次重算失敗，顯示最近一次已算好的卡片"}
+            return stale
+        raise
+    if result.get("ok"):
+        _card_cache_write(code, asof_limit, result)
+        result = dict(result)
+        result["cache"] = {"hit": False, "asof": asof_limit}
+    return result
+
+
+def _build_stock_card(code: str) -> Dict[str, Any]:
     """組單檔盤後固定卡片。
 
     這條路由刻意不呼叫 broker.raw_buffer_snapshots()；盤中即時資料只在

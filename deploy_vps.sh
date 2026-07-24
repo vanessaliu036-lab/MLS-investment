@@ -56,6 +56,7 @@ rsync -avz --delete \
   --exclude='intraday_live_snapshot.json' \
   --exclude='ma20_cache.json' \
   --exclude='chips_cache.json' \
+  --exclude='card_cache/' \
   --exclude='reports/' \
   "${LOCAL_SRC}/" \
   "${VPS_USER}@${VPS_HOST}:${VPS_DEPLOY_DIR}/"
