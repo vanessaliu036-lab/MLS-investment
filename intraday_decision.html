@@ -52,14 +52,15 @@ function renderRadarGroups(body,groups){
   const liveGroups={};
   for(const [group,rows] of Object.entries(groups)){const liveRows=rows.filter(x=>x.price!=null&&Number.isFinite(Number(x.price)));if(liveRows.length)liveGroups[group]=liveRows;}
   const liveCount=Object.values(liveGroups).reduce((n,rows)=>n+rows.length,0),stamp=esc(dataStamp(window._radarUpdated));
-  const groupMarkup=Object.entries(liveGroups).map(([group,rows])=>`<section class="decision-group"><div class="decision-group-head"><div><h3>${esc(group)}</h3><div class="group-note">盤中只觀察，不作進場依據</div></div><div class="radar-count">${rows.length} 檔</div></div><div class="feature-table"><table><thead><tr><th>代碼</th><th>名稱</th><th>現價</th><th>漲跌%</th><th>aflow</th><th>代理象限</th><th>盤中判讀</th><th>缺資料</th></tr></thead><tbody>${rows.map(x=>`<tr style="cursor:pointer" onclick="closePanel();openStock('${esc(x.code)}')"><td><b>${esc(x.code)}</b></td><td>${esc(x.name||'—')}</td><td>${x.price??'—'}</td><td class="${cls(x.change_rate)}">${x.change_rate==null?'—':x.change_rate+'%'}</td><td class="${cls(x.aflow)}">${x.aflow==null?'—':fmt(x.aflow)}</td><td>${esc(x.quadrant||'—')}</td><td><span class="pill">${esc(x.group||'待回報')}</span><div class="muted">${esc(x.classification_reason||x.ai||'—')}</div></td><td class="muted">${esc((x.filter_no_data||[]).join('、')||'—')}</td></tr>`).join('')}</tbody></table></div></section>`).join('');
+  const groupMarkup=Object.entries(liveGroups).map(([group,rows])=>`<section class="decision-group"><div class="decision-group-head"><div><h3>${esc(group)}</h3><div class="group-note">盤中只觀察，不作進場依據</div></div><div class="radar-count">${rows.length} 檔</div></div><div class="feature-table"><table><thead><tr><th>代碼</th><th>名稱</th><th>族群</th><th>現價</th><th>漲跌%</th><th>aflow</th><th>代理象限</th><th>盤中判讀</th><th>缺資料</th></tr></thead><tbody>${rows.map(x=>`<tr data-sec="${esc(x.sector||'其他')}" style="cursor:pointer" onclick="closePanel();openStock('${esc(x.code)}')"><td><b>${esc(x.code)}</b></td><td>${esc(x.name||'—')}</td><td class="sec-col">${esc(x.sector||'—')}</td><td>${x.price??'—'}</td><td class="${cls(x.change_rate)}">${x.change_rate==null?'—':x.change_rate+'%'}</td><td class="${cls(x.aflow)}">${x.aflow==null?'—':fmt(x.aflow)}</td><td>${esc(x.quadrant||'—')}</td><td><span class="pill">${esc(x.group||'待回報')}</span><div class="muted">${esc(x.classification_reason||x.ai||'—')}</div></td><td class="muted">${esc((x.filter_no_data||[]).join('、')||'—')}</td></tr>`).join('')}</tbody></table></div></section>`).join('');
   body.innerHTML=`<div class="radar-template"><div class="radar-summary"><div class="radar-card main"><div class="radar-k">目前狀態</div><div class="radar-v">${liveCount?'盤中行情已就緒':'等待有效盤中行情'}</div></div><div class="radar-card"><div class="radar-k">固定觀察池</div><div class="radar-v">51 檔</div></div><div class="radar-card"><div class="radar-k">有效行情</div><div class="radar-v">${liveCount} 檔</div></div><div class="radar-card"><div class="radar-k">可操作</div><div class="radar-v">${(liveGroups['可操作']||[]).length}</div></div><div class="radar-card"><div class="radar-k">資料時間</div><div class="radar-v">${stamp}</div></div></div><div class="radar-info"><div class="radar-info-title">機會雷達 · 盤中篩選邏輯</div><div class="radar-rules"><div class="radar-rule"><div class="radar-k">觀察範圍</div><div class="radar-v">固定 51 檔全部計分</div></div><div class="radar-rule"><div class="radar-k">缺值規則</div><div class="radar-v">缺資料記 0 分，不視為 FAIL</div></div><div class="radar-rule"><div class="radar-k">風險封頂</div><div class="radar-v">跌破月線／量價背離最高 60</div></div><div class="radar-rule"><div class="radar-k">盤中來源</div><div class="radar-v">Shioaji 即時行情＋昨日 DB</div></div></div><div class="radar-notice">盤中只使用 Shioaji 訂閱即時資料與昨日 DB 死值；無有效行情時保留固定池名單，不產生空白列或虛構訊號。</div></div>${(()=>{const S=window._radarSectors||{};const ks=Object.keys(S);if(!ks.length)return '';
     const rows=ks.map(k=>{const arr=S[k];const chs=arr.map(x=>Number(x.change_rate)).filter(Number.isFinite);
       const avg=chs.length?chs.reduce((a,b)=>a+b,0)/chs.length:null;
       const flows=arr.map(x=>Number(x.aflow)).filter(Number.isFinite);const nf=flows.reduce((a,b)=>a+b,0);
       return {k,n:arr.length,avg,nf}}).sort((a,b)=>(b.avg??-99)-(a.avg??-99));
-    return `<div class="radar-info"><div class="radar-info-title">盤中族群 · 資金流向（依平均漲跌排序）</div>
-      <div class="sec-grid">${rows.map(r=>`<div class="sec-cell"><div class="sec-k">${esc(r.k)} <span>${r.n} 檔</span></div>
+    return `<div class="radar-info"><div class="radar-info-title">盤中族群 · 資金流向（點卡片篩選下方個股）</div>
+      <div class="sec-grid"><div class="sec-cell sec-all active" data-sec="__all__"><div class="sec-k">全部族群 <span>${Object.values(S).reduce((n,a)=>n+a.length,0)} 檔</span></div><div class="sec-v">顯示全部</div><div class="sec-f">點下方族群卡可只看該族群</div></div>
+      ${rows.map(r=>`<div class="sec-cell" data-sec="${esc(r.k)}"><div class="sec-k">${esc(r.k)} <span>${r.n} 檔</span></div>
         <div class="sec-v ${cls(r.avg)}">${r.avg==null?'—':(r.avg>0?'+':'')+r.avg.toFixed(2)+'%'}</div>
         <div class="sec-f">aflow ${fmt(r.nf)}</div></div>`).join('')}</div></div>`})()}
     <div class="decision-groups">${groupMarkup||'<div class="radar-empty"><strong>目前沒有有效盤中行情</strong>固定 51 檔仍保留於觀察池，收到有效行情後會在此顯示。</div>'}</div></div>`;
@@ -94,7 +95,7 @@ async function openPanel(kind){
       window._listMeta=d;
       title.textContent=d.title||'觀察清單';
       status.textContent=rows.length?`${d.subtitle||''} · ${rows.length} 檔`:(d.note||'資料庫尚無盤後名單 · 每日 18:00 盤後複查完成後自動產出');
-      body.innerHTML=`<div class="decision-groups"><section class="decision-group"><h3>明日觀察清單</h3><div class="group-note">盤後使用今日法人、融資、收盤與盤中累積資料產出；固定池成員不會被移除。${fallback?'目前先顯示固定池最近行情，盤後完成後自動換成正式名單。':''}</div><div class="feature-table"><table><thead><tr><th>代碼</th><th>名稱</th><th>族群</th><th>現價</th><th>漲跌%</th><th>aflow</th><th>狀態</th><th>盤後理由</th></tr></thead><tbody>${rows.map(x=>{const code=x.code||x.stock_id,change=x.change_rate;return `<tr style="cursor:pointer" onclick="closePanel();openStock('${code}')"><td><b>${esc(code||'—')}</b></td><td>${esc(x.name||x.stock_name||'—')}</td><td>${esc(x.sector||'—')}</td><td>${x.price??'—'}</td><td class="${cls(change)}">${change==null?'—':(change>0?'+':'')+change+'%'}</td><td>${x.aflow==null?'—':fmt(x.aflow)}</td><td><span class="pill">${esc(x.tier||(tier1.includes(x)?'第一梯隊':'第二梯隊'))}</span></td><td class="muted">${esc(x.reason||x.note||'盤後條件符合')}</td></tr>`;}).join('')||'<tr><td colspan="8" class="muted">目前沒有固定池資料</td></tr>'}</tbody></table></div></section></div>`;
+      body.innerHTML=`<div class="decision-groups"><section class="decision-group"><h3>明日觀察清單</h3><div class="group-note">盤後使用今日法人、融資、收盤與盤中累積資料產出；固定池成員不會被移除。${fallback?'目前先顯示固定池最近行情，盤後完成後自動換成正式名單。':''}</div><div class="feature-table"><table><thead><tr><th>代碼</th><th>名稱</th><th>族群</th><th>現價</th><th>漲跌%</th><th>aflow</th><th>狀態</th><th>盤後理由</th></tr></thead><tbody>${rows.map(x=>{const code=x.code||x.stock_id,change=x.change_rate;return `<tr data-sec="${esc(x.sector||'其他')}" style="cursor:pointer" onclick="closePanel();openStock('${code}')"><td><b>${esc(code||'—')}</b></td><td>${esc(x.name||x.stock_name||'—')}</td><td>${esc(x.sector||'—')}</td><td>${x.price??'—'}</td><td class="${cls(change)}">${change==null?'—':(change>0?'+':'')+change+'%'}</td><td>${x.aflow==null?'—':fmt(x.aflow)}</td><td><span class="pill">${esc(x.tier||(tier1.includes(x)?'第一梯隊':'第二梯隊'))}</span></td><td class="muted">${esc(x.reason||x.note||'盤後條件符合')}</td></tr>`;}).join('')||'<tr><td colspan="8" class="muted">目前沒有固定池資料</td></tr>'}</tbody></table></div></section></div>`;
       renderTomorrowGroups(body,rows,fallback);
     }else if(kind==='timeline'){
       const d=await(await fetch(API_BASE+'/api/state',{cache:'no-store'})).json();
@@ -225,7 +226,7 @@ document.addEventListener('click',e=>{
 window.renderTomorrowGroups=function(body,rows,fallback){
   const updated=dataStamp(window._tomorrowUpdated),hasRows=rows.length>0;
   const sourceItem=(icon,title,text,tag)=>`<div class="source-item"><div class="source-icon">${icon}</div><div><h3>${title}</h3><p>${text}</p></div><span class="source-tag">${tag}</span></div>`;
-  const result=hasRows?`<table class="result-table"><thead><tr><th>代碼</th><th>名稱</th><th>族群</th><th>狀態</th></tr></thead><tbody>${rows.map(x=>{const code=x.code||x.stock_id;return `<tr style="cursor:pointer" onclick="closePanel();openStock('${esc(code)}')"><td>${esc(code)}</td><td>${esc(x.name||x.stock_name||'—')}</td><td>${esc(x.sector||'—')}</td><td><span class="pill">${esc(x.tier||'待盤後產出')}</span></td></tr>`}).join('')}</tbody></table>`:`<div class="empty-state"><div class="empty-icon">…</div><h3>盤後數據尚未更新</h3><p>目前無法篩選明日觀察清單。系統會在資料完成後，依今日法人、融資、收盤位置與盤中累積資金重新排序並標記訊號。</p></div>`;
+  const result=hasRows?`<table class="result-table"><thead><tr><th>代碼</th><th>名稱</th><th>族群</th><th>狀態</th></tr></thead><tbody>${rows.map(x=>{const code=x.code||x.stock_id;return `<tr data-sec="${esc(x.sector||'其他')}" style="cursor:pointer" onclick="closePanel();openStock('${esc(code)}')"><td>${esc(code)}</td><td>${esc(x.name||x.stock_name||'—')}</td><td>${esc(x.sector||'—')}</td><td><span class="pill">${esc(x.tier||'待盤後產出')}</span></td></tr>`}).join('')}</tbody></table>`:`<div class="empty-state"><div class="empty-icon">…</div><h3>盤後數據尚未更新</h3><p>目前無法篩選明日觀察清單。系統會在資料完成後，依今日法人、融資、收盤位置與盤中累積資金重新排序並標記訊號。</p></div>`;
   body.innerHTML=`<div class="watch-template"><div class="panel"><div class="panel-head"><div><div class="panel-title">觀察清單產出狀態</div><div class="panel-sub">盤後結果只更新狀態、排序與訊號，不移除固定池成員。</div></div><span class="source-tag">固定池模式</span></div><div class="panel-body"><div class="timeline"><span class="step active">今日盤中累積</span><span class="arrow">→</span><span class="step">收盤確認</span><span class="arrow">→</span><span class="step">法人／融資定案</span><span class="arrow">→</span><span class="step">明日名單更新</span></div>${result}<div class="footer-note"><span>更新規則：每日 18:00 後自動執行</span><span>資料不完整時不產生推估值</span></div></div></div><aside class="panel"><div class="panel-head"><div><div class="panel-title">資料來源</div><div class="panel-sub">全部使用今日已定案資料，不套用預估。</div></div></div><div class="panel-body"><div class="source-list">${sourceItem('法','今日法人買賣超','交易所公布，當天定案，更新後不再修改。','已定案')}${sourceItem('融','今日融資融券增減','交易所公布，作為融資排雷與散戶變化依據。','已定案')}${sourceItem('技','今日收盤 vs MA20／MA60','確認技術位置、月線狀態與趨勢結構。','已定案')}${sourceItem('量','今日全天量價結構','辨識量價同向、放量攻擊或放量殺盤。','已定案')}${sourceItem('資','盤中累積主動買賣差','收盤後不清空，保留原值作為盤後資金佐證。','保留')}</div><div class="info-box" style="margin-top:14px"><strong>篩選說明</strong><p>固定 51 檔觀察池。盤後使用今日法人、融資、收盤與盤中累積資料產出明日進場名單；盤後結果只改變狀態、排序與訊號，不移除固定池成員。</p></div><div class="metric-grid"><div class="metric"><div class="k">資料時間</div><div class="v">${esc(updated)}</div></div><div class="metric"><div class="k">下一次更新</div><div class="v">18:00+</div></div></div></div></aside></div>`;
 };
 </script>
@@ -440,4 +441,43 @@ document.querySelector('.sidebar .nav-item.active')?.classList.add('selected');
 (async()=>{try{const d=await(await fetch((location.protocol==='file:'?'http://66.42.42.150:8000':'')+'/api/funnel',{cache:'no-store'})).json();
   const it=[...document.querySelectorAll('.sidebar .nav-item')].find(x=>x.textContent.includes('觀察清單'));
   if(it&&d.title)it.textContent=d.title;}catch(e){}})();
+</script>
+<style>
+/* 族群卡可點擊 + 選中態 */
+.radar-template .sec-cell{cursor:pointer;transition:.15s}
+.radar-template .sec-cell:hover{border-color:#5b6ff5;background:#eef2ff}
+.radar-template .sec-cell.active{border-color:#5b6ff5;background:#eef2ff;box-shadow:inset 3px 0 0 #5b6ff5}
+.radar-template .sec-cell.sec-all .sec-v{font-size:13px;color:#3f56d8}
+/* 首頁即時決策清單：文字不截斷、右側不留空白欄 */
+.dashboard-grid{grid-template-columns:minmax(0,1fr)!important}
+.table-panel table{table-layout:auto;width:100%}
+.table-panel th,.table-panel td{white-space:normal!important;word-break:break-word;vertical-align:top}
+.table-panel td:nth-child(7){min-width:280px;line-height:1.6}
+.table-panel th:nth-child(-n+6),.table-panel td:nth-child(-n+6){white-space:nowrap!important}
+.radar-template .feature-table table{min-width:0;width:100%;table-layout:auto}
+.radar-template .feature-table td{white-space:normal;word-break:break-word}
+.radar-template .feature-table td .muted{line-height:1.55}
+</style>
+<script>
+// 機會雷達：點族群卡 → 只顯示該族群個股（分區標題同步顯示篩選中的檔數）
+(()=>{
+  const apply=(sec)=>{
+    document.querySelectorAll('#sideBody .sec-cell').forEach(c=>
+      c.classList.toggle('active',c.dataset.sec===sec));
+    document.querySelectorAll('#sideBody .decision-group').forEach(g=>{
+      let shown=0;
+      g.querySelectorAll('tbody tr[data-sec]').forEach(tr=>{
+        const hit=(sec==='__all__'||tr.dataset.sec===sec);
+        tr.hidden=!hit; if(hit)shown++;
+      });
+      const badge=g.querySelector('.radar-count');
+      if(badge)badge.textContent=`${shown} 檔`;
+      g.hidden=(shown===0);
+    });
+  };
+  document.addEventListener('click',e=>{
+    const cell=e.target.closest('#sideBody .sec-cell');
+    if(cell)apply(cell.dataset.sec||'__all__');
+  });
+})();
 </script>
