@@ -215,8 +215,8 @@ def _seven_factor_score(raw, ma20, chip):
         if streak >= 3:
             ev.append(f"法人連買 {streak} 日")
     else:
-        factors["inst_streak"] = {"points": None, "max": 10, "status": "缺資料"}
-        missing.append("法人連買")
+        factors["inst_streak"] = {"points": None, "max": 10,
+                                  "status": "籌碼快取重建中"}
 
     factors["margin"] = {"points": None, "max": 8, "status": "盤後驗證"}
 
@@ -258,7 +258,7 @@ def _seven_factor_score(raw, ma20, chip):
             bits.append(f"盤中 {points:.0f}/{avail:.0f} 分（{pct:.0f}%）"
                         + (f"，差 {gap:.0f} 分達標" if gap > 0 else ""))
         if missing:
-            bits.append("待補：" + "、".join(missing))
+            bits.append("等待：" + "、".join(missing))
         reason = "；".join(bits) + "。"
 
     return {

@@ -374,6 +374,41 @@ def stamp_watch_outcome(today):
     return len(rows)
 
 
+
+CHIPS_PREFETCH_DONE = ""
+
+
+def prefetch_chips_cache(force=False):
+    """盤前/盤後把 51 檔籌碼一次抓齊寫入 chips_cache.json。
+
+    規範:盤中不打 FinMind。但法人連買/近月買超在前一日收盤即已定案，
+    盤中理應直接讀得到,不該顯示「待補」。因此在盤前(08:30)與盤後(18:05)
+    各建一次快取,盤中只讀檔案。
+    """
+    global CHIPS_PREFETCH_DONE
+    today = db.today()
+    if CHIPS_PREFETCH_DONE == today and not force:
+        return 0
+    try:
+        import chips
+    except Exception as exc:
+        print(f"[chips] 模組載入失敗:{exc}")
+        return 0
+    codes = [str(c) for c in getattr(C, "UNIVERSE", [])]
+    ok = 0
+    for code in codes:
+        try:
+            r = chips.get_chips(code) or {}
+            if r.get("inst_streak") is not None or r.get("inst_net_20d_lots") is not None:
+                ok += 1
+        except Exception as exc:
+            print(f"[chips] {code} 取得失敗:{exc}")
+        time.sleep(0.35)          # 尊重 FinMind 速率限制
+    CHIPS_PREFETCH_DONE = today
+    print(f"[chips] ✅ 籌碼快取建立 {ok}/{len(codes)} 檔（{today}）", flush=True)
+    return ok
+
+
 def check_stops(state):
     """回撤斷路器:訊號後跌破建議停損=失敗;連3敗當日停發進場。"""
     global _consec_fails, _breaker_on
@@ -442,6 +477,10 @@ def scheduler_loop():
 
     print(f"[diag][scheduler] start ts={datetime.now().astimezone().isoformat(timespec='milliseconds')}", flush=True)
     load_today_watchlist()
+    try:
+        prefetch_chips_cache()       # 開機補一次，盤中才讀得到法人資料
+    except Exception as exc:
+        print(f"[chips] 開機預抓失敗:{exc}")
     if not _ma20_cache or _ma20_cache_date != db.today():
         print("[diag][scheduler] ma20_cache.bootstrap.begin", flush=True)
         refresh_ma20_cache(db.today())
@@ -463,6 +502,8 @@ def scheduler_loop():
             if "08:30" <= hm < "09:00":
                 if _ma20_cache_date != today:
                     refresh_ma20_cache(today)
+                if CHIPS_PREFETCH_DONE != today:
+                    prefetch_chips_cache()
                 if _did_reverify != today and hm >= "08:55":
                     import scoring
                     scoring.reset_aflow()        # 每日開盤重置主動淨流
@@ -619,6 +660,10 @@ def scheduler_loop():
                             print("[server] 兜底失敗:今日無任何盤中快照，明日觀察沿用最近名單")
                     except Exception as e:
                         print(f"[server] 兜底組裝失敗:{e}")
+                try:
+                    prefetch_chips_cache(force=True)   # 官方籌碼定案後重建快取
+                except Exception as exc:
+                    print(f"[chips] 盤後快取重建失敗:{exc}")
                 if state_for_eod is not None:
                     _op_started = time.time()
                     print("[diag][scheduler] after_hours.begin", flush=True)
