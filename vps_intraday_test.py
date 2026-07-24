@@ -282,9 +282,12 @@ def _row(raw):
         "extreme": abs(change) >= 9.0,
     }
     explanation = ai_explain.local_explain(snap, regime=_current_regime())
+    _sec = getattr(config, "SECTOR_MAP", {}).get(code)
     return {
         "code": code,
         "name": getattr(config, "NAME_MAP", {}).get(code, code),
+        "sector": _sec[0] if _sec else "其他",
+        "track": _sec[1] if _sec and len(_sec) > 1 else "attack",
         "price": price,
         "change_rate": round(change, 2),
         "buy_volume": buy,
@@ -381,7 +384,7 @@ def intraday_test():
             "source": ("VPS persisted last intraday state" if fallback_source
                         else "VPS Shioaji subscription buffer"),
             "read_only": True,
-            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "updated_at": datetime.now(TW_TZ).isoformat(timespec="seconds"),
             "trade_date": _trade_date(),
             "count": len(rows),
             "rows": rows,
@@ -438,9 +441,11 @@ def intraday_watchpool():
                 row["has_data"] = True
                 rows.append(row)
             elif raw is None:
+                _s = getattr(config, "SECTOR_MAP", {}).get(str(code))
                 rows.append({
                     "code": str(code),
                     "name": getattr(config, "NAME_MAP", {}).get(str(code), str(code)),
+                    "sector": _s[0] if _s else "其他",
                     "price": None,
                     "change_rate": None,
                     "aflow": None,
@@ -460,7 +465,7 @@ def intraday_watchpool():
             "ok": True,
             "source": "固定 51 檔觀察池 + VPS Shioaji 盤中觀察邏輯",
             "read_only": True,
-            "updated_at": saved_updated_at or time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "updated_at": saved_updated_at or datetime.now(TW_TZ).isoformat(timespec="seconds"),
             "count": len(rows),
             "rows": rows,
             "live_count": sum(1 for row in rows if row["has_data"]),

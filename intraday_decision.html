@@ -53,7 +53,16 @@ function renderRadarGroups(body,groups){
   for(const [group,rows] of Object.entries(groups)){const liveRows=rows.filter(x=>x.price!=null&&Number.isFinite(Number(x.price)));if(liveRows.length)liveGroups[group]=liveRows;}
   const liveCount=Object.values(liveGroups).reduce((n,rows)=>n+rows.length,0),stamp=esc(dataStamp(window._radarUpdated));
   const groupMarkup=Object.entries(liveGroups).map(([group,rows])=>`<section class="decision-group"><div class="decision-group-head"><div><h3>${esc(group)}</h3><div class="group-note">盤中只觀察，不作進場依據</div></div><div class="radar-count">${rows.length} 檔</div></div><div class="feature-table"><table><thead><tr><th>代碼</th><th>名稱</th><th>現價</th><th>漲跌%</th><th>aflow</th><th>代理象限</th><th>盤中判讀</th><th>缺資料</th></tr></thead><tbody>${rows.map(x=>`<tr style="cursor:pointer" onclick="closePanel();openStock('${esc(x.code)}')"><td><b>${esc(x.code)}</b></td><td>${esc(x.name||'—')}</td><td>${x.price??'—'}</td><td class="${cls(x.change_rate)}">${x.change_rate==null?'—':x.change_rate+'%'}</td><td class="${cls(x.aflow)}">${x.aflow==null?'—':fmt(x.aflow)}</td><td>${esc(x.quadrant||'—')}</td><td><span class="pill">${esc(x.group||'待回報')}</span><div class="muted">${esc(x.classification_reason||x.ai||'—')}</div></td><td class="muted">${esc((x.filter_no_data||[]).join('、')||'—')}</td></tr>`).join('')}</tbody></table></div></section>`).join('');
-  body.innerHTML=`<div class="radar-template"><div class="radar-summary"><div class="radar-card main"><div class="radar-k">目前狀態</div><div class="radar-v">${liveCount?'盤中行情已就緒':'等待有效盤中行情'}</div></div><div class="radar-card"><div class="radar-k">固定觀察池</div><div class="radar-v">51 檔</div></div><div class="radar-card"><div class="radar-k">有效行情</div><div class="radar-v">${liveCount} 檔</div></div><div class="radar-card"><div class="radar-k">可操作</div><div class="radar-v">${(liveGroups['可操作']||[]).length}</div></div><div class="radar-card"><div class="radar-k">資料時間</div><div class="radar-v">${stamp}</div></div></div><div class="radar-info"><div class="radar-info-title">機會雷達 · 盤中篩選邏輯</div><div class="radar-rules"><div class="radar-rule"><div class="radar-k">觀察範圍</div><div class="radar-v">固定 51 檔全部計分</div></div><div class="radar-rule"><div class="radar-k">缺值規則</div><div class="radar-v">缺資料記 0 分，不視為 FAIL</div></div><div class="radar-rule"><div class="radar-k">風險封頂</div><div class="radar-v">跌破月線／量價背離最高 60</div></div><div class="radar-rule"><div class="radar-k">盤中來源</div><div class="radar-v">Shioaji 即時行情＋昨日 DB</div></div></div><div class="radar-notice">盤中只使用 Shioaji 訂閱即時資料與昨日 DB 死值；無有效行情時保留固定池名單，不產生空白列或虛構訊號。</div></div><div class="decision-groups">${groupMarkup||'<div class="radar-empty"><strong>目前沒有有效盤中行情</strong>固定 51 檔仍保留於觀察池，收到有效行情後會在此顯示。</div>'}</div></div>`;
+  body.innerHTML=`<div class="radar-template"><div class="radar-summary"><div class="radar-card main"><div class="radar-k">目前狀態</div><div class="radar-v">${liveCount?'盤中行情已就緒':'等待有效盤中行情'}</div></div><div class="radar-card"><div class="radar-k">固定觀察池</div><div class="radar-v">51 檔</div></div><div class="radar-card"><div class="radar-k">有效行情</div><div class="radar-v">${liveCount} 檔</div></div><div class="radar-card"><div class="radar-k">可操作</div><div class="radar-v">${(liveGroups['可操作']||[]).length}</div></div><div class="radar-card"><div class="radar-k">資料時間</div><div class="radar-v">${stamp}</div></div></div><div class="radar-info"><div class="radar-info-title">機會雷達 · 盤中篩選邏輯</div><div class="radar-rules"><div class="radar-rule"><div class="radar-k">觀察範圍</div><div class="radar-v">固定 51 檔全部計分</div></div><div class="radar-rule"><div class="radar-k">缺值規則</div><div class="radar-v">缺資料記 0 分，不視為 FAIL</div></div><div class="radar-rule"><div class="radar-k">風險封頂</div><div class="radar-v">跌破月線／量價背離最高 60</div></div><div class="radar-rule"><div class="radar-k">盤中來源</div><div class="radar-v">Shioaji 即時行情＋昨日 DB</div></div></div><div class="radar-notice">盤中只使用 Shioaji 訂閱即時資料與昨日 DB 死值；無有效行情時保留固定池名單，不產生空白列或虛構訊號。</div></div>${(()=>{const S=window._radarSectors||{};const ks=Object.keys(S);if(!ks.length)return '';
+    const rows=ks.map(k=>{const arr=S[k];const chs=arr.map(x=>Number(x.change_rate)).filter(Number.isFinite);
+      const avg=chs.length?chs.reduce((a,b)=>a+b,0)/chs.length:null;
+      const flows=arr.map(x=>Number(x.aflow)).filter(Number.isFinite);const nf=flows.reduce((a,b)=>a+b,0);
+      return {k,n:arr.length,avg,nf}}).sort((a,b)=>(b.avg??-99)-(a.avg??-99));
+    return `<div class="radar-info"><div class="radar-info-title">盤中族群 · 資金流向（依平均漲跌排序）</div>
+      <div class="sec-grid">${rows.map(r=>`<div class="sec-cell"><div class="sec-k">${esc(r.k)} <span>${r.n} 檔</span></div>
+        <div class="sec-v ${cls(r.avg)}">${r.avg==null?'—':(r.avg>0?'+':'')+r.avg.toFixed(2)+'%'}</div>
+        <div class="sec-f">aflow ${fmt(r.nf)}</div></div>`).join('')}</div></div>`})()}
+    <div class="decision-groups">${groupMarkup||'<div class="radar-empty"><strong>目前沒有有效盤中行情</strong>固定 51 檔仍保留於觀察池，收到有效行情後會在此顯示。</div>'}</div></div>`;
 }
 function renderTomorrowGroups(body,rows,fallback){const groups={};for(const x of rows){const k=x.sector||'其他';(groups[k]??=[]).push(x);}body.innerHTML=`<div class="filter-note"><b>篩選說明：</b>固定 51 檔觀察池；盤後使用今日法人、融資、收盤與盤中累積資料，產出明日進場名單。盤後結果只改變狀態、排序與訊號，不移除固定池成員。<br><b>資料時間：</b>${esc(dataStamp(window._tomorrowUpdated))}</div><div class="watch-groups">${Object.entries(groups).map(([sector,stocks])=>{const changes=stocks.map(x=>Number(x.change_rate)).filter(Number.isFinite),avg=changes.length?changes.reduce((a,b)=>a+b,0)/changes.length:null;return `<section class="watch-group"><div class="watch-group-head"><div><h3>${esc(sector)}</h3><div class="watch-group-summary">盤後族群平均漲跌 <b class="${cls(avg)}">${avg==null?'待盤後資料':(avg>0?'+':'')+avg.toFixed(2)+'%'}</b></div></div><span>${stocks.length} 檔</span></div><div class="watch-stock-head"><span>代碼</span><span>名稱</span><span class="watch-sector">族群</span><span>現價</span><span>漲跌%</span><span>aflow</span><span>狀態</span></div><div class="watch-stock-list">${stocks.map(x=>{const code=x.code||x.stock_id,ch=x.change_rate;const flow=x.aflow!=null?fmt(x.aflow):'待收盤蓋章';return `<button class="watch-stock" onclick="closePanel();openStock('${code}')"><span class="watch-cell left"><strong>${esc(code||'—')}</strong></span><span class="watch-cell left"><strong>${esc(x.name||x.stock_name||'—')}</strong></span><span class="watch-cell left watch-sector">${esc(x.sector||sector)}</span><span class="watch-cell">${x.price??'—'}</span><span class="watch-cell ${cls(ch)}">${ch==null?'—':(ch>0?'+':'')+ch+'%'}</span><span class="watch-cell">${flow}</span><span class="watch-cell watch-status"><span class="pill">${esc(x.tier||'待盤後產出')}</span></span></button>`;}).join('')}</div></section>`;}).join('')||'<div class="watch-empty">盤後數據尚未更新，暫時無法篩選明日觀察清單；每日 18:00 後自動更新。</div>'}</div>`}
 async function openPanel(kind){
@@ -71,6 +80,7 @@ async function openPanel(kind){
       status.textContent=`盤中觀察邏輯 · 固定池 51 檔 · ${items.filter(x=>x.price!=null&&Number.isFinite(Number(x.price))).length} 檔有有效行情 · 資料時間 ${dataStamp(d.updated_at)}`;
       const radarGroups={可操作:[],觀察:[],排除:[]};
       for(const x of items)(radarGroups[x.group]||radarGroups.觀察).push(x);
+      window._radarSectors=(()=>{const m={};for(const x of items){if(x.price==null)continue;(m[x.sector||'其他']??=[]).push(x)}return m})();
       window._radarGroups=radarGroups;
       // 只 render 一次最終版型；舊的兩輪中繼 innerHTML 已移除(閃爍+浪費)。
       renderRadarGroups(body,window._radarGroups);
@@ -379,3 +389,46 @@ document.querySelector('.sidebar .nav-item.active')?.classList.add('selected');
   sync();
 })();
 </script>
+<style>
+/* ══ 手機版:左側菜單改為抽屜,不再 display:none ══ */
+@media(max-width:820px){
+  .sidebar{display:block!important;position:fixed;top:64px;left:0;bottom:0;width:230px;z-index:30;
+    background:#fff;border-right:1px solid var(--line);overflow-y:auto;padding:14px 12px;
+    transform:translateX(-105%);transition:transform .22s ease;box-shadow:6px 0 24px #19274722}
+  body.nav-open .sidebar{transform:translateX(0)}
+  body.nav-open::after{content:"";position:fixed;inset:64px 0 0 0;background:#0f172a55;z-index:20}
+  #navToggle{display:inline-flex!important;align-items:center;justify-content:center;
+    width:38px;height:38px;border:1px solid var(--line);border-radius:10px;background:#fff;
+    font-size:17px;line-height:1;margin-right:8px}
+  .topbar{padding:0 12px}
+  .top-actions .btn{display:none}
+  .top-actions .btn.primary{display:inline-block}
+}
+#navToggle{display:none}
+</style>
+<script>
+(()=>{
+  const bar=document.querySelector('.topbar .brand');
+  if(bar&&!document.getElementById('navToggle')){
+    const b=document.createElement('button');b.id='navToggle';b.type='button';
+    b.setAttribute('aria-label','開啟選單');b.textContent='☰';
+    b.onclick=()=>document.body.classList.toggle('nav-open');
+    bar.parentElement.insertBefore(b,bar);
+  }
+  // 點選單項目或遮罩後自動收起
+  document.querySelectorAll('.sidebar .nav-item').forEach(x=>
+    x.addEventListener('click',()=>document.body.classList.remove('nav-open')));
+  document.addEventListener('click',e=>{
+    if(document.body.classList.contains('nav-open')&&!e.target.closest('.sidebar')&&e.target.id!=='navToggle')
+      document.body.classList.remove('nav-open');
+  });
+})();
+</script>
+<style>
+.radar-template .sec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.radar-template .sec-cell{border:1px solid var(--line);border-radius:11px;padding:10px 12px;background:#fafbfe;min-width:0}
+.radar-template .sec-k{font-size:11px;color:var(--muted);font-weight:850}
+.radar-template .sec-k span{font-weight:600}
+.radar-template .sec-v{font-size:17px;font-weight:950;margin-top:3px}
+.radar-template .sec-f{font-size:11px;color:var(--muted);margin-top:2px}
+</style>

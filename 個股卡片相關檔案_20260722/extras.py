@@ -478,6 +478,9 @@ def build_watchpool() -> Dict[str, Any]:
     for code in C.UNIVERSE:
         snap = rows_map.get(str(code), {})
         ratio = ratio_map.get(str(code), {})
+        # 盤後籌碼快取（法人20日淨/連買天數）；第一層 UI 法人欄用，
+        # 缺快取時回 None，前端顯示待盤後資料。
+        chip = VIT._chip_snapshot(str(code))
         # 固定觀察池不能因 Shioaji 未回報就顯示空白；盤中回報優先，
         # 沒有即時回報時回退到該股最近完整日 K。這裡只補價格欄位，
         # 不把日 K 冒充盤中 aflow 或盤中分類。
@@ -516,6 +519,8 @@ def build_watchpool() -> Dict[str, Any]:
             "aflow_ratio_source": ratio.get("aflow_ratio_source"),
             "aflow_ratio_date": ratio.get("aflow_ratio_date"),
             "group": snap.get("group"),
+            "inst_net_20d_lots": chip.get("inst_net_20d_lots"),
+            "inst_streak": chip.get("inst_streak"),
             "volume_ratio": snap.get("volume_ratio"),
             "has_data": bool(snap.get("price")),
             "data_mode": snap.get("data_mode") or ("intraday_shioaji" if snap.get("price") else None),
