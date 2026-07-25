@@ -1,0 +1,21 @@
+[Unit]
+Description=MLS 篩選邏輯 盤中 Shioaji 行情訂閱 (09:00 拉起,收盤自停)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mls-screen
+Environment="HOME=/root"
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=/opt/mls-screen/deploy/run_feed.sh
+# 非盤中/休市會自己退出(exit 0);盤中被 kill 才重啟
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mls-screen-feed
+
+[Install]
+WantedBy=multi-user.target

@@ -19,10 +19,32 @@ phase.py — 時段唯一裁決者
 from __future__ import annotations
 
 import datetime as _dt
+import json as _json
 from enum import Enum
+from pathlib import Path as _Path
 from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("Asia/Taipei")
+
+# ---------------------------------------------------------------- 假日行事曆
+# 真正休市日由 calendar_sync.py 從 TWSE 官方抓進 holidays.json。
+# 週末永遠休市(不需列)。缺檔時退化為「只排除週末」。
+_HOLIDAY_FILE = _Path(__file__).parent / "holidays.json"
+_hcache: dict = {"mtime": None, "set": frozenset()}
+
+
+def _holidays() -> frozenset:
+    try:
+        m = _HOLIDAY_FILE.stat().st_mtime
+    except OSError:
+        return frozenset()
+    if _hcache["mtime"] != m:
+        try:
+            _hcache["set"] = frozenset(_json.loads(_HOLIDAY_FILE.read_text(encoding="utf-8")))
+        except Exception:
+            _hcache["set"] = frozenset()
+        _hcache["mtime"] = m
+    return _hcache["set"]
 
 # ---------------------------------------------------------------- exceptions
 
@@ -35,6 +57,7 @@ class Phase(str, Enum):
     PRE = "PRE"
     INTRADAY = "INTRADAY"
     POST = "POST"
+    CLOSED = "CLOSED"   # 非交易日(週末/國定假日):不按時鐘啟動任何盤中/盤後觸發
 
 
 # ---------------------------------------------------------------- boundaries
@@ -48,8 +71,15 @@ def now_tw() -> _dt.datetime:
 
 
 def get_phase(at: _dt.datetime | None = None) -> Phase:
-    """全系統唯一的時段判定。任何模組要知道現在是什麼時段,只能呼叫這支。"""
+    """
+    全系統唯一的時段判定。任何模組要知道現在是什麼時段,只能呼叫這支。
+
+    鐵律:先問「今天股市有沒有開」,再看時鐘。
+    非交易日(週末/國定假日)一律回 CLOSED —— 盤中/盤後觸發絕不按時鐘啟動。
+    """
     at = at or now_tw()
+    if not is_trading_day(at.date()):
+        return Phase.CLOSED
     t = at.timetz().replace(tzinfo=None)
     if t < _OPEN:
         return Phase.PRE
@@ -64,13 +94,23 @@ _WEEKEND = {5, 6}
 
 
 def is_trading_day(d: _dt.date) -> bool:
-    """僅排除週末。國定假日由 store 層的 holiday 表覆蓋(缺表時視為交易日)。"""
-    return d.weekday() not in _WEEKEND
+    """排除週末 + TWSE 官方國定假日(holidays.json)。缺檔時退化為只排除週末。"""
+    if d.weekday() in _WEEKEND:
+        return False
+    return d.isoformat() not in _holidays()
 
 
 def prev_trading_day(d: _dt.date | None = None) -> _dt.date:
     d = d or now_tw().date()
     cur = d - _dt.timedelta(days=1)
+    while not is_trading_day(cur):
+        cur -= _dt.timedelta(days=1)
+    return cur
+
+
+def last_trading_day(d: _dt.date | None = None) -> _dt.date:
+    """d(含)當天或往前回溯,最近一個交易日。用於休市時定位『上一交易日』。"""
+    cur = d or now_tw().date()
     while not is_trading_day(cur):
         cur -= _dt.timedelta(days=1)
     return cur
@@ -93,6 +133,8 @@ def resolve_data_date(phase: Phase | None = None) -> _dt.date:
     phase = phase or get_phase()
     if phase is Phase.POST:
         return today_tw()
+    if phase is Phase.CLOSED:
+        return last_trading_day()   # 休市 → 上一交易日死值
     return prev_trading_day()
 
 
@@ -135,6 +177,7 @@ def describe(phase: Phase | None = None) -> dict:
             Phase.PRE: f"今日盯盤名單(資料日 {dd})— 昨日盤後結果,開盤後觀察用",
             Phase.INTRADAY: f"盤中吸籌觀察(背景資料日 {dd})— 僅供記錄,不作進場依據",
             Phase.POST: f"明日進場清單(資料日 {dd})— 依此執行",
+            Phase.CLOSED: f"休市中(今日非交易日)— 顯示上一交易日 {dd} 盤後名單,僅供參考",
         }[phase],
         "actionable": phase is Phase.POST,
     }

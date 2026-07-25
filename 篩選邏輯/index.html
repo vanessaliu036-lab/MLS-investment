@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MLS v4.0 — 唯一名單</title>
+<style>
+  :root{
+    --bg:#0f1216; --card:#171b21; --line:#252b34; --ink:#e7ecf2; --sub:#8b95a3;
+    --up:#e5484d; --down:#30a46c; --gold:#e2b619; --mut:#3a424d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 -apple-system,"PingFang TC","Noto Sans TC",sans-serif}
+  header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);
+         padding:12px 16px;z-index:5}
+  .brand{font-weight:800;font-size:16px}
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:700;
+         margin-left:8px;vertical-align:middle}
+  .b-post{background:#3a2410;color:var(--gold)}
+  .b-intraday{background:#10233a;color:#5aa9ff}
+  .b-pre{background:#1b2530;color:var(--sub)}
+  .purpose{color:var(--sub);font-size:12.5px;margin-top:4px}
+  .wrap{max-width:820px;margin:0 auto;padding:12px 14px 60px}
+  .meta{display:flex;gap:8px;flex-wrap:wrap;color:var(--sub);font-size:12px;margin:6px 0 12px}
+  .chip{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:2px 10px}
+  .chip.warn{color:var(--gold);border-color:#4a3a10}
+  .row{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);
+       border-radius:11px;padding:11px 13px;margin-bottom:8px}
+  .row.nodata{opacity:.4}
+  .rank{font-weight:800;font-size:13px;color:var(--sub);min-width:30px;text-align:center}
+  .main{flex:1;min-width:0}
+  .code{font-weight:800}
+  .reasons{color:var(--sub);font-size:12px;margin-top:2px;overflow:hidden;text-overflow:ellipsis}
+  .miss{color:var(--gold);font-size:11.5px;margin-top:2px}
+  .capped{color:var(--up);font-size:11px;font-weight:700;margin-left:6px}
+  .score{font-weight:800;font-size:20px;font-variant-numeric:tabular-nums;min-width:56px;text-align:right}
+  .s-hi{color:var(--down)} .s-mid{color:var(--gold)} .s-lo{color:var(--sub)}
+  .switch{display:flex;gap:6px;margin:2px 0 4px}
+  .switch button{background:var(--card);border:1px solid var(--line);color:var(--sub);
+        border-radius:8px;padding:5px 12px;font-size:12.5px;font-weight:700;cursor:pointer}
+  .switch button.on{color:var(--ink);border-color:var(--gold)}
+  .err{background:#2a1618;border:1px solid #5a2a2e;color:#ff9ba0;border-radius:9px;padding:12px;margin-top:10px}
+  .foot{color:var(--mut);font-size:11px;text-align:center;margin-top:18px}
+</style>
+</head>
+<body>
+<header>
+  <div><span class="brand">MLS v4.0</span><span id="phaseBadge" class="badge b-pre">—</span></div>
+  <div id="purpose" class="purpose">載入中…</div>
+</header>
+<div class="wrap">
+  <div class="switch" id="switch">
+    <button data-p="" class="on">依當下時段</button>
+    <button data-p="PRE">盤前</button>
+    <button data-p="INTRADAY">盤中</button>
+    <button data-p="POST">盤後</button>
+  </div>
+  <div class="meta" id="meta"></div>
+  <div id="list"></div>
+  <div class="foot">名單只在後端計算,前端只顯示。順序即後端排名,不做任何篩選或重排。</div>
+</div>
+
+<script>
+var forced = "";
+
+function scoreClass(s){ return s >= 70 ? "s-hi" : s >= 45 ? "s-mid" : "s-lo"; }
+
+function esc(t){
+  var d = document.createElement("div");
+  d.textContent = (t == null ? "" : String(t));
+  return d.innerHTML;
+}
+
+function badgeClass(ph){
+  if (ph === "POST") return "badge b-post";
+  if (ph === "INTRADAY") return "badge b-intraday";
+  return "badge b-pre";
+}
+
+function phaseLabel(ph){
+  if (ph === "CLOSED") return "休市";
+  if (ph === "PRE") return "盤前";
+  if (ph === "INTRADAY") return "盤中";
+  if (ph === "POST") return "盤後";
+  return ph;
+}
+
+function renderMeta(data){
+  var m = document.getElementById("meta");
+  var out = [];
+  out.push('<span class="chip">資料日 ' + esc(data.data_date) + '</span>');
+  out.push('<span class="chip">全集 ' + data.items.length + ' 檔</span>');
+  out.push('<span class="chip">' + (data.actionable ? "可依此執行" : "僅供記錄") + '</span>');
+  var deg = data.degraded || [];
+  for (var i = 0; i < deg.length; i++){
+    out.push('<span class="chip warn">缺 ' + esc(deg[i]) + '</span>');
+  }
+  m.innerHTML = out.join("");
+}
+
+function renderList(items){
+  var html = items.map(function(it){
+    var cls = "row" + (it.has_data ? "" : " nodata");
+    var cap = it.risk_capped ? '<span class="capped">封頂60</span>' : "";
+    var reasons = (it.reasons || []).join("・");
+    var miss = (it.missing && it.missing.length)
+      ? '<div class="miss">缺:' + esc(it.missing.join("、")) + '</div>' : "";
+    var price = (it.price != null) ? it.price
+              : (it.close != null) ? it.close : "";
+    return '<div class="' + cls + '">'
+      + '<div class="rank">#' + it.rank + '</div>'
+      + '<div class="main">'
+      +   '<div><span class="code">' + esc(it.code) + '</span> '
+      +     '<span style="color:var(--sub);font-size:12px">' + esc(price) + '</span>' + cap + '</div>'
+      +   '<div class="reasons">' + esc(reasons) + '</div>'
+      +   miss
+      + '</div>'
+      + '<div class="score ' + scoreClass(it.score) + '">' + it.score + '</div>'
+      + '</div>';
+  }).join("");
+  document.getElementById("list").innerHTML = html;
+}
+
+function load(){
+  var q = forced ? ("?phase=" + forced) : "";
+  fetch("/api/watchlist" + q).then(function(r){
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }).then(function(data){
+    var badge = document.getElementById("phaseBadge");
+    badge.className = badgeClass(data.phase);
+    badge.textContent = phaseLabel(data.phase);
+    document.getElementById("purpose").textContent = data.purpose || "";
+    renderMeta(data);
+    renderList(data.items || []);
+  }).catch(function(e){
+    document.getElementById("list").innerHTML =
+      '<div class="err">名單載入失敗:' + esc(e.message) + '。請確認後端已啟動(uvicorn api:app)。</div>';
+  });
+}
+
+document.getElementById("switch").addEventListener("click", function(e){
+  var b = e.target.closest("button");
+  if (!b) return;
+  forced = b.getAttribute("data-p") || "";
+  var btns = this.getElementsByTagName("button");
+  for (var i = 0; i < btns.length; i++) btns[i].className = "";
+  b.className = "on";
+  load();
+});
+
+load();
+</script>
+</body>
+</html>

@@ -32,3 +32,7 @@ chips_cache.json
 /intraday_decision.html
 /nexora_watchpool_51_standalone (1).html
 /每日報告 0722.html
+
+# SQLite WAL sidecars
+*.db-shm
+*.db-wal

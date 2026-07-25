@@ -14,6 +14,8 @@ api.py — 唯一的名單出口
 
 from __future__ import annotations
 
+from typing import Optional
+
 from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
 
@@ -39,7 +41,7 @@ def _startup():
 
 
 @app.get("/api/watchlist")
-def watchlist(phase: str | None = Query(None, description="PRE|INTRADAY|POST,預設依當下時段")):
+def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,預設依當下時段")):
     """
     全系統唯一的名單端點。每檔已經算完 score / rank / reasons / missing。
 
@@ -48,9 +50,15 @@ def watchlist(phase: str | None = Query(None, description="PRE|INTRADAY|POST,預
     """
     ph = Phase(phase) if phase else get_phase()
 
-    if ph is Phase.PRE:
-        # 盤前 = 直接讀昨日盤後名單,不重算、不重抓、零 API,秒開
+    if ph in (Phase.PRE, Phase.CLOSED):
+        # 盤前/休市 = 直接讀上一交易日盤後名單,不重算、不重抓、零 API,秒開。
+        # 休市(週末/國定假日)絕不因為時鐘到 09:00 就跑盤中。
         data = screen_post.load_for_premarket()
+        if ph is Phase.CLOSED:
+            info = describe(Phase.CLOSED)
+            data["phase"] = info["phase"]
+            data["purpose"] = info["purpose"]
+            data["actionable"] = False
     elif ph is Phase.INTRADAY:
         data = screen_intraday.build(config.UNIVERSE)
     else:

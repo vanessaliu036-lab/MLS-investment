@@ -1,0 +1,11 @@
+[Unit]
+Description=每交易日盤後 13:40 觸發採集(休市日 collect.py 自身會略過)
+
+[Timer]
+# 週一~五 13:40(收盤 13:30 後,法人/融資約此時可抓)。國定假日由 app 層擋。
+OnCalendar=Mon..Fri 13:40:00
+Persistent=true
+Unit=mls-screen-collect.service
+
+[Install]
+WantedBy=timers.target

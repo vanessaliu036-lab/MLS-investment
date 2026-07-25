@@ -1,0 +1,10 @@
+[Unit]
+Description=每週一 06:00 更新交易日行事曆(跨年後自動補上新年度假日)
+
+[Timer]
+OnCalendar=Mon 06:00:00
+Persistent=true
+Unit=mls-screen-calendar.service
+
+[Install]
+WantedBy=timers.target

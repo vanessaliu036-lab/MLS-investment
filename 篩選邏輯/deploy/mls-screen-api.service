@@ -1,0 +1,22 @@
+[Unit]
+Description=MLS 篩選邏輯 唯一名單 API (uvicorn)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# ↓↓↓ 依你的 VPS 實際路徑調整這兩行 ↓↓↓
+User=root
+WorkingDirectory=/opt/mls-screen
+Environment="HOME=/root"
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=/usr/bin/python3 -m uvicorn api:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+# 日誌走 journald(不要 append 到 /tmp,tmpfs 會被行情列印塞爆 → crash loop)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mls-screen-api
+
+[Install]
+WantedBy=multi-user.target
