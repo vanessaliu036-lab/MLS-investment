@@ -90,21 +90,22 @@ echo "===== 6/6 驗證 (6 項) ====="
 sleep 2
 echo "[1] / 健康"
 curl -s -o /dev/null -w "    HTTP %{http_code}\n" "http://${VPS_HOST}:8000/" || true
-echo "[2] /intraday-test 路由"
-curl -s -o /dev/null -w "    HTTP %{http_code}\n" "http://${VPS_HOST}:8000/intraday-test" || true
+echo "[2] 盤中資料 API"
+curl -s -o /dev/null -w "    HTTP %{http_code}\n" "http://${VPS_HOST}:8000/api/intraday-test" || true
 echo "[3] 51 檔股票清單"
-curl -s "http://${VPS_HOST}:8000/intraday-test/api/stocks" 2>/dev/null \
-  | python3 -c "import json,sys;d=json.load(sys.stdin);codes=d.get('codes',d);print(f'    codes count: {len(codes)}');print(f'    first 5    : {codes[:5]}');print(f'    has 8028   : {8028 in [str(c) for c in codes]}')" 2>&1 | head -5
-echo "[4] 引擎成員"
-curl -s "http://${VPS_HOST}:8000/intraday-test/api/stocks" 2>/dev/null \
-  | python3 -c "import json,sys;d=json.load(sys.stdin);eng=d.get('engine_stocks',[]);print(f'    engine: {sorted(eng)}')" 2>&1 | head -3
+# 正確資料端點是 /api/intraday-test，回 {ok, rows:[...]}；舊的 /intraday-test/api/stocks 已 404。
+curl -s "http://${VPS_HOST}:8000/api/intraday-test" 2>/dev/null \
+  | python3 -c "import json,sys;d=json.load(sys.stdin);rows=d.get('rows',[]);codes=[str(r.get('code')) for r in rows];print(f'    rows count : {len(rows)}');print(f'    first 5    : {codes[:5]}');print(f'    has 8028   : {\"8028\" in codes}')" 2>&1 | head -5
+echo "[4] 個股卡片快取（開機預熱）"
+ssh -p "${VPS_PORT_SSH}" "${VPS_USER}@${VPS_HOST}" \
+  "ls '${VPS_DEPLOY_DIR}/個股卡片相關檔案_20260722/card_cache' 2>/dev/null | wc -l | sed 's/^/    cached cards: /'" || true
 echo "[5] UI 標題"
-curl -s "http://${VPS_HOST}:8000/intraday-test/" 2>/dev/null | grep -oE "<title>[^<]+</title>" | head -1
-echo "[6] log 最後 5 行"
-ssh -p "${VPS_PORT_SSH}" "${VPS_USER}@${VPS_HOST}" "tail -5 /tmp/mls-intraday.log"
+curl -s "http://${VPS_HOST}:8000/" 2>/dev/null | grep -oE "<title>[^<]+</title>" | head -1
+echo "[6] 服務日誌最後 5 行（journald）"
+ssh -p "${VPS_PORT_SSH}" "${VPS_USER}@${VPS_HOST}" "journalctl -u mls-intraday -n 5 --no-pager -o cat"
 
 echo
 echo "===== 部署完成 ====="
-echo "UI 網址: http://${VPS_HOST}:8000/intraday-test"
+echo "UI 網址: http://${VPS_HOST}:8000/"
 echo "日誌查詢: ssh ${VPS_USER}@${VPS_HOST} 'tail -f /tmp/mls-intraday.log'"
 echo "回滾備份: ${VPS_DEPLOY_DIR}.bak.${TIMESTAMP}"
