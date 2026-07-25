@@ -19,10 +19,13 @@ body{visibility:hidden!important}body.ready{visibility:visible!important}
 <section class="breadth-board" id="breadthBoard">
   <div class="bh-top">
     <article class="bh-hero">
-      <div class="bh-eyebrow">市場資金廣度｜aflow &gt; 0</div>
-      <div class="bh-hero-row"><div class="bh-num" id="bhRatio">—</div><div class="bh-risk" id="bhRisk">—</div></div>
-      <h1 id="bhHeadline">讀取中…</h1>
-      <p id="bhSub">51 檔中主動買超（aflow&gt;0）的占比＝市場資金水位，不是個股進場訊號。</p>
+      <div class="bh-hero-l">
+        <div class="bh-eyebrow">市場資金廣度｜aflow &gt; 0</div>
+        <div class="bh-hero-row"><div class="bh-num" id="bhRatio">—</div><div class="bh-risk" id="bhRisk">—</div></div>
+        <h1 id="bhHeadline">讀取中…</h1>
+        <p id="bhSub">51 檔中主動買超（aflow&gt;0）的占比＝市場資金水位，不是個股進場訊號。</p>
+      </div>
+      <div class="bh-ring" id="bhRing"><div class="bh-ring-in"><b id="bhRingPct">—</b><span>資金參與</span></div></div>
     </article>
     <article class="bh-mini"><div class="bh-mlabel">操盤模式</div><strong id="bhMode">—</strong><p id="bhModeNote">市場參與度高低決定能否由防守切換為積極。</p></article>
     <article class="bh-mini"><div class="bh-mlabel">持股比重</div><strong id="bhPos">—</strong><p>前提是個股仍通過技術、資金、籌碼與族群條件。</p></article>
@@ -71,9 +74,9 @@ body{visibility:hidden!important}body.ready{visibility:visible!important}
       </div>
     </div>
     <div class="bh-note">
-      <h3>正確判讀 <span class="bh-note-scope">對應「資金廣度時間序列」</span></h3>
+      <h3>正確判讀</h3>
       <p>資金不是突然進來，而是每天都有更多股票加入 aflow&gt;0，這比只看單日占比更有價值。反過來，若 82%→75%→63%→49%→35% 一路收縮，即使指數還沒大跌，也代表資金正在退潮，應逐步降低倉位。</p>
-      <p class="bh-note-foot">※ 這段講的是「多日趨勢（擴散／收縮）」，不是左側「單日資金溫度分級」；溫度分級看的是今天落在哪一段，時間序列看的是連續幾天變濃或變淡。</p>
+      <p class="bh-note-foot">※ 此段對應右上「資金廣度時間序列（多日趨勢）」，非左側「單日資金溫度分級」。</p>
     </div>
   </div>
 </section>
@@ -99,7 +102,10 @@ async function loadMarketOverview(){try{
     const withData=days.filter(d=>(d.index||{}).taiex!=null);
     const today=withData[0]||days[0]||{};
     const prev=withData[1]||{};
-    const a=today.index||{},p=prev.index||{},i=today.institutional||{};const t=a.turnover_100m,pt=p.turnover_100m;const direction=t!=null&&pt!=null?(t>pt?'放量':'量縮'):'—';const delta=t!=null&&pt!=null?((t-pt)/pt*100):null;const old=document.querySelector('#marketOverview');if(old)old.remove();const box=document.createElement('section');box.id='marketOverview';box.className='market-overview';box.innerHTML=`<div class="table-head" style="padding:0 0 10px;border:0"><h3>市場總覽</h3><span class="muted">官方資料 · ${esc(a.date||i.date||marketDate(0))}</span></div><div class="market-overview-grid"><div class="market-overview-card"><label>加權指數</label><strong>${marketFmt(a.taiex)}</strong><small>${a.change==null?'—':(a.change>0?'+':'')+marketFmt(a.change)+' · '+(a.change_pct==null?'—':a.change_pct+'%')}</small></div><div class="market-overview-card"><label>三大法人買賣超（億元）</label><strong>${marketFmt(i.total_100m)}</strong><small>外資 ${marketFmt(i.foreign_100m)} · 投信 ${marketFmt(i.trust_100m)} · 自營 ${marketFmt(i.dealer_100m)}</small></div><div class="market-overview-card"><label>今日成交金額</label><strong>${t==null?'—':marketFmt(t)+' 億'}</strong><small>證交所官方大盤統計</small></div><div class="market-overview-card"><label>與前天成交量比較</label><strong>${direction}</strong><small>前天 ${pt==null?'—':marketFmt(pt)+' 億'}${delta==null?'':' · '+(delta>0?'+':'')+delta.toFixed(1)+'%'}</small></div></div>`;// 版面把 .hero-grid 改名成 .market-row；總覽插在它前面（找不到就退回 content 最前）
+    const a=today.index||{},p=prev.index||{},i=today.institutional||{};const t=a.turnover_100m,pt=p.turnover_100m;const direction=t!=null&&pt!=null?(t>pt?'放量':'量縮'):'—';const delta=t!=null&&pt!=null?((t-pt)/pt*100):null;const old=document.querySelector('#marketOverview');if(old)old.remove();const box=document.createElement('section');box.id='marketOverview';box.className='market-overview';// 市場總覽數字一律跌綠漲紅：cls() 正=positive(紅) 負=negative(綠)
+    const col=(v,txt)=>v==null?(txt??'—'):`<span class="${cls(v)}">${txt??marketFmt(v)}</span>`;
+    const taiexChg=a.change==null?'—':col(a.change,(a.change>0?'+':'')+marketFmt(a.change))+' · '+(a.change_pct==null?'—':col(a.change_pct,(a.change_pct>0?'+':'')+a.change_pct+'%'));
+    box.innerHTML=`<div class="table-head" style="padding:0 0 10px;border:0"><h3>市場總覽</h3><span class="muted">官方資料 · ${esc(a.date||i.date||marketDate(0))}</span></div><div class="market-overview-grid"><div class="market-overview-card"><label>加權指數</label><strong class="${cls(a.change)}">${marketFmt(a.taiex)}</strong><small>${taiexChg}</small></div><div class="market-overview-card"><label>三大法人買賣超（億元）</label><strong class="${cls(i.total_100m)}">${marketFmt(i.total_100m)}</strong><small>外資 ${col(i.foreign_100m)} · 投信 ${col(i.trust_100m)} · 自營 ${col(i.dealer_100m)}</small></div><div class="market-overview-card"><label>今日成交金額</label><strong>${t==null?'—':marketFmt(t)+' 億'}</strong><small>證交所官方大盤統計</small></div><div class="market-overview-card"><label>與前天成交量比較</label><strong>${direction}</strong><small>前天 ${pt==null?'—':marketFmt(pt)+' 億'}${delta==null?'':' · '+col(delta,(delta>0?'+':'')+delta.toFixed(1)+'%')}</small></div></div>`;// 版面把 .hero-grid 改名成 .market-row；總覽插在它前面（找不到就退回 content 最前）
 const anchor=document.querySelector('.market-row')||document.querySelector('.hero-grid');
 if(anchor)anchor.before(box);else document.querySelector('.content')?.prepend(box);}catch(e){console.warn('market overview',e)}}
 // ?view=watch|card|report 自動開對應分頁
@@ -797,7 +803,12 @@ window.renderTomorrowGroups=function(body,rows){
 .breadth-board h1,.breadth-board h2,.breadth-board h3{margin:0}
 .bh-top{display:grid;grid-template-columns:1.25fr repeat(4,.62fr);gap:12px;margin-bottom:14px}
 .bh-hero,.bh-mini,.bh-panel,.bh-scale-wrap,.bh-note{background:#fff;border:1px solid var(--bh-line);border-radius:18px;box-shadow:0 12px 30px rgba(34,50,81,.06)}
-.bh-hero{padding:20px 22px;background:linear-gradient(135deg,#fff 0%,#f3fbf8 100%)}
+.bh-hero{padding:20px 22px;background:linear-gradient(135deg,#fff 0%,#f3fbf8 100%);display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center}
+.bh-hero-l{min-width:0}
+.bh-ring{width:116px;height:116px;flex:none;border-radius:50%;background:conic-gradient(var(--bh-ring,var(--bh-green)) 0 var(--pct,0%),#e7ecf4 var(--pct,0%) 100%);display:grid;place-items:center;box-shadow:0 2px 12px rgba(34,50,81,.06);transition:--pct .5s}
+.bh-ring-in{width:88px;height:88px;border-radius:50%;background:#fff;display:grid;place-items:center;text-align:center;box-shadow:inset 0 0 0 1px rgba(34,50,81,.04)}
+.bh-ring-in b{font-size:24px;font-weight:900;color:var(--bh-ring,var(--bh-green));line-height:1;letter-spacing:-.03em}
+.bh-ring-in span{display:block;font-size:10px;color:var(--bh-mut);margin-top:3px;font-weight:800}
 .bh-eyebrow{color:var(--bh-mut);font-size:12px;font-weight:800;letter-spacing:.03em;margin-bottom:6px}
 .bh-hero-row{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
 .bh-num{font-size:58px;line-height:.9;font-weight:900;color:var(--bh-green);letter-spacing:-.05em}
@@ -817,7 +828,7 @@ window.renderTomorrowGroups=function(body,rows){
 .bh-actions{display:grid;gap:9px}
 .bh-act{display:grid;grid-template-columns:40px 1fr auto;gap:11px;align-items:center;border:1px solid var(--bh-line);background:var(--bh-soft);border-radius:14px;padding:12px}
 .bh-act.on{background:var(--bh-green-soft);border-color:#bce7d8}
-.bh-ic{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:var(--bh-blue-soft);color:var(--bh-blue);font-weight:900}
+.bh-ic{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:var(--bh-green-soft);color:var(--bh-green);font-weight:900}
 .bh-act.on .bh-ic{background:var(--bh-green);color:#fff}
 .bh-act h3{font-size:14px;margin-bottom:3px}
 .bh-act p{margin:0;color:var(--bh-mut);font-size:11.5px;line-height:1.45;font-weight:600}
@@ -845,7 +856,6 @@ window.renderTomorrowGroups=function(body,rows){
 .bh-sc.dim{opacity:.34;filter:saturate(.5)}
 .bh-sc.live{box-shadow:0 0 0 2px currentColor inset,0 10px 24px rgba(34,50,81,.12)}
 .bh-sc.good.live{color:var(--bh-green)}.bh-sc.bad.live{color:var(--bh-red)}
-.bh-scnow{position:absolute;top:10px;right:12px;font-size:10px;font-weight:800;letter-spacing:.02em;color:#fff;background:currentColor;border-radius:999px;padding:2px 8px;white-space:nowrap}
 .bh-chart{height:196px;background:var(--bh-navy);border-radius:16px;padding:16px 14px 10px;display:flex;align-items:flex-end;gap:10px;position:relative;overflow:hidden}
 .bh-gl{position:absolute;left:14px;right:14px;border-top:1px dashed rgba(255,255,255,.12)}
 .bh-bi{flex:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:5px;position:relative;z-index:1}
@@ -872,8 +882,7 @@ window.renderTomorrowGroups=function(body,rows){
 .bh-lv b{display:block;font-size:11.5px;margin-bottom:2px}
 .bh-lv span{color:var(--bh-mut);font-size:10px;font-weight:600}
 .bh-note{background:var(--bh-navy);color:#fff;padding:18px 20px}
-.bh-note h3{margin-bottom:7px;font-size:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.bh-note-scope{font-size:10.5px;font-weight:800;letter-spacing:.02em;color:#a9c6ff;background:rgba(120,162,255,.16);border:1px solid rgba(120,162,255,.3);border-radius:999px;padding:2px 9px}
+.bh-note h3{margin-bottom:7px;font-size:16px}
 .bh-note p{margin:0;color:#c7d2e4;line-height:1.65;font-size:12px;font-weight:600}
 .bh-note-foot{margin-top:9px!important;padding-top:9px;border-top:1px solid rgba(255,255,255,.12);color:#95a6c2!important;font-size:11px!important}
 .bh-stale{display:inline-block;margin-left:8px;font-size:11px;font-weight:800;color:var(--bh-orange)}
@@ -910,22 +919,19 @@ function renderBreadth(b){
   q('#bhAct1').classList.toggle('on',lv==='risk_on'||lv==='lean_long');
   // 真假行情 live verdict
   const box=q('#bhStateBox');box.className='bh-verdict st-'+(b.state||'aligned');
-  T('#bhStateTitle','目前：'+(b.state_title||'—'));T('#bhStateNote',b.state_note||'—');
+  T('#bhStateTitle','目前：'+(b.state_title||'—')+(pct!=null?'（今日 '+pct.toFixed(1)+'%）':''));T('#bhStateNote',b.state_note||'—');
   // 兩張只是教學範例；用今日真實占比點亮命中的那張、淡出另一張，
   // 避免「94% 卻同時顯示健康＋窄幅兩種結論」的錯覺。
+  // 兩張只是教學範例：命中的那張打亮綠/紅框、另一張淡出，不在卡上蓋任何字。
+  // 今日的實際占比與結論一律放下方 verdict box，避免和範例的 71%／26% 混淆。
   const good=q('#bhScGood'),bad=q('#bhScBad');
   if(good&&bad){good.className='bh-sc good';bad.className='bh-sc bad';
-    good.querySelectorAll('.bh-scnow').forEach(n=>n.remove());
-    bad.querySelectorAll('.bh-scnow').forEach(n=>n.remove());
     const healthy=['broad','broad_nomkt','resilient','aligned'].includes(b.state)
       ||(pct!=null&&pct>=(b.thresholds?.broad??60));
     const narrow=['narrow','broad_down','narrow_nomkt'].includes(b.state)
       ||(pct!=null&&pct<(b.thresholds?.narrow??40));
-    // 徽章帶「今日實際占比」而非範例的 71%／26%，讓數字與上方 94.1% 對得起來。
-    const tag=hit=>{const s=document.createElement('span');s.className='bh-scnow';
-      s.textContent='今日 '+(pct!=null?pct.toFixed(1)+'%':'—');hit.appendChild(s);};
-    if(pct!=null&&healthy&&!narrow){good.classList.add('live');bad.classList.add('dim');tag(good);}
-    else if(pct!=null&&narrow&&!healthy){bad.classList.add('live');good.classList.add('dim');tag(bad);}}
+    if(pct!=null&&healthy&&!narrow){good.classList.add('live');bad.classList.add('dim');}
+    else if(pct!=null&&narrow&&!healthy){bad.classList.add('live');good.classList.add('dim');}}
   // 時間序列長條圖
   const chart=q('#bhChart');if(chart){chart.querySelectorAll('.bh-bi').forEach(n=>n.remove());
     const series=(b.series||[]).slice(-8),max=Math.max(72,...series.map(r=>Number(r.ratio_pct||0)));
