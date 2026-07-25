@@ -12,8 +12,12 @@ Environment="PATH=/usr/local/bin:/usr/bin:/bin"
 ExecStart=/usr/bin/python3 -m uvicorn server:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=5
-StandardOutput=append:/tmp/mls-intraday.log
-StandardError=append:/tmp/mls-intraday.log
+# 日誌走 journald（會自動輪替）。原本 append 到 /tmp/mls-intraday.log，
+# 但 /tmp 是 476M tmpfs，Shioaji 行情列印量大會把它塞滿，一滿服務就寫不進、
+# 開機即 exit 120 陷入 crash loop（2026-07-24 事故）。改用 journald 根治。
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mls-intraday
 
 [Install]
 WantedBy=multi-user.target
