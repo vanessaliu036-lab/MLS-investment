@@ -44,8 +44,8 @@ body{visibility:hidden!important}body.ready{visibility:visible!important}
     <article class="bh-panel">
       <div class="bh-trow"><div><h2>判斷是不是假行情</h2><p>指數上漲，不代表整體資金同步進場。</p></div><div class="bh-chip">Narrow Breadth</div></div>
       <div class="bh-scenarios">
-        <div class="bh-sc good"><div class="bh-tag">健康行情（範例）</div><div class="bh-hl">指數 +2%｜流入 71%</div><p>多數股票都有主動買盤，漲勢不是只靠少數權值股。</p></div>
-        <div class="bh-sc bad"><div class="bh-tag">窄幅行情（範例）</div><div class="bh-hl">指數 +2%｜流入 26%</div><p>51 檔只有 13 檔 aflow&gt;0，指數漲但資金沒有全面跟進。</p></div>
+        <div class="bh-sc good" id="bhScGood"><div class="bh-tag">健康行情（範例）</div><div class="bh-hl">指數 +2%｜流入 71%</div><p>多數股票都有主動買盤，漲勢不是只靠少數權值股。</p></div>
+        <div class="bh-sc bad" id="bhScBad"><div class="bh-tag">窄幅行情（範例）</div><div class="bh-hl">指數 +2%｜流入 26%</div><p>51 檔只有 13 檔 aflow&gt;0，指數漲但資金沒有全面跟進。</p></div>
       </div>
       <div class="bh-verdict" id="bhStateBox"><b id="bhStateTitle">—</b><span id="bhStateNote">等待即時資料判讀目前是不是假行情。</span></div>
     </article>
@@ -821,11 +821,20 @@ window.renderTomorrowGroups=function(body,rows){
 .bh-verdict{margin-top:11px;padding:12px 13px;border-radius:13px;background:var(--bh-soft);border:1px solid var(--bh-line)}
 .bh-verdict b{display:block;font-size:14px;margin-bottom:3px}
 .bh-verdict span{color:var(--bh-t2);font-size:11.5px;line-height:1.55;font-weight:600}
-.bh-verdict.st-narrow,.bh-verdict.st-broad_down{background:var(--bh-orange-soft);border-color:#f1d4ad}
-.bh-verdict.st-narrow b,.bh-verdict.st-broad_down b{color:#a9711f}
-.bh-verdict.st-broad,.bh-verdict.st-resilient{background:var(--bh-blue-soft);border-color:#cfe0fb}
-.bh-verdict.st-broad b,.bh-verdict.st-resilient b{color:var(--bh-blue)}
-.bh-verdict.st-aligned b{color:var(--bh-t2)}
+.bh-verdict.st-narrow,.bh-verdict.st-broad_down,.bh-verdict.st-narrow_nomkt{background:var(--bh-orange-soft);border-color:#f1d4ad}
+.bh-verdict.st-narrow b,.bh-verdict.st-broad_down b,.bh-verdict.st-narrow_nomkt b{color:#a9711f}
+.bh-verdict.st-narrow_nomkt{background:var(--bh-orange-soft);border-color:#f1d4ad}
+.bh-verdict.st-narrow_nomkt b{color:#a9711f}
+.bh-verdict.st-broad,.bh-verdict.st-resilient,.bh-verdict.st-broad_nomkt{background:var(--bh-blue-soft);border-color:#cfe0fb}
+.bh-verdict.st-broad b,.bh-verdict.st-resilient b,.bh-verdict.st-broad_nomkt b{color:var(--bh-blue)}
+.bh-verdict.st-aligned b,.bh-verdict.st-neutral_nomkt b{color:var(--bh-t2)}
+/* 兩張範例：命中今日的那張打亮並蓋「今日」章，另一張淡出，避免同時顯示兩種結論 */
+.bh-sc{position:relative;transition:opacity .2s,box-shadow .2s}
+.bh-sc.dim{opacity:.34;filter:saturate(.5)}
+.bh-sc.live{box-shadow:0 0 0 2px currentColor inset,0 10px 24px rgba(34,50,81,.12)}
+.bh-sc.good.live{color:var(--bh-green)}.bh-sc.bad.live{color:var(--bh-red)}
+.bh-sc.live::after{content:'今日';position:absolute;top:10px;right:12px;font-size:10px;font-weight:800;letter-spacing:.04em;color:#fff;background:currentColor;border-radius:999px;padding:2px 8px}
+.bh-sc.good.live::after{background:var(--bh-green)}.bh-sc.bad.live::after{background:var(--bh-red)}
 .bh-chart{height:196px;background:var(--bh-navy);border-radius:16px;padding:16px 14px 10px;display:flex;align-items:flex-end;gap:10px;position:relative;overflow:hidden}
 .bh-gl{position:absolute;left:14px;right:14px;border-top:1px dashed rgba(255,255,255,.12)}
 .bh-bi{flex:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:5px;position:relative;z-index:1}
@@ -887,6 +896,16 @@ function renderBreadth(b){
   // 真假行情 live verdict
   const box=q('#bhStateBox');box.className='bh-verdict st-'+(b.state||'aligned');
   T('#bhStateTitle','目前：'+(b.state_title||'—'));T('#bhStateNote',b.state_note||'—');
+  // 兩張只是教學範例；用今日真實占比點亮命中的那張、淡出另一張，
+  // 避免「94% 卻同時顯示健康＋窄幅兩種結論」的錯覺。
+  const good=q('#bhScGood'),bad=q('#bhScBad');
+  if(good&&bad){good.className='bh-sc good';bad.className='bh-sc bad';
+    const healthy=['broad','broad_nomkt','resilient','aligned'].includes(b.state)
+      ||(pct!=null&&pct>=(b.thresholds?.broad??60));
+    const narrow=['narrow','broad_down','narrow_nomkt'].includes(b.state)
+      ||(pct!=null&&pct<(b.thresholds?.narrow??40));
+    if(pct!=null&&healthy&&!narrow){good.classList.add('live');bad.classList.add('dim');}
+    else if(pct!=null&&narrow&&!healthy){bad.classList.add('live');good.classList.add('dim');}}
   // 時間序列長條圖
   const chart=q('#bhChart');if(chart){chart.querySelectorAll('.bh-bi').forEach(n=>n.remove());
     const series=(b.series||[]).slice(-8),max=Math.max(72,...series.map(r=>Number(r.ratio_pct||0)));

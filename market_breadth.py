@@ -91,7 +91,20 @@ def diagnose(ratio_pct, index_pct):
 
     這層專門回答「是不是假行情」：指數漲不算數，要看有多少檔在漲。"""
     if index_pct is None:
-        return "unknown", "指數未知", "加權指數暫無資料，僅以資金廣度判讀"
+        # 加權指數暫無資料時，不留「指數未知」空判：資金廣度本身就能定調。
+        # 94% 這種高廣度＝資金全面到位，本質上不可能是窄幅假行情；
+        # 反之極低廣度＝多數個股沒買盤，就算指數被權值股拉上去也是假行情。
+        if ratio_pct >= BROAD_RATIO:
+            return ("broad_nomkt", "資金全面參與",
+                    f"51 檔中 {ratio_pct:.0f}% 資金流入，參與面極廣；"
+                    "即使加權指數暫無資料，個股資金已全面到位，不是少數權值股撐盤的窄幅假行情")
+        if ratio_pct < NARROW_RATIO:
+            return ("narrow_nomkt", "資金參與偏窄",
+                    f"51 檔僅 {ratio_pct:.0f}% 資金流入，多數個股沒有主動買盤；"
+                    "即使指數上漲也可能只是少數權值股撐盤，屬窄幅行情、不宜追價")
+        return ("neutral_nomkt", "資金參與中性",
+                f"51 檔約 {ratio_pct:.0f}% 資金流入，多空參與相當；"
+                "加權指數暫無資料，宜選股不選市，控制單筆部位")
     if index_pct >= DIVERGE_INDEX_UP and ratio_pct < NARROW_RATIO:
         return ("narrow", "窄幅行情（Narrow Breadth）",
                 f"加權指數 +{index_pct:.2f}%，但 51 檔只有 {ratio_pct:.0f}% 資金流入；"

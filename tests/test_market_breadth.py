@@ -55,6 +55,24 @@ def test_全面性上攻_指數與資金同步():
     assert b["state"] == "broad"
 
 
+def test_指數未知_高廣度仍判資金全面參與():
+    """加權指數暫無資料時，94% 這種高廣度必須給單一真實結論，不留「指數未知」。"""
+    b = M.compute(rows(48, 3), index_pct=None)      # 94.1%
+    assert b["state"] == "broad_nomkt"
+    assert b["state_title"] == "資金全面參與"
+    assert "94% 資金流入" in b["state_note"]
+
+
+def test_指數未知_低廣度判資金偏窄():
+    b = M.compute(rows(13, 38), index_pct=None)      # 25.5%
+    assert b["state"] == "narrow_nomkt" and "窄幅" in b["state_note"]
+
+
+def test_指數未知_中段廣度判中性():
+    b = M.compute(rows(26, 25), index_pct=None)      # 51%
+    assert b["state"] == "neutral_nomkt"
+
+
 def test_指數殺低但資金留守():
     b = M.compute(rows(30, 21), index_pct=-1.5)     # 58.8%
     assert b["state"] == "resilient"
