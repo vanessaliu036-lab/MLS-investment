@@ -71,8 +71,9 @@ body{visibility:hidden!important}body.ready{visibility:visible!important}
       </div>
     </div>
     <div class="bh-note">
-      <h3>正確判讀</h3>
+      <h3>正確判讀 <span class="bh-note-scope">對應「資金廣度時間序列」</span></h3>
       <p>資金不是突然進來，而是每天都有更多股票加入 aflow&gt;0，這比只看單日占比更有價值。反過來，若 82%→75%→63%→49%→35% 一路收縮，即使指數還沒大跌，也代表資金正在退潮，應逐步降低倉位。</p>
+      <p class="bh-note-foot">※ 這段講的是「多日趨勢（擴散／收縮）」，不是左側「單日資金溫度分級」；溫度分級看的是今天落在哪一段，時間序列看的是連續幾天變濃或變淡。</p>
     </div>
   </div>
 </section>
@@ -89,7 +90,18 @@ function marketClosed(){return taipeiMinutes()>=810}
 function setMonitoringOff(){paused=true;const b=document.querySelector('#pause');if(b)b.textContent='恢復監控';const c=document.querySelector('#conn');if(c)c.textContent='盤後模式 OFF · 等待收盤資料固定';document.querySelector('.top-actions .dot')?.style.setProperty('background','#9aa4b8');document.querySelector('.sidebar .nav-item.active .count')?.classList.remove('live')}
 function marketDate(offset){const d=new Date();d.setDate(d.getDate()+offset);return d.toISOString().slice(0,10)}
 function marketFmt(v){return v==null?'—':Number(v).toLocaleString('zh-TW',{maximumFractionDigits:2})}
-async function loadMarketOverview(){try{const [today,prev]=await Promise.all([fetch(API_BASE+'/api/market/official?date='+marketDate(0),{cache:'no-store'}).then(r=>r.json()),fetch(API_BASE+'/api/market/official?date='+marketDate(-2),{cache:'no-store'}).then(r=>r.json())]);const a=today.index||{},p=prev.index||{},i=today.institutional||{};const t=a.turnover_100m,pt=p.turnover_100m;const direction=t!=null&&pt!=null?(t>pt?'放量':'量縮'):'—';const delta=t!=null&&pt!=null?((t-pt)/pt*100):null;const old=document.querySelector('#marketOverview');if(old)old.remove();const box=document.createElement('section');box.id='marketOverview';box.className='market-overview';box.innerHTML=`<div class="table-head" style="padding:0 0 10px;border:0"><h3>市場總覽</h3><span class="muted">官方資料 · ${esc(a.date||i.date||marketDate(0))}</span></div><div class="market-overview-grid"><div class="market-overview-card"><label>加權指數</label><strong>${marketFmt(a.taiex)}</strong><small>${a.change==null?'—':(a.change>0?'+':'')+marketFmt(a.change)+' · '+(a.change_pct==null?'—':a.change_pct+'%')}</small></div><div class="market-overview-card"><label>三大法人買賣超（億元）</label><strong>${marketFmt(i.total_100m)}</strong><small>外資 ${marketFmt(i.foreign_100m)} · 投信 ${marketFmt(i.trust_100m)} · 自營 ${marketFmt(i.dealer_100m)}</small></div><div class="market-overview-card"><label>今日成交金額</label><strong>${t==null?'—':marketFmt(t)+' 億'}</strong><small>證交所官方大盤統計</small></div><div class="market-overview-card"><label>與前天成交量比較</label><strong>${direction}</strong><small>前天 ${pt==null?'—':marketFmt(pt)+' 億'}${delta==null?'':' · '+(delta>0?'+':'')+delta.toFixed(1)+'%'}</small></div></div>`;document.querySelector('.hero-grid')?.before(box)}catch(e){console.warn('market overview',e)}}
+async function loadMarketOverview(){try{
+    // 週末／假日今天沒有官方資料；往前找最近有指數的交易日，前一個有資料日當比較基準，
+    // 這樣總覽不會在非交易日整片空白。
+    const days=await Promise.all(Array.from({length:10},(_,k)=>
+      fetch(API_BASE+'/api/market/official?date='+marketDate(-k),{cache:'no-store'})
+        .then(r=>r.json()).catch(()=>({}))));
+    const withData=days.filter(d=>(d.index||{}).taiex!=null);
+    const today=withData[0]||days[0]||{};
+    const prev=withData[1]||{};
+    const a=today.index||{},p=prev.index||{},i=today.institutional||{};const t=a.turnover_100m,pt=p.turnover_100m;const direction=t!=null&&pt!=null?(t>pt?'放量':'量縮'):'—';const delta=t!=null&&pt!=null?((t-pt)/pt*100):null;const old=document.querySelector('#marketOverview');if(old)old.remove();const box=document.createElement('section');box.id='marketOverview';box.className='market-overview';box.innerHTML=`<div class="table-head" style="padding:0 0 10px;border:0"><h3>市場總覽</h3><span class="muted">官方資料 · ${esc(a.date||i.date||marketDate(0))}</span></div><div class="market-overview-grid"><div class="market-overview-card"><label>加權指數</label><strong>${marketFmt(a.taiex)}</strong><small>${a.change==null?'—':(a.change>0?'+':'')+marketFmt(a.change)+' · '+(a.change_pct==null?'—':a.change_pct+'%')}</small></div><div class="market-overview-card"><label>三大法人買賣超（億元）</label><strong>${marketFmt(i.total_100m)}</strong><small>外資 ${marketFmt(i.foreign_100m)} · 投信 ${marketFmt(i.trust_100m)} · 自營 ${marketFmt(i.dealer_100m)}</small></div><div class="market-overview-card"><label>今日成交金額</label><strong>${t==null?'—':marketFmt(t)+' 億'}</strong><small>證交所官方大盤統計</small></div><div class="market-overview-card"><label>與前天成交量比較</label><strong>${direction}</strong><small>前天 ${pt==null?'—':marketFmt(pt)+' 億'}${delta==null?'':' · '+(delta>0?'+':'')+delta.toFixed(1)+'%'}</small></div></div>`;// 版面把 .hero-grid 改名成 .market-row；總覽插在它前面（找不到就退回 content 最前）
+const anchor=document.querySelector('.market-row')||document.querySelector('.hero-grid');
+if(anchor)anchor.before(box);else document.querySelector('.content')?.prepend(box);}catch(e){console.warn('market overview',e)}}
 // ?view=watch|card|report 自動開對應分頁
 window.addEventListener('load',()=>{const m=location.search.match(/[?&]view=(watch|card|report)/);if(m){setTimeout(()=>openPanel(m[1]),100);}});
 function card(x){let c=x.group==='排除'?'risk':x.group==='觀察'?'watch':'';return `<article class="panel stock-card ${c}" data-group="${esc(x.group)}"><div class="stock-top"><div><div class="stock-code">${esc(x.code)} · ${esc(x.subgroup)}</div><div class="stock-name">${esc(x.name)}</div></div><div class="score">${x.score==null?'—':`${x.score}<small style="font-size:10px">/${x.score_max||100}</small>`}</div></div><div class="signal"><b>${esc(x.classification_reason||x.subgroup||x.group)}</b><span class="tag">${esc(x.group)}</span></div><div class="price-row"><div class="price-box"><label>現價</label><strong>${esc(x.price)}</strong></div><div class="price-box"><label>漲跌</label><strong class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</strong></div><div class="price-box"><label>成交量</label><strong>${fmt(x.total_volume)}</strong></div></div><div class="stock-foot"><span><span class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</span> · <span class="${cls(x.aflow)}">aflow ${fmt(x.aflow)}</span></span><span class="muted">查看解讀 →</span></div></article>`}
@@ -833,14 +845,15 @@ window.renderTomorrowGroups=function(body,rows){
 .bh-sc.dim{opacity:.34;filter:saturate(.5)}
 .bh-sc.live{box-shadow:0 0 0 2px currentColor inset,0 10px 24px rgba(34,50,81,.12)}
 .bh-sc.good.live{color:var(--bh-green)}.bh-sc.bad.live{color:var(--bh-red)}
-.bh-sc.live::after{content:'今日';position:absolute;top:10px;right:12px;font-size:10px;font-weight:800;letter-spacing:.04em;color:#fff;background:currentColor;border-radius:999px;padding:2px 8px}
-.bh-sc.good.live::after{background:var(--bh-green)}.bh-sc.bad.live::after{background:var(--bh-red)}
+.bh-scnow{position:absolute;top:10px;right:12px;font-size:10px;font-weight:800;letter-spacing:.02em;color:#fff;background:currentColor;border-radius:999px;padding:2px 8px;white-space:nowrap}
 .bh-chart{height:196px;background:var(--bh-navy);border-radius:16px;padding:16px 14px 10px;display:flex;align-items:flex-end;gap:10px;position:relative;overflow:hidden}
 .bh-gl{position:absolute;left:14px;right:14px;border-top:1px dashed rgba(255,255,255,.12)}
 .bh-bi{flex:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:5px;position:relative;z-index:1}
 .bh-bv,.bh-bd{color:#d9e3f4;font-size:10px;font-weight:800}
 .bh-bar{width:56%;min-width:14px;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,#77a2ff,#3769d2)}
 .bh-bi.last .bh-bar{background:linear-gradient(180deg,#41d0a2,#079c70)}
+.bh-bd{display:inline-flex;align-items:center;gap:4px}
+.bh-bnow{width:5px;height:5px;border-radius:50%;background:#41d0a2;box-shadow:0 0 0 2px rgba(65,208,162,.28)}
 .bh-trend{margin-top:11px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;background:var(--bh-blue-soft);border-radius:13px;padding:12px 13px}
 .bh-trend strong{display:block;font-size:13.5px;margin-bottom:3px}
 .bh-trend span{color:var(--bh-mut);font-size:11px;font-weight:600}
@@ -859,8 +872,10 @@ window.renderTomorrowGroups=function(body,rows){
 .bh-lv b{display:block;font-size:11.5px;margin-bottom:2px}
 .bh-lv span{color:var(--bh-mut);font-size:10px;font-weight:600}
 .bh-note{background:var(--bh-navy);color:#fff;padding:18px 20px}
-.bh-note h3{margin-bottom:7px;font-size:16px}
+.bh-note h3{margin-bottom:7px;font-size:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bh-note-scope{font-size:10.5px;font-weight:800;letter-spacing:.02em;color:#a9c6ff;background:rgba(120,162,255,.16);border:1px solid rgba(120,162,255,.3);border-radius:999px;padding:2px 9px}
 .bh-note p{margin:0;color:#c7d2e4;line-height:1.65;font-size:12px;font-weight:600}
+.bh-note-foot{margin-top:9px!important;padding-top:9px;border-top:1px solid rgba(255,255,255,.12);color:#95a6c2!important;font-size:11px!important}
 .bh-stale{display:inline-block;margin-left:8px;font-size:11px;font-weight:800;color:var(--bh-orange)}
 @media(max-width:1300px){.bh-top{grid-template-columns:1fr 1fr 1fr}.bh-hero{grid-column:span 3}.bh-main{grid-template-columns:1fr 1fr}.bh-main .bh-panel:last-child{grid-column:span 2}.bh-bottom{grid-template-columns:1fr}}
 @media(max-width:820px){.bh-top,.bh-main,.bh-main .bh-panel:last-child,.bh-scenarios{grid-template-columns:1fr!important}.bh-hero{grid-column:auto}.metrics.metrics-3{grid-template-columns:1fr 1fr}}
@@ -900,19 +915,25 @@ function renderBreadth(b){
   // 避免「94% 卻同時顯示健康＋窄幅兩種結論」的錯覺。
   const good=q('#bhScGood'),bad=q('#bhScBad');
   if(good&&bad){good.className='bh-sc good';bad.className='bh-sc bad';
+    good.querySelectorAll('.bh-scnow').forEach(n=>n.remove());
+    bad.querySelectorAll('.bh-scnow').forEach(n=>n.remove());
     const healthy=['broad','broad_nomkt','resilient','aligned'].includes(b.state)
       ||(pct!=null&&pct>=(b.thresholds?.broad??60));
     const narrow=['narrow','broad_down','narrow_nomkt'].includes(b.state)
       ||(pct!=null&&pct<(b.thresholds?.narrow??40));
-    if(pct!=null&&healthy&&!narrow){good.classList.add('live');bad.classList.add('dim');}
-    else if(pct!=null&&narrow&&!healthy){bad.classList.add('live');good.classList.add('dim');}}
+    // 徽章帶「今日實際占比」而非範例的 71%／26%，讓數字與上方 94.1% 對得起來。
+    const tag=hit=>{const s=document.createElement('span');s.className='bh-scnow';
+      s.textContent='今日 '+(pct!=null?pct.toFixed(1)+'%':'—');hit.appendChild(s);};
+    if(pct!=null&&healthy&&!narrow){good.classList.add('live');bad.classList.add('dim');tag(good);}
+    else if(pct!=null&&narrow&&!healthy){bad.classList.add('live');good.classList.add('dim');tag(bad);}}
   // 時間序列長條圖
   const chart=q('#bhChart');if(chart){chart.querySelectorAll('.bh-bi').forEach(n=>n.remove());
     const series=(b.series||[]).slice(-8),max=Math.max(72,...series.map(r=>Number(r.ratio_pct||0)));
     series.forEach((r,i)=>{const v=Number(r.ratio_pct||0),last=i===series.length-1;
       const w=document.createElement('div');w.className='bh-bi'+(last?' last':'');
       const d=(r.trade_date||'').slice(5).replace('-','/');
-      w.innerHTML=`<div class="bh-bv">${v.toFixed(0)}%</div><div class="bh-bar" style="height:${Math.max(6,Math.round(v/max*82))}%" title="${d}｜流入占比 ${v.toFixed(1)}%${r.index_pct!=null?'｜加權指數 '+(r.index_pct>0?'+':'')+Number(r.index_pct).toFixed(2)+'%':''}"></div><div class="bh-bd">${last?'今日':d}</div>`;
+      // 一律標實際交易日（7/24），不用「今日」；當日那根多附一顆點提示最新。
+      w.innerHTML=`<div class="bh-bv">${v.toFixed(0)}%</div><div class="bh-bar" style="height:${Math.max(6,Math.round(v/max*82))}%" title="${d}｜流入占比 ${v.toFixed(1)}%${r.index_pct!=null?'｜加權指數 '+(r.index_pct>0?'+':'')+Number(r.index_pct).toFixed(2)+'%':''}"></div><div class="bh-bd">${d||'—'}${last?'<i class="bh-bnow"></i>':''}</div>`;
       chart.appendChild(w);});
     if(!series.length)chart.insertAdjacentHTML('beforeend','<div class="bh-bv" style="margin:auto">序列累積中，明日起可比較擴散或收縮</div>');}
   // 擴散/收縮判讀
