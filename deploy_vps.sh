@@ -107,5 +107,5 @@ ssh -p "${VPS_PORT_SSH}" "${VPS_USER}@${VPS_HOST}" "journalctl -u mls-intraday -
 echo
 echo "===== 部署完成 ====="
 echo "UI 網址: http://${VPS_HOST}:8000/"
-echo "日誌查詢: ssh ${VPS_USER}@${VPS_HOST} 'tail -f /tmp/mls-intraday.log'"
+echo "日誌查詢: ssh ${VPS_USER}@${VPS_HOST} 'journalctl -u mls-intraday -f'"
 echo "回滾備份: ${VPS_DEPLOY_DIR}.bak.${TIMESTAMP}"
