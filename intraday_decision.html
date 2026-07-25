@@ -17,67 +17,91 @@ body{visibility:hidden!important}body.ready{visibility:visible!important}
 <main class="content"><div class="header-row"><div><h1>盤中決策中心</h1><p>不是看資料，而是直接判斷現在能不能做。</p></div><div id="time" class="market-time">—</div></div>
 <section class="market-row"><div class="panel market-panel"><div class="market-head"><div class="market-mode"><div class="mode-icon">↗</div><div><div class="market-title">市場作戰模式</div><div id="mode" class="market-value">讀取中…</div></div></div><div class="ring-wrap"><div id="score" class="ai-ring">—</div><div class="ring-cap">可進場占比<i class="hint">51 檔中通過盤中因子門檻的比例；0% 代表今天沒有任何一檔達標</i></div></div></div><div class="metrics metrics-3"><div class="metric"><label>強勢族群<i class="hint">盤中平均漲幅為正且資金淨流入的族群數</i></label><strong id="sectors">—</strong></div><div class="metric"><label>可操作個股<i class="hint">七因子 100 分制 ≥65 分且無缺資料，唯一可考慮進場的名單</i></label><strong id="actionable">—</strong></div><div class="metric"><label>高風險警報<i class="hint">觸發極端價／假紅／資金流出，明確不宜進場</i></label><strong id="risk" class="down">—</strong></div></div><div class="advice"><b>今日策略</b><div id="advice" class="muted">依現有規則與即時資料計算中…</div></div></div></section>
 <section class="breadth-board" id="breadthBoard">
-  <div class="bh-top">
-    <article class="bh-hero">
-      <div class="bh-hero-l">
-        <div class="bh-eyebrow">市場資金廣度｜aflow &gt; 0</div>
-        <div class="bh-hero-row"><div class="bh-num" id="bhRatio">—</div><div class="bh-risk" id="bhRisk">—</div></div>
-        <h1 id="bhHeadline">讀取中…</h1>
-        <p id="bhSub">51 檔中主動買超（aflow&gt;0）的占比＝市場資金水位，不是個股進場訊號。</p>
+  <div class="bh-grid">
+
+    <!-- 左欄 -->
+    <div class="bh-col">
+      <!-- Hero -->
+      <div class="bh-card bh-hero">
+        <div class="bh-eyebrow">市場資金廣度 · aflow &gt; 0</div>
+        <div class="bh-hero-main">
+          <span class="bh-num" id="bhRatio">—</span>
+          <span class="bh-risk" id="bhRisk">—</span>
+        </div>
+        <h2 class="bh-hero-title" id="bhHeadline">讀取中…</h2>
+        <p class="bh-hero-copy" id="bhSub">51 檔中主動買超（aflow&gt;0）的占比＝市場資金水位，不是個股進場訊號。</p>
       </div>
-      <div class="bh-ring" id="bhRing"><div class="bh-ring-in"><b id="bhRingPct">—</b><span>資金參與</span></div></div>
-    </article>
-    <article class="bh-mini"><div class="bh-mlabel">操盤模式</div><strong id="bhMode">—</strong><p id="bhModeNote">市場參與度高低決定能否由防守切換為積極。</p></article>
-    <article class="bh-mini"><div class="bh-mlabel">持股比重</div><strong id="bhPos">—</strong><p>前提是個股仍通過技術、資金、籌碼與族群條件。</p></article>
-    <article class="bh-mini"><div class="bh-mlabel">隔日延續</div><strong id="bhNext">—</strong><p>多數股票同步獲得資金支持時，延續環境優於窄幅行情。</p></article>
-    <article class="bh-mini"><div class="bh-mlabel">指標定位</div><strong>市場濾網</strong><p>決定是否能積極操作，不等於個股買進訊號。</p></article>
-  </div>
 
-  <div class="bh-main">
-    <article class="bh-panel">
-      <div class="bh-trow"><div><h2 id="bhP1Title">占比對操盤的完整意義</h2><p id="bhP1Sub">資金流入占比越高，市場越好做。</p></div><div class="bh-chip">操作環境</div></div>
-      <div class="bh-actions">
-        <div class="bh-act" id="bhAct1"><div class="bh-ic">01</div><div><h3>積極做多</h3><p>大多數股票都有主動買盤，市場廣度足以支撐偏多策略。</p></div><b id="bhAct1b">—</b></div>
-        <div class="bh-act"><div class="bh-ic">02</div><div><h3>提高持股比重</h3><p>可從低倉位提高至正常或偏積極倉位，但不是無限制加碼。</p></div><b>可提高</b></div>
-        <div class="bh-act"><div class="bh-ic">03</div><div><h3>隔日延續機率通常較高</h3><p>因為不是單一股票獨強，而是更多股票同步獲得資金支持。</p></div><b>環境加分</b></div>
-        <div class="bh-act"><div class="bh-ic">04</div><div><h3>仍須挑選個股</h3><p>占比高只代表市場好做，不代表 51 檔全部都能買。</p></div><b>非買點</b></div>
+      <!-- 圓環 + 四小卡 -->
+      <div class="bh-card">
+        <div class="bh-gauge-wrap">
+          <div class="bh-gauge">
+            <div class="bh-ring" id="bhRing"><div class="bh-ring-in"><b id="bhRingPct">—</b><span>廣度</span></div></div>
+            <div class="bh-gauge-label">資金參與占比</div>
+          </div>
+          <div class="bh-mini-grid">
+            <div class="bh-mini"><div class="bh-mlabel">操盤模式</div><strong id="bhMode">—</strong><p>市場參與度決定防守或積極切換。</p></div>
+            <div class="bh-mini"><div class="bh-mlabel">持股比重</div><strong id="bhPos">—</strong><p>仍需通過技術、籌碼與族群條件。</p></div>
+            <div class="bh-mini"><div class="bh-mlabel">隔日延續</div><strong id="bhNext">—</strong><p>多數股票同步獲資金支持，延續性優於窄幅行情。</p></div>
+            <div class="bh-mini"><div class="bh-mlabel">指標定位</div><strong>市場濾網</strong><p>決定能否積極操作，非個股買進訊號。</p></div>
+          </div>
+        </div>
       </div>
-    </article>
 
-    <article class="bh-panel">
-      <div class="bh-trow"><div><h2>判斷是不是假行情</h2><p>指數上漲，不代表整體資金同步進場。</p></div><div class="bh-chip">Narrow Breadth</div></div>
-      <div class="bh-scenarios">
-        <div class="bh-sc good" id="bhScGood"><div class="bh-tag">健康行情（範例）</div><div class="bh-hl">指數 +2%｜流入 71%</div><p>多數股票都有主動買盤，漲勢不是只靠少數權值股。</p></div>
-        <div class="bh-sc bad" id="bhScBad"><div class="bh-tag">窄幅行情（範例）</div><div class="bh-hl">指數 +2%｜流入 26%</div><p>51 檔只有 13 檔 aflow&gt;0，指數漲但資金沒有全面跟進。</p></div>
-      </div>
-      <div class="bh-verdict" id="bhStateBox"><b id="bhStateTitle">—</b><span id="bhStateNote">等待即時資料判讀目前是不是假行情。</span></div>
-    </article>
-
-    <article class="bh-panel">
-      <div class="bh-trow"><div><h2>資金廣度時間序列</h2><p>單日占比有價值，但連續擴散更重要。</p></div><div class="bh-chip">Breadth Trend</div></div>
-      <div class="bh-chart" id="bhChart"><div class="bh-gl" style="top:25%"></div><div class="bh-gl" style="top:50%"></div><div class="bh-gl" style="top:75%"></div></div>
-      <div class="bh-trend"><div><strong id="bhTrendTitle">資金參與範圍</strong><span id="bhTrendSeq">序列累積中</span></div><div class="bh-delta" id="bhTrendDelta">—</div></div>
-    </article>
-  </div>
-
-  <div class="bh-bottom">
-    <div class="bh-scale-wrap">
-      <div class="bh-trow"><div><h2>市場資金溫度分級</h2><p>可直接作為全市場風險開關。</p></div></div>
-      <div class="bh-scale"><span></span><span></span><span></span><span></span><span></span></div>
-      <div class="bh-marker" id="bhMarker"></div>
-      <div class="bh-levels">
-        <div class="bh-lv" data-lv="risk_off"><b>&lt;30%</b><span>Risk Off</span></div>
-        <div class="bh-lv" data-lv="lean_short"><b>30–45%</b><span>偏空</span></div>
-        <div class="bh-lv" data-lv="neutral"><b>45–55%</b><span>中性</span></div>
-        <div class="bh-lv" data-lv="lean_long"><b>55–70%</b><span>偏多</span></div>
-        <div class="bh-lv" data-lv="risk_on"><b>&ge;70%</b><span>Risk On</span></div>
+      <!-- 占比對操盤的完整意義 -->
+      <div class="bh-card">
+        <div class="bh-chead"><h3 id="bhP1Title">占比對操盤的完整意義</h3><span class="bh-chip">操作環境</span></div>
+        <div class="bh-meaning">
+          <div class="bh-mitem" id="bhAct1"><span class="bh-mstep">01</span><div><div class="bh-mtitle">積極做多</div><div class="bh-mcopy">多數股票有主動買盤，市場廣度支撐偏多策略。</div></div><span class="bh-mstate" id="bhAct1b">—</span></div>
+          <div class="bh-mitem"><span class="bh-mstep">02</span><div><div class="bh-mtitle">提高持股比重</div><div class="bh-mcopy">可從低倉位提高至正常或積極，但非無限制加碼。</div></div><span class="bh-mstate">可提高</span></div>
+          <div class="bh-mitem"><span class="bh-mstep">03</span><div><div class="bh-mtitle">隔日延續機率較高</div><div class="bh-mcopy">更多股票同步獲得資金，延續環境優於單一獨強。</div></div><span class="bh-mstate">環境加分</span></div>
+          <div class="bh-mitem"><span class="bh-mstep">04</span><div><div class="bh-mtitle">仍須挑選個股</div><div class="bh-mcopy">占比高只代表市場好做，不代表 51 檔全部能買。</div></div><span class="bh-mstate">非買點</span></div>
+        </div>
       </div>
     </div>
-    <div class="bh-note">
-      <h3>正確判讀</h3>
-      <p>資金不是突然進來，而是每天都有更多股票加入 aflow&gt;0，這比只看單日占比更有價值。反過來，若 82%→75%→63%→49%→35% 一路收縮，即使指數還沒大跌，也代表資金正在退潮，應逐步降低倉位。</p>
-      <p class="bh-note-foot">※ 此段對應右上「資金廣度時間序列（多日趨勢）」，非左側「單日資金溫度分級」。</p>
+
+    <!-- 右欄 -->
+    <div class="bh-col">
+      <!-- 判斷假行情 -->
+      <div class="bh-card">
+        <div class="bh-chead"><h3>判斷假行情</h3><span class="bh-chip">Narrow Breadth</span></div>
+        <p class="bh-csub">指數上漲不代表資金全面進場。</p>
+        <div class="bh-case-grid">
+          <div class="bh-case good" id="bhScGood"><div class="bh-clabel">健康行情（範例）</div><div class="bh-cmain">指數 +2%｜流入 71%</div><div class="bh-cdesc">多數股票有主動買盤，漲勢不靠少數權值。</div></div>
+          <div class="bh-case bad" id="bhScBad"><div class="bh-clabel">窄幅行情（範例）</div><div class="bh-cmain">指數 +2%｜流入 26%</div><div class="bh-cdesc">僅 13 檔 aflow&gt;0，指數漲但資金未跟進。</div></div>
+        </div>
+        <div class="bh-verdict" id="bhStateBox"><strong id="bhStateTitle">—</strong><p id="bhStateNote">等待即時資料判讀目前是不是假行情。</p></div>
+      </div>
+
+      <!-- 溫度 + 時序 + 正確判讀 -->
+      <div class="bh-card bh-triple">
+        <div class="bh-sec">
+          <div class="bh-stitle">市場資金溫度分級<span class="bh-stag">單日</span></div>
+          <div class="bh-scale"><span></span><span></span><span></span><span></span><span></span></div>
+          <div class="bh-marker" id="bhMarker"></div>
+          <div class="bh-levels">
+            <div class="bh-lv" data-lv="risk_off"><b>&lt;30%</b><span>Risk Off</span></div>
+            <div class="bh-lv" data-lv="lean_short"><b>30–45%</b><span>偏空</span></div>
+            <div class="bh-lv" data-lv="neutral"><b>45–55%</b><span>中性</span></div>
+            <div class="bh-lv" data-lv="lean_long"><b>55–70%</b><span>偏多</span></div>
+            <div class="bh-lv" data-lv="risk_on"><b>&ge;70%</b><span>Risk On</span></div>
+          </div>
+        </div>
+
+        <hr class="bh-divider" />
+
+        <div class="bh-sec">
+          <div class="bh-stitle">資金廣度時間序列<span class="bh-stag">多日趨勢</span></div>
+          <div class="bh-chart" id="bhChart"><div class="bh-gl" style="top:25%"></div><div class="bh-gl" style="top:50%"></div><div class="bh-gl" style="top:75%"></div></div>
+          <div class="bh-trend"><div><strong id="bhTrendTitle">資金參與範圍</strong><span id="bhTrendSeq">序列累積中</span></div><div class="bh-delta" id="bhTrendDelta">—</div></div>
+          <div class="bh-interpret">
+            <h4>正確判讀</h4>
+            <p>資金不是突然進來，而是每天都有更多股票加入 aflow&gt;0，這比只看單日占比更有價值。反過來，若 82%→75%→63%→49%→35% 一路收縮，即使指數還沒大跌，也代表資金正在退潮，應逐步降低倉位。</p>
+          </div>
+        </div>
+      </div>
     </div>
+
   </div>
 </section>
 <div class="sys-line muted">VPS Shioaji · API 延遲 <b id="latency">—</b> · 訂閱標的 <b id="subscribed">—</b> · 有效訊號 <b id="valid">—</b> · <b id="quality">資料完整度 —</b><i id="progress" class="sys-progress"></i><span id="notes" class="sys-notes"></span></div>
@@ -93,21 +117,43 @@ function marketClosed(){return taipeiMinutes()>=810}
 function setMonitoringOff(){paused=true;const b=document.querySelector('#pause');if(b)b.textContent='恢復監控';const c=document.querySelector('#conn');if(c)c.textContent='盤後模式 OFF · 等待收盤資料固定';document.querySelector('.top-actions .dot')?.style.setProperty('background','#9aa4b8');document.querySelector('.sidebar .nav-item.active .count')?.classList.remove('live')}
 function marketDate(offset){const d=new Date();d.setDate(d.getDate()+offset);return d.toISOString().slice(0,10)}
 function marketFmt(v){return v==null?'—':Number(v).toLocaleString('zh-TW',{maximumFractionDigits:2})}
-async function loadMarketOverview(){try{
-    // 週末／假日今天沒有官方資料；往前找最近有指數的交易日，前一個有資料日當比較基準，
-    // 這樣總覽不會在非交易日整片空白。
+// 市場總覽＝官方盤後固定資料（當日盤中不會變）。為避免每次刷新「先不見再出現」：
+// 1) 版位固定存在，只更新內容、不移除重建；2) 先用 localStorage 上次資料立即上畫面，
+//    再背景抓最新覆蓋，畫面全程有內容不閃爍。
+function marketOverviewBox(){
+  let box=document.querySelector('#marketOverview');
+  if(!box){
+    box=document.createElement('section');
+    box.id='marketOverview';box.className='market-overview';
+    const anchor=document.querySelector('.market-row')||document.querySelector('.hero-grid');
+    if(anchor)anchor.before(box);else document.querySelector('.content')?.prepend(box);
+  }
+  return box;
+}
+function renderMarketOverview(d){
+  const a=d.a||{},i=d.i||{},t=d.t,pt=d.pt;
+  const direction=t!=null&&pt!=null?(t>pt?'放量':'量縮'):'—';
+  const delta=t!=null&&pt!=null?((t-pt)/pt*100):null;
+  const col=(v,txt)=>v==null?(txt??'—'):`<span class="${cls(v)}">${txt??marketFmt(v)}</span>`;
+  const taiexChg=a.change==null?'—':col(a.change,(a.change>0?'+':'')+marketFmt(a.change))+' · '+(a.change_pct==null?'—':col(a.change_pct,(a.change_pct>0?'+':'')+a.change_pct+'%'));
+  marketOverviewBox().innerHTML=`<div class="table-head" style="padding:0 0 10px;border:0"><h3>市場總覽</h3><span class="muted">官方資料 · ${esc(d.date||marketDate(0))}</span></div><div class="market-overview-grid"><div class="market-overview-card"><label>加權指數</label><strong class="${cls(a.change)}">${marketFmt(a.taiex)}</strong><small>${taiexChg}</small></div><div class="market-overview-card"><label>三大法人買賣超（億元）</label><strong class="${cls(i.total_100m)}">${marketFmt(i.total_100m)}</strong><small>外資 ${col(i.foreign_100m)} · 投信 ${col(i.trust_100m)} · 自營 ${col(i.dealer_100m)}</small></div><div class="market-overview-card"><label>今日成交金額</label><strong>${t==null?'—':marketFmt(t)+' 億'}</strong><small>證交所官方大盤統計</small></div><div class="market-overview-card"><label>與前天成交量比較</label><strong>${direction}</strong><small>前天 ${pt==null?'—':marketFmt(pt)+' 億'}${delta==null?'':' · '+col(delta,(delta>0?'+':'')+delta.toFixed(1)+'%')}</small></div></div>`;
+}
+async function loadMarketOverview(){
+  // 先用快取立即渲染（版位不空白）
+  try{const cached=JSON.parse(localStorage.getItem('mls_market_overview')||'null');if(cached)renderMarketOverview(cached);}catch(e){}
+  try{
+    // 週末／假日今天沒有官方資料；往前找最近有指數的交易日，前一個有資料日當比較基準。
     const days=await Promise.all(Array.from({length:10},(_,k)=>
       fetch(API_BASE+'/api/market/official?date='+marketDate(-k),{cache:'no-store'})
         .then(r=>r.json()).catch(()=>({}))));
     const withData=days.filter(d=>(d.index||{}).taiex!=null);
     const today=withData[0]||days[0]||{};
     const prev=withData[1]||{};
-    const a=today.index||{},p=prev.index||{},i=today.institutional||{};const t=a.turnover_100m,pt=p.turnover_100m;const direction=t!=null&&pt!=null?(t>pt?'放量':'量縮'):'—';const delta=t!=null&&pt!=null?((t-pt)/pt*100):null;const old=document.querySelector('#marketOverview');if(old)old.remove();const box=document.createElement('section');box.id='marketOverview';box.className='market-overview';// 市場總覽數字一律跌綠漲紅：cls() 正=positive(紅) 負=negative(綠)
-    const col=(v,txt)=>v==null?(txt??'—'):`<span class="${cls(v)}">${txt??marketFmt(v)}</span>`;
-    const taiexChg=a.change==null?'—':col(a.change,(a.change>0?'+':'')+marketFmt(a.change))+' · '+(a.change_pct==null?'—':col(a.change_pct,(a.change_pct>0?'+':'')+a.change_pct+'%'));
-    box.innerHTML=`<div class="table-head" style="padding:0 0 10px;border:0"><h3>市場總覽</h3><span class="muted">官方資料 · ${esc(a.date||i.date||marketDate(0))}</span></div><div class="market-overview-grid"><div class="market-overview-card"><label>加權指數</label><strong class="${cls(a.change)}">${marketFmt(a.taiex)}</strong><small>${taiexChg}</small></div><div class="market-overview-card"><label>三大法人買賣超（億元）</label><strong class="${cls(i.total_100m)}">${marketFmt(i.total_100m)}</strong><small>外資 ${col(i.foreign_100m)} · 投信 ${col(i.trust_100m)} · 自營 ${col(i.dealer_100m)}</small></div><div class="market-overview-card"><label>今日成交金額</label><strong>${t==null?'—':marketFmt(t)+' 億'}</strong><small>證交所官方大盤統計</small></div><div class="market-overview-card"><label>與前天成交量比較</label><strong>${direction}</strong><small>前天 ${pt==null?'—':marketFmt(pt)+' 億'}${delta==null?'':' · '+col(delta,(delta>0?'+':'')+delta.toFixed(1)+'%')}</small></div></div>`;// 版面把 .hero-grid 改名成 .market-row；總覽插在它前面（找不到就退回 content 最前）
-const anchor=document.querySelector('.market-row')||document.querySelector('.hero-grid');
-if(anchor)anchor.before(box);else document.querySelector('.content')?.prepend(box);}catch(e){console.warn('market overview',e)}}
+    const a=today.index||{},i=today.institutional||{},p=prev.index||{};
+    const payload={a,i,t:a.turnover_100m,pt:p.turnover_100m,date:a.date||i.date||marketDate(0)};
+    renderMarketOverview(payload);
+    try{localStorage.setItem('mls_market_overview',JSON.stringify(payload));}catch(e){}
+  }catch(e){console.warn('market overview',e)}}
 // ?view=watch|card|report 自動開對應分頁
 window.addEventListener('load',()=>{const m=location.search.match(/[?&]view=(watch|card|report)/);if(m){setTimeout(()=>openPanel(m[1]),100);}});
 function card(x){let c=x.group==='排除'?'risk':x.group==='觀察'?'watch':'';return `<article class="panel stock-card ${c}" data-group="${esc(x.group)}"><div class="stock-top"><div><div class="stock-code">${esc(x.code)} · ${esc(x.subgroup)}</div><div class="stock-name">${esc(x.name)}</div></div><div class="score">${x.score==null?'—':`${x.score}<small style="font-size:10px">/${x.score_max||100}</small>`}</div></div><div class="signal"><b>${esc(x.classification_reason||x.subgroup||x.group)}</b><span class="tag">${esc(x.group)}</span></div><div class="price-row"><div class="price-box"><label>現價</label><strong>${esc(x.price)}</strong></div><div class="price-box"><label>漲跌</label><strong class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</strong></div><div class="price-box"><label>成交量</label><strong>${fmt(x.total_volume)}</strong></div></div><div class="stock-foot"><span><span class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</span> · <span class="${cls(x.aflow)}">aflow ${fmt(x.aflow)}</span></span><span class="muted">查看解讀 →</span></div></article>`}
@@ -799,95 +845,104 @@ window.renderTomorrowGroups=function(body,rows){
 .sys-progress{display:none}
 .sys-notes{display:block;color:#9aa4b8}
 /* ══ 市場資金廣度：橫式作戰儀表板（scoped 於 .breadth-board，bh- 前綴避免衝突）══ */
-.breadth-board{--bh-navy:#162540;--bh-blue:#3569d5;--bh-blue-soft:#edf3ff;--bh-green:#079c70;--bh-green-soft:#e8f8f2;--bh-orange:#ed9b36;--bh-orange-soft:#fff4e8;--bh-red:#d84b5e;--bh-red-soft:#fff0f2;--bh-soft:#f7f9fc;--bh-line:#e2e8f1;--bh-t2:#4e5d77;--bh-mut:#7b89a2;margin-bottom:16px}
-.breadth-board h1,.breadth-board h2,.breadth-board h3{margin:0}
-.bh-top{display:grid;grid-template-columns:1.25fr repeat(4,.62fr);gap:12px;margin-bottom:14px}
-.bh-hero,.bh-mini,.bh-panel,.bh-scale-wrap,.bh-note{background:#fff;border:1px solid var(--bh-line);border-radius:18px;box-shadow:0 12px 30px rgba(34,50,81,.06)}
-.bh-hero{padding:20px 22px;background:linear-gradient(135deg,#fff 0%,#f3fbf8 100%);display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center}
-.bh-hero-l{min-width:0}
-.bh-ring{width:116px;height:116px;flex:none;border-radius:50%;background:conic-gradient(var(--bh-ring,var(--bh-green)) 0 var(--pct,0%),#e7ecf4 var(--pct,0%) 100%);display:grid;place-items:center;box-shadow:0 2px 12px rgba(34,50,81,.06);transition:--pct .5s}
-.bh-ring-in{width:88px;height:88px;border-radius:50%;background:#fff;display:grid;place-items:center;text-align:center;box-shadow:inset 0 0 0 1px rgba(34,50,81,.04)}
-.bh-ring-in b{font-size:24px;font-weight:900;color:var(--bh-ring,var(--bh-green));line-height:1;letter-spacing:-.03em}
-.bh-ring-in span{display:block;font-size:10px;color:var(--bh-mut);margin-top:3px;font-weight:800}
-.bh-eyebrow{color:var(--bh-mut);font-size:12px;font-weight:800;letter-spacing:.03em;margin-bottom:6px}
-.bh-hero-row{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
-.bh-num{font-size:58px;line-height:.9;font-weight:900;color:var(--bh-green);letter-spacing:-.05em}
-.bh-risk{margin-bottom:5px;background:var(--bh-navy);color:#fff;padding:7px 13px;border-radius:999px;font-weight:900;font-size:13px;white-space:nowrap}
-.bh-hero h1{margin:12px 0 5px;font-size:21px}
-.bh-hero p{margin:0;color:var(--bh-t2);font-size:13px;line-height:1.6;font-weight:600}
-.bh-mini{padding:16px;display:flex;flex-direction:column;gap:6px;min-height:132px}
-.bh-mlabel{color:var(--bh-mut);font-size:12px;font-weight:800}
-.bh-mini strong{font-size:21px;line-height:1.15}
-.bh-mini p{margin:auto 0 0;color:var(--bh-t2);font-size:11.5px;line-height:1.5;font-weight:600}
-.bh-main{display:grid;grid-template-columns:1.15fr .95fr 1.1fr;gap:14px;align-items:stretch}
-.bh-panel{padding:20px}
-.bh-trow{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:14px}
-.bh-trow h2{font-size:17px;margin-bottom:5px}
-.bh-trow p{margin:0;color:var(--bh-mut);font-size:12px;line-height:1.5;font-weight:600}
-.bh-chip{flex:none;font-size:11px;font-weight:900;padding:6px 9px;border:1px solid var(--bh-line);border-radius:999px;background:var(--bh-soft);color:var(--bh-t2)}
-.bh-actions{display:grid;gap:9px}
-.bh-act{display:grid;grid-template-columns:40px 1fr auto;gap:11px;align-items:center;border:1px solid var(--bh-line);background:var(--bh-soft);border-radius:14px;padding:12px}
-.bh-act.on{background:var(--bh-green-soft);border-color:#bce7d8}
-.bh-ic{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:var(--bh-green-soft);color:var(--bh-green);font-weight:900}
-.bh-act.on .bh-ic{background:var(--bh-green);color:#fff}
-.bh-act h3{font-size:14px;margin-bottom:3px}
-.bh-act p{margin:0;color:var(--bh-mut);font-size:11.5px;line-height:1.45;font-weight:600}
-.bh-act b{font-size:11.5px;color:var(--bh-green);white-space:nowrap}
-.bh-scenarios{display:grid;grid-template-columns:1fr 1fr;gap:11px}
-.bh-sc{border-radius:16px;padding:14px;min-height:150px}
-.bh-sc.good{background:var(--bh-green-soft);border:1px solid #bde8d8}
-.bh-sc.bad{background:var(--bh-red-soft);border:1px solid #f0c9cf}
-.bh-tag{font-size:11.5px;font-weight:900;margin-bottom:9px}
-.bh-sc.good .bh-tag{color:var(--bh-green)}.bh-sc.bad .bh-tag{color:var(--bh-red)}
-.bh-hl{font-size:19px;font-weight:900;margin-bottom:7px;letter-spacing:-.02em}
-.bh-sc p{margin:0;color:var(--bh-t2);font-size:11.5px;line-height:1.55;font-weight:600}
-.bh-verdict{margin-top:11px;padding:12px 13px;border-radius:13px;background:var(--bh-soft);border:1px solid var(--bh-line)}
-.bh-verdict b{display:block;font-size:14px;margin-bottom:3px}
-.bh-verdict span{color:var(--bh-t2);font-size:11.5px;line-height:1.55;font-weight:600}
+/* ══ 市場資金廣度：淺色雙欄儀表板（照 mockup 版型，bh- 前綴 scoped）══ */
+@property --pct{syntax:'<percentage>';inherits:false;initial-value:0%}
+.breadth-board{--bh-navy:#0b1a33;--bh-green:#079c70;--bh-green-soft:#e8f8f2;--bh-orange:#ed9b36;--bh-orange-soft:#fff4e8;--bh-red:#d84b5e;--bh-red-soft:#fff0f2;--bh-soft:#f7f9fc;--bh-line:#e9edf4;--bh-t2:#475569;--bh-mut:#94a3b8;margin-bottom:16px;font-size:13px}
+.breadth-board h2,.breadth-board h3,.breadth-board h4{margin:0}
+.bh-grid{display:grid;grid-template-columns:1.25fr .95fr;gap:16px;align-items:start}
+.bh-col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.bh-card{background:#fff;border:1px solid var(--bh-line);border-radius:18px;box-shadow:0 4px 16px rgba(11,26,51,.04);padding:22px 24px}
+/* Hero */
+.bh-hero{background:linear-gradient(145deg,#f8fafc,#fff);border-left:4px solid var(--bh-green);padding:26px 28px}
+.bh-eyebrow{font-size:11px;font-weight:800;letter-spacing:.06em;color:var(--bh-mut)}
+.bh-hero-main{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:8px 0 2px}
+.bh-num{font-size:54px;font-weight:900;letter-spacing:-.03em;line-height:1;color:var(--bh-green)}
+.bh-risk{background:var(--bh-green);color:#fff;font-weight:800;font-size:11px;padding:5px 16px;border-radius:40px;white-space:nowrap;box-shadow:0 2px 8px rgba(7,156,112,.2)}
+.bh-hero-title{font-size:20px;font-weight:800;margin:4px 0 4px;color:var(--bh-navy)}
+.bh-hero-copy{color:var(--bh-t2);font-size:13px;line-height:1.65;font-weight:600}
+/* 圓環 + 四小卡 */
+.bh-gauge-wrap{display:grid;grid-template-columns:1fr 1.35fr;gap:18px;align-items:center}
+.bh-gauge{display:flex;flex-direction:column;align-items:center}
+.bh-ring{width:120px;height:120px;border-radius:50%;background:conic-gradient(var(--bh-ring,var(--bh-green)) 0 var(--pct,0%),#e9edf4 var(--pct,0%) 100%);display:grid;place-items:center;box-shadow:0 2px 12px rgba(11,26,51,.05);transition:--pct .5s}
+.bh-ring-in{width:92px;height:92px;border-radius:50%;background:#fff;display:grid;place-items:center;text-align:center;box-shadow:inset 0 0 0 1px rgba(11,26,51,.03)}
+.bh-ring-in b{font-size:26px;font-weight:900;color:var(--bh-ring,var(--bh-green));line-height:1}
+.bh-ring-in span{display:block;font-size:10px;color:var(--bh-mut);margin-top:2px;font-weight:800}
+.bh-gauge-label{margin-top:10px;color:var(--bh-t2);font-size:11px;font-weight:700;letter-spacing:.03em}
+.bh-mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.bh-mini{background:var(--bh-soft);border:1px solid #f1f4f9;border-radius:14px;padding:13px 12px}
+.bh-mlabel{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--bh-mut);font-weight:800}
+.bh-mini strong{display:block;font-size:17px;font-weight:800;color:var(--bh-navy);margin:3px 0 2px}
+.bh-mini p{margin:0;font-size:11px;color:var(--bh-t2);line-height:1.5;font-weight:600}
+/* 卡片標題列 */
+.bh-chead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.bh-chead h3{font-size:16px;font-weight:800;color:var(--bh-navy)}
+.bh-chip{font-size:10px;font-weight:700;color:var(--bh-mut);background:#f1f4f9;padding:3px 12px;border-radius:40px}
+.bh-csub{font-size:12px;color:var(--bh-t2);margin:0 0 10px;font-weight:600}
+/* 意義清單 */
+.bh-meaning{display:flex;flex-direction:column;gap:10px}
+.bh-mitem{display:grid;grid-template-columns:30px 1fr auto;gap:12px;align-items:center;padding:10px 14px;background:var(--bh-soft);border-radius:12px;border-left:3px solid transparent;transition:.2s}
+.bh-mitem.on{border-left-color:var(--bh-green);background:var(--bh-green-soft)}
+.bh-mstep{font-weight:900;font-size:13px;color:var(--bh-green);opacity:.7}
+.bh-mtitle{font-weight:800;font-size:13px;color:var(--bh-navy)}
+.bh-mcopy{font-size:11px;color:var(--bh-t2);line-height:1.5;font-weight:600}
+.bh-mstate{font-size:10px;font-weight:800;color:var(--bh-green);background:var(--bh-green-soft);padding:3px 12px;border-radius:40px;white-space:nowrap}
+/* 假行情 */
+.bh-case-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.bh-case{padding:14px;border-radius:14px;background:var(--bh-soft);border:1px solid #f1f4f9;position:relative;transition:opacity .2s,box-shadow .2s,border-color .2s}
+.bh-case.good{border-color:#bde8d8;background:var(--bh-green-soft)}
+.bh-case.bad{border-color:#f0c9cf;background:var(--bh-red-soft)}
+.bh-clabel{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--bh-mut);font-weight:800}
+.bh-cmain{font-size:16px;font-weight:800;margin:5px 0 4px;line-height:1.3}
+.bh-case.good .bh-cmain{color:var(--bh-green)}.bh-case.bad .bh-cmain{color:var(--bh-red)}
+.bh-cdesc{font-size:11px;color:var(--bh-t2);line-height:1.55;font-weight:600}
+.bh-case.dim{opacity:.4;filter:saturate(.5)}
+.bh-case.live{box-shadow:0 0 0 2px currentColor inset,0 8px 20px rgba(11,26,51,.1)}
+.bh-case.good.live{color:var(--bh-green)}.bh-case.bad.live{color:var(--bh-red)}
+/* 目前判讀 */
+.bh-verdict{background:var(--bh-soft);border:1px solid #f1f4f9;border-radius:12px;padding:12px 16px}
+.bh-verdict strong{display:block;font-weight:800;font-size:13px;color:var(--bh-green);margin-bottom:2px}
+.bh-verdict p{margin:0;font-size:11.5px;color:var(--bh-t2);line-height:1.55;font-weight:600}
 .bh-verdict.st-narrow,.bh-verdict.st-broad_down,.bh-verdict.st-narrow_nomkt{background:var(--bh-orange-soft);border-color:#f1d4ad}
-.bh-verdict.st-narrow b,.bh-verdict.st-broad_down b,.bh-verdict.st-narrow_nomkt b{color:#a9711f}
-.bh-verdict.st-narrow_nomkt{background:var(--bh-orange-soft);border-color:#f1d4ad}
-.bh-verdict.st-narrow_nomkt b{color:#a9711f}
-.bh-verdict.st-broad,.bh-verdict.st-resilient,.bh-verdict.st-broad_nomkt{background:var(--bh-blue-soft);border-color:#cfe0fb}
-.bh-verdict.st-broad b,.bh-verdict.st-resilient b,.bh-verdict.st-broad_nomkt b{color:var(--bh-blue)}
-.bh-verdict.st-aligned b,.bh-verdict.st-neutral_nomkt b{color:var(--bh-t2)}
-/* 兩張範例：命中今日的那張打亮並蓋「今日」章，另一張淡出，避免同時顯示兩種結論 */
-.bh-sc{position:relative;transition:opacity .2s,box-shadow .2s}
-.bh-sc.dim{opacity:.34;filter:saturate(.5)}
-.bh-sc.live{box-shadow:0 0 0 2px currentColor inset,0 10px 24px rgba(34,50,81,.12)}
-.bh-sc.good.live{color:var(--bh-green)}.bh-sc.bad.live{color:var(--bh-red)}
-.bh-chart{height:196px;background:var(--bh-navy);border-radius:16px;padding:16px 14px 10px;display:flex;align-items:flex-end;gap:10px;position:relative;overflow:hidden}
-.bh-gl{position:absolute;left:14px;right:14px;border-top:1px dashed rgba(255,255,255,.12)}
-.bh-bi{flex:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:5px;position:relative;z-index:1}
-.bh-bv,.bh-bd{color:#d9e3f4;font-size:10px;font-weight:800}
-.bh-bar{width:56%;min-width:14px;border-radius:6px 6px 2px 2px;background:linear-gradient(180deg,#77a2ff,#3769d2)}
-.bh-bi.last .bh-bar{background:linear-gradient(180deg,#41d0a2,#079c70)}
-.bh-bd{display:inline-flex;align-items:center;gap:4px}
-.bh-bnow{width:5px;height:5px;border-radius:50%;background:#41d0a2;box-shadow:0 0 0 2px rgba(65,208,162,.28)}
-.bh-trend{margin-top:11px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;background:var(--bh-blue-soft);border-radius:13px;padding:12px 13px}
-.bh-trend strong{display:block;font-size:13.5px;margin-bottom:3px}
+.bh-verdict.st-narrow strong,.bh-verdict.st-broad_down strong,.bh-verdict.st-narrow_nomkt strong{color:#a9711f}
+.bh-verdict.st-aligned strong,.bh-verdict.st-neutral_nomkt strong{color:var(--bh-t2)}
+/* 三合一 */
+.bh-triple{display:flex;flex-direction:column;gap:6px}
+.bh-sec{display:flex;flex-direction:column;gap:6px}
+.bh-stitle{font-size:14px;font-weight:800;color:var(--bh-navy);display:flex;align-items:center;gap:8px}
+.bh-stag{font-size:9px;background:#f1f4f9;padding:2px 10px;border-radius:40px;color:var(--bh-mut);font-weight:700}
+.bh-divider{border:0;border-top:1px solid var(--bh-line);margin:14px 0 16px;width:100%}
+/* 溫度尺 */
+.bh-scale{height:12px;display:grid;grid-template-columns:30fr 15fr 10fr 15fr 30fr;gap:2px;overflow:hidden;border-radius:40px;margin:8px 0 0}
+.bh-scale span:nth-child(1){background:#d94e62}.bh-scale span:nth-child(2){background:#e58f4a}.bh-scale span:nth-child(3){background:#d4b84a}.bh-scale span:nth-child(4){background:#67b58f}.bh-scale span:nth-child(5){background:var(--bh-green)}
+.bh-marker{position:relative;height:28px}
+.bh-marker:before{content:"";position:absolute;left:var(--mk,50%);top:0;width:2px;height:12px;background:var(--bh-green);transform:translateX(-50%);border-radius:2px;transition:left .4s}
+.bh-marker:after{content:var(--mklabel,"—");position:absolute;left:var(--mk,50%);top:14px;transform:translateX(-50%);font-size:12px;font-weight:900;color:var(--bh-green);white-space:nowrap;transition:left .4s}
+.bh-levels{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:2px}
+.bh-lv{text-align:center;padding:6px 4px;border-radius:10px;background:var(--bh-soft);border:1px solid #f1f4f9}
+.bh-lv.on{background:var(--bh-green-soft);border-color:var(--bh-green)}
+.bh-lv b{display:block;font-size:12px;font-weight:700}
+.bh-lv span{color:var(--bh-mut);font-size:9.5px;font-weight:600}
+/* 時序 */
+.bh-chart{height:150px;background:var(--bh-soft);border:1px solid #f1f4f9;border-radius:14px;padding:14px 14px 8px;display:flex;align-items:flex-end;gap:8px;position:relative;overflow:hidden;margin-top:8px}
+.bh-gl{position:absolute;left:14px;right:14px;border-top:1px dashed rgba(11,26,51,.09)}
+.bh-bi{flex:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px;position:relative;z-index:1}
+.bh-bv{color:var(--bh-t2);font-size:10px;font-weight:800}
+.bh-bar{width:60%;min-width:12px;border-radius:4px 4px 2px 2px;background:linear-gradient(180deg,#67c7a5,#0a7a56);opacity:.6}
+.bh-bi.last .bh-bar{background:linear-gradient(180deg,#41d0a2,#079c70);opacity:1;box-shadow:0 2px 8px rgba(7,156,112,.22)}
+.bh-bd{display:inline-flex;align-items:center;gap:4px;color:var(--bh-mut);font-size:9px;font-weight:800}
+.bh-bnow{width:5px;height:5px;border-radius:50%;background:var(--bh-green);box-shadow:0 0 0 2px rgba(7,156,112,.25)}
+.bh-trend{margin-top:11px;display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;background:var(--bh-green-soft);border-radius:12px;padding:11px 13px}
+.bh-trend strong{display:block;font-size:13px;margin-bottom:2px;color:var(--bh-navy)}
 .bh-trend span{color:var(--bh-mut);font-size:11px;font-weight:600}
-.bh-delta{font-weight:900;font-size:20px;white-space:nowrap}
+.bh-delta{font-weight:900;font-size:19px;white-space:nowrap}
 .bh-delta.up{color:var(--bh-green)}.bh-delta.down{color:var(--bh-red)}.bh-delta.flat{color:var(--bh-mut)}
-.bh-bottom{display:grid;grid-template-columns:1.25fr 1fr;gap:14px;margin-top:14px;align-items:stretch}
-.bh-scale-wrap{padding:18px 20px}
-.bh-scale{height:13px;display:grid;grid-template-columns:30fr 15fr 10fr 15fr 30fr;gap:2px;overflow:hidden;border-radius:999px;margin-top:14px}
-.bh-scale span:nth-child(1){background:#dc5265}.bh-scale span:nth-child(2){background:#ed9651}.bh-scale span:nth-child(3){background:#d5ba52}.bh-scale span:nth-child(4){background:#64b895}.bh-scale span:nth-child(5){background:var(--bh-green)}
-.bh-marker{position:relative;height:30px}
-.bh-marker:before{content:"";position:absolute;left:var(--mk,50%);top:0;width:3px;height:14px;background:var(--bh-navy);transform:translateX(-50%);border-radius:3px;transition:left .4s}
-.bh-marker:after{content:var(--mklabel,"—");position:absolute;left:var(--mk,50%);top:15px;transform:translateX(-50%);font-size:11px;font-weight:900;white-space:nowrap;transition:left .4s}
-.bh-levels{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}
-.bh-lv{text-align:center;padding:9px;border-radius:11px;background:var(--bh-soft);border:1px solid var(--bh-line)}
-.bh-lv.on{background:var(--bh-green-soft);border-color:#bce7d8}
-.bh-lv b{display:block;font-size:11.5px;margin-bottom:2px}
-.bh-lv span{color:var(--bh-mut);font-size:10px;font-weight:600}
-.bh-note{background:var(--bh-navy);color:#fff;padding:18px 20px}
-.bh-note h3{margin-bottom:7px;font-size:16px}
-.bh-note p{margin:0;color:#c7d2e4;line-height:1.65;font-size:12px;font-weight:600}
-.bh-note-foot{margin-top:9px!important;padding-top:9px;border-top:1px solid rgba(255,255,255,.12);color:#95a6c2!important;font-size:11px!important}
+/* 正確判讀（緊貼時序下方）*/
+.bh-interpret{background:var(--bh-soft);border-radius:12px;padding:14px 16px;border-left:3px solid var(--bh-green);margin-top:12px}
+.bh-interpret h4{font-size:14px;font-weight:800;color:var(--bh-navy);margin-bottom:4px}
+.bh-interpret p{font-size:12px;color:var(--bh-t2);line-height:1.75;margin:0;font-weight:600}
 .bh-stale{display:inline-block;margin-left:8px;font-size:11px;font-weight:800;color:var(--bh-orange)}
-@media(max-width:1300px){.bh-top{grid-template-columns:1fr 1fr 1fr}.bh-hero{grid-column:span 3}.bh-main{grid-template-columns:1fr 1fr}.bh-main .bh-panel:last-child{grid-column:span 2}.bh-bottom{grid-template-columns:1fr}}
-@media(max-width:820px){.bh-top,.bh-main,.bh-main .bh-panel:last-child,.bh-scenarios{grid-template-columns:1fr!important}.bh-hero{grid-column:auto}.metrics.metrics-3{grid-template-columns:1fr 1fr}}
+@media(max-width:1100px){.bh-grid{grid-template-columns:1fr}.bh-gauge-wrap{grid-template-columns:1fr 1.2fr}}
+@media(max-width:640px){.bh-gauge-wrap,.bh-mini-grid,.bh-case-grid{grid-template-columns:1fr}.bh-num{font-size:42px}.bh-mitem{grid-template-columns:1fr;gap:4px}.bh-mstate{justify-self:start}}
 </style>
 <script>
 // 市場資金廣度：優先吃 /api/intraday-test 已附帶的 breadth；沒有才單獨打
@@ -908,8 +963,11 @@ function renderBreadth(b){
   const lv=b.level||'neutral', pct=b.ratio_pct;
   T('#bhRatio',pct!=null?pct.toFixed(1)+'%':'—');
   const risk=q('#bhRisk');risk.textContent=(b.level_title||'—').toUpperCase();
-  document.querySelector('.bh-num').style.color=lv==='risk_off'||lv==='lean_short'?'var(--bh-orange)':'var(--bh-green)';
-  risk.style.background=lv==='risk_off'||lv==='lean_short'?'var(--bh-orange)':'var(--bh-navy)';
+  const cool=lv==='risk_off'||lv==='lean_short';
+  document.querySelector('.bh-num').style.color=cool?'var(--bh-orange)':'var(--bh-green)';
+  risk.style.background=cool?'var(--bh-orange)':'var(--bh-navy)';
+  const ring=q('#bhRing');if(ring){ring.style.setProperty('--pct',(pct!=null?Math.max(0,Math.min(100,pct)):0).toFixed(1)+'%');ring.style.setProperty('--bh-ring',cool?'var(--bh-orange)':'var(--bh-green)');}
+  T('#bhRingPct',pct!=null?pct.toFixed(0)+'%':'—');
   T('#bhHeadline',(b.level_advice||'—'));
   T('#bhSub',b.total?`51 檔中約 ${b.in_count} 檔主動買超、${b.out_count} 檔流出（有效樣本 ${b.total} 檔）。占比＝資金水位，不是個股進場訊號。`:'資料樣本不足，暫以最近一日判讀。');
   T('#bhMode',BH_MODE[lv]||'—');T('#bhPos',BH_POS[lv]||'—');T('#bhNext',BH_NEXT[lv]||'—');
@@ -925,7 +983,7 @@ function renderBreadth(b){
   // 兩張只是教學範例：命中的那張打亮綠/紅框、另一張淡出，不在卡上蓋任何字。
   // 今日的實際占比與結論一律放下方 verdict box，避免和範例的 71%／26% 混淆。
   const good=q('#bhScGood'),bad=q('#bhScBad');
-  if(good&&bad){good.className='bh-sc good';bad.className='bh-sc bad';
+  if(good&&bad){good.className='bh-case good';bad.className='bh-case bad';
     const healthy=['broad','broad_nomkt','resilient','aligned'].includes(b.state)
       ||(pct!=null&&pct>=(b.thresholds?.broad??60));
     const narrow=['narrow','broad_down','narrow_nomkt'].includes(b.state)
