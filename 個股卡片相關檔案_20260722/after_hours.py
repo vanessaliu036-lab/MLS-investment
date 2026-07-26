@@ -13,8 +13,10 @@ Airtable 環境變數(選用):
 
 import os
 import json
+import statistics
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import config as C
 import broker
@@ -23,6 +25,118 @@ import db
 import notifier
 
 TW_TZ = timezone(timedelta(hours=8))
+
+# 盤中 radar 收盤狀態（含 group/score/sector）由 vps_intraday_test 寫在 repo 根。
+# build_tomorrow_watchlist 讀它取「今日可操作/觀察存活者」排序名單。
+RADAR_SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "intraday_live_snapshot.json"
+
+
+# ══════════════════════════════════════════════════════
+# Phase 3/4 純函式（可單測；讀檔/判定/選股皆無副作用）
+# ══════════════════════════════════════════════════════
+def _radar_snapshot_rows(trade_date):
+    """讀 radar 收盤快照，只回「當日」的 rows；日期不符或讀不到回 []。
+    絕不 raise —— 任何異常都回 [] 讓呼叫端回退純抗跌名單。"""
+    try:
+        if not RADAR_SNAPSHOT_PATH.exists():
+            return []
+        payload = json.loads(RADAR_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+        if payload.get("trade_date") != trade_date:
+            return []
+        rows = (payload.get("result") or {}).get("rows") or []
+        return [r for r in rows if isinstance(r, dict) and r.get("code")]
+    except Exception as exc:
+        print(f"[after_hours] radar 快照讀取失敗，回退純抗跌：{exc}")
+        return []
+
+
+def select_radar_watchlist(radar_rows, resilient_rows, limit=10):
+    """名單來源 = Radar 優先、Resilient 補足（不 union）。純函式。
+
+    radar_rows: radar 快照 rows（含 group/score/sector/price/change_rate）。
+    resilient_rows: 既有抗跌候選（已帶 source='resilient'）。
+    回傳 (picks, radar_rejects)。picks 每筆帶 source/entry_ref/factor_score/
+    group_at_pick，供 save_watchlist 與 T+1 分流驗證使用。
+    """
+    def _score(r):
+        return r.get("score") or 0
+
+    actionable = sorted((r for r in radar_rows if r.get("group") == "可操作"),
+                        key=_score, reverse=True)
+    observe = sorted((r for r in radar_rows if r.get("group") == "觀察"),
+                     key=_score, reverse=True)
+
+    picks, seen = [], set()
+    for r in actionable + observe:      # 可操作優先，再觀察，各自分數高者先
+        if len(picks) >= limit:
+            break
+        code = str(r.get("code"))
+        if code in seen:
+            continue
+        seen.add(code)
+        picks.append({
+            "code": code, "name": r.get("name") or code,
+            "sector": r.get("sector"), "source": "radar",
+            "entry_ref": r.get("price"),          # 進場基準＝選股日收盤價
+            "factor_score": r.get("score"),
+            "group_at_pick": r.get("group"),
+            "reason": (r.get("reason")
+                       or f"{r.get('group')} 七因子 {r.get('score')}／100"),
+        })
+
+    # 不足 limit 才用抗跌補足（去重）
+    for w in resilient_rows:
+        if len(picks) >= limit:
+            break
+        code = str(w.get("code"))
+        if code in seen:
+            continue
+        seen.add(code)
+        picks.append(w)
+
+    # radar 落選＝觀察/排除中未入選者，帶因子分數留痕
+    radar_rejects = []
+    for r in radar_rows:
+        code = str(r.get("code"))
+        if code in seen or r.get("group") == "可操作":
+            continue
+        radar_rejects.append({
+            "code": code, "name": r.get("name") or code,
+            "sector": r.get("sector"), "source": "radar",
+            "factor_score": r.get("score"), "score_total": r.get("score"),
+            "fail_factor": ("排除" if r.get("group") == "排除"
+                            else "觀察未達門檻/名額不足"),
+            "detail": (r.get("subgroup") or "")
+                      + (f"（{r.get('score_pct')}%）" if r.get("score_pct") is not None else ""),
+        })
+    return picks, radar_rejects
+
+
+def judge_watchlist_row(source, close_change, relative):
+    """T+1 收盤依 source 分流判定。純函式，門檻取自 config。
+    回傳 (verdict, is_hit, ret) —— is_hit 為「真實命中」（headline 命中率用）。
+    close_change: 今日(T+1)收盤漲跌%；因 change_rate 基準＝前一交易日收盤
+                  ＝選股日收盤(entry_ref)，故它直接就是相對進場的報酬(%)。
+    relative: 個股漲幅 − 族群中位漲幅（相對族群強度，pp）。
+    source is None → 回 (None, ...)，呼叫端走舊相容判定。"""
+    if close_change is None:
+        return ("待資料", False, None)
+    ret = close_change / 100.0
+    rel_ok = (relative is not None and relative > 0)
+    if source == "radar":
+        succ = getattr(C, "RADAR_T1_SUCCESS", 0.02)
+        cont = getattr(C, "RADAR_T1_CONTINUE_MIN", 0.005)
+        if rel_ok and ret >= succ:
+            return ("A_突破成功", True, ret)      # 真正有肉
+        if rel_ok and ret >= cont:
+            return ("B_續強", False, ret)          # 方向對、未達肉；含續強才算
+        return ("C_未續強", False, ret)
+    if source == "resilient":
+        floor = getattr(C, "RESILIENT_T1_FLOOR", -0.02)
+        if rel_ok and (close_change > floor * 100 or close_change > 0):
+            return ("抗跌成立", True, ret)
+        return ("抗跌失敗", False, ret)
+    return (None, False, ret)                       # 舊格式 → 相容判定
 
 
 # ══════════════════════════════════════════════════════
@@ -149,23 +263,64 @@ def rotation_analysis(sectors, snaps):
 # ══════════════════════════════════════════════════════
 # ① 收盤驗證
 # ══════════════════════════════════════════════════════
-def verify_today(today_signals_codes, strong_codes):
-    """
-    today_signals_codes: 今日有 buy/watch 訊號的股票集合
-    strong_codes:        今日盤中強勢(漲>2%且量比>1.5)的股票集合
-    """
+def verify_today(snaps, sectors, today_signals_codes, strong_codes):
+    """T+1 收盤驗證今日觀察名單（名單於前一交易日晚間產出，故 change_rate
+    基準＝選股日收盤，直接就是相對進場的報酬）。依 source 分流判定：
+      · radar     → A/B/C（真實命中＝A；含續強＝A+B）
+      · resilient → 相對族群為正 且 跌幅未破 -2%
+      · 舊格式(source=None) → 相容：有訊號或盤中強勢即命中
+    另彙總報酬分布(avg/median/max/min)寫入 review_log，供績效歸因。"""
     tdate = db.today()
     wl = db.load_watchlist(tdate)
+    snap_by = {str(s.get("code")): s for s in (snaps or [])}
+    sec_pct = {x.get("name"): x.get("pct") for x in (sectors or [])}
+
     hit = 0
+    returns = []
+    outcomes = []
     for w in wl:
-        if w["stock_id"] in today_signals_codes or w["stock_id"] in strong_codes:
-            db.mark_watch_hit(tdate, w["stock_id"])
+        code = w["stock_id"]
+        s = snap_by.get(str(code)) or {}
+        cc = s.get("change_rate")
+        sec_med = sec_pct.get(w.get("sector"))
+        rel = (cc - sec_med) if (cc is not None and sec_med is not None) else None
+        source = w.get("source")
+
+        verdict, is_hit, ret = judge_watchlist_row(source, cc, rel)
+        if verdict is None:      # 舊格式相容判定（Monday 首日驗週五舊名單用）
+            is_hit = code in today_signals_codes or code in strong_codes
+            verdict = "相容命中" if is_hit else "相容未命中"
+        if is_hit:
+            db.mark_watch_hit(tdate, code)
             hit += 1
+        if ret is not None:
+            returns.append(ret * 100)     # 存成百分比
+        outcomes.append({
+            "code": code, "name": w.get("stock_name") or code,
+            "sector": w.get("sector"), "watch_reason": w.get("reason"),
+            "open_group": w.get("group_at_pick"),
+            "close_group": s.get("group"),
+            "close_price": s.get("price"), "change_rate": cc,
+            "aflow": s.get("aflow"), "volume_ratio": s.get("volume_ratio"),
+            "verdict": verdict,
+            "note": f"source={source or '舊格式'} 相對族群{'' if rel is None else f'{rel:+.1f}pp'}",
+        })
+
     missed = sorted(strong_codes - {w["stock_id"] for w in wl})
+    stats = {}
+    if returns:
+        stats = {
+            "avg_return": round(statistics.mean(returns), 2),
+            "median_return": round(statistics.median(returns), 2),
+            "max_return": round(max(returns), 2),
+            "min_return": round(min(returns), 2),
+        }
     rate = db.write_review(tdate, len(wl), hit, missed,
-                           notes="自動收盤驗證")
+                           notes="T+1 分流驗證（headline=真實命中A）", stats=stats)
+    if outcomes:
+        db.save_watch_outcome(tdate, outcomes)
     return {"date": tdate, "total": len(wl), "hit": hit,
-            "rate": rate, "missed": missed}
+            "rate": rate, "missed": missed, "stats": stats}
 
 
 # ══════════════════════════════════════════════════════
@@ -182,27 +337,41 @@ def build_tomorrow_watchlist(sectors, snaps):
     out_sectors = {s["name"] for s in sectors
                    if s["type"] == "attack" and (s["flow_score"] < 0 or s["pct"] < 0)}
     rows = []
+    rejects = []   # 落選池：進了候選圈（資金流出族群）但卡在某因子的檔
     for s in snaps:
         sec = s.get("sector")
         if sec not in out_sectors:
-            continue
+            continue   # 非候選圈，不算落選，不留痕
         sec_pct = next(x["pct"] for x in sectors if x["name"] == sec)
+
+        def _reject(fail, detail):
+            rejects.append({
+                "code": s["code"], "name": C.NAME_MAP.get(s["code"], s["code"]),
+                "sector": sec, "source": "resilient",
+                "fail_factor": fail, "detail": detail})
+
         if s["change_rate"] < sec_pct + 1.5:
+            _reject("逆勢<族群+1.5pp",
+                    f"個股{s['change_rate']:+.1f}% vs 族群{sec_pct:+.1f}%")
             continue
         if (s["volume_ratio"] or 0) < 0.8:
+            _reject("量比<0.8", f"量比{s['volume_ratio'] or 0:.1f}")
             continue
         ch = chips.get_chips(s["code"])
         if ch["inst_net_20d_lots"] is not None and ch["inst_net_20d_lots"] <= 0:
+            _reject("法人買超<=0", f"近月{ch['inst_net_20d_lots']:,}張")
             continue
         rows.append({
             "code": s["code"],
             "name": C.NAME_MAP.get(s["code"], s["code"]),
             "sector": sec,
+            "source": "resilient",
+            "entry_ref": s.get("change_rate"),
             "reason": f"資金流出族群抗跌 逆勢{s['change_rate']:+.1f}% 量比{s['volume_ratio']:.1f}"
                       + (f" 法人買超{ch['inst_net_20d_lots']:,}張"
                          if ch["inst_net_20d_lots"] else ""),
         })
-    return rows[:10]   # 上限10檔
+    return rows[:10], rejects   # 上限10檔 + 全部落選留痕
 
 
 def next_trade_date():
@@ -250,23 +419,59 @@ def run(last_state):
     snaps = last_state.get("_snaps", [])
     sectors = last_state.get("_sectors_full", last_state.get("sectors", []))
 
-    # ① 收盤驗證
+    # ① 收盤驗證（T+1 分流；失敗回退舊二元判定，不可讓排程 throw）
     sig_codes = {x["code"] for x in last_state.get("stocks", [])
                  if x["action"] in ("buy", "watch")}
     strong = {s["code"] for s in snaps
               if s.get("change_rate", 0) > 2 and (s.get("volume_ratio") or 0) > 1.5}
-    review = verify_today(sig_codes, strong)
+    try:
+        review = verify_today(snaps, sectors, sig_codes, strong)
+    except Exception as exc:
+        print(f"[after_hours] T+1 驗證失敗，回退舊判定：{exc}")
+        tdate = db.today()
+        wl0 = db.load_watchlist(tdate)
+        hit0 = sum(1 for w in wl0
+                   if w["stock_id"] in sig_codes or w["stock_id"] in strong)
+        for w in wl0:
+            if w["stock_id"] in sig_codes or w["stock_id"] in strong:
+                db.mark_watch_hit(tdate, w["stock_id"])
+        missed0 = sorted(strong - {w["stock_id"] for w in wl0})
+        review = {"date": tdate, "total": len(wl0), "hit": hit0,
+                  "rate": db.write_review(tdate, len(wl0), hit0, missed0,
+                                          notes="回退舊判定"),
+                  "missed": missed0, "stats": {}}
 
     # ⓪ ABAB 四象限輪動分析(使用者觀察定案)
     rotation_reports, resilient = rotation_analysis(sectors, snaps)
 
-    # ② 明日觀察清單 = 原抗跌篩選 ∪ 輪動分析抗跌股(去重,輪動優先)
+    # ② 明日觀察清單 = Radar 優先、Resilient 補足（不 union）
+    #    抗跌候選 = 原 build_tomorrow_watchlist + 輪動分析抗跌股（去重）
     tomorrow = next_trade_date()
-    wl = build_tomorrow_watchlist(sectors, snaps)
+    resilient_rows, resilient_rejects = build_tomorrow_watchlist(sectors, snaps)
     seen = {w["code"] for w in resilient}
-    wl = resilient + [w for w in wl if w["code"] not in seen]
-    wl = wl[:10]
+    resilient_pool = resilient + [w for w in resilient_rows if w["code"] not in seen]
+    for w in resilient_pool:      # 輪動抗跌股補齊 source 標記
+        w.setdefault("source", "resilient")
+    try:
+        radar_rows = _radar_snapshot_rows(db.today())
+        wl, radar_rejects = select_radar_watchlist(radar_rows, resilient_pool, limit=10)
+        if not wl:                # radar 空又無抗跌 → 保底用抗跌池
+            wl, radar_rejects = resilient_pool[:10], []
+        src_note = f"radar={sum(1 for w in wl if w.get('source')=='radar')}／resilient={sum(1 for w in wl if w.get('source')=='resilient')}"
+    except Exception as exc:
+        print(f"[after_hours] radar 名單合流失敗，回退純抗跌：{exc}")
+        wl, radar_rejects = resilient_pool[:10], []
+        src_note = "回退純抗跌"
+    print(f"[after_hours] 明日名單 {tomorrow}：{len(wl)} 檔（{src_note}）")
     db.save_watchlist(tomorrow, wl)
+    # 落選留痕：radar 落選 + 抗跌未過濾 + 抗跌過關但名額被 radar 佔走
+    picked = {w["code"] for w in wl}
+    slot_lost = [{"code": w["code"], "name": w.get("name"), "sector": w.get("sector"),
+                  "source": "resilient", "fail_factor": "名額不足(radar優先)",
+                  "detail": w.get("reason")}
+                 for w in resilient_pool if w["code"] not in picked]
+    all_rejects = radar_rejects + resilient_rejects + slot_lost
+    db.save_watch_rejects(tomorrow, [r for r in all_rejects if r["code"] not in picked])
 
     # ③ Airtable
     _airtable_post("Review_Log", [{

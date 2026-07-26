@@ -3,6 +3,19 @@ MLS 標準版 — config.py
 所有可調參數、族群對應表集中於此。下一個 AI 對接時只改這裡。
 """
 
+# ── 篩選/驗證模型版本（隨每次規則或名單來源變更遞增） ──────
+# 主版號=名單來源改變（純抗跌→Radar 優先）；次版號=門檻/權重微調。
+# 每筆 watchlist / review_log / watch_reject 都蓋此章，供 Dashboard 分版比較。
+MODEL_VERSION = "v4.1"
+
+# ── T+1 隔日驗證門檻（Phase 3 生效；先集中常數化，改版免動核心） ──
+# 可操作（Radar）隔日續強分級：A Success ≥ +2%、B Continue 0.5%~2%、其餘 Fail。
+# 全部要求「個股漲幅 − 族群中位漲幅 > 0」（相對族群為正）才算命中/續強。
+RADAR_T1_SUCCESS = 0.02          # A 級：真正成功（有肉）
+RADAR_T1_CONTINUE_MIN = 0.005    # B 級下限：續強（過交易摩擦門檻）
+# 抗跌（Resilient）隔日驗證：相對族群為正 AND（跌幅未破 -2% 或收紅）。
+RESILIENT_T1_FLOOR = -0.02       # 絕對跌幅下限，跌破視為未命中
+
 # ── 排程與頻率 ─────────────────────────────────────────
 SCAN_INTERVAL_SEC = 30          # 盤中資金流掃描頻率
 CHIP_REFRESH_HOUR = 15          # 每日15:00後更新籌碼(法人/大戶)快取

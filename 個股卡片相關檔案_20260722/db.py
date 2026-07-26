@@ -21,6 +21,17 @@ def _conn():
     return c
 
 
+def _column_exists(c, table, column):
+    return any(r["name"] == column
+               for r in c.execute(f"PRAGMA table_info({table})"))
+
+
+def _add_column(c, table, column, decl):
+    """冪等遷移：欄位不存在才 ADD COLUMN，避免重啟時 migration 重複執行報錯。"""
+    if not _column_exists(c, table, column):
+        c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 def init():
     with _lock, _conn() as c:
         c.executescript("""
@@ -89,13 +100,42 @@ def init():
           close_price REAL, success INTEGER,
           PRIMARY KEY(trade_date, stock_id)
         );
+        CREATE TABLE IF NOT EXISTS watch_reject(
+          trade_date  TEXT NOT NULL,     -- 供隔日使用的名單日
+          stock_id    TEXT NOT NULL,
+          stock_name  TEXT,
+          sector      TEXT,
+          source      TEXT NOT NULL,     -- radar / resilient（同檔可雙流程各落選一次）
+          factor_score REAL,             -- 七因子總分（radar 來源；相容欄，等同 score_total）
+          fail_factor TEXT,              -- 卡在哪：'量比<0.8' / '法人買超<=0' / '七因子<65' ...
+          detail      TEXT,              -- 該因子實際值，例如 '量比0.6'
+          model_version TEXT,
+          created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY(trade_date, stock_id, source)
+        );
         CREATE INDEX IF NOT EXISTS idx_sig_date ON signals(trade_date, stock_id);
         """)
-        # 遷移:signals 加 factors 欄(舊庫無此欄時)
-        try:
-            c.execute("ALTER TABLE signals ADD COLUMN factors TEXT")
-        except sqlite3.OperationalError:
-            pass
+        # ── 遷移:一律走 PRAGMA 檢查後再 ADD COLUMN ────────────────
+        # SQLite 的 ADD COLUMN 無可靠 IF NOT EXISTS，服務每次重啟都會跑
+        # init()，直接 ALTER 會在第二次啟動噴 "duplicate column"。
+        _add_column(c, "signals", "factors", "TEXT")
+        # watchlist：名單來源 / 進場基準 / 因子分數 / 選入分類 / 模型版本
+        _add_column(c, "watchlist", "source", "TEXT")
+        _add_column(c, "watchlist", "entry_ref", "REAL")
+        _add_column(c, "watchlist", "factor_score", "REAL")
+        _add_column(c, "watchlist", "group_at_pick", "TEXT")
+        _add_column(c, "watchlist", "model_version", "TEXT")
+        # watch_reject：逐因子分數（Phase 3/4 由 radar 路徑回填；先建欄開始留痕）
+        for _c in ("score_trend", "score_volume", "score_chip",
+                   "score_sector", "score_rs", "score_ai", "score_total"):
+            _add_column(c, "watch_reject", _c, "REAL")
+        # review_log：報酬分布統計（績效歸因基石）+ 模型版本
+        _add_column(c, "review_log", "avg_return", "REAL")
+        _add_column(c, "review_log", "median_return", "REAL")
+        _add_column(c, "review_log", "max_return", "REAL")
+        _add_column(c, "review_log", "min_return", "REAL")
+        _add_column(c, "review_log", "avg_holding_days", "REAL")
+        _add_column(c, "review_log", "model_version", "TEXT")
 
 
 def today():
@@ -198,12 +238,49 @@ def insert_sector_snapshot(sectors):
 
 # ── 觀察清單 ──────────────────────────────────────────
 def save_watchlist(trade_date, rows):
+    """存明日觀察名單。新欄位（source/entry_ref/factor_score/group_at_pick/
+    model_version）為選填，舊呼叫端不帶時寫 NULL / 預設版本，向後相容。"""
+    import config as _C
     with _lock, _conn() as c:
         for r in rows:
             c.execute("""INSERT OR REPLACE INTO watchlist
-              (trade_date,stock_id,stock_name,sector,reason)
-              VALUES(?,?,?,?,?)""",
-              (trade_date, r["code"], r["name"], r["sector"], r["reason"]))
+              (trade_date,stock_id,stock_name,sector,reason,
+               source,entry_ref,factor_score,group_at_pick,model_version)
+              VALUES(?,?,?,?,?,?,?,?,?,?)""",
+              (trade_date, r["code"], r["name"], r["sector"], r["reason"],
+               r.get("source"), r.get("entry_ref"), r.get("factor_score"),
+               r.get("group_at_pick"),
+               r.get("model_version", getattr(_C, "MODEL_VERSION", None))))
+
+
+def save_watch_rejects(trade_date, rows):
+    """存落選池：同一名單日、同一 source 只留一筆（PK 含 source）。
+    rows 需含 code/source/fail_factor；score_* 與 detail 為選填，
+    Phase 1 抗跌路徑只帶得出 fail_factor/detail，七因子分數留 NULL，
+    待 Phase 3/4 由 radar 路徑回填。"""
+    import config as _C
+    ver = getattr(_C, "MODEL_VERSION", None)
+    with _lock, _conn() as c:
+        for r in rows:
+            c.execute("""INSERT OR REPLACE INTO watch_reject
+              (trade_date,stock_id,stock_name,sector,source,factor_score,
+               fail_factor,detail,model_version,
+               score_trend,score_volume,score_chip,score_sector,
+               score_rs,score_ai,score_total)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+              (trade_date, r["code"], r.get("name"), r.get("sector"),
+               r["source"], r.get("factor_score"), r.get("fail_factor"),
+               r.get("detail"), r.get("model_version", ver),
+               r.get("score_trend"), r.get("score_volume"), r.get("score_chip"),
+               r.get("score_sector"), r.get("score_rs"), r.get("score_ai"),
+               r.get("score_total")))
+
+
+def load_watch_rejects(trade_date):
+    with _lock, _conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT * FROM watch_reject WHERE trade_date=? ORDER BY source, stock_id",
+            (trade_date,))]
 
 
 def save_watch_outcome(trade_date, rows):
@@ -254,13 +331,42 @@ def mark_watch_hit(trade_date, stock_id):
 
 
 # ── 收盤驗證 ──────────────────────────────────────────
-def write_review(trade_date, total, hit, missed, notes=""):
+def write_review(trade_date, total, hit, missed, notes="", stats=None):
+    """收盤驗證逐日彙總。stats（選填）帶報酬分布：
+    {avg_return, median_return, max_return, min_return, avg_holding_days}。
+    改用具名欄位 INSERT（不再靠欄位順序），相容遷移後新增的統計欄。"""
+    import config as _C
     rate = round(hit / total * 100, 1) if total else 0.0
+    stats = stats or {}
     with _lock, _conn() as c:
-        c.execute("""INSERT OR REPLACE INTO review_log VALUES(?,?,?,?,?,?)""",
+        c.execute("""INSERT OR REPLACE INTO review_log
+          (trade_date,watch_total,watch_hit,hit_rate,missed_stocks,notes,
+           avg_return,median_return,max_return,min_return,avg_holding_days,
+           model_version)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
           (trade_date, total, hit, rate,
-           json.dumps(missed, ensure_ascii=False), notes))
+           json.dumps(missed, ensure_ascii=False), notes,
+           stats.get("avg_return"), stats.get("median_return"),
+           stats.get("max_return"), stats.get("min_return"),
+           stats.get("avg_holding_days"),
+           stats.get("model_version", getattr(_C, "MODEL_VERSION", None))))
     return rate
+
+
+def review_dates(limit=60):
+    """有驗證資料的交易日（新→舊）；給盤後驗證頁的日期選擇器。"""
+    with _lock, _conn() as c:
+        return [r["trade_date"] for r in c.execute(
+            "SELECT trade_date FROM review_log ORDER BY trade_date DESC LIMIT ?",
+            (limit,))]
+
+
+def latest_review_date():
+    """最近一個有驗證資料的交易日；UI 預設落此日，避免週末/隔日開啟全空白。"""
+    with _lock, _conn() as c:
+        r = c.execute(
+            "SELECT MAX(trade_date) d FROM review_log").fetchone()
+        return r["d"] if r and r["d"] else None
 
 
 def recent_hit_rates(days=30):

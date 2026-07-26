@@ -56,6 +56,13 @@ def _conn():
         result       TEXT,
         validated_at TEXT,
         PRIMARY KEY (trade_date, code, category))""")
+    # 遷移：T+1 隔日驗證欄（Phase 3 生效）。SQLite ADD COLUMN 無可靠
+    # IF NOT EXISTS，先查 PRAGMA 再加，避免每次連線重跑報 duplicate column。
+    existing = {r["name"] for r in conn.execute("PRAGMA table_info(rule_signals)")}
+    for col, decl in (("next_close", "REAL"), ("next_result", "TEXT"),
+                      ("next_relative_sector", "REAL"), ("verified_at", "TEXT")):
+        if col not in existing:
+            conn.execute(f"ALTER TABLE rule_signals ADD COLUMN {col} {decl}")
     return conn
 
 
