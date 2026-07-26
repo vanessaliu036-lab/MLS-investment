@@ -174,13 +174,15 @@ def get_chips_detail(code):
     if (_cache.get("date") == today and key in _cache.get("stocks", {})
             and _cache["stocks"][key].get("source_date")
             and "margin_source_date" in _cache["stocks"][key]
-            and "inst_streak" in _cache["stocks"][key]):
+            and "inst_streak" in _cache["stocks"][key]
+            and "trust_net_20d" in _cache["stocks"][key]):
         return _cache["stocks"][key]
 
     result = {"foreign_net_d": None, "trust_net_d": None, "dealer_net_d": None,
               "foreign_net_5d": None, "trust_net_5d": None,
               "dealer_net_5d": None, "inst_net_5d_lots": None,
-              "foreign_net_20d": None, "inst_streak": None,
+              "foreign_net_20d": None, "trust_net_20d": None,
+              "dealer_net_20d": None, "inst_streak": None,
               "source": None, "source_date": None,
               "big400_pct": None, "big400_delta": None,
               "big1000_pct": None, "big1000_delta": None,
@@ -221,6 +223,10 @@ def get_chips_detail(code):
                 for d in recent5))
             result["foreign_net_20d"] = round(
                 sum(by_date[d]["f"] for d in dates[-INST_DAYS:]))
+            result["trust_net_20d"] = round(
+                sum(by_date[d]["t"] for d in dates[-INST_DAYS:]))
+            result["dealer_net_20d"] = round(
+                sum(by_date[d]["dl"] for d in dates[-INST_DAYS:]))
             streak = 0
             for d in reversed(dates):
                 f = by_date[d]["f"]

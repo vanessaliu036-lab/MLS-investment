@@ -175,6 +175,8 @@ def build_cache(codes, merge=True):
             "inst_net_20d_lots": net20,
             "inst_streak": streak,
             "foreign_net_20d": round(sum(x["foreign"] for _, x in series)),
+            "trust_net_20d": round(sum(x["trust"] for _, x in series)),
+            "dealer_net_20d": round(sum(x["dealer"] for _, x in series)),
             "foreign": round(latest["foreign"]),
             "trust": round(latest["trust"]),
             "dealer": round(latest["dealer"]),

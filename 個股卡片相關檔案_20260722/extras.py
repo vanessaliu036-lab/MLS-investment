@@ -137,7 +137,18 @@ def _sector_market_pct(sector_name: str):
         _sec_mkt_cache["ts"] = now
         try:
             import official_source as _O
-            _sec_mkt_cache["market"] = (_O.market_index() or {}).get("change_pct")
+            # 大盤%要鎖「最近有資料的交易日」，不能只問今天(休市/未公布會回 None)。
+            _base = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8)))
+            _mpct = None
+            for _back in range(0, 7):
+                _dd = _base - _dt.timedelta(days=_back)
+                if _dd.weekday() >= 5:      # 週末直接跳過
+                    continue
+                _mi = _O.market_index(_dd) or {}
+                if _mi.get("change_pct") is not None:
+                    _mpct = _mi.get("change_pct")
+                    break
+            _sec_mkt_cache["market"] = _mpct
         except Exception as exc:
             print(f"[extras] 官方大盤讀取失敗: {exc}", flush=True)
     if sector_name and sector_name not in _sec_mkt_cache["sector"]:
@@ -230,9 +241,13 @@ def _five_factors(snap, chip, sector_avg, market_pct, sector_name):
     else:
         F["sector"], N["sector"] = None, "族群平均未回補"
     score = round(sum(v for v in F.values() if v is not None), 1)
+    # 資料日期＝這份盤後資料本身的交易日(snap.source_date)，不是「現在」。
+    # 盤中(今日尚未收盤)時 source_date 仍是最近已收盤日，避免蓋上未收盤的今日戳章。
+    data_date = (snap or {}).get("source_date") \
+        or _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).date().isoformat()
     return {"factors": F, "notes": N, "score": score,
             "source": "最近交易日官方收盤＋FinMind 盤後籌碼",
-            "data_date": _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).date().isoformat(),
+            "data_date": data_date,
             "missing": [k for k, v in F.items() if v is None]}
 
 
@@ -359,6 +374,8 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
     all_rows: List[Dict[str, Any]] = []
     post_health = None
     post_source = "盤後日K＋FinMind盤後資料"
+    quad_hist = None
+    _hist = None
     eod_flow = None
     eod_flow_date = None
     eod_group = None
@@ -383,19 +400,39 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
                 eod_quadrant = row["quadrant"]
     except Exception as exc:
         print(f"[extras] intraday_eod {code} 讀取失敗: {exc}", flush=True)
-    # 舊版盤後資料庫的固定資料：ratio 是主動資金比，不冒充 net_active 差值。
+    # 盤後 dec_health 正本在 mls-v4 的 docker volume(每交易日 15:05 由 after_hours 落地)。
+    # /opt/mls-v4-new/app/data/mls.db 是未掛載的舊殼(凍在 07-21)，只能墊底。
     eod_candidates = [os.environ.get("MLS_EOD_DB"),
+                      "/var/lib/docker/volumes/mls-v4-new_mls-v4-data/_data/mls.db",
                       "/opt/mls-v4-new/app/data/mls.db",
                       str(_BASE / "mls.db")]
     for db_path in [p for p in eod_candidates if p and os.path.exists(p)]:
         try:
             import sqlite3
-            with sqlite3.connect(db_path) as conn:
+            # 唯讀開啟：本行程只讀不寫，避免與容器寫入互鎖。
+            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
                 conn.row_factory = sqlite3.Row
                 row = conn.execute(
                     "SELECT * FROM dec_health WHERE code=? AND trade_date<=? "
                     "ORDER BY trade_date DESC LIMIT 1", (str(code), asof_limit)
                 ).fetchone()
+                # 近5日收盤資金象限紀錄(盤後每日定調，不是盤中即時)
+                _hist = conn.execute(
+                    "SELECT trade_date, quad, chg, close FROM dec_health WHERE code=? "
+                    "AND trade_date<=? ORDER BY trade_date DESC LIMIT 5",
+                    (str(code), asof_limit)).fetchall()
+            # mls-v4 若 Shioaji 斷線，snapshot() 會回 demo 假資料(每日同一價、chg 固定)，
+            # 會污染象限/分數判斷。指紋：近日收盤價完全不變＝demo，整包棄用不當真實。
+            _closes = [h["close"] for h in (_hist or []) if h["close"] is not None]
+            _demo = len(_closes) > 1 and len(set(_closes)) <= 1
+            if _demo:
+                print(f"[extras] dec_health {code} 判定為 demo 假資料(每日同價)，棄用",
+                      flush=True)
+                _hist = None
+                row = None
+            if _hist and quad_hist is None:
+                quad_hist = [{"date": h["trade_date"], "quadrant": h["quad"],
+                              "chg": h["chg"]} for h in _hist]
             if row:
                 post_health_row = dict(row)
                 post_ratio = row["ratio"]
@@ -440,6 +477,7 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
             prev_close = float(prev["close"]) if prev else None
             snap = {
                 "code": str(code), "price": close,
+                "prev_close": prev_close,
                 "change_rate": round((close / prev_close - 1) * 100, 2)
                 if prev_close else None,
                 "high": last.get("high"), "low": last.get("low"),
@@ -473,6 +511,8 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
                 "sector": C.SECTOR_MAP.get(code, ("其他",))[0]}
     # 規範:個股數據一律抓最近日期計算，族群/大盤/相對強度不得「不計算」。
     snap = snap or {}
+    if quad_hist:
+        snap["quad_history"] = quad_hist          # 近5日收盤資金象限(盤後定調)
     try:
         _sec_name = C.SECTOR_MAP.get(code, ("其他",))[0]
         _sec_avg, _mkt_pct = _sector_market_pct(_sec_name)
@@ -490,7 +530,8 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
         if _chg is not None and _mkt_pct is not None:
             snap.setdefault("vs_market", round(float(_chg) - float(_mkt_pct), 2))
         snap.setdefault("rel_source", "族群=固定池成分股官方收盤平均；大盤=TWSE 官方")
-        snap.setdefault("rel_date", _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).date().isoformat())
+        # 相對強弱的資料日＝這份盤後 K 線的交易日，不是「現在」。未收盤的今日不得蓋章。
+        snap.setdefault("rel_date", snap.get("source_date") or asof_limit)
         card["factors5"] = _five_factors(snap, card.get("chip") or {},
                                          _sec_avg, _mkt_pct, _sec_name)
         card["decision"] = _decision_factors(card, snap)
