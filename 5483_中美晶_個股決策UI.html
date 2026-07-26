@@ -3,745 +3,579 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>5483 中美晶｜個股決策報告</title>
+<title>NEXORA 個股決策報告 V3</title>
 <style>
 :root{
-  --bg:#f4f6fa;
-  --panel:#ffffff;
-  --line:#dfe5ef;
-  --line-strong:#cfd7e5;
-  --text:#172033;
-  --muted:#6d778a;
-  --soft:#f8fafc;
-  --green:#0a9b70;
-  --green-bg:#eaf8f3;
-  --red:#e6465a;
-  --red-bg:#fff0f2;
-  --amber:#b77a08;
-  --amber-bg:#fff7df;
-  --blue:#3867d6;
-  --blue-bg:#eef3ff;
-  --navy:#111a2e;
-  --shadow:0 10px 26px rgba(25,42,70,.07);
-  --radius:18px;
+  --bg:#f3f5f9;--panel:#fff;--line:#dfe5ee;--line2:#cfd7e5;
+  --text:#172033;--muted:#6f7a8e;--soft:#f8fafc;--navy:#111a2e;
+  --red:#e54256;--red-bg:#fff0f2;--green:#0a9b70;--green-bg:#eaf8f3;
+  --amber:#b77908;--amber-bg:#fff7df;--blue:#3568d4;--blue-bg:#eef3ff;
+  --violet:#7657d5;--violet-bg:#f3efff;--radius:18px;
+  --shadow:0 10px 26px rgba(25,42,70,.07)
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{
-  visibility:hidden;
-  margin:0;
-  background:var(--bg);
-  color:var(--text);
+  margin:0;background:var(--bg);color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",sans-serif;
-  line-height:1.5;
+  line-height:1.55
 }
-button{font:inherit}.home-btn{border:1px solid #53617e;background:#fff;color:var(--navy);padding:9px 16px;border-radius:10px;font-weight:850;cursor:pointer;white-space:nowrap}.home-btn:hover{background:#eef3ff}
-.app{min-height:100vh}
+a{text-decoration:none;color:inherit}
 .topbar{
-  height:58px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  padding:0 24px;
-  background:var(--navy);
-  color:#fff;
-  position:sticky;
-  top:0;
-  z-index:30;
+  height:60px;background:var(--navy);color:#fff;display:flex;align-items:center;
+  justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:50
 }
-.brand{font-weight:900;letter-spacing:.08em}
-.topbar-note{font-size:12px;color:#b8c1d4}
-.shell{
-  display:grid;
-  grid-template-columns:minmax(0,1fr);
-  gap:18px;
-  max-width:1720px;
-  margin:0 auto;
-  padding:18px;
+.brand{font-weight:950;letter-spacing:.04em}.topnote{font-size:12px;color:#b8c1d4}
+.wrap{max-width:1700px;margin:0 auto;padding:18px}
+.hero,.section{
+  background:var(--panel);border:1px solid var(--line);border-radius:22px;
+  box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px
 }
-.sidebar{
-  position:sticky;
-  top:76px;
-  align-self:start;
-  background:var(--panel);
-  border:1px solid var(--line);
-  border-radius:var(--radius);
-  box-shadow:var(--shadow);
-  overflow:hidden;
-}
-.sidebar-head{padding:18px;border-bottom:1px solid var(--line)}
-.sidebar-head h2{font-size:14px;margin:0 0 5px}
-.sidebar-head p{margin:0;color:var(--muted);font-size:12px}
-.stock-list{padding:10px}
-.stock-btn{
-  width:100%;
-  border:1px solid transparent;
-  background:transparent;
-  text-align:left;
-  border-radius:14px;
-  padding:13px;
-  cursor:pointer;
-  margin-bottom:8px;
-  transition:.18s ease;
-}
-.stock-btn:hover{background:var(--soft)}
-.stock-btn.active{background:var(--blue-bg);border-color:#c8d6ff}
-.stock-btn-top{display:flex;justify-content:space-between;gap:8px;align-items:center}
-.stock-code{font-size:12px;color:var(--muted);font-weight:800}
-.stock-name{font-weight:900;font-size:17px}
-.stock-score{font-weight:900;color:var(--blue)}
-.stock-meta{display:flex;gap:8px;margin-top:7px;font-size:12px;color:var(--muted)}
-.sidebar-nav{padding:10px;border-top:1px solid var(--line)}
-.nav-link{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  padding:10px 12px;
-  border-radius:10px;
-  text-decoration:none;
-  color:var(--text);
-  font-size:13px;
-}
-.nav-link:hover{background:var(--soft)}
-.nav-link span{color:var(--muted)}
-.main{min-width:0}
-.hero{
-  background:linear-gradient(135deg,#fff 0%,#fbfcff 100%);
-  border:1px solid var(--line);
-  border-radius:22px;
-  box-shadow:var(--shadow);
-  overflow:hidden;
-  margin-bottom:16px;
-}
-.hero-main{
-  display:grid;
-  grid-template-columns:1.4fr .65fr 1.15fr;
-  gap:0;
-  min-height:190px;
-}
-.hero-block{padding:24px;border-right:1px solid var(--line)}
+.hero-main{display:grid;grid-template-columns:1.35fr .62fr 1.2fr}
+.hero-block{padding:22px;border-right:1px solid var(--line)}
 .hero-block:last-child{border-right:0}
-.identity-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.code{font-size:14px;color:var(--muted);font-weight:800}
+.identity{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.code{font-size:14px;color:var(--muted);font-weight:900}
 .name{font-size:32px;font-weight:950;letter-spacing:-.04em}
-.tag{
-  padding:5px 10px;border-radius:999px;font-size:12px;font-weight:800;
-  background:#eef1f6;color:#5d6678
-}
-.stars{font-size:24px;color:#d89800;letter-spacing:2px;margin:8px 0}
-.quick-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:15px}
-.quick{
-  padding:11px 10px;border:1px solid var(--line);border-radius:12px;background:var(--soft);
-  text-align:center
-}
-.quick .k{font-size:11px;color:var(--muted);font-weight:700}
-.quick .v{margin-top:3px;font-size:17px;font-weight:900}
-.pos{color:var(--red)} .neg{color:var(--green)} .good{color:var(--green)} .warn{color:var(--amber)}
-.decision-center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
-.decision-badge{
-  width:82px;height:82px;border-radius:22px;background:var(--amber-bg);
-  display:flex;align-items:center;justify-content:center;font-size:36px;color:var(--amber);font-weight:900
-}
-.decision-title{font-size:26px;font-weight:950;margin-top:11px}
-.decision-sub{font-size:12px;color:var(--muted)}
-.status-pill{margin-top:8px;padding:5px 10px;border-radius:999px;background:var(--amber-bg);color:var(--amber);font-size:12px;font-weight:900}
-.funnel{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;height:100%;align-content:center}
-.funnel-step{
-  min-height:90px;border:1px solid #57bf9e;background:var(--green-bg);border-radius:13px;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:10px
-}
-.funnel-step .small{font-size:11px;color:var(--muted);font-weight:800}
-.funnel-step .big{font-size:16px;color:var(--green);font-weight:950;margin:4px 0}
-.hero-bottom{
-  display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--line)
-}
-.factor{
-  padding:16px 14px;text-align:center;border-right:1px solid var(--line)
-}
-.factor:last-child{border-right:0}
-.factor-top{font-size:13px;font-weight:900}
-.factor-score{font-size:30px;color:var(--blue);font-weight:950;line-height:1.1;margin:5px 0}
-.bar{height:7px;border-radius:99px;background:#e9edf5;overflow:hidden;max-width:150px;margin:0 auto 7px}
-.bar i{display:block;height:100%;background:var(--blue);border-radius:99px}
+.tag{padding:5px 10px;border-radius:999px;background:#eef1f6;color:#5e687b;font-size:12px;font-weight:850}
+.stars{font-size:22px;color:#d89a00;letter-spacing:2px;margin:8px 0}
+.quick-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:14px}
+.quick{padding:10px 8px;border:1px solid var(--line);border-radius:12px;background:var(--soft);text-align:center}
+.quick .k{font-size:11px;color:var(--muted);font-weight:800}.quick .v{font-size:17px;font-weight:950;margin-top:3px}
+.pos{color:var(--red)}.neg{color:var(--green)}.good{color:var(--green)}.warn{color:var(--amber)}.blue{color:var(--blue)}
+.decision{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.scorebox{width:90px;height:90px;border-radius:24px;background:var(--amber-bg);color:var(--amber);display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:950}
+.decision-title{font-size:27px;font-weight:950;margin-top:10px}.decision-sub{font-size:12px;color:var(--muted)}
+.status{margin-top:8px;padding:6px 12px;border-radius:999px;background:var(--amber-bg);color:var(--amber);font-size:12px;font-weight:950}
+.funnel{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;height:100%;align-content:center}
+.step{padding:12px 10px;border:1px solid var(--line);border-radius:13px;background:var(--soft);text-align:center}
+.step.fail{background:var(--red-bg);border-color:#f1c8cf}.step.ok{background:var(--green-bg);border-color:#cde9df}
+.step .small{font-size:11px;color:var(--muted);font-weight:800}.step .big{font-size:16px;font-weight:950;margin:4px 0}
+.hero-bottom{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--line)}
+.factor{padding:15px 13px;text-align:center;border-right:1px solid var(--line)}
+.factor:last-child{border-right:0}.factor-top{font-size:13px;font-weight:950}.factor-score{font-size:28px;font-weight:950;color:var(--blue);line-height:1.1;margin:5px 0}
+.bar{height:7px;border-radius:99px;background:#e9edf5;overflow:hidden;max-width:150px;margin:0 auto 7px}.bar i{display:block;height:100%;background:var(--blue)}
 .factor-note{font-size:11px;color:var(--muted)}
-.toolbar{
-  position:sticky;top:58px;z-index:20;
-  display:flex;gap:7px;overflow:auto;padding:10px 0 12px;
-  background:linear-gradient(var(--bg) 78%,rgba(244,246,250,0));
-}
-.toolbar a{
-  white-space:nowrap;text-decoration:none;color:var(--muted);background:#fff;border:1px solid var(--line);
-  padding:8px 12px;border-radius:999px;font-size:12px;font-weight:800
-}
-.toolbar a:hover{color:var(--blue);border-color:#b8c9f7}
-.section{
-  background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);
-  box-shadow:var(--shadow);margin-bottom:14px;overflow:hidden;scroll-margin-top:118px
-}
-.section-head{
-  padding:16px 18px;border-bottom:1px solid var(--line);
-  display:flex;align-items:center;justify-content:space-between;gap:12px
-}
-.section-title{font-size:17px;font-weight:950}
-.source{font-size:11px;color:var(--muted);font-weight:800}
+.toolbar{position:sticky;top:60px;z-index:40;display:flex;gap:7px;overflow:auto;padding:10px 0 12px;background:linear-gradient(var(--bg) 82%,rgba(243,245,249,0))}
+.toolbar a{white-space:nowrap;background:#fff;border:1px solid var(--line);padding:8px 12px;border-radius:999px;font-size:12px;font-weight:850;color:var(--muted)}
+.section{scroll-margin-top:120px}
+.section-head{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px}
+.section-title{font-size:17px;font-weight:950}.source{font-size:11px;color:var(--muted);font-weight:800}
 .section-body{padding:16px 18px}
 .summary-grid{display:grid;grid-template-columns:1.05fr 1fr;gap:14px}
-.ai-box{
-  border:1px solid #bed9ff;background:linear-gradient(145deg,#f5f9ff,#fff);border-radius:16px;padding:18px
-}
-.ai-kicker{font-size:12px;color:var(--blue);font-weight:900}
-.ai-title{font-size:24px;font-weight:950;margin:5px 0}
-.ai-text{font-size:14px;margin:0;color:#344057}
+.ai-box{border:1px solid #bed9ff;background:linear-gradient(145deg,#f5f9ff,#fff);border-radius:16px;padding:18px}
+.ai-kicker{font-size:12px;color:var(--blue);font-weight:900}.ai-title{font-size:24px;font-weight:950;margin:5px 0}
+.ai-text{font-size:14px;color:#344057}.notice{margin-top:11px;padding:11px 13px;border-radius:12px;background:var(--amber-bg);color:#74510b;font-size:12px}
 .evidence{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}
-.evidence-card{border:1px solid var(--line);background:var(--soft);border-radius:13px;padding:13px}
-.evidence-card .k{font-size:11px;color:var(--muted)}
-.evidence-card .v{font-size:18px;font-weight:950;margin-top:4px}
-.notice{
-  margin-top:11px;padding:11px 13px;border-radius:12px;background:var(--amber-bg);color:#76520b;font-size:12px
-}
-.data-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.card{border:1px solid var(--line);border-radius:14px;background:#fff;overflow:hidden}
+.ev{border:1px solid var(--line);border-radius:13px;background:var(--soft);padding:13px}.ev .k{font-size:11px;color:var(--muted)}.ev .v{font-size:18px;font-weight:950;margin-top:4px}
+.sub{font-size:11px;color:var(--muted);margin-top:3px}
+.data-grid{display:flex;flex-wrap:wrap;gap:12px;align-items:stretch}
+.data-grid>.card{flex:1 1 calc((100% - 24px) / 3);min-width:240px;box-sizing:border-box;display:flex;flex-direction:column}
+.card{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}
 .card-head{display:flex;justify-content:space-between;gap:10px;padding:12px 14px;background:var(--soft);border-bottom:1px solid var(--line)}
-.card-title{font-weight:950;font-size:14px}
-.card-source{font-size:10px;color:var(--muted)}
-.rows{padding:4px 14px}
-.row{
-  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;
-  padding:9px 0;border-bottom:1px dashed #e8ecf2;font-size:13px
-}
-.row:last-child{border-bottom:0}
-.row .k{color:var(--muted)}
-.row .v{font-weight:850;text-align:right}
-.row.full{grid-template-columns:1fr}
-.row .sub{font-size:11px;color:var(--muted);margin-top:3px}
-.timeline{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-.time-chip{padding:7px 10px;border-radius:999px;background:var(--green-bg);color:var(--green);font-weight:900;font-size:12px}
-.arrow{color:var(--muted);font-weight:900}
-.module-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}
-.module{
-  border:1px solid var(--line);border-radius:13px;background:var(--soft);padding:13px;text-align:center
-}
-.module.goodmod{background:var(--green-bg);border-color:#cdece1}
-.module.warnmod{background:var(--amber-bg);border-color:#f1dfae}
-.module .k{font-size:11px;color:var(--muted);font-weight:800}
-.module .v{font-size:14px;font-weight:950;margin-top:5px}
-.badges{display:flex;gap:8px;flex-wrap:wrap}
-.badge{padding:8px 11px;border-radius:10px;background:var(--soft);border:1px solid var(--line);font-size:12px;font-weight:850}
-.badge.ok{background:var(--green-bg);color:var(--green);border-color:#c8ebdf}
-.badge.warn{background:var(--amber-bg);color:var(--amber);border-color:#f0dfad}
-.compare-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;overflow:hidden;border:1px solid var(--line);border-radius:12px}
-.compare-table th,.compare-table td{padding:11px 12px;text-align:center;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
-.compare-table th{background:var(--soft);color:var(--muted)}
-.compare-table tr:last-child td{border-bottom:0}
-.compare-table th:last-child,.compare-table td:last-child{border-right:0}
-.plan-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
-.plan-item{border:1px solid var(--line);border-radius:13px;padding:13px;text-align:center}
-.plan-item .k{font-size:11px;color:var(--muted)}
-.plan-item .v{font-size:18px;font-weight:950;margin-top:5px}
-.details{
-  border:1px solid var(--line);border-radius:13px;overflow:hidden;margin-top:12px
-}
-.details summary{
-  list-style:none;cursor:pointer;padding:13px 15px;background:var(--soft);font-size:13px;font-weight:900;
-  display:flex;align-items:center;justify-content:space-between
-}
-.details summary::-webkit-details-marker{display:none}
-.details summary::after{content:"＋";color:var(--muted);font-size:18px}
-.details[open] summary::after{content:"−"}
-.details-content{padding:14px 15px;border-top:1px solid var(--line);font-size:12px;color:#435067}
-.chip-note{font-size:11px;color:var(--muted);margin-top:7px}
-.hidden{display:none!important}
-footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 30px}
+.card-title{font-weight:950;font-size:14px}.card-source{font-size:10px;color:var(--muted)}
+.rows{padding:4px 14px}.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;padding:9px 0;border-bottom:1px dashed #e8ecf2;font-size:13px}
+.row:last-child{border-bottom:0}.row .k{color:var(--muted)}.row .v{font-weight:850;text-align:right}.row.full{grid-template-columns:1fr}
+.score-reason{margin-top:auto;padding:10px 11px;border-radius:10px;background:var(--blue-bg);font-size:11px;color:#40506c}
+.timeline{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.timechip{padding:7px 10px;border-radius:999px;background:var(--green-bg);color:var(--green);font-weight:900;font-size:12px}.arrow{color:var(--muted);font-weight:900}
+.badges{display:flex;gap:8px;flex-wrap:wrap}.badge{padding:8px 11px;border-radius:10px;background:var(--soft);border:1px solid var(--line);font-size:12px;font-weight:850}
+.badge.ok{background:var(--green-bg);color:var(--green);border-color:#c8ebdf}.badge.fail{background:var(--red-bg);color:var(--red);border-color:#f3cfd5}.badge.warn{background:var(--amber-bg);color:var(--amber);border-color:#f0dfad}.badge.blue{background:var(--blue-bg);color:var(--blue);border-color:#ccdafd}
+.module-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}.module{border:1px solid var(--line);border-radius:13px;background:var(--soft);padding:13px;text-align:center}.module .k{font-size:11px;color:var(--muted);font-weight:800}.module .v{font-size:14px;font-weight:950;margin-top:5px}
+.validation-grid{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:12px;margin-top:12px}
+.signal-list{padding:12px 14px}.signal{display:grid;grid-template-columns:36px 72px 1fr;gap:10px;align-items:start;padding:10px 0;border-bottom:1px dashed #e8ecf2}.signal:last-child{border-bottom:0}.signal .codeb{font-weight:950}.signal .state{font-weight:950}
+.plan-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.plan{border:1px solid var(--line);border-radius:13px;padding:13px;text-align:center}.plan .k{font-size:11px;color:var(--muted)}.plan .v{font-size:18px;font-weight:950;margin-top:5px}
+details{border:1px solid var(--line);border-radius:13px;overflow:hidden;margin-top:12px}summary{list-style:none;cursor:pointer;padding:13px 15px;background:var(--soft);font-size:13px;font-weight:900;display:flex;justify-content:space-between}summary::-webkit-details-marker{display:none}summary:after{content:"＋";color:var(--muted)}details[open] summary:after{content:"−"}.details-content{padding:14px 15px;border-top:1px solid var(--line);font-size:12px;color:#435067}
+.compare{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;border:1px solid var(--line);border-radius:12px;overflow:hidden}.compare th,.compare td{padding:10px 11px;text-align:center;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.compare th{background:var(--soft);color:var(--muted)}.compare tr:last-child td{border-bottom:0}.compare th:last-child,.compare td:last-child{border-right:0}
+footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
 @media(max-width:1200px){
-  .shell{grid-template-columns:minmax(0,1fr)}
-  .hero-main{grid-template-columns:1fr .55fr}
-  .hero-block:nth-child(3){grid-column:1/-1;border-top:1px solid var(--line);border-right:0}
-  .data-grid{grid-template-columns:repeat(2,1fr)}
-  .module-grid{grid-template-columns:repeat(3,1fr)}
+ .hero-main{grid-template-columns:1fr .55fr}.hero-block:nth-child(3){grid-column:1/-1;border-top:1px solid var(--line);border-right:0}
+ .data-grid>.card{flex-basis:calc((100% - 12px) / 2)}.validation-grid{grid-template-columns:1fr}.module-grid{grid-template-columns:repeat(3,1fr)}
 }
 @media(max-width:820px){
-  .topbar{padding:0 14px}
-  .shell{display:block;padding:10px}
-  .sidebar{position:static;margin-bottom:12px}
-  .sidebar-nav{display:none}
-  .stock-list{display:flex;overflow:auto}
-  .stock-btn{min-width:210px}
-  .hero-main{display:block}
-  .hero-block{border-right:0;border-bottom:1px solid var(--line)}
-  .hero-bottom{grid-template-columns:repeat(2,1fr)}
-  .factor{border-bottom:1px solid var(--line)}
-  .hero-bottom .factor:last-child{grid-column:1/-1}
-  .quick-grid,.summary-grid,.data-grid,.plan-grid{grid-template-columns:1fr 1fr}
-  .module-grid{grid-template-columns:1fr 1fr}
+ .topbar{padding:0 14px}.wrap{padding:10px}.hero-main{display:block}.hero-block{border-right:0;border-bottom:1px solid var(--line)}
+ .hero-bottom{grid-template-columns:repeat(2,1fr)}.factor{border-bottom:1px solid var(--line)}
+ .quick-grid,.summary-grid,.data-grid,.plan-grid{grid-template-columns:1fr 1fr}.module-grid{grid-template-columns:1fr 1fr}
 }
 @media(max-width:560px){
-  .name{font-size:27px}
-  .quick-grid,.summary-grid,.data-grid,.plan-grid,.evidence{grid-template-columns:1fr}
-  .hero-bottom{grid-template-columns:1fr}
-  .hero-bottom .factor:last-child{grid-column:auto}
-  .factor{border-right:0}
-  .funnel{grid-template-columns:1fr}
-  .module-grid{grid-template-columns:1fr}
+ .name{font-size:27px}.quick-grid,.summary-grid,.data-grid,.plan-grid,.evidence{grid-template-columns:1fr}.hero-bottom{grid-template-columns:1fr}.factor{border-right:0}.funnel{grid-template-columns:1fr}.module-grid{grid-template-columns:1fr}
 }
 </style>
 </head>
 <body>
-<div class="app">
-  <header class="topbar">
-    <div class="brand">MLS · 5483 中美晶</div>
-    <div style="display:flex;align-items:center;gap:12px"><div class="topbar-note">個股決策報告｜晶圓材料｜Ready</div><button class="home-btn" type="button" onclick="goHome()">✕ 關閉個股頁</button></div>
-  </header>
+<header class="topbar">
+  <div class="brand">NEXORA · 個股決策報告 V3</div>
+  <div style="display:flex;align-items:center;gap:14px">
+    <div class="topnote" id="topnote">個股盤後決策報告</div>
+    <button id="closeCard" title="關閉卡片" style="background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:850;cursor:pointer">✕ 關閉</button>
+  </div>
+</header>
 
-  <div class="shell">
-    
+<div class="wrap">
+<section class="hero">
+  <div class="hero-main">
+    <div class="hero-block">
+      <div class="identity">
+        <span class="code">代碼</span><span class="name">名稱</span>
+        <span class="tag">族群</span><span class="tag">軌跡</span>
+      </div>
+      <div class="stars">—</div>
+      <div class="quick-grid">
+        <div class="quick"><div class="k">今日</div><div class="v">—</div></div>
+        <div class="quick"><div class="k">收盤</div><div class="v">—</div></div>
+        <div class="quick"><div class="k">法人20日</div><div class="v">—</div></div>
+        <div class="quick"><div class="k">vs族群</div><div class="v">—</div></div>
+        <div class="quick"><div class="k">承接品質</div><div class="v">—</div></div>
+      </div>
+    </div>
+    <div class="hero-block decision">
+      <div class="scorebox">—</div>
+      <div class="decision-title">—</div>
+      <div class="decision-sub">信心 —｜收盤資金 —｜主導 —</div>
+      <div class="status">—</div>
+    </div>
+    <div class="hero-block">
+      <div class="funnel">
+        <div class="step fail"><div class="small">L1 資金粗篩</div><div class="big">—</div><div class="small">—</div></div>
+        <div class="step fail"><div class="small">L2 籌碼技術</div><div class="big">—</div><div class="small">—</div></div>
+        <div class="step ok"><div class="small">L3 融資排雷</div><div class="big">—</div><div class="small">—</div></div>
+      </div>
+    </div>
+  </div>
 
-    <main class="main">
-      <div id="stock5483" class="stock-page">
-        <section class="hero">
-          <div class="hero-main">
-            <div class="hero-block">
-              <div class="identity-row">
-                <span class="code">5483</span><span class="name">中美晶</span>
-                <span class="tag">晶圓材料</span><span class="tag">攻擊軌</span>
-              </div>
-              <div class="stars">★★★★★</div>
-              <div class="quick-grid">
-                <div class="quick"><div class="k">今日</div><div class="v pos">+6.12%</div></div>
-                <div class="quick"><div class="k">收盤</div><div class="v">234</div></div>
-                <div class="quick"><div class="k">法人20日</div><div class="v pos">+42,441</div></div>
-                <div class="quick"><div class="k">vs族群</div><div class="v pos">+2.88%</div></div>
-              </div>
-            </div>
-            <div class="hero-block decision-center">
-              <div class="decision-badge">✓</div>
-              <div class="decision-title">Ready</div>
-              <div class="decision-sub">健康分 87.6｜真攻擊</div>
-              <div class="status-pill">可觀察</div>
-            </div>
-            <div class="hero-block">
-              <div class="funnel">
-                <div class="funnel-step"><div class="small">L1 資金粗篩</div><div class="big">通過</div><div class="small">≥75通過</div></div>
-                <div class="funnel-step"><div class="small">L2 籌碼技術</div><div class="big">通過</div><div class="small">20日+／MA20／承接</div></div>
-                <div class="funnel-step"><div class="small">L3 融資排雷</div><div class="big">Ready ✓</div><div class="small">無硬風險</div></div>
-              </div>
-            </div>
-          </div>
-          <div class="hero-bottom">
-            <div class="factor"><div class="factor-top">趨勢 22 / 25</div><div class="factor-score">22</div><div class="bar"><i style="width:88%"></i></div><div class="factor-note">站上MA20，高於昨日高點</div></div>
-            <div class="factor"><div class="factor-top">量能 18 / 25</div><div class="factor-score">18</div><div class="bar"><i style="width:72%"></i></div><div class="factor-note">量價同向，量比1.00</div></div>
-            <div class="factor"><div class="factor-top">相對強度 18 / 20</div><div class="factor-score">18</div><div class="bar"><i style="width:90%"></i></div><div class="factor-note">vs族群 +2.88%｜vs大盤 +4.78%</div></div>
-            <div class="factor"><div class="factor-top">籌碼 20 / 20</div><div class="factor-score">20</div><div class="bar"><i style="width:100%"></i></div><div class="factor-note">法人20日 +42,441張</div></div>
-            <div class="factor"><div class="factor-top">族群 9 / 10</div><div class="factor-score">9</div><div class="bar"><i style="width:90%"></i></div><div class="factor-note">晶圓材料主攻</div></div>
-          </div>
-        </section>
+  <div class="hero-bottom">
+    <div class="factor"><div class="factor-top">趨勢</div><div class="factor-score">—</div><div class="bar"><i style="width:0%"></i></div><div class="factor-note">—</div></div>
+    <div class="factor"><div class="factor-top">量能</div><div class="factor-score">—</div><div class="bar"><i style="width:0%"></i></div><div class="factor-note">—</div></div>
+    <div class="factor"><div class="factor-top">相對強度</div><div class="factor-score">—</div><div class="bar"><i style="width:0%"></i></div><div class="factor-note">—</div></div>
+    <div class="factor"><div class="factor-top">籌碼</div><div class="factor-score">—</div><div class="bar"><i style="width:0%"></i></div><div class="factor-note">—</div></div>
+    <div class="factor"><div class="factor-top">族群</div><div class="factor-score">—</div><div class="bar"><i style="width:0%"></i></div><div class="factor-note">—</div></div>
+  </div>
+</section>
 
-        <div class="toolbar">
-          <a href="#factors5">五大因子</a><a href="#summary">AI 結論</a><a href="#market">市場資料</a><a href="#chips">籌碼承接</a><a href="#validation">交叉驗證</a><a href="#risk">風險</a><a href="#plan">交易計畫</a>
+<nav class="toolbar">
+  <a href="#summary">AI結論</a><a href="#score">五因子解釋</a><a href="#market">技術/資金/族群</a>
+  <a href="#chips">籌碼/承接</a><a href="#validation">交叉驗證</a><a href="#risk">風險紀律</a>
+  <a href="#plan">交易計畫</a><a href="#winrate">AI勝率</a>
+</nav>
+
+<section class="section" id="summary">
+  <div class="section-head"><div class="section-title">AI 最終結論</div><div class="source">五模組綜合</div></div>
+  <div class="section-body">
+    <div class="summary-grid">
+      <div class="ai-box">
+        <div class="ai-kicker">AI Decision</div>
+        <div class="ai-title">—</div>
+        <p class="ai-text">—</p>
+        <div class="notice">操作：—。硬風險：—；軟風險：—。</div>
+      </div>
+      <div class="evidence">
+        <div class="ev"><div class="k">法人20日淨</div><div class="v">—</div><div class="sub">外 —｜投 —｜自 —</div></div>
+        <div class="ev"><div class="k">5日主要承接</div><div class="v">—</div><div class="sub">—</div></div>
+        <div class="ev"><div class="k">融資5日變化</div><div class="v">—</div><div class="sub">—</div></div>
+        <div class="ev"><div class="k">相對族群</div><div class="v">—</div><div class="sub">vs大盤 —</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="score">
+  <div class="section-head"><div class="section-title">五大因子完整評分理由</div><div class="source">第一版判讀邏輯＋第二版正式資料</div></div>
+  <div class="section-body">
+    <div class="data-grid">
+      <div class="card">
+        <div class="card-head"><div class="card-title">趨勢</div><div class="card-source">MA20 / 技術位置</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">收盤</div><div class="v">—</div></div>
+          <div class="row"><div class="k">MA20</div><div class="v">—</div></div>
+          <div class="row"><div class="k">乖離</div><div class="v">—</div></div>
+          <div class="score-reason">—</div>
         </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-title">量能</div><div class="card-source">收盤量比 / 量價</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">收盤量比</div><div class="v">—</div></div>
+          <div class="row"><div class="k">今日漲幅</div><div class="v">—</div></div>
+          <div class="row"><div class="k">量能判讀</div><div class="v">—</div></div>
+          <div class="score-reason">—</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-title">相對強度</div><div class="card-source">個股 vs 族群 vs 大盤</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">vs族群</div><div class="v">—</div></div>
+          <div class="row"><div class="k">vs大盤</div><div class="v">—</div></div>
+          <div class="score-reason">—</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-title">籌碼</div><div class="card-source">法人 / 外資 / 投信</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">法人20日</div><div class="v">—</div></div>
+          <div class="row"><div class="k">外資連續</div><div class="v">—</div></div>
+          <div class="row"><div class="k">投信20日</div><div class="v">—</div></div>
+          <div class="score-reason">—</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-title">族群</div><div class="card-source">成分股加權</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">族群漲跌</div><div class="v">—</div></div>
+          <div class="row"><div class="k">市場狀態</div><div class="v">—</div></div>
+          <div class="score-reason">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
-        <section class="section" id="factors5">
-          <div class="section-head"><div class="section-title">五大因子（盤中決策引擎）</div><div class="source">/api/state 即時引擎</div></div>
-          <div class="section-body">
-            <div id="f5-compare" class="card" style="margin-bottom:12px"><div class="section-title" style="font-size:14px;margin-bottom:8px">📊 個股 vs 族群 vs 大盤</div><div class="rows muted">等待盤中引擎資料…</div></div>
-            <div id="f5-factors"></div>
-            <div class="f5-two">
-              <div id="f5-conclusion" class="f5-card"></div>
-              <div id="f5-discipline" class="f5-card"></div>
-              <div id="f5-triangle" class="f5-card"></div>
-              <div id="f5-doc" class="f5-card"></div>
+<section class="section" id="market">
+  <div class="section-head"><div class="section-title">技術面／資金面／族群面</div><div class="source">Shioaji K線 · TWSE + FinMind · 成分股加權</div></div>
+  <div class="section-body">
+    <div class="data-grid">
+      <div class="card">
+        <div class="card-head"><div class="card-title">技術面</div><div class="card-source">Shioaji K線</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">收盤／昨收</div><div class="v">—／—</div></div>
+          <div class="row"><div class="k">當日高／低</div><div class="v">—／—</div></div>
+          <div class="row"><div class="k">MA20</div><div class="v">—</div></div>
+          <div class="row"><div class="k">站上MA20</div><div class="v">—</div></div>
+          <div class="row"><div class="k">乖離（收-MA20）</div><div class="v">—</div></div>
+          <div class="row"><div class="k">觸發價（近10日高）</div><div class="v">—</div></div>
+          <div class="score-reason">—</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-title">資金面</div><div class="card-source">TWSE + FinMind</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">全日主動買賣差</div><div class="v">—</div></div>
+          <div class="row"><div class="k">象限</div><div class="v">—</div></div>
+          <div class="row"><div class="k">法人連續（買）</div><div class="v">—</div></div>
+          <div class="row"><div class="k">收盤量比</div><div class="v">—</div></div>
+          <div class="row full">
+            <div>
+              <div class="k">收盤資金象限 · 時序</div>
+              <div class="timeline" id="quad-seq" style="margin-top:9px"><span class="timechip">—</span><span class="arrow">→</span><span class="timechip">—</span><span class="badge blue">—</span></div>
             </div>
           </div>
-        </section>
-
-        <section class="section" id="summary">
-          <div class="section-head"><div class="section-title">AI 最終結論</div><div class="source">五模組綜合</div></div>
-          <div class="section-body">
-            <div class="summary-grid">
-              <div class="ai-box">
-                <div class="ai-kicker">🤖 AI Decision</div>
-                <div class="ai-title">★★★★★ READY</div>
-                <p class="ai-text">✅ 綜合研判：列為 Ready。部分共振／投信主導｜投信主導。中美晶目前處於「真攻擊」象限（流入漲），健康分87.6分、承接品質5★。</p>
-                <div class="notice">⚠️ 軟風險：over_bias、no_breakout。站上月線(211.32)可進場，跌破月線出場，目標245.7。</div>
-              </div>
-              <div class="evidence">
-                <div class="evidence-card"><div class="k">法人20日淨</div><div class="v pos">+42,441張</div><div class="chip-note">外+19,186｜投+23,376｜自-121</div></div>
-                <div class="evidence-card"><div class="k">5日主要承接</div><div class="v pos">投信 +3,070張</div><div class="chip-note">投信連買5日</div></div>
-                <div class="evidence-card"><div class="k">融資5日變化</div><div class="v neg">-645張</div><div class="chip-note">融資下降，洗散戶</div></div>
-                <div class="evidence-card"><div class="k">相對族群</div><div class="v pos">+2.88%</div><div class="chip-note">vs大盤 +4.78%</div></div>
-              </div>
+          <div class="row full">
+            <div>
+              <div class="k">近5日資金象限收盤紀錄</div>
+              <div class="timeline" id="quad-5d" style="margin-top:9px"><span class="timechip">—</span><span class="timechip">—</span><span class="timechip">—</span><span class="timechip">—</span><span class="timechip">—</span></div>
+              <div class="sub">流入／流出＝當日收盤全日資金結果；漲／跌＝當日收盤漲跌，非法人買賣方向。</div>
             </div>
           </div>
-        </section>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div><div class="card-title">族群面 · 相對強弱</div><div class="card-source">成分股加權</div></div><span class="badge">—</span></div>
+        <div class="rows">
+          <div class="row"><div class="k">個股 %</div><div class="v">—</div></div>
+          <div class="row"><div class="k">族群 %</div><div class="v">—</div></div>
+          <div class="row"><div class="k">大盤 %</div><div class="v">—</div></div>
+          <div class="row"><div class="k">vs族群</div><div class="v">—</div></div>
+          <div class="row"><div class="k">vs大盤</div><div class="v">—</div></div>
+        </div>
+        <div style="padding:0 14px 14px"><div class="notice">—</div></div>
+      </div>
+    </div>
+  </div>
+</section>
 
-        <section class="section" id="market">
-          <div class="section-head"><div class="section-title">技術面／資金面／族群面</div><div class="source">Shioaji K線 · TWSE + FinMind · 成分股加權</div></div>
-          <div class="section-body">
-            <div class="data-grid">
-              <div class="card">
-                <div class="card-head"><div class="card-title">技術面</div><div class="card-source">Shioaji K線</div></div>
-                <div class="rows">
-                  <div class="row"><div class="k">收盤／昨收</div><div class="v">234／220.5</div></div>
-                  <div class="row"><div class="k">當日高／低</div><div class="v">242.5／229</div></div>
-                  <div class="row"><div class="k">MA20</div><div class="v">211.32</div></div>
-                  <div class="row"><div class="k">站上MA20</div><div class="v good">✓ 站上</div></div>
-                  <div class="row"><div class="k">乖離（收-MA20）</div><div class="v warn">+10.7%</div></div>
-                  <div class="row"><div class="k">觸發價（技近10日高）</div><div class="v">245.7</div></div>
-                </div>
-              </div>
-              <div class="card">
-                <div class="card-head"><div class="card-title">資金面</div><div class="card-source">TWSE + FinMind</div></div>
-                <div class="rows">
-                  <div class="row"><div class="k">主動買賣差</div><div class="v">0.5</div></div>
-                  <div class="row"><div class="k">象限</div><div class="v good">流入↗漲</div></div>
-                  <div class="row"><div class="k">法人連續 1 日（買）</div><div class="v pos">+1</div></div>
-                  <div class="row"><div class="k">量比</div><div class="v">1</div></div>
-                  <div class="row full"><div><div class="k">健康變化 · 象限時序</div><div class="timeline" style="margin-top:9px"><span class="time-chip">流入↗跌</span><span class="arrow">→</span><span class="time-chip">流入↗漲</span><span class="badge ok">改善</span></div></div></div>
-                  <div class="row full"><div><div class="k">近 5 日收盤軌跡</div><div class="timeline" style="margin-top:9px"><span class="time-chip">↗漲</span><span class="time-chip">↗漲</span><span class="time-chip">↗漲</span><span class="time-chip">↗漲</span><span class="time-chip">↗漲</span></div><div class="sub">流入↗／流出↘ 為當日收盤漲跌，非法人方向</div></div></div>
-                </div>
-              </div>
-              <div class="card">
-                <div class="card-head">
-                  <div>
-                    <div class="card-title">族群面 · 相對強弱</div>
-                    <div class="card-source">成分股加權</div>
-                  </div>
-                  <div class="badge ok">領先</div>
-                </div>
-                <div class="rows">
-                  <div class="row"><div class="k">個股 %</div><div class="v pos">+6.12%</div></div>
-                  <div class="row"><div class="k">族群 %</div><div class="v pos">+3.24%</div></div>
-                  <div class="row"><div class="k">大盤 %</div><div class="v pos">+1.34%</div></div>
-                  <div class="row"><div class="k">vs族群</div><div class="v pos">+2.88% 領先</div></div>
-                  <div class="row"><div class="k">vs大盤</div><div class="v pos">+4.78%</div></div>
-                </div>
-                <div style="padding:0 14px 14px">
-                  <div class="notice">個股漲幅 +6.12%，高於晶圓材料族群 +3.24%，相對領先 +2.88%；同時高於大盤 +1.34%，相對領先 +4.78%。</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+<section class="section" id="chips">
+  <div class="section-head"><div class="section-title">籌碼面 · 誰在買／承接品質</div><div class="source">FinMind · 第五模組</div></div>
+  <div class="section-body">
+    <div class="data-grid">
+      <div class="card">
+        <div class="card-head"><div class="card-title">5日區間</div><div class="card-source">—</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">5日三大法人淨</div><div class="v">—</div></div>
+          <div class="row"><div class="k">├ 外資5日</div><div class="v">—</div></div>
+          <div class="row"><div class="k">├ 投信5日</div><div class="v">—</div></div>
+          <div class="row"><div class="k">└ 自營5日</div><div class="v">—</div></div>
+          <div class="row"><div class="k">融資5日變化</div><div class="v">—</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-title">20日區間</div><div class="card-source">近20個交易日</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">法人20日淨</div><div class="v">—</div></div>
+          <div class="row"><div class="k">├ 外資20日</div><div class="v">—</div></div>
+          <div class="row"><div class="k">└ 投信20日</div><div class="v">—</div></div>
+          <div class="row"><div class="k">自營20日</div><div class="v">—</div></div>
+          <div class="row"><div class="k">大戶集保</div><div class="v">—</div></div>
+          <div class="sub" style="padding-bottom:8px">無公開API不得以0或推估值代替，畫面需顯示資料缺值。</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-title">承接品質 · 誰在接刀</div><div class="card-source">法人＋融資＋大戶＋收盤技術位置</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">綜評</div><div class="v">—</div></div>
+          <div class="row"><div class="k">外資</div><div class="v">—</div></div>
+          <div class="row"><div class="k">融資</div><div class="v">—</div></div>
+          <div class="row"><div class="k">大戶</div><div class="v">—</div></div>
+          <div class="row"><div class="k">股價</div><div class="v">—</div></div>
+        </div>
+        <div style="padding:0 14px 14px"><div class="notice">—</div></div>
+      </div>
+    </div>
+  </div>
+</section>
 
-        <section class="section" id="chips">
-          <div class="section-head"><div class="section-title">籌碼面 · 誰在買／承接品質</div><div class="source">FinMind · 第五模組</div></div>
-          <div class="section-body">
-            <div class="data-grid">
-              <div class="card">
-                <div class="card-head"><div class="card-title">📅 5 日區間</div><div class="card-source">07-16～07-22</div></div>
-                <div class="rows">
-                  <div class="row"><div class="k">5日三大法人淨</div><div class="v pos">+5,089張</div></div>
-                  <div class="row"><div class="k">├ 外資 5日</div><div class="v pos">+2,031張（+1日）</div></div>
-                  <div class="row"><div class="k">├ 投信 5日</div><div class="v pos">+3,070張（+5日）</div></div>
-                  <div class="row"><div class="k">└ 自營 5日</div><div class="v neg">-12張（+1日）</div></div>
-                  <div class="row"><div class="k">融資 5日變化</div><div class="v neg">-645張 ↓降</div></div>
-                </div>
-              </div>
-              <div class="card">
-                <div class="card-head"><div class="card-title">📅 20 日區間</div><div class="card-source">近20個交易日</div></div>
-                <div class="rows">
-                  <div class="row"><div class="k">法人 20日淨</div><div class="v pos">+42,441張</div></div>
-                  <div class="row"><div class="k">├ 外資 20日</div><div class="v pos">+19,186張</div></div>
-                  <div class="row"><div class="k">└ 投信 20日</div><div class="v pos">+23,376張</div></div>
-                  <div class="row"><div class="k">自營 20日</div><div class="v neg">-121張</div></div>
-                  <div class="row"><div class="k">⚠ 大戶集保</div><div class="v warn">無公開API</div></div>
-                </div>
-              </div>
-              <div class="card">
-                <div class="card-head"><div class="card-title">🎯 承接品質 · 誰在接刀</div><div class="card-source">外資＋融資＋大戶＋股價</div></div>
-                <div class="rows">
-                  <div class="row"><div class="k">綜評</div><div class="v warn">★★★★★ 高承接·法人吸收</div></div>
-                  <div class="row"><div class="k">外資</div><div class="v good">轉買 ✓吸收</div></div>
-                  <div class="row"><div class="k">融資</div><div class="v good">下降 ✓洗散戶</div></div>
-                  <div class="row"><div class="k">大戶</div><div class="v neg">持平 ✗離場</div></div>
-                  <div class="row"><div class="k">股價</div><div class="v good">不破低 ✓止穩</div></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
+<section class="section" id="validation">
+  <div class="section-head"><div class="section-title">四層決策／三角交叉驗證／文件四大策略</div><div class="source">第一版完整判讀＋第二版漏斗結果</div></div>
+  <div class="section-body">
+    <div class="module-grid">
+      <div class="module"><div class="k">L1 資金粗篩</div><div class="v">—</div></div>
+      <div class="module"><div class="k">L2 籌碼技術</div><div class="v">—</div></div>
+      <div class="module"><div class="k">L3 融資排雷</div><div class="v">—</div></div>
+      <div class="module"><div class="k">L4 賽道</div><div class="v">—</div></div>
+      <div class="module"><div class="k">最終狀態</div><div class="v">—</div></div>
+    </div>
 
-        <section class="section" id="validation">
-          <div class="section-head"><div class="section-title">四層決策／三角交叉驗證／文件四大策略</div><div class="source">SOP 運算結果</div></div>
-          <div class="section-body">
-            <div class="module-grid">
-              <div class="module goodmod"><div class="k">L1 根本過濾</div><div class="v good">✓ 通過</div></div>
-              <div class="module goodmod"><div class="k">L2 計分</div><div class="v good">2 單位</div></div>
-              <div class="module goodmod"><div class="k">L3 象限</div><div class="v good">✓ Ready</div></div>
-              <div class="module goodmod"><div class="k">L4 賽道</div><div class="v good">攻擊軌</div></div>
-              <div class="module warnmod"><div class="k">總評</div><div class="v warn">★★★★★</div></div>
-            </div>
-            <div class="data-grid" style="margin-top:12px">
-              <div class="card">
-                <div class="card-head"><div class="card-title">三角交叉驗證</div><div class="card-source">A～E</div></div>
-                <div style="padding:13px" class="badges">
-                  <span class="badge ok">A 淨流入</span><span class="badge ok">B 站均價</span><span class="badge warn">C 技術中性</span><span class="badge ok">D 強族群</span><span class="badge ok">E 共振</span>
-                </div>
-              </div>
-              <div class="card">
-                <div class="card-head"><div class="card-title">文件四大策略</div><div class="card-source">4項條件</div></div>
-                <div style="padding:13px" class="badges">
-                  <span class="badge ok">✓ 大盤</span><span class="badge ok">✓ 籌碼</span><span class="badge ok">✓ 技術MA20</span><span class="badge warn">○ BS盤</span>
-                </div>
-                <div class="chip-note" style="padding:0 13px 13px">四大條件多數通過，符合攻擊軌觀察標準。</div>
-              </div>
-              <div class="card">
-                <div class="card-head"><div class="card-title">AI 勝率 & 入選理由</div><div class="card-source">30日滾動</div></div>
-                <div class="rows">
-                  <div class="row"><div class="k">隔日勝率</div><div class="v">84%</div></div>
-                  <div class="row"><div class="k">五日勝率</div><div class="v">86%</div></div>
-                  <div class="row"><div class="k">最終健康分</div><div class="v">87.6（信心84%）</div></div>
-                  <div class="row"><div class="k">綜合證據</div><div class="v good">Ready（共振）</div></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="section" id="risk">
-          <div class="section-head"><div class="section-title">風險檢查與執行紀律</div><div class="source">硬風險封頂 · 軟風險標註</div></div>
-          <div class="section-body">
-            <div class="badges">
-              <span class="badge ok">✓ 無硬風險</span>
-              <span class="badge warn">○ 過度乖離</span>
-              <span class="badge warn">○ 未突破前高</span>
-              <span class="badge warn">○ over_bias</span>
-              <span class="badge warn">○ no_breakout</span>
-            </div>
-            <details class="details" open>
-              <summary>風險判讀小字說明</summary>
-              <div class="details-content">硬風險命中會封頂 Watch；目前無硬風險。軟風險僅標註，不直接否決 Ready。乖離偏大代表追價成本提高；未突破前高代表攻擊訊號尚未完全確認。</div>
-            </details>
-          </div>
-        </section>
-
-        <section class="section" id="plan">
-          <div class="section-head"><div class="section-title">交易計畫 · 攻擊軌短線</div><div class="source">動態停損／目標</div></div>
-          <div class="section-body">
-            <div class="plan-grid">
-              <div class="plan-item"><div class="k">技突破</div><div class="v">245.7</div></div>
-              <div class="plan-item"><div class="k">停損</div><div class="v neg">222.3</div></div>
-              <div class="plan-item"><div class="k">技目標</div><div class="v pos">262.9</div></div>
-              <div class="plan-item"><div class="k">量能</div><div class="v">需 &gt; 昨</div></div>
-              <div class="plan-item"><div class="k">月線失效</div><div class="v warn">211.32</div></div>
-            </div>
-            <details class="details" open>
-              <summary>操作建議與完整說明</summary>
-              <div class="details-content">
-                站上月線(211.32)可進場，跌破月線出場，目標245.7。突破245.7視為技術確認；停損222.3；技術目標262.9；量能需大於昨日。<br><br>
-                ⚠️ 以上為技術面突破／目標價（entry=近 10 日高、target=entry×1.07），非機構法人目標價。機構估值請參考報告庫（FactSet／富邦／工商時報）通常分歧 304～585 元區間。
-              </div>
-            </details>
-          </div>
-        </section>
+    <div class="validation-grid">
+      <div class="card">
+        <div class="card-head"><div class="card-title">三角交叉驗證</div><div class="card-source">A～E 完整文字</div></div>
+        <div class="signal-list">
+          <div class="signal"><div class="codeb">A</div><div class="state">—</div><div>—</div></div>
+          <div class="signal"><div class="codeb">B</div><div class="state">—</div><div>—</div></div>
+          <div class="signal"><div class="codeb">C</div><div class="state">—</div><div>—</div></div>
+          <div class="signal"><div class="codeb">D</div><div class="state">—</div><div>—</div></div>
+          <div class="signal"><div class="codeb">E</div><div class="state">—</div><div>—</div></div>
+        </div>
+        <div style="padding:0 14px 14px"><span class="badge">— 正向</span><span class="badge">— 反向</span><span class="badge">— 中性／待驗</span></div>
       </div>
 
-      <footer>所有資料欄位與說明均保留；介面僅重新分層與合併排版。</footer>
-    </main>
+      <div class="card">
+        <div class="card-head"><div class="card-title">文件三大策略</div><div class="card-source">3項條件</div></div>
+        <div style="padding:13px" class="badges" id="doc-badges">
+          <span class="badge">大盤</span>
+          <span class="badge">籌碼</span>
+          <span class="badge">技術MA20</span>
+        </div>
+        <div class="sub" id="doc-note" style="padding:0 13px 13px">三大條件通過 —/3 項。</div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><div class="card-title">第一版執行結論</div><div class="card-source">可直接閱讀</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">最終結論</div><div class="v">—</div></div>
+          <div class="row"><div class="k">主要警戒</div><div class="v">—</div></div>
+          <div class="row"><div class="k">操作</div><div class="v">—</div></div>
+          <div class="row full"><div><div class="k">說明</div><div class="sub">—</div></div></div>
+        </div>
+      </div>
+    </div>
   </div>
+</section>
+
+<section class="section" id="risk">
+  <div class="section-head"><div class="section-title">風險檢查與執行紀律</div><div class="source">硬風險封頂 · 軟風險標註</div></div>
+  <div class="section-body">
+    <div class="badges" id="risk-badges">
+      <span class="badge">跌破MA20 / ma_break</span>
+      <span class="badge">收盤接近漲停 / near_limit</span>
+      <span class="badge">未突破前高 / no_breakout</span>
+    </div>
+    <div class="plan-grid" id="risk-plan" style="margin-top:12px">
+      <div class="plan"><div class="k">建議停損</div><div class="v">—</div><div class="sub">—</div></div>
+      <div class="plan"><div class="k">當日均價VWAP</div><div class="v">—</div><div class="sub">收盤均價</div></div>
+      <div class="plan"><div class="k">突破確認</div><div class="v">—</div><div class="sub">—</div></div>
+      <div class="plan"><div class="k">量能要求</div><div class="v">—</div><div class="sub">—</div></div>
+    </div>
+    <details open>
+      <summary>執行紀律小字說明</summary>
+      <div class="details-content">—</div>
+    </details>
+  </div>
+</section>
+
+<section class="section" id="plan">
+  <div class="section-head"><div class="section-title">明日交易計畫 · 盤後條件設定</div><div class="source">技術突破 / 停損 / 目標</div></div>
+  <div class="section-body">
+    <div class="plan-grid">
+      <div class="plan"><div class="k">技突破</div><div class="v">—</div></div>
+      <div class="plan"><div class="k">停損</div><div class="v">—</div></div>
+      <div class="plan"><div class="k">技目標</div><div class="v">—</div></div>
+      <div class="plan"><div class="k">量能</div><div class="v">—</div></div>
+      <div class="plan"><div class="k">目前狀態</div><div class="v">—</div></div>
+    </div>
+    <details open>
+      <summary>操作建議與完整說明</summary>
+      <div class="details-content">—</div>
+    </details>
+
+    <details>
+      <summary>為何今天上漲</summary>
+      <div class="details-content">—</div>
+    </details>
+
+    <details>
+      <summary>為何今天不能直接買</summary>
+      <div class="details-content">—</div>
+    </details>
+  </div>
+</section>
+
+<section class="section" id="winrate">
+  <div class="section-head"><div class="section-title">AI 勝率與入選理由</div><div class="source">30日滾動</div></div>
+  <div class="section-body">
+    <div class="data-grid">
+      <div class="card">
+        <div class="rows">
+          <div class="row"><div class="k">隔日勝率</div><div class="v">—</div></div>
+          <div class="row"><div class="k">五日勝率</div><div class="v">—</div></div>
+          <div class="row"><div class="k">健康分</div><div class="v">—</div></div>
+          <div class="row"><div class="k">信心</div><div class="v">—</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-title">入選理由</div><div class="card-source">綜合證據</div></div>
+        <div style="padding:13px" class="badges">
+          <span class="badge">族群領先</span>
+          <span class="badge">法人20日</span>
+          <span class="badge">相對族群</span>
+          <span class="badge">外資連買</span>
+          <span class="badge">技術未修復</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-title">最終模型結論</div><div class="card-source">狀態與原因</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">狀態</div><div class="v">—</div></div>
+          <div class="row"><div class="k">升級條件</div><div class="v">—</div></div>
+          <div class="row"><div class="k">失效條件</div><div class="v">—</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>個股決策報告 V3 版型｜欄位預留、待資料源串接</footer>
 </div>
 
 <script>
-function goHome(){
-  try{
-    if(window.parent&&window.parent!==window){
-      const close=window.parent.document.getElementById('card-close');
-      if(close){close.click();return;}
-    }
-  }catch(_){ }
-  window.location.href='/';
-}
+// 盤後個股 V3 接線：只吃 /api/stock（盤後固定資料），沿用舊版欄位對映，去除 BS/內外盤/盤中殘留。
 (async()=>{
   const API=location.protocol==='file:'?'http://66.42.42.150:8000':'';
-  const code=(location.search.match(/[?&]code=(\d{4})/)||[])[1];
-  const esc=s=>String(s??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const code=((location.search.match(/[?&]code=(\d{3,4})/)||[])[1])||(document.title.match(/\d{4}/)||[])[0]||'';
   const num=v=>v==null?'—':Number(v).toLocaleString('en-US');
   const pct=v=>v==null?'—':`${Number(v)>0?'+':''}${Number(v).toFixed(2)}%`;
-  const set=(s,v)=>{const e=document.querySelector(s);if(e)e.textContent=v};
-  const rows=(items)=>items.map(([k,v,c=''])=>`<div class="row"><div class="k">${esc(k)}</div><div class="v ${c}">${v==null?'—':v}</div></div>`).join('');
+  // 台股慣例：漲紅(pos)、跌綠(neg)。買超為正=紅、賣超為負=綠。
+  const cls=v=>v==null?'':(Number(v)>0?'pos':Number(v)<0?'neg':'');
+  const cP=v=>v==null?'—':`<span class="${cls(v)}">${Number(v)>0?'+':''}${Number(v).toFixed(2)}%</span>`;
+  const cN=v=>v==null?'—':`<span class="${cls(v)}">${Number(v).toLocaleString('en-US')}</span>`;
+  const set=(s,v)=>{const e=document.querySelector(s);if(e)e.textContent=(v==null?'—':v)};
+  // 關閉卡片：iframe 內通知父層關閉；獨立開啟則返回上一頁。
+  const cb=document.getElementById('closeCard');
+  if(cb)cb.addEventListener('click',()=>{
+    try{if(window.parent&&window.parent!==window){window.parent.postMessage({type:'closeStockCard',code},'*');const x=window.parent.document.getElementById('card-close')||window.parent.document.getElementById('card-close-btn');if(x){x.click();return;}}}catch(_){}
+    if(history.length>1)history.back();else window.close();
+  });
+  function cardVals(sec,idx,vals,reason){
+    const card=document.querySelectorAll(sec+' .card')[idx];if(!card)return;
+    const vs=card.querySelectorAll('.rows .row .v');
+    vals.forEach((v,i)=>{if(vs[i])vs[i].innerHTML=(v==null?'—':v)});
+    if(reason!=null){const r=card.querySelector('.score-reason');if(r)r.textContent=reason}
+  }
   try{
     if(!code)throw Error('缺少股票代碼');
     const d=await fetch(API+'/api/stock/'+code,{cache:'no-store'}).then(r=>r.json());
     if(!d.ok)throw Error(d.error||'個股 API 失敗');
-    const c=d.card||{}, p=d.post_market||{}, dec=c.decision||{}, chip=c.chip||{}, tech=c.tech||{}, trade=c.trade||{};
-    const score=dec.score??c.health_score, group=p.group||c.grade||'觀察', change=c.change_rate??p.change_rate, price=c.price??p.price;
+    const c=d.card||{},p=d.post_market||{},dec=c.decision||{},chip=c.chip||{},tech=c.tech||{},trade=c.trade||{};
+    const f5=c.factors5||{},f5f=f5.factors||{},f5n=f5.notes||{};
+    const score=dec.score??c.health_score;
+    const gmap={Ready:'可操作',Watch:'觀察',Hold:'排除'};
+    const group=p.group||gmap[c.grade]||c.grade||'觀察';
+    const change=c.change_rate??p.change_rate,price=c.price??p.price;
+    // 法人20日淨＝三大法人合計(外資+投信+自營)，不可只拿外資冒充。
+    const inst20=(chip.foreign_net_20d==null&&chip.trust_net_20d==null&&chip.dealer_net_20d==null)
+      ?null:((chip.foreign_net_20d||0)+(chip.trust_net_20d||0)+(chip.dealer_net_20d||0));
+    const bias=(price!=null&&p.ma20)?`${((price/p.ma20-1)*100).toFixed(1)}%`:'—';
+    const DEF={trend:['趨勢',25],volume:['量能',25],rs:['相對強度',20],chip:['籌碼',20],sector:['族群',10]};
+    const fac=k=>{const z=dec.factors&&dec.factors[k];if(z&&typeof z==='object')return{pts:z.points??z.score,max:z.max??DEF[k][1],note:z.status||z.reason||''};if(f5f[k]!=null)return{pts:f5f[k],max:DEF[k][1],note:f5n[k]||''};return{pts:null,max:DEF[k][1],note:'資料回補中'}};
+
     document.title=`${code} ${d.name||code}｜個股決策報告`;
-    set('.brand',`MLS · ${code} ${d.name||code}`);set('.topbar-note',`個股決策報告｜${d.sector||'—'}｜盤後固定資料 ${p.source_date||'—'}｜盤中欄位：等收盤驗證`);
-    set('.identity-row .code',code);set('.identity-row .name',d.name||code);
-    const tags=document.querySelectorAll('.identity-row .tag');if(tags[0])tags[0].textContent=d.sector||'—';if(tags[1])tags[1].textContent=c.stock_type==='engine'?'引擎軌':'攻擊軌';
-    const q=document.querySelectorAll('.quick-grid .quick .v');['今日','收盤','法人20日','vs族群'].forEach((_,i)=>{});if(q[0])q[0].textContent=pct(change);if(q[1])q[1].textContent=price??'—';if(q[2])q[2].textContent=chip.foreign_net_20d==null?'待補':num(chip.foreign_net_20d);if(q[3])q[3].textContent=p.vs_sector==null?'待盤後計算':pct(p.vs_sector);
-    set('.decision-title',group==='可操作'?'Ready':group==='排除'?'Risk':'Watch');
+    const tn=document.getElementById('topnote');if(tn)tn.textContent=`${d.name||code} ${code}｜盤後固定資料 ${p.source_date||d.data_date||'—'}`;
+    // 身分 + 快捷
+    set('.identity .code',code);set('.identity .name',d.name||code);
+    const tags=document.querySelectorAll('.identity .tag');if(tags[0])tags[0].textContent=d.sector||'—';if(tags[1])tags[1].textContent=c.stock_type==='engine'?'引擎軌':'攻擊軌';
     const starN=Math.max(1,Math.min(5,(c.health_stars??Math.round((Number(score)||0)/20))||1));
     set('.stars','★'.repeat(starN)+'☆'.repeat(5-starN));
-    const aiTitle=document.querySelector('.ai-title');if(aiTitle)aiTitle.textContent=`${'★'.repeat(starN)}${'☆'.repeat(5-starN)} ${group==='可操作'?'READY':group==='排除'?'RISK':'WATCH'}`;set('.decision-sub',`實際分數 ${score??'—'}/100｜${dec.score_available??'—'} 分可計算`);set('.status-pill',group);set('.decision-badge',group==='可操作'?'✓':group==='排除'?'!':'—');
-    const fs=dec.factors||c.factors||{};
-    const FLAB={money_health:'資金健康度',net_active:'主動買賣差',absorption:'承接品質',vs_ma20:'MA20 趨勢',inst_streak:'法人連買',margin:'融資排雷',trend:'趨勢',volume:'量能',relative_strength:'相對強度',chips:'籌碼',sector:'族群'};
-    const fbox=document.querySelector('.hero-bottom');
-    if(fbox&&Object.keys(fs).length){fbox.innerHTML=Object.entries(fs).map(([k,z])=>{const pts=z.points??z.score;const w=pts==null?0:Math.min(100,Number(pts)/Number(z.max||100)*100);return `<div class="factor"><div class="factor-top">${esc(FLAB[k]||k)} ${pts??'—'} / ${z.max??'—'}</div><div class="factor-score">${pts??'—'}</div><div class="bar"><i style="width:${w}%"></i></div><div class="factor-note">${esc(z.status||z.reason||'缺資料')}</div></div>`}).join('');}
-    const f=document.querySelectorAll('.funnel-step');if(f[0])f[0].querySelector('.big').textContent=dec.missing?.length?'待補':'通過';if(f[1])f[1].querySelector('.big').textContent=p.ma20?'通過':'待補';if(f[2])f[2].querySelector('.big').textContent=group;
-    set('.ai-text',`目前${group}。實際分數 ${score??'—'}/100；${dec.missing?.length?'缺 '+dec.missing.join('、')+'，可信度下降。':'盤後資料已接入，依實際資料判定。'} 不使用模板數字。`);
-    const ev=document.querySelectorAll('.evidence-card');[["法人20日淨",chip.foreign_net_20d==null?'待補':`${num(chip.foreign_net_20d)}張`,'FinMind 盤後'],['5日主要承接',chip.trust_net_5d==null?'待補':`${num(chip.trust_net_5d)}張`,'FinMind 盤後'],['融資5日變化',chip.margin_change_5d==null?'待補':`${num(chip.margin_change_5d)}張`,'FinMind 融資'],['相對族群',p.vs_sector==null?'資料缺：不計算':pct(p.vs_sector),'固定池成分股加權']].forEach((x,i)=>{if(ev[i]){setEl(ev[i],'.k',x[0]);setEl(ev[i],'.v',x[1]);setEl(ev[i],'.chip-note',x[2])}});
-    const cards=document.querySelectorAll('#market .card');if(cards[0])cards[0].querySelector('.rows').innerHTML=rows([['收盤／昨收',`${price??'—'}／${p.prev_close??'待補'}`],['當日高／低',`${p.high??'—'}／${p.low??'—'}`],['MA20',p.ma20??'待補'],['站上MA20',p.ma20?(price>=p.ma20?'✓ 站上':'✗ 跌破'):'缺資料'],['MA5／MA10',`${tech.ma5??'待補'}／${tech.ma10??'待補'}`],['MA60','待補（尚未接入）'],['RSI／KD',`${tech.rsi??'待補'}／${tech.kd_k??'待補'}`],['ATR',tech.atr??'待補'],['Breakout',trade.buy&&price>=trade.buy?'✓ 已突破':'待確認']]);
-    if(cards[1])cards[1].querySelector('.rows').innerHTML=rows([['主動買賣差',p.aflow==null?'等收盤驗證':num(p.aflow)],['BS／內外盤','待補（盤後未蓋章）'],['成交量',p.total_volume??'待補'],['成交值','待補'],['VWAP',p.avg_price??'待補'],['象限',p.quadrant??'等收盤驗證'],['法人連買',chip.inst_streak??'待補']]);
-    if(cards[2])cards[2].querySelector('.rows').innerHTML=rows([['個股 %',pct(change)],['族群 %',p.sector_avg==null?'待補':pct(p.sector_avg)],['大盤 %',p.market_pct==null?'待補':pct(p.market_pct)],['vs族群',p.vs_sector==null?'待補':pct(p.vs_sector)],['vs大盤',p.vs_market==null?'待補':pct(p.vs_market)],['族群健康／資金流','待補']]);
-    const relNote=document.querySelector('#sector-rel .notice')||document.querySelector('.notice');
-    if(relNote){if(change!=null&&p.sector_avg!=null&&p.market_pct!=null){const vs=p.vs_sector??(change-p.sector_avg),vm=p.vs_market??(change-p.market_pct);relNote.textContent=`個股漲幅 ${pct(change)}，${vs>=0?'高於':'低於'}${d.sector||''}族群 ${pct(p.sector_avg)}，相對${vs>=0?'領先':'落後'} ${pct(Math.abs(vs))}；同時${vm>=0?'高於':'低於'}大盤 ${pct(p.market_pct)}，相對${vm>=0?'領先':'落後'} ${pct(Math.abs(vm))}。（${p.rel_source||'最近交易日官方資料'}）`}else{relNote.textContent='族群／大盤相對強弱：等待最近交易日官方資料回補後自動計算。'}}
-    const chips=document.querySelectorAll('#chips .card');if(chips[0])chips[0].querySelector('.rows').innerHTML=rows([['5日三大法人淨',num(chip.inst_net_5d_lots)],['外資5日',num(chip.foreign_net_5d)],['投信5日',num(chip.trust_net_5d)],['自營5日',num(chip.dealer_net_5d)],['融資5日變化',num(chip.margin_change_5d)]]);if(chips[1])chips[1].querySelector('.rows').innerHTML=rows([['法人20日淨',num(chip.foreign_net_20d)],['外資20日',num(chip.foreign_net_20d)],['投信20日','待補'],['自營20日',num(chip.dealer_net_5d)],['大戶集保','待補']]);if(chips[2])chips[2].querySelector('.rows').innerHTML=rows([['綜評',dec.missing?.includes('absorption')?'缺 absorption，無法計算':'已接入'],['法人',num(chip.foreign_net_5d)],['融資',num(chip.margin_change_5d)],['大戶','待補'],['股價',pct(change)] ]);
-    const plan=document.querySelectorAll('#plan .plan-item .v');[trade.buy,trade.stop,trade.t1||trade.t2,trade.advice, p.ma20??'待補'].forEach((v,i)=>{if(plan[i])plan[i].textContent=v??'—'});const detail=document.querySelector('#plan .details-content');if(detail)detail.textContent=`目前${group}；盤中欄位收盤後保留作為佐證。${dec.missing?.length?'缺 '+dec.missing.join('、')+'，不補假數字。':'盤後資料已接入。'}`;
-    const foot=document.querySelector('footer');if(foot)foot.textContent=`資料來源：Shioaji K線／FinMind 盤後／盤中 aflow 固定快照｜資料時間：${d.updated_at||'—'}`;
-    document.body.style.visibility='visible';
-  }catch(e){document.body.style.visibility='visible';const n=document.createElement('div');n.style='position:fixed;top:0;left:0;right:0;background:#fff0f2;color:#e6465a;padding:10px 16px;z-index:99;font-weight:800';n.textContent='真實資料載入失敗：'+e.message;document.body.prepend(n)}
-  function setEl(root,s,v){const e=root.querySelector(s);if(e)e.textContent=v}
+    const Q=document.querySelectorAll('.quick-grid .quick .v');
+    [cP(change),price??'—',cN(inst20),cP(p.vs_sector),'★'.repeat(starN)].forEach((v,i)=>{if(Q[i])Q[i].innerHTML=v});
+    // 決策塊
+    set('.scorebox',score==null?'—':Math.round(score));
+    set('.decision-title',group==='可操作'?'Ready':group==='排除'?'Risk':'Watch');
+    set('.decision-sub',`信心 ${c.confidence??'—'}｜實際分數 ${score??'—'}/100｜${d.sector||'—'}`);
+    set('.status',group);
+    const F=document.querySelectorAll('.funnel .step');
+    if(F[0])F[0].querySelector('.big').textContent=(dec.missing&&dec.missing.length)?'待補':'通過';
+    if(F[1])F[1].querySelector('.big').textContent=p.ma20?'通過':'待補';
+    if(F[2])F[2].querySelector('.big').textContent=group;
+    // 五因子 hero-bottom
+    const HB=document.querySelectorAll('.hero-bottom .factor');
+    ['trend','volume','rs','chip','sector'].forEach((k,i)=>{const el=HB[i];if(!el)return;const f=fac(k);const sc=el.querySelector('.factor-score');if(sc)sc.textContent=f.pts??'—';const bar=el.querySelector('.bar i');if(bar)bar.style.width=(f.pts==null?0:Math.min(100,f.pts/f.max*100))+'%';const nt=el.querySelector('.factor-note');if(nt)nt.textContent=f.note});
+    // AI 結論
+    set('#summary .ai-title',`${'★'.repeat(starN)}${'☆'.repeat(5-starN)} ${group==='可操作'?'READY':group==='排除'?'RISK':'WATCH'}`);
+    set('#summary .ai-text',`目前${group}。實際分數 ${score??'—'}/100；${(dec.missing&&dec.missing.length)?'缺 '+dec.missing.join('、')+'，可信度下降。':'盤後資料已接入，依實際資料判定。'}`);
+    set('#summary .notice',`操作：${trade.advice||'依盤後結構判定'}。`);
+    const EV=document.querySelectorAll('#summary .evidence .ev');
+    [[cN(inst20)+' 張',`外 ${cN(chip.foreign_net_20d)}｜投 ${cN(chip.trust_net_20d)}｜自 ${cN(chip.dealer_net_20d)}`],
+     [cN(chip.trust_net_5d)+' 張','投信5日'],[cN(chip.margin_change_5d)+' 張','融資5日變化'],[cP(p.vs_sector),`vs大盤 ${cP(p.vs_market)}`]]
+    .forEach((x,i)=>{if(EV[i]){const v=EV[i].querySelector('.v'),s=EV[i].querySelector('.sub');if(v)v.innerHTML=x[0];if(s)s.innerHTML=x[1]}});
+    // 五大因子完整評分
+    cardVals('#score',0,[price??'—',p.ma20??'—',bias],fac('trend').note);
+    cardVals('#score',1,[p.volume_ratio??'—',cP(change),fac('volume').note],fac('volume').note);
+    cardVals('#score',2,[cP(p.vs_sector),cP(p.vs_market)],fac('rs').note);
+    cardVals('#score',3,[cN(inst20),chip.inst_streak==null?'—':(chip.inst_streak>0?'連買'+chip.inst_streak:'連賣'+Math.abs(chip.inst_streak)),cN(chip.trust_net_20d)],fac('chip').note);
+    cardVals('#score',4,[cP(p.sector_avg),cP(p.market_pct)],fac('sector').note);
+    // 技術/資金/族群
+    cardVals('#market',0,[`${price??'—'}／${p.prev_close??'—'}`,`${p.high??'—'}／${p.low??'—'}`,p.ma20??'—',p.ma20?(price>=p.ma20?'✓ 站上':'✗ 跌破'):'—',bias,trade.buy??'—'],
+      (price!=null&&p.ma20!=null)?`收盤 ${price} ${price>=p.ma20?'站上':'跌破'} MA20(${p.ma20})，乖離 ${bias}；突破 ${trade.buy??'—'} 視為技術確認。`:'技術資料回補中。');
+    const qmap={in_up:'流入↗漲',in_down:'流入↘跌',out_up:'流出↗漲',out_down:'流出↘跌'};
+    cardVals('#market',1,[cN(p.aflow),qmap[p.quadrant]||p.quadrant||'—',chip.inst_streak==null?'—':(chip.inst_streak>0?'連買'+chip.inst_streak+'日':'連賣'+Math.abs(chip.inst_streak)+'日'),p.volume_ratio??'—']);
+    cardVals('#market',2,[cP(change),cP(p.sector_avg),cP(p.market_pct),cP(p.vs_sector),cP(p.vs_market)]);
+    const mc2=document.querySelectorAll('#market .card')[2];if(mc2){const bd=mc2.querySelector('.badge');if(bd)bd.textContent=(p.vs_sector||0)>=0?'領先':'落後';const nt=mc2.querySelector('.notice');if(nt)nt.textContent=(change!=null&&p.sector_avg!=null&&p.market_pct!=null)?`個股 ${pct(change)}，${(p.vs_sector||0)>=0?'領先':'落後'}族群 ${pct(Math.abs(p.vs_sector||0))}、${(p.vs_market||0)>=0?'領先':'落後'}大盤 ${pct(Math.abs(p.vs_market||0))}。`:'族群／大盤官方資料回補中。'}
+    // 收盤資金象限時序（近5日盤後定調；漲紅跌綠）
+    const QL={in_up:'流入↗漲',in_down:'流入↘跌',out_up:'流出↗漲',out_down:'流出↘跌'};
+    const qh=p.quad_history||[];
+    const qchip=x=>{if(!x||!x.quadrant)return'<span class="timechip">—</span>';const up=/_up$/.test(x.quadrant);return `<span class="timechip" style="background:${up?'var(--red-bg)':'var(--green-bg)'};color:${up?'var(--red)':'var(--green)'}">${QL[x.quadrant]||x.quadrant}</span>`};
+    const c5=document.getElementById('quad-5d');
+    if(c5&&qh.length)c5.innerHTML=qh.slice(0,5).reverse().map(qchip).join('');
+    const cs=document.getElementById('quad-seq');
+    if(cs&&qh.length){const curr=qh[0],prev=qh[1];const rank=q=>((/^in/.test(q||'')?1:0)+(/_up$/.test(q||'')?1:0));const bj=prev?(rank(curr.quadrant)>rank(prev.quadrant)?'改善':rank(curr.quadrant)<rank(prev.quadrant)?'惡化':'持平'):'—';cs.innerHTML=`${qchip(prev)}<span class="arrow">→</span>${qchip(curr)}<span class="badge ${bj==='改善'?'ok':bj==='惡化'?'fail':'blue'}">${bj}</span>`}
+    // 籌碼
+    cardVals('#chips',0,[cN(chip.inst_net_5d_lots),cN(chip.foreign_net_5d),cN(chip.trust_net_5d),cN(chip.dealer_net_5d),cN(chip.margin_change_5d)]);
+    cardVals('#chips',1,[cN(inst20),cN(chip.foreign_net_20d),cN(chip.trust_net_20d),cN(chip.dealer_net_20d),cN(chip.big_holder_delta)]);
+    cardVals('#chips',2,[(dec.missing&&dec.missing.includes('absorption'))?'缺 absorption':'已接入',cN(chip.foreign_net_5d),cN(chip.margin_change_5d),cN(chip.big_holder_delta),cP(change)]);
+    const cc2=document.querySelectorAll('#chips .card')[2];if(cc2){const nt=cc2.querySelector('.notice');if(nt){const seg=[];if(chip.foreign_net_5d!=null)seg.push('外資'+(chip.foreign_net_5d>0?'買超':'賣超'));if(chip.margin_change_5d!=null)seg.push('融資'+(chip.margin_change_5d>0?'增':'減'));if(chip.big_holder_delta!=null)seg.push('大戶'+(chip.big_holder_delta>0?'增':'減'));if(change!=null)seg.push('股價'+(change>0?'漲':'跌'));nt.textContent=seg.length?('承接結論：'+seg.join('、')+'。'):'承接資料回補中。';}}
+    // 四層 / 三角 / 文件三大
+    const MOD=document.querySelectorAll('#validation .module .v');
+    [(score>=75)?'✓ 通過':'待觀察',(dec.missing&&dec.missing.length)?'待補':'✓ 通過','無硬風險',c.stock_type==='engine'?'引擎軌':'攻擊軌',group].forEach((v,i)=>{if(MOD[i])MOD[i].textContent=v});
+    const c1=p.market_pct!=null&&p.market_pct>0,c2=(chip.foreign_net_20d||0)>0,c3=p.ma20!=null&&price>=p.ma20;
+    const db=document.getElementById('doc-badges');if(db)db.innerHTML=`<span class="badge ${c1?'ok':'fail'}">${c1?'✓':'✗'} 大盤</span><span class="badge ${c2?'ok':'fail'}">${c2?'✓':'✗'} 籌碼</span><span class="badge ${c3?'ok':'fail'}">${c3?'✓':'✗'} 技術MA20</span>`;
+    const dn=document.getElementById('doc-note');if(dn)dn.textContent=`三大條件通過 ${[c1,c2,c3].filter(Boolean).length}/3 項。`;
+    const SIG=document.querySelectorAll('#validation .signal');
+    [['A','淨流入',(p.aflow||0)>=0],['B','站均價',price!=null&&p.avg_price!=null&&price>=p.avg_price],['C','技術MA20',c3],['D','強族群',(p.vs_sector||0)>=0],['E','共振',c1&&c2&&c3]]
+    .forEach((t,i)=>{const s=SIG[i];if(!s)return;const st=s.querySelector('.state'),tx=s.querySelectorAll('div')[2];if(st){st.textContent=t[2]?'✓':'✗';st.className='state '+(t[2]?'good':'warn')}if(tx)tx.textContent=t[1]});
+    const VC=document.querySelectorAll('#validation .card')[2];if(VC){const vs=VC.querySelectorAll('.rows .row .v');if(vs[0])vs[0].textContent=group;if(vs[1])vs[1].textContent=(c.soft_risks||[]).join('、')||'—';if(vs[2])vs[2].textContent=trade.advice||'—';const sub=VC.querySelector('.row.full .sub');if(sub)sub.textContent=trade.advice||'依盤後結構判定。'}
+    // 風險（BS 已移除）
+    const RP=document.querySelectorAll('#risk-plan .plan .v');
+    [trade.stop??'—',p.avg_price??'—',trade.buy??'—','需 > 昨'].forEach((v,i)=>{if(RP[i])RP[i].textContent=v});
+    const rd=document.querySelector('#risk .details-content');if(rd)rd.textContent=`跌破停損 ${trade.stop??'—'} 出場；目前${group}，盤後資料判定。`;
+    // 交易計畫
+    const PL=document.querySelectorAll('#plan .plan-grid .plan .v');
+    [trade.buy??'—',trade.stop??'—',trade.t1||trade.t2||'—','需 > 昨',group].forEach((v,i)=>{if(PL[i])PL[i].textContent=v});
+    const pd=document.querySelectorAll('#plan .details-content');if(pd[0])pd[0].textContent=trade.advice||`目前${group}，依盤後結構判定。`;
+    // 勝率
+    const WC=document.querySelectorAll('#winrate .card');
+    if(WC[0]){const vs=WC[0].querySelectorAll('.row .v');[c.win_rate_1d,c.win_rate_5d,score,c.confidence].forEach((v,i)=>{if(vs[i])vs[i].textContent=v??'—'})}
+    if(WC[2]){const vs=WC[2].querySelectorAll('.row .v');if(vs[0])vs[0].textContent=group}
+    const foot=document.querySelector('footer');if(foot)foot.textContent=`資料來源：Shioaji K線／FinMind 盤後籌碼｜資料日 ${p.source_date||'—'}｜產出 ${d.updated_at||'—'}`;
+  }catch(e){
+    const n=document.createElement('div');n.style='position:fixed;top:0;left:0;right:0;background:#fff0f2;color:#e6465a;padding:10px 16px;z-index:99;font-weight:800';n.textContent='真實資料載入失敗：'+e.message;document.body.prepend(n);
+  }
 })();
 </script>
 </body>
 </html>
-
-<script>
-// ══ V1+V2 卡片整合:五大因子/三角驗證/文件四大策略/執行紀律(含全部小字說明) ══
-(async()=>{
-  const API=location.protocol==='file:'?'http://66.42.42.150:8000':'';
-  const code=(new URLSearchParams(location.search).get('code')||document.title.match(/\d{4}/)?.[0]||'').trim();
-  if(!code)return;
-  const E=s=>String(s??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  const sign=(x,d=2)=>x==null?'—':`${Number(x)>0?'+':''}${Number(x).toFixed(d)}`;
-  try{
-    const [state,dcard,scard]=await Promise.all([
-      fetch(API+'/api/state',{cache:'no-store'}).then(r=>r.json()).catch(()=>({})),
-      fetch(API+'/api/dec/card?code='+encodeURIComponent(code),{cache:'no-store'}).then(r=>r.json()).catch(()=>({})),
-      fetch(API+'/api/stock/'+encodeURIComponent(code),{cache:'no-store'}).then(r=>r.json()).catch(()=>({}))
-    ]);
-    const f5b=(scard.card||{}).factors5||{};const pm=scard.post_market||{};
-    const row=(state.stocks||[]).find(x=>String(x.code)===String(code))||{};
-    const sec=(state.sectors||[]).find(x=>x.name===row.sector)||{};
-    const market=state.market||{};
-    const F=row.factors||{},N=row.factor_notes||{};
-    const rel=sec.pct==null||row.change_rate==null?null:Number(row.change_rate)-Number(sec.pct);
-    const stamp=state.updated_at||state.data_date||'';
-    const pend=Object.keys(F).length===0;
-    // 比較表
-    const cmp=document.querySelector('#f5-compare .rows');
-    const cChg=row.change_rate??pm.change_rate,cSec=sec.pct??pm.sector_avg,cMkt=market.index_pct??pm.market_pct,cVr=row.volume_ratio??pm.volume_ratio;
-    const cRel=(cChg!=null&&cSec!=null)?Number(cChg)-Number(cSec):null;
-    if(cmp)cmp.innerHTML=(cChg==null)?'<div class="muted">最近交易日官方資料回補中…</div>':`
-      <table class="compare-table"><thead><tr><th>項目</th><th>個股</th><th>族群</th><th>大盤</th></tr></thead><tbody>
-      <tr><td>漲跌幅</td><td>${sign(cChg)}%</td><td>${sign(cSec)}%</td><td>${sign(cMkt)}%</td></tr>
-      <tr><td>量能(量比)</td><td>${cVr??'—'}</td><td>${sec.flow_score!=null?sign(sec.flow_score,1):'—'}</td><td>—</td></tr>
-      <tr><td>相對強度</td><td>${cRel==null?'—':sign(cRel)+' pp'}</td><td>vs 族群</td><td>vs 大盤 ${cMkt==null||cChg==null?'—':sign(cChg-cMkt)+'pp'}</td></tr>
-      </tbody></table><div class="muted" style="margin-top:6px">資料時間 ${E(stamp)}</div>`;
-    // 五大因子 + 小字說明
-    const DEF=[['trend','趨勢',25],['volume','量能',25],['rs','相對強度',20],['chip','籌碼',20],['sector','族群',10]];
-    const useEngine=Object.keys(F).length>0;
-    const FF=useEngine?F:(f5b.factors||{}),NN=useEngine?N:(f5b.notes||{});
-    const srcLabel=useEngine?'盤中決策引擎(每輪重算)':(f5b.source||'最近交易日官方收盤＋FinMind 盤後籌碼');
-    const dBadge=x=>x?`<span class="d-badge">📅 ${String(x).slice(5).replace('-','/')}</span>`:'';
-    const srcTag=document.querySelector('#factors5 .source');if(srcTag)srcTag.innerHTML=E(srcLabel)+dBadge(useEngine?(state.updated_at||'').slice(0,10):f5b.data_date);
-    // 每區塊標題壓資料日期:規範=就算前一天也要有值+日期,不准空白
-    const chipD=(scard.card&&scard.card.chip)||{};
-    const secDates={'#market':pm.source_date||scard.data_date,'#chips':chipD.source_date||scard.data_date,'#validation':scard.data_date,'#risk':scard.data_date,'#plan':pm.source_date||scard.data_date,'#summary':scard.data_date};
-    for(const [sel,dt] of Object.entries(secDates)){const s=document.querySelector(sel+' .section-head .source');if(s&&dt)s.innerHTML=E(s.textContent)+dBadge(dt);}
-    const relN=document.querySelector('.notice');if(relN&&pm.rel_date)relN.insertAdjacentHTML('beforeend',` ${dBadge(pm.rel_date)}`);
-    const fbox=document.getElementById('f5-factors');
-    if(fbox)fbox.innerHTML='<div class="f5-grid">'+DEF.map(([k,lab,max])=>{
-      const v=FF[k],note=NN[k];
-      const w=v==null?0:Math.min(100,Number(v)/max*100);
-      return `<div class="f5-cell"><div class="f5-t"><span>${lab}</span><b>${v??'—'} / ${max}</b></div>
-        <div class="f5-bar"><i style="width:${w}%"></i></div>
-        <div class="f5-n">${E(note||'官方資料回補中')}</div></div>`;
-    }).join('')+`<div class="f5-cell"><div class="f5-t"><span>AI 總分</span><b>${row.ai_score??f5b.score??'—'} / 100</b></div><div class="f5-bar"><i style="width:${Math.min(100,Number(row.ai_score??f5b.score??0))}%"></i></div><div class="f5-n">五大因子加總；${E(srcLabel)}</div></div>`+'</div>';
-    // 最終結論
-    const act=row.action||'obs';
-    const LBL={buy:'進場訊號',watch:'高潛力觀察',sell:'出場/風險',obs:'僅觀察'};
-    const RSN={buy:'站上均價、量價同向，符合進場條件。',watch:'結構到位，等量能與法人蓋章。',sell:'跌破停損 / 假紅背離，紀律出場。',obs:'無明顯訊號，持續觀察。'};
-    const con=document.getElementById('f5-conclusion');
-    if(con)con.innerHTML=`<div class="section-title" style="font-size:14px;margin-bottom:6px">📌 最終結論</div>
-      <div style="font-weight:900">${E(row.event_class||LBL[act]||act)}</div>
-      <div style="margin-top:4px">${E(row.reason||RSN[act]||'')}</div>
-      <div class="muted" style="margin-top:6px;font-size:12px">操作：${E(row.operation||(dcard.trade&&dcard.trade.advice)||'列入觀察，等量能與法人蓋章再進場。')}</div>`;
-    // 執行紀律(含小字)
-    const dis=document.getElementById('f5-discipline');
-    if(dis)dis.innerHTML=`<div class="section-title" style="font-size:14px;margin-bottom:6px">🛡 執行紀律</div>
-      <div class="rows"><div class="row"><div class="k">建議停損</div><div class="v">${row.suggested_stop??(dcard.trade&&dcard.trade.stop)??'—'}</div></div>
-      <div class="row"><div class="k">內外盤 BS</div><div class="v">${row.bs!=null?row.bs+'%':'—'}</div></div></div>
-      <div class="muted" style="font-size:12px;line-height:1.6;margin-top:6px">📝 跌破此價代表進場理由失效，紀律出場 — 通常設在均線下緣或前低${row.bs!=null?` ｜ 全場累積外盤買入佔 ${row.bs}% — ${row.bs>=55?'買盤佔優':row.bs<=45?'賣盤略佔優，留意反轉':'買賣力道接近'}`:''}</div>`;
-    // 三角交叉驗證
-    const tri=row.triangulation||{},log=tri.log||{};
-    const tbox=document.getElementById('f5-triangle');
-    if(tbox)tbox.innerHTML=`<div class="section-title" style="font-size:14px;margin-bottom:6px">🔺 三角交叉驗證</div>
-      <div style="font-weight:900">${E(tri.verdict||'等待盤中驗證')} ${E(tri.confidence||'')}</div>
-      ${tri.conflict?`<div class="muted" style="margin-top:4px">${E(tri.conflict)}</div>`:''}
-      <div class="muted" style="font-size:12px;line-height:1.7;margin-top:6px">${[...(log.negative||[]).map(x=>'✗ '+x),...(log.positive||[]).map(x=>'✓ '+x),...(log.neutral||[]).map(x=>'– '+x)].map(E).join('<br>')||'尚無三角驗證資料（盤中引擎產出）'}</div>
-      ${log.negative||log.positive?`<div class="muted" style="font-size:12px;margin-top:4px">${(log.negative||[]).length} 反向 vs ${(log.positive||[]).length} 正向</div>`:''}`;
-    // 文件四大策略
-    const doc=row.doc_strategy||{};
-    const dbox=document.getElementById('f5-doc');
-    const passN=['c1_market','c2_chip','c3_tech','c4_bs'].filter(k=>doc[k]).length;
-    if(dbox)dbox.innerHTML=`<div class="section-title" style="font-size:14px;margin-bottom:6px">📋 文件四大策略 <span class="muted">${doc.score??'—'}分</span></div>
-      <div style="font-weight:800">${doc.c1_market?'✓':'✗'} 大盤 ｜ ${doc.c2_chip?'✓':'✗'} 籌碼 ｜ ${doc.c3_tech?'✓':'✗'} 技術MA20 ｜ ${doc.c4_bs?'✓':'✗'} BS盤</div>
-      <div class="muted" style="font-size:12px;margin-top:6px">📝 四大條件過 ${passN}/4 項 — ${passN===4?'全數通過，符合文件標準':passN===0?'全數未過，不符合文件標準，跳過':'部分通過，等待其餘條件蓋章'}</div>`;
-  }catch(e){console.warn('factors5',e);}
-})();
-</script>
-
-<style>
-/* ══ MLS 卡片頁字級規範(檔尾統一,消除忽大忽小) ══ */
-.identity-row .name,.brand{font-size:20px!important}
-.identity-row .code{font-size:14px!important}
-.stars{font-size:18px!important}
-.quick .v{font-size:18px!important}.quick .k{font-size:11px!important}
-.decision-title{font-size:22px!important}.decision-sub{font-size:12px!important}
-.factor-top{font-size:12px!important}.factor-score{font-size:22px!important}
-.section-title{font-size:16px!important}.source{font-size:11px!important}
-.rows .k{font-size:12px!important}.rows .v{font-size:13px!important}
-.card{font-size:13px}
-.ai-title{font-size:18px!important}
-.gate .big,.funnel-step .big{font-size:15px!important}
-.evidence-card .v{font-size:16px!important}.evidence-card .k{font-size:11px!important}
-.notice{font-size:12px!important;line-height:1.7}
-table{font-size:13px}
-h1,h2,h3{line-height:1.3}
-</style>
-<style>
-/* ══ MLS 卡片頁密度規範:間距減半＋寬屏雙欄,兩屏內看完 ══ */
-.section{margin-bottom:10px!important}
-.section-head{padding:10px 14px!important}
-.section-body{padding:10px 14px!important}
-.card{padding:10px!important}
-.rows .row{padding:5px 0!important}
-.hero{padding:14px 16px!important}
-.hero .stars{margin:4px 0!important}
-.quick{padding:8px 10px!important}
-.data-grid{gap:8px!important}
-.notice{margin-top:8px!important;padding:8px 10px!important}
-#f5-factors{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
-#f5-conclusion,#f5-discipline,#f5-triangle,#f5-doc{margin-top:8px!important}
-@media(min-width:1100px){
-  #stock5483{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
-  #stock5483>.hero,#stock5483>.toolbar,#stock5483>#factors5{grid-column:1/-1}
-}
-.toolbar{margin:8px 0!important;padding:6px 0!important}
-</style>
-
-<style>
-/* ══ 五大因子區 scoped 版面(取代先前補丁) ══ */
-#factors5 .f5-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-@media(max-width:900px){#factors5 .f5-grid{grid-template-columns:repeat(2,1fr)}}
-.f5-cell{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff;min-width:0}
-.f5-t{display:flex;justify-content:space-between;align-items:baseline;font-size:12px;color:var(--muted)}
-.f5-t b{font-size:16px;color:var(--ink,#182033)}
-.f5-bar{height:5px;background:#edf0f5;border-radius:9px;overflow:hidden;margin:7px 0 6px}
-.f5-bar i{display:block;height:100%;background:#6366f1}
-.f5-n{font-size:11px;color:var(--muted);line-height:1.55;word-break:break-word}
-.f5-two{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
-@media(max-width:900px){.f5-two{grid-template-columns:1fr}}
-.f5-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff;min-width:0;font-size:13px;line-height:1.6}
-.f5-card .section-title{font-size:14px!important;margin-bottom:4px}
-.f5-card .rows .row{padding:3px 0!important;border:0!important}
-</style>
-
-<style>.d-badge{display:inline-block;font-size:10px;color:#7c8698;background:#eef1f7;border:1px solid #e2e7f0;border-radius:6px;padding:1px 6px;margin-left:6px;vertical-align:middle;white-space:nowrap}</style>
-
-<script>
-// 使用流程統一：個股頁「關閉」一律回決策首頁，不回上一個中間頁。
-window.goHome=function(){location.href=(location.protocol==='file:'?'intraday_decision.html':'/')};
-document.querySelector('.home-btn')&&(document.querySelector('.home-btn').onclick=window.goHome);
-</script>
