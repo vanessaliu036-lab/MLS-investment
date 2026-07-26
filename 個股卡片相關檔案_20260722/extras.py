@@ -522,6 +522,15 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
             snap["aflow_source"] = "Shioaji 官方收盤 snapshot(最近交易日)"
         if snap.get("volume_ratio") in (None, 0) and _own.get("volume_ratio"):
             snap["volume_ratio"] = _own.get("volume_ratio")
+        # dec_health 被判 demo 棄用時(quadrant/quad_history 為空)，用「真實 aflow＋真實收盤
+        # 漲跌」現算當日象限，至少當天真實，不假造歷史。in/out=資金流向、up/down=收盤漲跌。
+        _af, _cr = snap.get("aflow"), snap.get("change_rate")
+        if snap.get("quadrant") is None and _af is not None and _cr is not None:
+            _q = ("in_" if _af >= 0 else "out_") + ("up" if _cr >= 0 else "down")
+            snap["quadrant"] = _q
+            if not snap.get("quad_history"):
+                snap["quad_history"] = [{"date": snap.get("source_date"),
+                                         "quadrant": _q, "chg": _cr}]
         snap.setdefault("sector_avg", _sec_avg)
         snap.setdefault("market_pct", _mkt_pct)
         _chg = snap.get("change_rate")
