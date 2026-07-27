@@ -370,10 +370,56 @@ def latest_review_date():
 
 
 def recent_hit_rates(days=30):
+    """逐日命中率趨勢，含報酬分布（Phase 2 趨勢表用）。"""
     with _lock, _conn() as c:
         return [dict(r) for r in c.execute(
-            """SELECT trade_date, hit_rate FROM review_log
-               ORDER BY trade_date DESC LIMIT ?""", (days,))]
+            """SELECT trade_date, hit_rate, avg_return, median_return,
+                      max_return, min_return, model_version
+               FROM review_log ORDER BY trade_date DESC LIMIT ?""", (days,))]
+
+
+def review_summary(trade_date):
+    """某交易日的驗證彙總（review_log 單列）；無則回 None。"""
+    with _lock, _conn() as c:
+        r = c.execute("SELECT * FROM review_log WHERE trade_date=?",
+                      (trade_date,)).fetchone()
+        return dict(r) if r else None
+
+
+def review_outcomes(trade_date):
+    """某交易日逐檔 T+1 驗證：watch_outcome 併 watchlist 的 source/entry_ref/
+    factor_score/group_at_pick。watch_outcome 尚無資料（改版前的舊日）時，
+    退回 watchlist 逐檔並標 verdict=待驗證，讓歷史日仍可回看名單。"""
+    with _lock, _conn() as c:
+        wl = {r["stock_id"]: dict(r) for r in c.execute(
+            "SELECT * FROM watchlist WHERE trade_date=?", (trade_date,))}
+        oc = [dict(r) for r in c.execute(
+            "SELECT * FROM watch_outcome WHERE trade_date=? ORDER BY stock_id",
+            (trade_date,))]
+    rows = []
+    if oc:
+        for o in oc:
+            w = wl.get(o["stock_id"], {})
+            rows.append({
+                "code": o["stock_id"], "name": o.get("stock_name") or o["stock_id"],
+                "sector": o.get("sector"), "source": w.get("source"),
+                "entry_ref": w.get("entry_ref"), "factor_score": w.get("factor_score"),
+                "group_at_pick": w.get("open_group") or o.get("open_group"),
+                "close_group": o.get("close_group"), "close_price": o.get("close_price"),
+                "change_rate": o.get("change_rate"), "verdict": o.get("verdict"),
+                "note": o.get("note"), "watch_reason": o.get("watch_reason"),
+            })
+    else:
+        for sid, w in sorted(wl.items()):
+            rows.append({
+                "code": sid, "name": w.get("stock_name") or sid,
+                "sector": w.get("sector"), "source": w.get("source"),
+                "entry_ref": w.get("entry_ref"), "factor_score": w.get("factor_score"),
+                "group_at_pick": w.get("group_at_pick"), "close_group": None,
+                "close_price": None, "change_rate": None, "verdict": "待驗證",
+                "note": None, "watch_reason": w.get("reason"),
+            })
+    return rows
 
 
 def save_sector_daily(trade_date, rows):

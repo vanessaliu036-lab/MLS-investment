@@ -1166,13 +1166,33 @@ def api_state():
 
 
 @app.get("/api/review")
-def api_review():
-    """近30日命中率 + 今日統計(前端學習區/複盤頁用)"""
+def api_review(trade_date: str = ""):
+    """盤後驗證頁：某交易日的名單驗證彙總 + 逐檔 T+1 判定 + 逐日趨勢。
+    trade_date 省略時預設「最近一個有驗證資料的交易日」（非 today，避免
+    週末/隔日開啟全空白）。"""
+    day = trade_date or db.latest_review_date() or db.today()
     return JSONResponse({
+        "trade_date": day,
+        "dates": db.review_dates(90),
         "recent_hit_rates": db.recent_hit_rates(30),
+        "summary": db.review_summary(day),
+        "outcomes": db.review_outcomes(day),
         "today": db.today_stats(),
-        "watchlist_today": db.load_watchlist(db.today()),
+        "watchlist_today": db.load_watchlist(day),
     })
+
+
+@app.get("/api/review/dates")
+def api_review_dates():
+    """有驗證資料的交易日清單（給日期選擇器）。"""
+    return JSONResponse({"dates": db.review_dates(90)})
+
+
+@app.get("/api/review/rejects")
+def api_review_rejects(trade_date: str = ""):
+    """某交易日落選池（含卡在哪個因子 / 七因子總分），供落選複盤。"""
+    day = trade_date or db.latest_review_date() or db.today()
+    return JSONResponse({"trade_date": day, "rows": db.load_watch_rejects(day)})
 
 
 @app.get("/api/review/stocks")
