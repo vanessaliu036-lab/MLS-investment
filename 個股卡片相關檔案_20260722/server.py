@@ -1229,6 +1229,86 @@ def api_review_stocks(trade_date: str = ""):
             "note": "價格與訊號取該日最後一筆；命中取 watchlist 收盤驗證欄位"}
 
 
+@app.get("/api/dec/list")
+def api_dec_list(date: str = ""):
+    """統一名單驗證（新邏輯為主軸）：一份名單，一條生命線。
+      dec_watchlist(某 target_date) × dec_verify(T+1蓋章) × 盤中 live(當日)。
+      · target_date == 今天 → 掛即時價/漲跌/aflow，判定「盤中驗證中」（步驟2）。
+      · target_date <  今天 → dec_verify 蓋章結果（真實命中 A / 報酬）（步驟4）。
+    取代舊三套分歧（watch_outcome 空、legacy watchlist 停更），收斂到 dec_*。"""
+    import statistics
+    import decision_v22 as _D
+    try:
+        _D._init_tables()
+    except Exception:
+        pass
+    with db._lock, db._conn() as c:
+        if not date:
+            # 預設落在「≤今天的最新 target_date」：今天→盤中live、過去→蓋章；
+            # 不落在未來的明日名單(全待驗證、看不到東西)。都在未來才退回最新。
+            r = c.execute(
+                "SELECT MAX(target_date) d FROM dec_watchlist WHERE target_date<=?",
+                (db.today(),)).fetchone()
+            date = (r["d"] if r and r["d"] else None)
+            if not date:
+                r2 = c.execute("SELECT MAX(target_date) d FROM dec_watchlist").fetchone()
+                date = (r2["d"] if r2 else None) or ""
+        wl = [dict(x) for x in c.execute(
+            """SELECT * FROM dec_watchlist WHERE target_date=?
+               ORDER BY CASE grade WHEN 'Ready' THEN 0 ELSE 1 END, score DESC""",
+            (date,))]
+        vmap = {str(x["code"]): dict(x) for x in c.execute(
+            "SELECT * FROM dec_verify WHERE target_date=?", (date,))}
+        dates = [r["d"] for r in c.execute(
+            "SELECT DISTINCT target_date d FROM dec_watchlist ORDER BY d DESC LIMIT 90")]
+    is_today = bool(date) and (date == db.today())
+    live = _live_rows_map() if is_today else {}
+    rows, hits, ver_tot, rets = [], 0, 0, []
+    for w in wl:
+        code = str(w["code"])
+        v = vmap.get(code)
+        lv = live.get(code) or {}
+        verified = v is not None
+        success = bool(v and v.get("success"))
+        t1 = v.get("next_close_pct") if verified else None
+        if verified:
+            ver_tot += 1
+            if success:
+                hits += 1
+            if t1 is not None:
+                rets.append(t1)
+            verdict = "命中" if success else "未命中"
+            state = "verified"
+        elif is_today:
+            verdict, state = "盤中驗證中", "live"
+        else:
+            verdict, state = "待驗證", "pending"
+        rows.append({
+            "code": code, "name": w.get("name"), "sector": w.get("sector"),
+            "track": w.get("track"), "grade": w.get("grade"), "score": w.get("score"),
+            "reason": w.get("reason"),
+            "entry_ref": w.get("trigger_price") or w.get("base_close"),
+            "base_close": w.get("base_close"),
+            "price": (lv.get("price") if is_today else None),
+            "change_rate": (lv.get("change_rate") if is_today else t1),
+            "aflow": (lv.get("aflow") if is_today else None),
+            "t1_close_pct": t1,
+            "triggered": (v.get("triggered") if verified else None),
+            "success": (success if verified else None),
+            "hold_ret_pct": (v.get("hold_ret_pct") if verified else None),
+            "verdict": verdict, "state": state, "verified": verified,
+        })
+    median_ret = round(statistics.median(rets), 2) if rets else None
+    return JSONResponse(json.loads(json.dumps({
+        "target_date": date, "is_today": is_today, "rows": rows, "dates": dates,
+        "total": len(wl), "verified_total": ver_tot,
+        "hit_rate": (round(hits / ver_tot * 100, 1) if ver_tot else None),
+        "median_return": median_ret,
+        "note": ("target 是今天→盤中即時跟資金跑；是過去日→T+1 收盤蓋章結果。"
+                 "真實命中＝dec_verify.success（Radar A 級 / 達標）。"),
+    }, default=str, ensure_ascii=False)))
+
+
 @app.get("/api/eod_rank")
 def api_eod_rank():
     """排行插件:盤後榜單(資料源 = EOD 管線 training_samples/sector_daily)。"""
