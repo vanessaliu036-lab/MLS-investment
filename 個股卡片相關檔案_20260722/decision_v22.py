@@ -446,7 +446,11 @@ def _bars_map(code, days=MAX_HOLD_DAYS + 25, injected=None):
     bars = []
     for r in raw:
         cl = r.get("close")
-        bars.append({"date": str(r.get("date"))[:10], "close": cl,
+        # daily_kbars 的日期欄位 key 是 "ts"(groupby ts.dt.date → reset_index),
+        # 不是 "date"。只讀 date 會全 None → verify 永遠比不中 target_date、
+        # dec_verify 永遠空(盤後驗證真實命中恆 0%)。與 stock_card:52 一致做防呆。
+        bars.append({"date": str(r.get("date") or r.get("ts") or r.get("index"))[:10],
+                     "close": cl,
                      "high": r.get("high"), "low": r.get("low", cl)})
     return bars
 
