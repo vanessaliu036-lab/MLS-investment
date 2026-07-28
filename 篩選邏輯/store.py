@@ -44,6 +44,12 @@ TABLE_OWNER: dict[str, str] = {
     "watchlist_pre": "screen_pre",     # 保留:盤前名單=直接讀昨日盤後,不重算
     "watchlist_intraday": "screen_intraday",
     "watchlist_post": "screen_post",
+    "candidate_pool": "screen_post",     # 隔日候選池:盤後產出,盤中只讀
+    "intraday_signal": "screen_intraday", # 盤中燈號
+    # ---- B 鏈專屬表。owner 全歸 B 鏈,A 鏈永遠寫不進來。 ----
+    "b_snapshot": "b_snapshot",       # 盤中時序快照(每5分鐘)
+    "b_discovery": "b_discover",      # 13:20 掃描標記
+    "b_verified": "b_verify",         # 盤後法人驗證結果
     "fetch_log": "store",
     "plugin_status": "store",
     "post_checksum": "store",
@@ -145,6 +151,48 @@ CREATE TABLE IF NOT EXISTS watchlist_post (
 );
 
 -- 稽核:實際打了幾次 API。重開服務後查這張表應該是零筆新紀錄。
+-- 隔日候選池:盤後寬篩產出,隔天盤中只盯這張表
+CREATE TABLE IF NOT EXISTS candidate_pool (
+    data_date TEXT NOT NULL, code TEXT NOT NULL,
+    rank INTEGER, score REAL, track TEXT,
+    trigger_price REAL, entry_rule TEXT,
+    payload TEXT, generated_at TEXT,
+    PRIMARY KEY (data_date, code)
+);
+
+-- 盤中燈號:嚴判結果
+CREATE TABLE IF NOT EXISTS intraday_signal (
+    data_date TEXT NOT NULL, code TEXT NOT NULL,
+    light TEXT, conditions TEXT, note TEXT, updated_at TEXT,
+    PRIMARY KEY (data_date, code)
+);
+
+-- ============ B 鏈專屬表(獨立於 A 鏈,不共用任何表) ============
+
+-- 盤中時序快照:每 5 分鐘從記憶體 buffer 寫一筆。零 API 呼叫。
+CREATE TABLE IF NOT EXISTS b_snapshot (
+    data_date TEXT NOT NULL, code TEXT NOT NULL, slot TEXT NOT NULL,
+    price REAL, change_rate REAL, volume INTEGER,
+    net_active REAL, bid_vol INTEGER, ask_vol INTEGER,
+    created_at TEXT,
+    PRIMARY KEY (data_date, code, slot)
+);
+CREATE INDEX IF NOT EXISTS idx_b_snap ON b_snapshot(data_date, code, slot);
+
+-- 13:20 最終掃描的標記結果
+CREATE TABLE IF NOT EXISTS b_discovery (
+    data_date TEXT NOT NULL, code TEXT NOT NULL,
+    hits INTEGER, criteria TEXT, detail TEXT, scanned_at TEXT,
+    PRIMARY KEY (data_date, code)
+);
+
+-- 盤後法人驗證結果
+CREATE TABLE IF NOT EXISTS b_verified (
+    data_date TEXT NOT NULL, code TEXT NOT NULL,
+    verdict TEXT, inst_net INTEGER, reason TEXT, verified_at TEXT,
+    PRIMARY KEY (data_date, code)
+);
+
 CREATE TABLE IF NOT EXISTS fetch_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     table_name TEXT, code TEXT, data_date TEXT,

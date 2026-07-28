@@ -74,23 +74,33 @@ def _check_list_consistency(db_path: str = "mls.db") -> tuple[bool, str]:
     try:
         import config
         import screen_intraday
+        import screen_post
     except Exception as e:
         return True, f"略過(模組未就緒:{e})"
 
     try:
-        a = screen_intraday.build(config.UNIVERSE, db_path)
-        b = screen_intraday.build(config.UNIVERSE, db_path)
+        # 盤中嚴判(新簽章:build(db_path)):只盯昨日候選池,重複呼叫順序須一致
+        a = screen_intraday.build(db_path)
+        b = screen_intraday.build(db_path)
+        ca = [x["code"] for x in a["items"]]
+        cb = [x["code"] for x in b["items"]]
+        if ca != cb:
+            return False, f"兩次取盤中燈號順序不一致:\n  A={ca[:10]}\n  B={cb[:10]}"
+
+        # 盤後寬篩(新簽章:build(UNIVERSE, db_path)):前 10 一致 + 不超過候選池上限
+        pa = screen_post.build(config.UNIVERSE, db_path)
+        pb = screen_post.build(config.UNIVERSE, db_path)
     except Exception as e:
         return True, f"略過(尚無資料:{type(e).__name__})"
 
-    ta = [x["code"] for x in a["items"][:10]]
-    tb = [x["code"] for x in b["items"][:10]]
+    ta = [x["code"] for x in pa["items"][:10]]
+    tb = [x["code"] for x in pb["items"][:10]]
     if ta != tb:
-        return False, f"兩次取名單前 10 檔不一致:\n  A={ta}\n  B={tb}"
-    if len(a["items"]) != len(config.UNIVERSE):
-        return False, (f"名單檔數 {len(a['items'])} != UNIVERSE {len(config.UNIVERSE)}。"
-                       f"名單必須是全集,不是 broker buffer 子集。")
-    return True, f"名單一致:{len(a['items'])} 檔全集,前 10 檔順序相同"
+        return False, f"兩次取盤後候選池前 10 不一致:\n  A={ta}\n  B={tb}"
+    if len(pa["items"]) > screen_post.POOL_SIZE:
+        return False, f"候選池 {len(pa['items'])} 檔超過上限 {screen_post.POOL_SIZE}"
+    return True, (f"名單一致:盤中燈號 {len(ca)} 檔、盤後候選池 {len(pa['items'])} 檔,"
+                  f"重複呼叫順序相同")
 
 
 def _check_post_checksum(db_path: str = "mls.db") -> tuple[bool, str]:
@@ -133,6 +143,11 @@ def run(fail_fast: bool = True, db_path: str = "mls.db") -> bool:
     print("=" * 60)
     print("MLS preflight 啟動自檢")
     print("=" * 60)
+    # 全新安裝時 DB 還不存在。先建表再自檢,否則「表不存在」會被誤報成檢查失敗。
+    try:
+        store.init_db(db_path)
+    except Exception:
+        pass
     failed = []
     for name, fn in CHECKS:
         try:

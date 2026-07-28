@@ -1,20 +1,21 @@
 """
-screen_post.py — 盤後篩選(獨立計分邏輯之二)
+screen_post.py — 盤後寬篩(產出隔日盤中候選池)
 
-回答的問題:明天可以進哪一檔?
-你的動作:唯一的下單決策依據,依此執行。
+定位:這份清單不是進場名單,是候選池。
+      任務不是「選出會漲的」,是「篩掉明天盤中不值得盯的」。
 
-資料來源(全部今日已定案,沒有推估值):
-  - 今日法人買賣超(交易所公布,當天定案,永不修改)
-  - 今日融資融券增減(同上)
-  - 今日收盤 vs MA20 / MA60
-  - 今日全天量價結構
-  - 今日盤中累積的主動買賣差(收盤後不清空,留在原地當佐證)
+為什麼要寬:
+  錯放的成本很低 —— 隔天盤中還有一關嚴判會淘汰它。
+  漏放的成本很高 —— 沒進候選池,你一整天不會再看它一眼。
+  所以寧可多留幾檔,不要少留。
 
-與 screen_intraday 完全不共用計分函式。那支改壞不影響這支。
+輸出:15-20 檔候選池,每檔預先標好隔日的進場軌與進場條件。
+      判斷前移到盤後,盤中只執行、不臨場決策 —— 這是命中率的來源。
 
-盤前不需要另一套邏輯 —— 盤前就是昨天盤後的結果。
-開機直接讀昨日這份名單,不重算、不重抓、零 API。見 load_for_premarket()。
+資料來源:今日法人蓋章值 + 今日融資 + 今日收盤量價。
+      不使用 aflow(盤中推估值)。盤後已經有真的法人數字,不需要推估。
+
+與 screen_intraday 完全不共用計分函式。這支改壞不影響那支。
 """
 
 from __future__ import annotations
@@ -28,19 +29,58 @@ from phase import Phase, prev_trading_day, today_tw
 
 PLUGIN = "screen_post"
 TABLE = "watchlist_post"
+POOL_TABLE = "candidate_pool"   # 隔日盤中只盯這張表
 
-# 盤後權重與盤中不同:今日法人已定案,權重拉高;盤中推估值降為佐證。
+store.register_table(POOL_TABLE, PLUGIN)
+
+POOL_SIZE = 20          # 候選池上限。寬,不是準。
+DROP_THRESHOLD = 2      # 硬性排除:中兩個條件就砍(已依指示放寬)
+
+
+# ============================================================ 第一層:硬性排除
+#
+# 只問一個問題:這檔明天盤中值得盯嗎?
+# 三態鐵律:任一項 NO_DATA 一律不算數、不計入砍數。
+# 資料沒接入就誤殺 = 你截圖那個「54% 卡在未達門檻」的病,絕不重演。
+
+def hard_drop(bar: dict | None, inst: dict | None) -> tuple[bool, list[str]]:
+    hits: list[str] = []
+
+    # 條件1:爆量收黑且跌破月線 —— 趨勢已壞
+    if bar:
+        c, o, ma20 = bar.get("close"), bar.get("open"), bar.get("ma20")
+        vol, vma = bar.get("volume"), bar.get("vol_ma20")
+        if None not in (c, o, ma20, vol, vma) and vma:
+            if vol > vma * 2.0 and c < o and c < ma20:
+                hits.append("爆量收黑且破月線")
+
+    # 條件2:法人連續賣超 3 日以上 —— 主力在跑
+    if inst and inst.get("consecutive_days") is not None:
+        if inst["consecutive_days"] <= -3:
+            hits.append("法人連賣3日以上")
+
+    # 條件3:量能低於均量 50% —— 沒人玩,盤中不會有戲
+    if bar:
+        vol, vma = bar.get("volume"), bar.get("vol_ma20")
+        if vol is not None and vma:
+            if vol < vma * 0.5:
+                hits.append("量能不足均量五成")
+
+    return len(hits) >= DROP_THRESHOLD, hits
+
+
+# ============================================================ 第二層:候選池排序
+#
+# 權重為「隔天盤中會不會啟動」服務,不是為「今天表現好不好」。
+
 W = {
-    "money_health": 28,    # 資金健康度:核心主軸
-    "inst_today": 25,      # 今日法人買賣超(已定案,不是推估)
-    "inst_streak": 12,     # 法人連買天數
-    "vs_ma20": 12,         # 今收 vs MA20
-    "margin": 10,          # 今日融資增減
-    "absorption": 8,       # 承接品質
-    "aflow_confirm": 5,    # 盤中主動買賣差作為佐證(權重最低,它只是推估)
+    "money_health": 25,   # 資金健康度:核心主軸,錢有沒有停在這
+    "inst_streak": 20,    # 法人連買:隔天有人續抬轎的機率
+    "margin": 15,         # 融資減:籌碼乾淨,隔天不容易被獲利盤壓
+    "vs_ma20": 15,        # 收在月線上:攻擊軌突破的前提位置
+    "absorption": 15,     # 承接品質:昨天有人接,隔天下殺才有支撐
+    "volume": 10,         # 溫和放量加分,爆量扣分
 }
-
-RISK_CAP = 60.0
 
 
 def _norm(x, lo, hi):
@@ -49,11 +89,10 @@ def _norm(x, lo, hi):
     return max(0.0, min(1.0, (x - lo) / (hi - lo))) if hi > lo else 0.0
 
 
-def score_one(code, bar, inst, margin, health, absorb, aflow) -> dict:
+def score_one(code, bar, inst, margin, health, absorb) -> dict:
     pts = 0.0
     reasons: list[str] = []
     missing: list[str] = []
-    capped = False
 
     if health and health.get("score") is not None:
         v = _norm(health["score"], 0, 100)
@@ -63,25 +102,27 @@ def score_one(code, bar, inst, margin, health, absorb, aflow) -> dict:
     else:
         missing.append("資金健康度")
 
-    # 今日法人買賣超 —— 已定案。差幾百張不影響方向判斷,不做交叉驗證。
-    if inst and inst.get("total_net") is not None:
-        net = inst["total_net"]
-        if net > 0:
-            pts += W["inst_today"] * _norm(net, 0, 5000)
-            reasons.append(f"法人買超{net}張")
-        else:
-            pts -= W["inst_today"] * 0.4 * _norm(-net, 0, 5000)
-            reasons.append(f"法人賣超{-net}張")
-    else:
-        missing.append("今日法人")
-
     if inst and inst.get("consecutive_days") is not None:
         d = inst["consecutive_days"]
-        pts += W["inst_streak"] * _norm(d, 0, 5)
-        if d >= 2:
-            reasons.append(f"連買{d}日")
+        if d > 0:
+            pts += W["inst_streak"] * _norm(d, 0, 5)
+            reasons.append(f"法人連買{d}日")
+        elif d < 0:
+            pts -= W["inst_streak"] * 0.3 * _norm(-d, 0, 5)
+            reasons.append(f"法人連賣{-d}日")
     else:
         missing.append("法人連買天數")
+
+    if margin and margin.get("margin_change") is not None:
+        ch = margin["margin_change"]
+        if ch < 0:
+            pts += W["margin"]
+            reasons.append("融資減(籌碼乾淨)")
+        elif ch > 0:
+            pts -= W["margin"] * 0.4
+            reasons.append("融資增")
+    else:
+        missing.append("融資")
 
     close = (bar or {}).get("close")
     ma20 = (bar or {}).get("ma20")
@@ -90,53 +131,70 @@ def score_one(code, bar, inst, margin, health, absorb, aflow) -> dict:
             pts += W["vs_ma20"]
             reasons.append("收在月線上")
         else:
-            capped = True
             reasons.append("收破月線")
     else:
-        missing.append("MA20")
-
-    if margin and margin.get("margin_change") is not None:
-        ch = margin["margin_change"]
-        if ch < 0:
-            pts += W["margin"]
-            reasons.append("融資減(散戶洗出)")
-        elif ch > 0:
-            pts -= W["margin"] * 0.5
-            reasons.append("融資增")
-    else:
-        missing.append("融資")
+        missing.append("MA20")   # 沒接入 = 不計分,絕不判死刑
 
     if absorb and absorb.get("score") is not None:
-        pts += W["absorption"] * _norm(absorb["score"], 0, 100)
+        v = _norm(absorb["score"], 0, 100)
+        pts += W["absorption"] * v
+        if v > 0.6:
+            reasons.append("承接品質強")
     else:
         missing.append("承接品質")
 
-    # 盤中主動買賣差只作佐證。鐵律:它不是法人買賣超。
-    if aflow and aflow.get("net_active") is not None:
-        if aflow["net_active"] > 0:
-            pts += W["aflow_confirm"]
-            reasons.append("盤中主動買超佐證")
-    else:
-        missing.append("盤中主動買賣差")
-
-    # 量價背離
     vol = (bar or {}).get("volume")
     vma = (bar or {}).get("vol_ma20")
-    if close and vol and vma and ma20:
-        if vol > vma * 2.5 and close < (bar.get("open") or close):
-            capped = True
-            reasons.append("爆量收黑")
-
-    score = max(0.0, min(100.0, pts))
-    if capped:
-        score = min(score, RISK_CAP)
+    if vol is not None and vma:
+        r = vol / vma
+        if 1.2 <= r <= 2.0:
+            pts += W["volume"]
+            reasons.append("溫和放量")
+        elif r > 3.0:
+            pts -= W["volume"] * 0.5
+            reasons.append("爆量")
+    else:
+        missing.append("量能")
 
     return {
-        "code": code, "score": round(score, 1),
+        "code": code, "score": round(max(0.0, min(100.0, pts)), 1),
         "close": close, "reasons": reasons, "missing": missing,
-        "risk_capped": capped, "has_data": bar is not None,
+        "has_data": bar is not None,
     }
 
+
+# ============================================================ 第三層:標進場軌
+#
+# 每檔預先標好隔日的進場條件。
+# 隔天盤中你看的不是「誰分數高」,是「哪幾檔到了我預設的進場條件」。
+# 判斷前移到盤後,盤中只執行 —— 命中率的提升來自這裡。
+
+def assign_track(bar: dict | None, item: dict) -> dict:
+    close = (bar or {}).get("close")
+    high = (bar or {}).get("high")
+    ma20 = (bar or {}).get("ma20")
+    vol = (bar or {}).get("volume")
+    vma = (bar or {}).get("vol_ma20")
+
+    on_ma20 = close is not None and ma20 and close >= ma20
+    volumed = vol is not None and vma and vol >= vma * 1.2
+
+    if on_ma20 and volumed:
+        item["track"] = "攻擊軌"
+        item["entry_rule"] = f"等突破昨高 {high},ATR 停損"
+        item["trigger_price"] = high
+    elif on_ma20:
+        item["track"] = "引擎軌"
+        item["entry_rule"] = f"等回月線 {ma20} 支撐 + 法人買進,月線停損"
+        item["trigger_price"] = ma20
+    else:
+        item["track"] = "觀察"
+        item["entry_rule"] = "位置不佳,等盤中訊號,不主動進場"
+        item["trigger_price"] = None
+    return item
+
+
+# ============================================================ 主流程
 
 def build(universe: list[str], db_path: str = "mls.db",
           data_date: _dt.date | None = None) -> dict:
@@ -148,9 +206,7 @@ def build(universe: list[str], db_path: str = "mls.db",
         "margin": lambda: store.read_date("margin", d, db_path),
         "health": lambda: store.read_date("money_health", d, db_path),
         "absorb": lambda: store.read_date("absorption", d, db_path),
-        "aflow": lambda: store.read_date("aflow", d, db_path),
     }, phase=Phase.POST)
-
     persist_status(envs, db_path)
 
     b = envs["bar"].get({}) or {}
@@ -158,51 +214,81 @@ def build(universe: list[str], db_path: str = "mls.db",
     m = envs["margin"].get({}) or {}
     h = envs["health"].get({}) or {}
     ab = envs["absorb"].get({}) or {}
-    af = envs["aflow"].get({}) or {}
 
-    items = [score_one(c, b.get(c), i.get(c), m.get(c), h.get(c), ab.get(c), af.get(c))
-             for c in universe]
-    items.sort(key=lambda x: (-x["score"], x["code"]))
-    for n, it in enumerate(items, 1):
+    kept, dropped = [], []
+    for c in universe:
+        drop, hits = hard_drop(b.get(c), i.get(c))
+        if drop:
+            dropped.append({"code": c, "why": hits})
+            continue
+        it = score_one(c, b.get(c), i.get(c), m.get(c), h.get(c), ab.get(c))
+        kept.append(assign_track(b.get(c), it))
+
+    kept.sort(key=lambda x: (-x["score"], x["code"]))
+    pool = kept[:POOL_SIZE]
+    for n, it in enumerate(pool, 1):
         it["rank"] = n
 
     gen = _dt.datetime.now().isoformat(timespec="seconds")
-    store.upsert_intraday(TABLE, PLUGIN, [{
+
+    # 候選池落地 —— 隔天盤中只讀這張表
+    store.upsert_intraday(POOL_TABLE, PLUGIN, [{
         "data_date": d.isoformat(), "code": it["code"],
         "rank": it["rank"], "score": it["score"],
-        "payload": json.dumps(it, ensure_ascii=False), "generated_at": gen,
-    } for it in items], db_path)
+        "track": it["track"],
+        "trigger_price": it.get("trigger_price"),
+        "entry_rule": it["entry_rule"],
+        "payload": json.dumps(it, ensure_ascii=False),
+        "generated_at": gen,
+    } for it in pool], db_path)
 
-    # 名單定案後存指紋,之後有插件動到就報錯
+    store.upsert_intraday(TABLE, PLUGIN, [{
+        "data_date": d.isoformat(), "code": it["code"],
+        "rank": it.get("rank", 999), "score": it["score"],
+        "payload": json.dumps(it, ensure_ascii=False), "generated_at": gen,
+    } for it in kept], db_path)
+
     try:
         store.snapshot_post(d, db_path)
     except Exception:
         pass
 
+    tracks: dict[str, int] = {}
+    for it in pool:
+        tracks[it["track"]] = tracks.get(it["track"], 0) + 1
+
     return {
         "phase": "POST", "data_date": d.isoformat(),
-        "purpose": f"明日進場清單(資料日 {d})— 依此執行",
-        "actionable": True, "generated_at": gen,
+        "purpose": f"隔日盤中候選池(資料日 {d})— 明天只盯這 {len(pool)} 檔,不是進場名單",
+        "actionable": False,
+        "generated_at": gen,
         "degraded": missing_labels(envs),
-        "items": items,
+        "universe_size": len(universe),
+        "dropped_count": len(dropped),
+        "pool_size": len(pool),
+        "track_breakdown": tracks,
+        "items": pool,
+        "dropped": dropped,
     }
 
 
-def load_for_premarket(db_path: str = "mls.db") -> dict:
-    """
-    盤前開機用。直接讀昨日盤後那份名單,不重算、不重抓、零 API,秒開。
+def load_pool(data_date: _dt.date | None = None, db_path: str = "mls.db") -> dict[str, dict]:
+    """隔天盤中呼叫這支拿候選池。預設讀上一個交易日產出的那份。"""
+    d = data_date or prev_trading_day()
+    return store.read_date(POOL_TABLE, d, db_path)
 
-    盤前就是昨天盤後的結果,再算一次是多餘的。
-    """
+
+def load_for_premarket(db_path: str = "mls.db") -> dict:
+    """盤前開機:直接讀昨日盤後候選池,不重算、不重抓、零 API,秒開。"""
     y = prev_trading_day()
-    rows = store.read_date(TABLE, y, db_path)
+    rows = store.read_date(POOL_TABLE, y, db_path)
     items = [json.loads(r["payload"]) for r in rows.values()]
     items.sort(key=lambda x: x.get("rank", 999))
     return {
         "phase": "PRE", "data_date": y.isoformat(),
-        "purpose": f"今日盯盤名單(資料日 {y})— 昨日盤後結果,開盤後觀察用",
+        "purpose": f"今日盯盤候選池(資料日 {y})— 昨日盤後產出,開盤後只盯這些",
         "actionable": False,
         "generated_at": next(iter(rows.values()))["generated_at"] if rows else None,
-        "degraded": [] if items else ["昨日盤後名單尚未產生"],
+        "degraded": [] if items else ["昨日盤後候選池尚未產生"],
         "items": items,
     }
