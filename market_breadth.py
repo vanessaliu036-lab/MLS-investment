@@ -126,30 +126,60 @@ def diagnose(ratio_pct, index_pct):
 
 
 def compute(rows, index_pct=None):
-    """從盤中 rows 算今日廣度。rows 需含 aflow（None 視為無資料，不計分母）。"""
+    """今日市場廣度（Layer 0）。
+
+    2026-07-28 定案：市場寬度 = 上漲家數 / 總家數（TWSE+TPEx 真實寬度），
+    永不用 aflow 正值占比當寬度（崩盤日 aflow 系統性偏正 → 誤報 84% Risk On）。
+    aflow 占比降級為診斷欄。TWSE 取數失敗才回退舊 aflow 邏輯（並明確標記）。
+    """
+    # aflow 正值占比 —— 僅供診斷，不再當市場寬度
     valid = [r for r in rows if r.get("aflow") is not None]
-    total = len(valid)
-    in_count = sum(1 for r in valid if float(r.get("aflow") or 0) > 0)
-    ratio = round(in_count / total * 100, 1) if total else 0.0
-    # 服務剛重啟時 buffer 可能只有個位數回報，1 檔流入就是 100%，會誤判
-    # Risk On。樣本不足時把占比視為無效（no_data），不落地、不判作戰模式。
-    thin = total < MIN_SAMPLE
+    a_total = len(valid)
+    a_in = sum(1 for r in valid if float(r.get("aflow") or 0) > 0)
+    aflow_ratio = round(a_in / a_total * 100, 1) if a_total else None
+
+    # Layer 0：全市場真實寬度 + Regime
+    try:
+        import market_regime as _mr
+        b = _mr.fetch_breadth()
+    except Exception as exc:
+        print(f"[breadth] market_regime 不可用: {exc}", flush=True)
+        b = None
+
+    if b and b.get("true_breadth") is not None:
+        ratio = round(b["true_breadth"] * 100, 1)
+        reg = _mr.assess(b, index_pct,
+                         aflow_ratio=(aflow_ratio / 100 if aflow_ratio is not None else None))
+        _lvl = {"ON": "risk_on", "NEUTRAL": "neutral", "OFF": "risk_off"}
+        note = reg.get("banner") or (
+            f"全市場真實寬度 {ratio:.0f}%（漲 {b['advancing']} / 跌 {b['declining']}）")
+        return {
+            "total": b["total"], "in_count": b["advancing"],
+            "out_count": b["declining"], "ratio_pct": ratio, "index_pct": index_pct,
+            "level": _lvl.get(reg["risk"], "neutral"),
+            "level_title": reg["title"], "level_advice": reg["advice"],
+            "state": reg["regime"], "state_title": reg["title"], "state_note": note,
+            "aflow_ratio": aflow_ratio,          # 診斷用
+            "breadth_source": "true_market",     # 真實寬度
+            "thin_sample": False, "no_data": False,
+        }
+
+    # 回退：TWSE 失敗 → 用舊 aflow 占比，但明確標記、且封頂中性（不得判 Risk On）
+    ratio = round(a_in / a_total * 100, 1) if a_total else 0.0
+    thin = a_total < MIN_SAMPLE
     code, title, advice = level_of(ratio)
+    if code in ("risk_on", "lean_long"):     # 鐵律：aflow 代理值不得升格 Risk On
+        code, title = "neutral", "中性（aflow 代理）"
+        advice = "真實寬度暫缺，aflow 僅代理、封頂中性，不積極加碼"
     state, state_title, state_note = diagnose(ratio, index_pct)
     return {
-        "total": total,
-        "in_count": in_count,
-        "out_count": total - in_count,
-        "ratio_pct": ratio,
-        "index_pct": index_pct,
-        "level": code,
-        "level_title": title,
-        "level_advice": advice,
-        "state": state,
-        "state_title": state_title,
-        "state_note": state_note,
-        "thin_sample": thin,
-        "no_data": total == 0 or thin,
+        "total": a_total, "in_count": a_in, "out_count": a_total - a_in,
+        "ratio_pct": ratio, "index_pct": index_pct,
+        "level": code, "level_title": title, "level_advice": advice,
+        "state": state, "state_title": state_title,
+        "state_note": "（真實寬度取數失敗，暫以 aflow 代理）" + state_note,
+        "aflow_ratio": ratio, "breadth_source": "aflow_proxy",
+        "thin_sample": thin, "no_data": a_total == 0 or thin,
     }
 
 

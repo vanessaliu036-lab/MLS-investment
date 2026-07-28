@@ -13,11 +13,18 @@ from .intraday_filter import (
 )
 
 
-def local_explain(s: StockSnap, regime: Optional[str] = None) -> str:
-    """純規則產生一行解讀，確保沒有 API key 時仍有結果。"""
+def local_explain(s: StockSnap, regime: Optional[str] = None,
+                  group: Optional[str] = None) -> str:
+    """純規則產生一行解讀，確保沒有 API key 時仍有結果。
+
+    判語（真攻擊／強惜售）一律跟著「實際分類 group」走，不照象限方向亂喊：
+    分數沒到門檻（group != 可操作）就只講方向＋為何列觀察，絕不寫「真攻擊」，
+    避免「白話說真攻擊、標籤卻是觀察」的矛盾。group 未傳入時退回 all_pass 判斷。
+    """
     result = passes_filters(s, regime=regime)
     quadrant = proxy_quadrant(s.aflow, s.change_rate)
     intensity = aflow_intensity(s.aflow, s.total_volume)
+    qualified = (group == "可操作") if group is not None else result["all_pass"]
 
     if result["extreme"]:
         direction = "跌停" if s.change_rate < 0 else "漲停"
@@ -25,14 +32,19 @@ def local_explain(s: StockSnap, regime: Optional[str] = None) -> str:
                 "訊號降級不可信，先觀察。")
 
     if quadrant == "真攻擊":
-        head = f"漲{s.change_rate:+.1f}% 且買盤積極（aflow {s.aflow:+,}），屬真攻擊。"
-        tail = "條件全過，可列入追蹤。" if result["all_pass"] else "尚未全過，追高留意風險。"
-    elif quadrant == "惜售":
-        if intensity is not None and intensity >= 10:
-            head = f"跌{s.change_rate:.1f}% 但有承接（吸籌佔比 {intensity:.1f}%），屬強惜售。"
-            tail = "可列入跌深反彈觀察，需配合停損。"
+        if qualified:
+            head = f"漲{s.change_rate:+.1f}% 且買盤積極（aflow {s.aflow:+,}），力道達標，屬真攻擊。"
+            tail = "可列入進場追蹤。"
         else:
-            head, tail = "下跌中有低接但力道普通。", "先觀察。"
+            head = f"漲{s.change_rate:+.1f}% 且有主動買超（aflow {s.aflow:+,}），方向偏多。"
+            tail = "但買盤力道不足、未達進場門檻，僅列觀察。"
+    elif quadrant == "惜售":
+        if qualified:
+            pct = f"（吸籌佔比 {intensity:.1f}%）" if intensity is not None else ""
+            head = f"跌{s.change_rate:.1f}% 但大單承接{pct}，力道達標，屬強惜售。"
+            tail = "可列入跌深反彈進場，需配合停損。"
+        else:
+            head, tail = f"跌{s.change_rate:.1f}% 有低接但力道不足。", "未達進場門檻，僅列觀察。"
     elif quadrant == "假紅":
         head, tail = f"漲{s.change_rate:+.1f}% 但資金流出，屬假紅。", "留意拉回，避免追高。"
     else:

@@ -23,7 +23,7 @@ body{visibility:hidden!important}body.ready{visibility:visible!important}
     <div class="bh-col">
       <!-- Hero -->
       <div class="bh-card bh-hero">
-        <div class="bh-eyebrow">市場資金廣度 · aflow &gt; 0</div>
+        <div class="bh-eyebrow">市場真實寬度 · 漲跌家數</div>
         <div class="bh-hero-main">
           <span class="bh-num" id="bhRatio">—</span>
           <span class="bh-risk" id="bhRisk">—</span>
@@ -204,6 +204,9 @@ function renderRadarGroups(body,groups){
 }
 function renderTomorrowGroups(body,rows,fallback){const groups={};for(const x of rows){const k=x.sector||'其他';(groups[k]??=[]).push(x);}body.innerHTML=`<div class="filter-note"><b>篩選說明：</b>固定 51 檔觀察池；盤後使用今日法人、融資、收盤與盤中累積資料，產出明日進場名單。盤後結果只改變狀態、排序與訊號，不移除固定池成員。<br><b>資料時間：</b>${esc(dataStamp(window._tomorrowUpdated))}</div><div class="watch-groups">${Object.entries(groups).map(([sector,stocks])=>{const changes=stocks.map(x=>Number(x.change_rate)).filter(Number.isFinite),avg=changes.length?changes.reduce((a,b)=>a+b,0)/changes.length:null;return `<section class="watch-group"><div class="watch-group-head"><div><h3>${esc(sector)}</h3><div class="watch-group-summary">盤後族群平均漲跌 <b class="${cls(avg)}">${avg==null?'待盤後資料':(avg>0?'+':'')+avg.toFixed(2)+'%'}</b></div></div><span>${stocks.length} 檔</span></div><div class="watch-stock-head"><span>代碼</span><span>名稱</span><span class="watch-sector">族群</span><span>現價</span><span>漲跌%</span><span>aflow</span><span>狀態</span></div><div class="watch-stock-list">${stocks.map(x=>{const code=x.code||x.stock_id,ch=x.change_rate;const flow=x.aflow!=null?fmt(x.aflow):'待收盤蓋章';return `<button class="watch-stock" onclick="closePanel();openStock('${code}')"><span class="watch-cell left"><strong>${esc(code||'—')}</strong></span><span class="watch-cell left"><strong>${esc(x.name||x.stock_name||'—')}</strong></span><span class="watch-cell left watch-sector">${esc(x.sector||sector)}</span><span class="watch-cell">${x.price??'—'}</span><span class="watch-cell ${cls(ch)}">${ch==null?'—':(ch>0?'+':'')+ch+'%'}</span><span class="watch-cell">${flow}</span><span class="watch-cell watch-status"><span class="pill">${esc(x.tier||'待盤後產出')}</span></span></button>`;}).join('')}</div></section>`;}).join('')||'<div class="watch-empty">盤後數據尚未更新，暫時無法篩選明日觀察清單；每日 18:00 後自動更新。</div>'}</div>`}
 async function openPanel(kind){
+  // 舊「明日觀察清單/20XX名單」讀 legacy /api/funnel(停更、07-24 尚未開盤破頁)，
+  // 與盤後驗證的名單是同一份東西 → 收斂：一律導向統一名單驗證頁(讀 dec_list)。
+  if(kind==='tomorrow'){document.querySelector('#sidePanel').hidden=true;_rvTab='watch';_rvDate='';return openFeature('review');}
   const p=document.querySelector('#sidePanel'),title=document.querySelector('#sideTitle'),status=document.querySelector('#sideStatus'),body=document.querySelector('#sideBody');
   document.querySelector('#featurePanel').hidden=true;
   document.querySelector('#stockDetail').hidden=true;
@@ -979,7 +982,7 @@ function renderBreadth(b){
   const ring=q('#bhRing');if(ring){ring.style.setProperty('--pct',(pct!=null?Math.max(0,Math.min(100,pct)):0).toFixed(1)+'%');ring.style.setProperty('--bh-ring',cool?'var(--bh-orange)':'var(--bh-green)');}
   T('#bhRingPct',pct!=null?pct.toFixed(0)+'%':'—');
   T('#bhHeadline',(b.level_advice||'—'));
-  T('#bhSub',b.total?`51 檔中約 ${b.in_count} 檔主動買超、${b.out_count} 檔流出（有效樣本 ${b.total} 檔）。占比＝資金水位，不是個股進場訊號。`:'資料樣本不足，暫以最近一日判讀。');
+  T('#bhSub',b.total?`全市場 ${b.in_count} 檔上漲、${b.out_count} 檔下跌（共 ${b.total} 檔）。真實寬度＝上漲家數占比，非 aflow 推估。`:'資料樣本不足，暫以最近一日判讀。');
   T('#bhMode',BH_MODE[lv]||'—');T('#bhPos',BH_POS[lv]||'—');T('#bhNext',BH_NEXT[lv]||'—');
   T('#bhP1Title',(pct!=null?pct.toFixed(0)+'% ':'')+'對操盤的完整意義');
   T('#bhP1Sub',lv==='risk_on'?'資金流入占比 >70%，市場進入 Risk On。':(lv==='risk_off'?'資金流入占比 <30%，市場進入 Risk Off。':'資金流入占比中段，選股不選市。'));
@@ -1025,7 +1028,7 @@ function renderBreadth(b){
 }
 async function loadBreadth(embedded){
   try{
-    let b=embedded;
+    let b=null;   // Layer 0：一律用 /api/market-breadth 現算真實寬度，不吃 intraday-test 快照舊值
     if(!b){const r=await fetch(API_BASE+'/api/market-breadth',{cache:'no-store'});b=await r.json()}
     renderBreadth(b);
   }catch(e){console.error('loadBreadth err:',e)}

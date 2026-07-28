@@ -335,7 +335,9 @@ def _row(raw):
         "reason": seven["reason"], "all_pass": seven["group"] == "可操作",
         "extreme": abs(change) >= 9.0,
     }
-    explanation = ai_explain.local_explain(snap, regime=_current_regime())
+    # 白話判語跟著實際分類 group 走：沒進「可操作」就不會被說成真攻擊/強惜售。
+    explanation = ai_explain.local_explain(snap, regime=_current_regime(),
+                                           group=seven["group"])
     _sec = getattr(config, "SECTOR_MAP", {}).get(code)
     return {
         "code": code,

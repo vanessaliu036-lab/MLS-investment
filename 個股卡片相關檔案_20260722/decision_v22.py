@@ -465,6 +465,12 @@ def verify_pending(injected_bars=None, today=None):
       模擬持有 = 觸發價進場,收盤跌破進場日低點出場,上限 MAX_HOLD_DAYS 日
     """
     tdate = today or _today()
+    # 時序鐵律：只在「目標日已收盤」後才驗，盤中不准提早蓋章。
+    #   target < 今天 → 一定已收盤；target == 今天 → 需過 13:30 收盤。
+    # 否則盤中(如早上10:30)搶先用當下價蓋章，之後不再更新 → 判定失真
+    #   (例:漲停股在早盤還沒漲上來就被判未命中)。injected 走測試路徑，不設限。
+    _now = datetime.now(TW_TZ)
+    _after_close = (_now.hour, _now.minute) >= (13, 30)
     with db._lock, db._conn() as c:
         pend = [dict(r) for r in c.execute("""
           SELECT w.* FROM dec_watchlist w
@@ -472,6 +478,9 @@ def verify_pending(injected_bars=None, today=None):
           WHERE v.code IS NULL AND w.target_date <= ?""", (tdate,))]
     done = []
     for w in pend:
+        if (injected_bars is None and w["target_date"] == tdate
+                and not _after_close):
+            continue          # 目標日=今天但尚未收盤 → 盤中連動、暫不蓋章
         inj = (injected_bars or {}).get(w["code"])
         bars = _bars_map(w["code"], days=60, injected=inj)
         idx = next((i for i, b in enumerate(bars)
