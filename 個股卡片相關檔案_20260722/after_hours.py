@@ -50,6 +50,17 @@ def _radar_snapshot_rows(trade_date):
         return []
 
 
+def _sector_medians(radar_rows):
+    """從 radar 快照 rows 算各族群中位漲幅（收盤驗證缺 last_state.sectors 時用）。
+    回傳 [{name, pct}]，與 verify_today 只用 name/pct 相容。"""
+    by = {}
+    for r in radar_rows:
+        cr, sec = r.get("change_rate"), r.get("sector")
+        if cr is not None and sec:
+            by.setdefault(sec, []).append(cr)
+    return {sec: round(statistics.median(v), 2) for sec, v in by.items()}
+
+
 def select_radar_watchlist(radar_rows, resilient_rows, limit=10):
     """名單來源 = Radar 優先、Resilient 補足（不 union）。純函式。
 
@@ -313,6 +324,21 @@ def verify_today(snaps, sectors, today_signals_codes, strong_codes):
     wl = db.load_watchlist(tdate)
     snap_by = {str(s.get("code")): s for s in (snaps or [])}
     sec_pct = {x.get("name"): x.get("pct") for x in (sectors or [])}
+    # 盤後 18:00 時 last_state._snaps 常為空 → 收盤價從 radar 快照補
+    # （intraday_live_snapshot.json，Phase 4 已證實可靠、含 change_rate）。
+    # 缺哪補哪：既有 snaps 優先，未覆蓋的股用快照收盤補上；族群中位同理。
+    radar_rows = _radar_snapshot_rows(tdate)
+    if radar_rows:
+        for r in radar_rows:
+            code = str(r.get("code"))
+            if code not in snap_by:
+                snap_by[code] = {
+                    "code": code, "change_rate": r.get("change_rate"),
+                    "price": r.get("price"), "high": r.get("high"),
+                    "volume_ratio": r.get("volume_ratio"),
+                    "group": r.get("group"), "aflow": r.get("aflow")}
+        if not sec_pct:
+            sec_pct = _sector_medians(radar_rows)
 
     hit = 0
     returns = []
