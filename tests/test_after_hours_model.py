@@ -81,8 +81,39 @@ def test_verify_today_integration():
     assert oc["9999"]["verdict"] == "相容命中"
 
 
+def test_observe_four_state():
+    """§9-C radar 觀察四狀態；缺 high 退回 A/B/C；可操作不受影響。"""
+    j = ah.judge_watchlist_row
+    def v(*a, **k):
+        x = j(*a, **k)
+        return (x[0], x[1])
+    assert v("radar", 2.5, 1.0, group="觀察", high=105, entry_ref=100) == ("突破延續", True)
+    assert v("radar", 0.5, 1.0, group="觀察", high=101, entry_ref=100) == ("突破站穩", False)
+    assert v("radar", -1.0, 1.0, group="觀察", high=101, entry_ref=100) == ("突破失敗", False)
+    assert v("radar", -1.0, 1.0, group="觀察", high=99, entry_ref=100) == ("未突破", False)
+    assert v("radar", 2.5, 1.0, group="觀察", high=None, entry_ref=100) == ("A_突破成功", True)
+    assert v("radar", 2.5, 1.0, group="可操作", high=105, entry_ref=100) == ("A_突破成功", True)
+
+
+def test_reject_factor_scores():
+    """§9-F radar 七因子攤平：對得上的入具名欄，完整 points 存 factors_json。"""
+    import json
+    factors = {"money_health": {"points": None, "max": 15, "status": "盤後驗證"},
+               "net_active": {"points": 18.0, "max": 22, "status": "已接入"},
+               "vs_ma20": {"points": 12.0, "max": 12, "status": "已接入"},
+               "inst_streak": {"points": 4.0, "max": 10, "status": "已接入"},
+               "margin": {"points": None, "max": 8, "status": "盤後驗證"}}
+    fs = ah._reject_factor_scores(factors)
+    assert fs["score_volume"] == 18.0 and fs["score_rs"] == 12.0 and fs["score_chip"] == 4.0
+    jj = json.loads(fs["factors_json"])
+    assert jj["net_active"] == 18.0 and jj["money_health"] is None
+    assert ah._reject_factor_scores(None) == {}
+
+
 if __name__ == "__main__":
     test_judge_split()
     test_select_radar_priority_then_resilient()
     test_verify_today_integration()
+    test_observe_four_state()
+    test_reject_factor_scores()
     print("ALL PASS ✅")

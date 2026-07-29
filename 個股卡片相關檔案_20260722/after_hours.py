@@ -94,13 +94,13 @@ def select_radar_watchlist(radar_rows, resilient_rows, limit=10):
         seen.add(code)
         picks.append(w)
 
-    # radar 落選＝觀察/排除中未入選者，帶因子分數留痕
+    # radar 落選＝觀察/排除中未入選者，帶逐因子分數留痕
     radar_rejects = []
     for r in radar_rows:
         code = str(r.get("code"))
         if code in seen or r.get("group") == "可操作":
             continue
-        radar_rejects.append({
+        rej = {
             "code": code, "name": r.get("name") or code,
             "sector": r.get("sector"), "source": "radar",
             "factor_score": r.get("score"), "score_total": r.get("score"),
@@ -108,16 +108,43 @@ def select_radar_watchlist(radar_rows, resilient_rows, limit=10):
                             else "觀察未達門檻/名額不足"),
             "detail": (r.get("subgroup") or "")
                       + (f"（{r.get('score_pct')}%）" if r.get("score_pct") is not None else ""),
-        })
+        }
+        rej.update(_reject_factor_scores(r.get("score_factors")))
+        radar_rejects.append(rej)
     return picks, radar_rejects
 
 
-def judge_watchlist_row(source, close_change, relative):
+# radar 七因子 → watch_reject 具名欄的「真正對得上」對應（其餘留 NULL）。
+_FACTOR_COL = {"net_active": "score_volume", "vs_ma20": "score_rs",
+               "inst_streak": "score_chip"}
+
+
+def _reject_factor_scores(factors):
+    """把 radar 的 score_factors（{factor:{points,max,status}}）攤成 watch_reject
+    欄位：對得上的填具名欄，完整 points 另存 factors_json 供 Phase 5 分析。"""
+    if not isinstance(factors, dict):
+        return {}
+    out, pts = {}, {}
+    for k, v in factors.items():
+        p = v.get("points") if isinstance(v, dict) else None
+        pts[k] = p
+        col = _FACTOR_COL.get(k)
+        if col and p is not None:
+            out[col] = p
+    out["factors_json"] = json.dumps(pts, ensure_ascii=False)
+    return out
+
+
+def judge_watchlist_row(source, close_change, relative,
+                        group=None, high=None, entry_ref=None):
     """T+1 收盤依 source 分流判定。純函式，門檻取自 config。
     回傳 (verdict, is_hit, ret) —— is_hit 為「真實命中」（headline 命中率用）。
     close_change: 今日(T+1)收盤漲跌%；因 change_rate 基準＝前一交易日收盤
                   ＝選股日收盤(entry_ref)，故它直接就是相對進場的報酬(%)。
     relative: 個股漲幅 − 族群中位漲幅（相對族群強度，pp）。
+    group/high/entry_ref: radar「觀察」來源且有 T+1 最高價時改判四狀態
+      （未突破／突破失敗／突破站穩／突破延續）——收盤會吃掉早盤突破，
+      單看收盤把「有拉過但被殺」誤判失敗不合理；缺 high 時退回 A/B/C。
     source is None → 回 (None, ...)，呼叫端走舊相容判定。"""
     if close_change is None:
         return ("待資料", False, None)
@@ -126,6 +153,18 @@ def judge_watchlist_row(source, close_change, relative):
     if source == "radar":
         succ = getattr(C, "RADAR_T1_SUCCESS", 0.02)
         cont = getattr(C, "RADAR_T1_CONTINUE_MIN", 0.005)
+        if group == "觀察" and high is not None and entry_ref:
+            try:
+                high_break = float(high) > float(entry_ref)
+            except (TypeError, ValueError):
+                high_break = False
+            if rel_ok and ret >= succ:
+                return ("突破延續", True, ret)      # 收盤站穩且續強＝真實命中
+            if rel_ok and ret >= 0:
+                return ("突破站穩", False, ret)      # 收盤守住進場基準
+            if high_break:
+                return ("突破失敗", False, ret)      # 盤中拉過但收盤被殺回
+            return ("未突破", False, ret)            # 根本沒人拉
         if rel_ok and ret >= succ:
             return ("A_突破成功", True, ret)      # 真正有肉
         if rel_ok and ret >= cont:
@@ -286,7 +325,9 @@ def verify_today(snaps, sectors, today_signals_codes, strong_codes):
         rel = (cc - sec_med) if (cc is not None and sec_med is not None) else None
         source = w.get("source")
 
-        verdict, is_hit, ret = judge_watchlist_row(source, cc, rel)
+        verdict, is_hit, ret = judge_watchlist_row(
+            source, cc, rel, group=w.get("group_at_pick"),
+            high=s.get("high"), entry_ref=w.get("entry_ref"))
         if verdict is None:      # 舊格式相容判定（Monday 首日驗週五舊名單用）
             is_hit = code in today_signals_codes or code in strong_codes
             verdict = "相容命中" if is_hit else "相容未命中"

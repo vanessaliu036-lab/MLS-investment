@@ -125,10 +125,15 @@ def init():
         _add_column(c, "watchlist", "factor_score", "REAL")
         _add_column(c, "watchlist", "group_at_pick", "TEXT")
         _add_column(c, "watchlist", "model_version", "TEXT")
-        # watch_reject：逐因子分數（Phase 3/4 由 radar 路徑回填；先建欄開始留痕）
+        # watch_reject：逐因子分數（radar 路徑回填）。radar 七因子 taxonomy 為
+        # money_health/absorption/net_active/vs_ma20/inst_streak/margin，與下列
+        # 通用欄非一一對應；只把「真正對得上」的填入具名欄（volume=net_active、
+        # rs=vs_ma20、chip=inst_streak），完整逐因子 points 另存 factors_json，
+        # 供 Phase 5 離線分析。其餘欄留 NULL 不硬塞（避免標錯）。
         for _c in ("score_trend", "score_volume", "score_chip",
                    "score_sector", "score_rs", "score_ai", "score_total"):
             _add_column(c, "watch_reject", _c, "REAL")
+        _add_column(c, "watch_reject", "factors_json", "TEXT")
         # review_log：報酬分布統計（績效歸因基石）+ 模型版本
         _add_column(c, "review_log", "avg_return", "REAL")
         _add_column(c, "review_log", "median_return", "REAL")
@@ -266,14 +271,14 @@ def save_watch_rejects(trade_date, rows):
               (trade_date,stock_id,stock_name,sector,source,factor_score,
                fail_factor,detail,model_version,
                score_trend,score_volume,score_chip,score_sector,
-               score_rs,score_ai,score_total)
-              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               score_rs,score_ai,score_total,factors_json)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
               (trade_date, r["code"], r.get("name"), r.get("sector"),
                r["source"], r.get("factor_score"), r.get("fail_factor"),
                r.get("detail"), r.get("model_version", ver),
                r.get("score_trend"), r.get("score_volume"), r.get("score_chip"),
                r.get("score_sector"), r.get("score_rs"), r.get("score_ai"),
-               r.get("score_total")))
+               r.get("score_total"), r.get("factors_json")))
 
 
 def load_watch_rejects(trade_date):
