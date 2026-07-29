@@ -161,19 +161,40 @@ async function loadMarketOverview(){
     try{localStorage.setItem('mls_market_overview',JSON.stringify(payload));}catch(e){}
   }catch(e){console.warn('market overview',e)}}
 
-// 「與前天比較」卡展開歷史成交量
+// 「與前天比較」卡展開歷史成交量 — 第一次抓完存 localStorage,跨重整直接讀
+const _volCacheKey='mls_market_turnover_history';
 let _volHistoryCache=null;
+function _loadVolCache(){
+  if(_volHistoryCache)return _volHistoryCache;
+  try{
+    const raw=localStorage.getItem(_volCacheKey);
+    if(raw){const c=JSON.parse(raw);
+      // 只在當天抓的(避免昨日殘留蓋掉今日真實值)
+      if(c&&c.date===marketDate(0)&&c.data){_volHistoryCache=c.data;return _volHistoryCache;}
+    }
+  }catch(e){}
+  return null;
+}
+function _saveVolCache(d){
+  try{localStorage.setItem(_volCacheKey,JSON.stringify({date:marketDate(0),data:d}));}catch(e){}
+}
 async function toggleVolHistory(){
   const panel=document.querySelector('#volHistoryPanel');
   if(!panel)return;
   const isHidden=panel.hidden;
   if(!isHidden){panel.hidden=true;return;}
   panel.hidden=false;
+  // 1) 優先用當日 in-memory 快取
   if(_volHistoryCache){renderVolHistory(_volHistoryCache);return;}
+  // 2) 當日 localStorage 快取(跨重整用)
+  const cached=_loadVolCache();
+  if(cached){renderVolHistory(cached);return;}
+  // 3) 都沒有才打 API
   panel.innerHTML='<div class="muted" style="padding:8px;font-size:11px">讀取中…</div>';
   try{
     const d=await (await fetch(API_BASE+'/api/market/turnover-history?days=10',{cache:'no-store'})).json();
     _volHistoryCache=d;
+    _saveVolCache(d);
     renderVolHistory(d);
   }catch(e){
     panel.innerHTML='<div class="muted" style="padding:8px;font-size:11px">讀取失敗:'+e.message+'</div>';
