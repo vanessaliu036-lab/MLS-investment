@@ -1082,6 +1082,38 @@ def api_market_official(date: str = None):
         return JSONResponse({"error": f"官方源讀取失敗:{e}"})
 
 
+@app.get("/api/market/turnover-history")
+def api_market_turnover_history(days: int = 10):
+    """近 N 日大盤成交金額歷史(給「與前天比較」卡展開)。
+    跳過假日/無資料的日,只回有成交金額的交易日。
+    抓取上限 30 日(避免 API 被刷)。
+    """
+    try:
+        import official_source as o
+        from datetime import date as _date, timedelta
+        n = max(1, min(int(days), 30))
+        today = _date.today()
+        out = []
+        for k in range(n + 5):  # 多抓幾天,過濾假日
+            d = today - timedelta(days=k)
+            try:
+                idx = o.market_index(d)
+                t = (idx or {}).get("turnover_100m")
+                if t is not None:
+                    out.append({
+                        "date": idx.get("date") or d.strftime("%Y%m%d"),
+                        "turnover_100m": t,
+                    })
+            except Exception:
+                continue
+            if len(out) >= n:
+                break
+        out.sort(key=lambda x: x["date"], reverse=True)
+        return JSONResponse({"rows": out, "days": len(out), "note": None})
+    except Exception as e:
+        return JSONResponse({"rows": [], "days": 0, "error": f"成交金額歷史讀取失敗:{e}"})
+
+
 @app.get("/healthz")
 async def healthz():
     """容器健康檢查只確認 HTTP event loop 活著，不讀 Shioaji 狀態。"""
@@ -1462,6 +1494,66 @@ def api_watch_stamp(date: str = None):
         return JSONResponse({"ok": True, "stamped": n})
     except Exception as e:
         return JSONResponse({"ok": False, "error": str(e)})
+
+
+# ══════════════════════════════════════════════════════════
+# AB 引擎(8002 localhost-only)反向代理 — 盤後驗證分頁兩鏈資料出口
+#   A 鏈(盤中觀測A)：/ab/watchlist + /ab/verify-stats
+#   B 鏈(盤後驗證B)：/ab/b-discovery + /ab/pool-tomorrow
+# 8002 只綁 127.0.0.1;由 8000 server 端轉,前端零跨域。
+# 唯讀 GET、短逾時;AB 掛掉回 502 讓前端顯示「引擎未就緒」,不拖垮首頁。
+# ══════════════════════════════════════════════════════════
+import urllib.request as _urlreq
+import urllib.parse as _urlparse
+import urllib.error as _urlerr
+
+_AB_BASE = "http://127.0.0.1:8002"
+
+
+def _ab_get(path, params=None):
+    url = _AB_BASE + path
+    if params:
+        q = _urlparse.urlencode({k: v for k, v in params.items() if v is not None})
+        if q:
+            url += "?" + q
+    try:
+        with _urlreq.urlopen(url, timeout=4) as r:
+            data = json.loads(r.read().decode("utf-8"))
+            return JSONResponse(data, status_code=getattr(r, "status", 200))
+    except _urlerr.HTTPError as e:
+        return JSONResponse({"ok": False, "error": f"AB {e.code}", "detail": str(e.reason)}, status_code=502)
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": "AB 引擎未就緒", "detail": str(e)}, status_code=502)
+
+
+@app.get("/ab/watchlist")
+def ab_watchlist(phase: str = None):
+    """A 鏈名單(盤中觀測A)：phase 驅動 — 盤中=screen_intraday 嚴判燈號,盤後=screen_post 產池。"""
+    return _ab_get("/api/watchlist", {"phase": phase})
+
+
+@app.get("/ab/verify-stats")
+def ab_verify_stats(days: int = 30):
+    """A 鏈 Learning 準確度：滾動勝率/報酬(screen_verify)。只顯示準度,不回改當日訊號。"""
+    return _ab_get("/api/verify/stats", {"days": days})
+
+
+@app.get("/ab/b-discovery")
+def ab_b_discovery():
+    """B 鏈今日盤中發現(唯讀)：非進場訊號,待盤後法人驗證。"""
+    return _ab_get("/api/b/discovery")
+
+
+@app.get("/ab/pool-tomorrow")
+def ab_pool_tomorrow():
+    """明日盤中候選池：merge_pool 匯流 A鏈寬篩 ∪ B鏈驗證通過。"""
+    return _ab_get("/api/pool/tomorrow")
+
+
+@app.get("/ab/phase")
+def ab_phase():
+    """AB 引擎當下時段(PRE/INTRADAY/POST/CLOSED)。"""
+    return _ab_get("/api/phase")
 
 
 if __name__ == "__main__":
