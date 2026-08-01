@@ -14,6 +14,7 @@ api.py — 唯一的名單出口
 
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 from fastapi import Body, FastAPI, Query
@@ -119,13 +120,41 @@ def pool_merge():
 
 @app.get("/api/pool/tomorrow")
 def pool_tomorrow():
-    """隔日盤中觀察清單(唯讀):匯流後的候選池,標源(A鏈/雙鏈確認/B鏈新血)。"""
-    rows = store.read_date("candidate_pool", today_tw())
-    items = sorted(rows.values(), key=lambda r: (r.get("rank") or 999, r["code"]))
+    """隔日盤中觀察清單(唯讀):匯流後的候選池,標源(A鏈/雙鏈確認/B鏈新血)。
+    序號一律重排 1..N(不沿用殘留 rank);注入公司名;purpose 講明適用日與資料是否就緒。"""
+    from phase import next_trading_day
+    d = today_tw()
+    rows = store.read_date("candidate_pool", d)
+    ordered = sorted(rows.values(), key=lambda r: (r.get("rank") or 999, r["code"]))
+    items = []
+    for i, r in enumerate(ordered, 1):
+        payload = {}
+        if r.get("payload"):
+            try:
+                payload = json.loads(r["payload"])
+            except Exception:
+                pass
+        items.append({
+            "rank": i, "code": r["code"], "name": config.NAME.get(r["code"]),
+            "score": r.get("score"), "track": r.get("track"),
+            "trigger_price": r.get("trigger_price"), "entry_rule": r.get("entry_rule"),
+            "source": payload.get("source"),
+        })
+    applies = next_trading_day(d).isoformat()
+    scored = [x for x in items if (x.get("score") or 0) > 0]
+    if not scored:
+        # step 4 池生命週期：收盤前明日候選還沒真正篩出（只有 score 0 佔位）→
+        # 盤中回「空白」，不預先決定隔日名單（盤中每小時都在變）。
+        # 收盤後 collect 跑完 screen_post，score 有真值才顯示。
+        return JSONResponse({
+            "data_date": d.isoformat(), "applies_date": applies,
+            "purpose": f"待今日收盤後篩選產出（適用 {applies}）— 盤中不預先決定隔日名單",
+            "actionable": False, "items": [],
+        })
+    purpose = f"適用 {applies}(次一交易日)— {len(scored)} 檔候選,非進場名單"
     return JSONResponse({
-        "data_date": today_tw().isoformat(),
-        "purpose": f"明日盤中候選池 {len(items)} 檔 — 明天只盯這些,非進場名單",
-        "actionable": False, "items": items,
+        "data_date": d.isoformat(), "applies_date": applies,
+        "purpose": purpose, "actionable": False, "items": items,
     })
 
 
@@ -143,6 +172,50 @@ def verify_run():
 def verify_stats(days: int = Query(30, description="滾動交易日窗")):
     """滾動勝率/報酬(分軌)。模型的真正驗證。"""
     return JSONResponse(screen_verify.stats(days))
+
+
+@app.get("/api/verify/history")
+def verify_history(date: str = Query("", description="pool_date;預設最近已驗證日")):
+    """歷史回測(唯讀):某日候選池的「當時入選理由 vs T+1 最終結果」逐檔對照。
+    join pool_outcome(結果:命中/報酬/verdict)＋ candidate_pool(當時 reasons/軌道)。"""
+    import sqlite3
+    conn = sqlite3.connect("mls.db")
+    conn.row_factory = sqlite3.Row
+    dates = [r[0] for r in conn.execute(
+        "SELECT DISTINCT pool_date FROM pool_outcome ORDER BY pool_date DESC")]
+    pd = date or (dates[0] if dates else None)
+    rows = []
+    if pd:
+        oc = {r["code"]: dict(r) for r in conn.execute(
+            "SELECT * FROM pool_outcome WHERE pool_date=?", (pd,))}
+        cp = {r["code"]: dict(r) for r in conn.execute(
+            "SELECT * FROM candidate_pool WHERE data_date=?", (pd,))}
+        for code, o in oc.items():
+            c = cp.get(code, {})
+            payload = {}
+            try:
+                payload = json.loads(c.get("payload") or "{}")
+            except Exception:
+                pass
+            rows.append({
+                "code": code, "name": config.NAME.get(code),
+                "track": o.get("track"), "verdict": o.get("verdict"),
+                "hit": o.get("hit"), "ret_pct": o.get("ret_pct"),
+                "base_close": o.get("base_close"), "next_close": o.get("next_close"),
+                "reasons": payload.get("reasons") or [],
+            })
+        rows.sort(key=lambda r: (0 if r["hit"] == 1 else 1 if r["hit"] == 0 else 2,
+                                 -(r["ret_pct"] if r["ret_pct"] is not None else -999)))
+    conn.close()
+    judged = [r for r in rows if r["hit"] is not None]
+    hits = sum(1 for r in judged if r["hit"] == 1)
+    return JSONResponse({
+        "pool_date": pd, "dates": dates,
+        "denom": len(judged), "hits": hits,
+        "hit_rate": round(hits / len(judged) * 100, 1) if judged else None,
+        "note": "當時入選理由 vs T+1 最終結果；觀察軌不計命中(denom 只含攻擊/引擎軌)",
+        "rows": rows,
+    })
 
 
 @app.get("/api/phase")

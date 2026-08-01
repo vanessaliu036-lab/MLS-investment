@@ -1,0 +1,12 @@
+[Unit]
+Description=每交易日 15:05 台北 觸發盤後第二段（法人籌碼定案後二次篩，定案明日觀察）
+
+[Timer]
+# 台股 13:30 收盤；三大法人買賣超約 15:00 才定案。故第二段排 15:05 台北。
+# 明確指定 Asia/Taipei — 系統時區是 UTC，不寫會變 15:05 UTC = 23:05 台北。
+OnCalendar=Mon..Fri 15:05:00 Asia/Taipei
+Persistent=true
+Unit=mls-screen-stage2.service
+
+[Install]
+WantedBy=timers.target

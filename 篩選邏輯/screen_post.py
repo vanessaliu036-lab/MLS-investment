@@ -24,8 +24,64 @@ import datetime as _dt
 import json
 
 import store
+import config
 from envelope import run_all, persist_status, missing_labels
-from phase import Phase, prev_trading_day, today_tw
+from phase import Phase, prev_trading_day, next_trading_day, today_tw
+
+# collect.py 為重用 mls-v4 取數，把 mls-v4/app 插到 sys.path 最前，`config`
+# 會被撞名成 mls-v4 那支（無 NAME）。screen_post 只靠 config 取 NAME，故此處
+# 從「本檔同層的 config.py」直接讀 NAME，避免撞名 AttributeError。
+_NAME_MAP = None
+
+
+def _name_map():
+    global _NAME_MAP
+    if _NAME_MAP is not None:
+        return _NAME_MAP
+    _NAME_MAP = getattr(config, "NAME", None)
+    if not _NAME_MAP:                      # 撞名成 mls-v4 → 從本地 config.py 讀
+        try:
+            import importlib.util as _ilu
+            from pathlib import Path as _P
+            _p = _P(__file__).resolve().parent / "config.py"
+            _spec = _ilu.spec_from_file_location("_screen_config", _p)
+            _m = _ilu.module_from_spec(_spec)
+            _spec.loader.exec_module(_m)
+            _NAME_MAP = getattr(_m, "NAME", {}) or {}
+        except Exception:
+            _NAME_MAP = {}
+    return _NAME_MAP
+
+
+def _read_regime() -> dict:
+    """Layer 0 真實寬度(TWSE 漲家數/總家數)。取數失敗回 unknown — 不假裝、不當 Risk On。"""
+    try:
+        import market_regime as _mr
+        b = _mr.fetch_breadth()
+        tb = b.get("true_breadth")
+        if tb is None:
+            return {"unknown": True, "risk_off": False}
+        pct = round(tb * 100, 1)
+        return {"breadth_pct": pct, "advancing": b.get("advancing"),
+                "declining": b.get("declining"), "total": b.get("total"),
+                "risk_off": pct < 30, "risk_on": pct >= 70, "unknown": False}
+    except Exception as e:
+        return {"unknown": True, "risk_off": False, "error": str(e)[:80]}
+
+
+def _pool_purpose(applies, pool, regime) -> str:
+    """誠實 purpose:講明適用日、市場狀態、資料是否就緒;不硬寫『只盯這些』的假結論。"""
+    n = len(pool)
+    scored = [it for it in pool if (it.get("score") or 0) > 0]
+    if not scored:
+        return f"適用 {applies}(次一交易日)— 今日資料尚未就緒,{n} 檔候選待收盤更新後才有效"
+    if regime.get("risk_off"):
+        return (f"適用 {applies}(次一交易日)· 市場 Risk Off"
+                f"(真實寬度 {regime.get('breadth_pct')}%,漲 {regime.get('advancing')}/跌 {regime.get('declining')})"
+                f"— 禁新倉,{n} 檔僅追蹤觀察,非進場名單")
+    if regime.get("unknown"):
+        return f"適用 {applies}(次一交易日)— {n} 檔候選,非進場名單(市場寬度取數失敗,待修)"
+    return f"適用 {applies}(次一交易日)— {n} 檔候選,非進場名單"
 
 PLUGIN = "screen_post"
 TABLE = "watchlist_post"
@@ -229,6 +285,19 @@ def build(universe: list[str], db_path: str = "mls.db",
     for n, it in enumerate(pool, 1):
         it["rank"] = n
 
+    # 名稱注入(事實對照,非 mock);缺名則留空,不編造
+    name_map = _name_map()
+    for it in kept:
+        it["name"] = name_map.get(it["code"])
+
+    # Layer 0 閘(鐵律6):Risk Off → 禁新倉,全數降觀察、清進場軌與觸發價
+    regime = _read_regime()
+    if regime.get("risk_off"):
+        for it in pool:
+            it["track"] = "觀察"
+            it["entry_rule"] = "市場 Risk Off·禁新倉,僅追蹤不進場"
+            it["trigger_price"] = None
+
     gen = _dt.datetime.now().isoformat(timespec="seconds")
 
     # 候選池落地 —— 隔天盤中只讀這張表
@@ -257,9 +326,11 @@ def build(universe: list[str], db_path: str = "mls.db",
     for it in pool:
         tracks[it["track"]] = tracks.get(it["track"], 0) + 1
 
+    applies = next_trading_day(d).isoformat()
     return {
-        "phase": "POST", "data_date": d.isoformat(),
-        "purpose": f"隔日盤中候選池(資料日 {d})— 明天只盯這 {len(pool)} 檔,不是進場名單",
+        "phase": "POST", "data_date": d.isoformat(), "applies_date": applies,
+        "regime": regime,
+        "purpose": _pool_purpose(applies, pool, regime),
         "actionable": False,
         "generated_at": gen,
         "degraded": missing_labels(envs),
@@ -285,8 +356,8 @@ def load_for_premarket(db_path: str = "mls.db") -> dict:
     items = [json.loads(r["payload"]) for r in rows.values()]
     items.sort(key=lambda x: x.get("rank", 999))
     return {
-        "phase": "PRE", "data_date": y.isoformat(),
-        "purpose": f"今日盯盤候選池(資料日 {y})— 昨日盤後產出,開盤後只盯這些",
+        "phase": "PRE", "data_date": y.isoformat(), "applies_date": today_tw().isoformat(),
+        "purpose": f"適用今日 {today_tw()} 盤中(資料日 {y} 盤後產出)— 開盤後只盯這些,非進場名單",
         "actionable": False,
         "generated_at": next(iter(rows.values()))["generated_at"] if rows else None,
         "degraded": [] if items else ["昨日盤後候選池尚未產生"],

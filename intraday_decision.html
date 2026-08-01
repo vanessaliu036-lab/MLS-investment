@@ -30,7 +30,7 @@ body{visibility:hidden!important}body.ready{visibility:visible!important}
         </div>
         <h2 class="bh-hero-title" id="bhHeadline">讀取中…</h2>
         <p class="bh-hero-copy" id="bhSub">51 檔中主動買超（aflow&gt;0）的占比＝市場資金水位，不是個股進場訊號。</p>
-        <p class="bh-hero-copy" style="font-size:10px;color:var(--bh-mut);margin-top:6px;border-top:1px dashed var(--bh-line);padding-top:6px">📐 指標口徑：上漲家數 ÷ 全市場 2,360 檔（TWSE 收盤行情表計數，純價格層）</p>
+        <p class="bh-hero-copy" id="bhCaption" style="font-size:10px;color:var(--bh-mut);margin-top:6px;border-top:1px dashed var(--bh-line);padding-top:6px">📐 指標口徑：上漲家數 ÷ 全市場總家數（TWSE＋TPEx 收盤計數，分母含平盤，純價格層）</p>
       </div>
 
       <!-- 圓環 + 四小卡 -->
@@ -38,7 +38,7 @@ body{visibility:hidden!important}body.ready{visibility:visible!important}
         <div class="bh-gauge-wrap">
           <div class="bh-gauge">
             <div class="bh-ring" id="bhRing"><div class="bh-ring-in"><b id="bhRingPct">—</b><span>廣度</span></div></div>
-            <div class="bh-gauge-label">資金參與占比</div>
+            <div class="bh-gauge-label">上漲家數占比（真實寬度）</div>
           </div>
           <div class="bh-mini-grid">
             <div class="bh-mini"><div class="bh-mlabel">操盤模式</div><strong id="bhMode">—</strong><p>市場參與度決定防守或積極切換。</p></div>
@@ -70,8 +70,8 @@ body{visibility:hidden!important}body.ready{visibility:visible!important}
         <p class="bh-csub" id="bhGap" style="font-size:11px;color:var(--bh-navy);font-weight:700;margin-top:6px;padding:6px 8px;background:var(--bh-soft);border-radius:8px">計算差距中…</p>
         <p class="bh-csub" style="font-size:10px;color:var(--bh-mut);margin-top:4px">📐 指標口徑：51 檔固定池中 aflow&gt;0 的占比（Shioaji 盤中逐筆累積，資金層）<br>🔍 <b>「假行情」＝兩指標差距大</b>：左卡「上漲家數 %」與右卡「aflow 流入 %」差距越大 = 越靠少數權值撐盤，漲勢越不健康；兩者接近 = 資金有跟上。</p>
         <div class="bh-case-grid">
-          <div class="bh-case good" id="bhScGood"><div class="bh-clabel">健康行情（範例）</div><div class="bh-cmain">指數 +2%｜流入 71%</div><div class="bh-cdesc">多數股票有主動買盤，漲勢不靠少數權值。</div></div>
-          <div class="bh-case bad" id="bhScBad"><div class="bh-clabel">窄幅行情（範例）</div><div class="bh-cmain">指數 +2%｜流入 26%</div><div class="bh-cdesc">僅 13 檔 aflow&gt;0，指數漲但資金未跟進。</div></div>
+          <div class="bh-case" id="bhScGood"><div class="bh-clabel">資金流入面 · aflow（51 檔資金層）</div><div class="bh-cmain" id="bhScGoodMain">—</div><div class="bh-cdesc" id="bhScGoodDesc">51 檔固定池中 aflow&gt;0 的占比：看「錢」有沒有進場。</div></div>
+          <div class="bh-case" id="bhScBad"><div class="bh-clabel">全市場廣度 · 漲家（價格層）</div><div class="bh-cmain" id="bhScBadMain">—</div><div class="bh-cdesc" id="bhScBadDesc">全市場上漲家數占比：看「漲勢」有沒有全面。</div></div>
         </div>
         <div class="bh-verdict" id="bhStateBox"><strong id="bhStateTitle">—</strong><p id="bhStateNote">等待即時資料判讀目前是不是假行情。</p></div>
       </div>
@@ -139,7 +139,12 @@ function renderMarketOverview(d){
   const delta=t!=null&&pt!=null?((t-pt)/pt*100):null;
   const col=(v,txt)=>v==null?(txt??'—'):`<span class="${cls(v)}">${txt??marketFmt(v)}</span>`;
   const taiexChg=a.change==null?'—':col(a.change,(a.change>0?'+':'')+marketFmt(a.change))+' · '+(a.change_pct==null?'—':col(a.change_pct,(a.change_pct>0?'+':'')+a.change_pct+'%'));
-  marketOverviewBox().innerHTML=`<div class="table-head" style="padding:0 0 10px;border:0"><h3>市場總覽</h3><span class="muted">官方資料 · ${esc(d.date||marketDate(0))}</span></div><div class="market-overview-grid"><div class="market-overview-card"><label>加權指數</label><strong class="${cls(a.change)}">${marketFmt(a.taiex)}</strong><small>${taiexChg}</small></div><div class="market-overview-card"><label>三大法人買賣超（億元）</label><strong class="${cls(i.total_100m)}">${marketFmt(i.total_100m)}</strong><small>外資 ${col(i.foreign_100m)} · 投信 ${col(i.trust_100m)} · 自營 ${col(i.dealer_100m)}</small></div><div class="market-overview-card"><label>今日成交金額</label><strong>${t==null?'—':marketFmt(t)+' 億'}</strong><small>證交所官方大盤統計</small></div><div class="market-overview-card" id="volCompareCard" style="cursor:pointer" role="button" tabindex="0" title="點擊展開近 10 日歷史"><label>與前天成交量比較 <span class="muted" style="font-size:10px;margin-left:4px">▾ 點擊展開</span></label><strong>${direction}</strong><small>前天 ${pt==null?'—':marketFmt(pt)+' 億'}${delta==null?'':' · '+col(delta,(delta>0?'+':'')+delta.toFixed(1)+'%')}</small><div id="volHistoryPanel" hidden style="margin-top:10px"></div></div></div>`;
+  // 加權指數：盤中優先用 Shioaji TSE001 即時值，取不到才退官方 EOD（法人/成交額仍為官方盤後）。
+  const lv=d.live||{},idxLive=lv.index!=null;
+  const idxVal=idxLive?lv.index:a.taiex, idxChgVal=idxLive?lv.index_pct:a.change;
+  const idxChgTxt=idxLive?(lv.index_pct==null?'—':col(lv.index_pct,(lv.index_pct>0?'+':'')+lv.index_pct+'%')+(lv.asof?` · ${esc(lv.asof.slice(11,16))} 即時`:'')):taiexChg;
+  const idxTag=idxLive?'<span style="font-size:10px;color:var(--green);font-weight:800;margin-left:6px">🟢 盤中即時</span>':'';
+  marketOverviewBox().innerHTML=`<div class="table-head" style="padding:0 0 10px;border:0"><h3>市場總覽</h3><span class="muted">法人/成交 官方 · ${esc(d.date||marketDate(0))}</span></div><div class="market-overview-grid"><div class="market-overview-card"><label>加權指數${idxTag}</label><strong class="${cls(idxChgVal)}">${marketFmt(idxVal)}</strong><small>${idxChgTxt}</small></div><div class="market-overview-card"><label>三大法人買賣超（億元）</label><strong class="${cls(i.total_100m)}">${marketFmt(i.total_100m)}</strong><small>外資 ${col(i.foreign_100m)} · 投信 ${col(i.trust_100m)} · 自營 ${col(i.dealer_100m)}</small></div><div class="market-overview-card"><label>今日成交金額</label><strong>${t==null?'—':marketFmt(t)+' 億'}</strong><small>證交所官方大盤統計</small></div><div class="market-overview-card" id="volCompareCard" style="cursor:pointer" role="button" tabindex="0" title="點擊展開近 10 日歷史"><label>與前天成交量比較 <span class="muted" style="font-size:10px;margin-left:4px">▾ 點擊展開</span></label><strong>${direction}</strong><small>前天 ${pt==null?'—':marketFmt(pt)+' 億'}${delta==null?'':' · '+col(delta,(delta>0?'+':'')+delta.toFixed(1)+'%')}</small><div id="volHistoryPanel" hidden style="margin-top:10px"></div></div></div>`;
   // 綁定展開行為
   const volCard=document.querySelector('#volCompareCard');
   if(volCard)volCard.addEventListener('click',()=>toggleVolHistory());
@@ -156,9 +161,13 @@ async function loadMarketOverview(){
     const today=withData[0]||days[0]||{};
     const prev=withData[1]||{};
     const a=today.index||{},i=today.institutional||{},p=prev.index||{};
-    const payload={a,i,t:a.turnover_100m,pt:p.turnover_100m,date:a.date||i.date||marketDate(0)};
+    // 盤中即時加權指數（Shioaji TSE001）；取不到不擋，退官方 EOD。
+    let live=null;
+    try{const lr=await fetch(API_BASE+'/api/market/live-index',{cache:'no-store'}).then(r=>r.json());if(lr&&lr.ok&&lr.index!=null)live=lr;}catch(e){}
+    const payload={a,i,t:a.turnover_100m,pt:p.turnover_100m,date:a.date||i.date||marketDate(0),live};
     renderMarketOverview(payload);
-    try{localStorage.setItem('mls_market_overview',JSON.stringify(payload));}catch(e){}
+    // 快取不存 live（即時值跨重整會過期，避免下次載入先顯示舊即時再跳動）
+    try{localStorage.setItem('mls_market_overview',JSON.stringify({...payload,live:null}));}catch(e){}
   }catch(e){console.warn('market overview',e)}}
 
 // 「與前天比較」卡展開歷史成交量 — 第一次抓完存 localStorage,跨重整直接讀
@@ -234,10 +243,14 @@ async function load(){if(paused)return;try{let r=await fetch(API_BASE+'/api/intr
 async function openFeature(kind){const p=document.querySelector('#featurePanel'),title=document.querySelector('#featureTitle'),status=document.querySelector('#featureStatus'),body=document.querySelector('#featureBody');p.hidden=false;title.textContent=kind==='review'?'盤後驗證':'模型紀錄';status.textContent='讀取中…';body.innerHTML='';try{if(kind==='review'){await openReview();}else{const d=await (await fetch(API_BASE+'/api/roles/review',{cache:'no-store'})).json(),rows=d.rows||[];title.textContent='模型紀錄';status.textContent=`最近審查：${d.date||'尚無紀錄'} · 目前引擎：${(d.engines_now||[]).join('、')||'—'}`;body.innerHTML=`<div class="feature-grid"><div class="feature-card"><label>審查日期</label><strong>${esc(d.date||'—')}</strong></div><div class="feature-card"><label>模型候選</label><strong>${rows.length}</strong></div><div class="feature-card"><label>自動套用</label><strong>${d.auto_apply?'是':'否'}</strong></div></div><div class="feature-table"><div class="table-head" style="padding:0 0 12px;border:0"><h3>角色審查紀錄</h3><button class="danger-btn" onclick="applyModel()">手動套用建議</button></div><table><thead><tr><th>代碼</th><th>目前角色</th><th>建議</th><th>理由</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.code)}</td><td>${esc(x.current_role||x.role)}</td><td>${esc(x.suggest)}</td><td>${esc(x.reason)}</td></tr>`).join('')||'<tr><td colspan="4">尚無模型審查紀錄</td></tr>'}</tbody></table></div>`}}catch(e){status.textContent='讀取失敗：'+e.message;body.innerHTML='<div class="panel" style="padding:18px">目前無法取得資料，請稍後再試。</div>'}}
 async function loadReviewDetails(){try{const d=await (await fetch(API_BASE+'/api/review/stocks',{cache:'no-store'})).json(),rows=d.rows||[],tables=document.querySelectorAll('#featureBody .feature-table');if(!tables.length)return;const box=tables[tables.length-1];box.innerHTML=`<h3>今日觀察個股明細</h3><div class="muted">${esc(d.note||'')}</div><table><thead><tr><th>代碼</th><th>名稱</th><th>族群</th><th>最新訊號</th><th>現價</th><th>漲跌%</th><th>量比</th><th>停損</th><th>驗證</th><th>觀察理由</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.code)}</td><td><b>${esc(x.name)}</b></td><td>${esc(x.sector)}</td><td>${esc(x.action||'—')}</td><td>${x.price??'—'}</td><td class="${cls(x.change_rate)}">${x.change_rate==null?'—':x.change_rate+'%'}</td><td>${x.volume_ratio??'—'}</td><td>${x.suggested_stop??'—'}</td><td>${x.hit?'命中':x.demoted?'降級':'待驗證'}</td><td class="muted">${esc(x.reason)}</td></tr>`).join('')||'<tr><td colspan="10">今日尚無個股資料</td></tr>'}</tbody></table>`}catch(e){console.warn('review stock details',e)}}
 let _rvDate=null,_rvTab='watch';
-async function openReview(){const title=document.querySelector('#featureTitle'),status=document.querySelector('#featureStatus'),body=document.querySelector('#featureBody');title.textContent='盤後驗證';status.textContent='選交易日回看每日結果（預設最近有資料日）';let dates=[],defDate='';try{const dj=await (await fetch(API_BASE+'/api/dec/list',{cache:'no-store'})).json();dates=dj.dates||[];defDate=dj.target_date||'';}catch(e){}if(!_rvDate||(dates.length&&!dates.includes(_rvDate)))_rvDate=defDate||dates[0]||_rvDate||'';const dl=dates.length?dates:(_rvDate?[_rvDate]:[]);const opts=dl.map(x=>`<option value="${esc(x)}"${x===_rvDate?' selected':''}>${esc(x)}</option>`).join('')||'<option>—</option>';const tabs=[['watch','盤中驗證'],['rules','盤後驗證']];body.innerHTML=`<div class="rv-bar"><label class="rv-date">交易日<select id="rvDate">${opts}</select></label><div class="rv-tabs">${tabs.map(([k,l])=>`<button class="rv-tab${k===_rvTab?' on':''}" data-tab="${k}">${l}</button>`).join('')}</div></div><div id="rvBody"><div class="muted" style="padding:20px">讀取中…</div></div>`;const sel=document.querySelector('#rvDate');if(sel)sel.onchange=e=>{_rvDate=e.target.value;renderRvTab();};body.querySelectorAll('.rv-tab').forEach(b=>b.onclick=()=>{_rvTab=b.dataset.tab;body.querySelectorAll('.rv-tab').forEach(x=>x.classList.toggle('on',x===b));renderRvTab();});renderRvTab();}
-function renderRvTab(){if(_rvTab==='reject')_rvTab='watch';if(_rvTab==='rules')loadSwingB();else loadIntradayA();}
+async function openReview(){const title=document.querySelector('#featureTitle'),status=document.querySelector('#featureStatus'),body=document.querySelector('#featureBody');title.textContent='盤後驗證';status.textContent='AB 雙鏈 · 盤中觀測(A) / 盤後候選(B)';if(_rvTab!=='rules')_rvTab='watch';const tabs=[['watch','盤中驗證 A'],['rules','盤後驗證 B'],['history','歷史回測']];body.innerHTML=`<div class="rv-bar"><div class="rv-tabs">${tabs.map(([k,l])=>`<button class="rv-tab${k===_rvTab?' on':''}" data-tab="${k}">${l}</button>`).join('')}</div></div><div id="rvBody"><div class="muted" style="padding:20px">讀取中…</div></div>`;body.querySelectorAll('.rv-tab').forEach(b=>b.onclick=()=>{_rvTab=b.dataset.tab;body.querySelectorAll('.rv-tab').forEach(x=>x.classList.toggle('on',x===b));renderRvTab();});renderRvTab();}
+function renderRvTab(){if(_rvTab==='reject')_rvTab='watch';if(_rvTab==='history')loadHistory();else if(_rvTab==='rules')loadSwingB();else loadIntradayA();}
 async function _abRegimeBanner(chain){let r={};try{r=await (await fetch(API_BASE+'/api/market-breadth',{cache:'no-store'})).json();}catch(e){}if(!r||r.level!=='risk_off')return '';return `<div class="filter-note" style="border-left:4px solid #e08a3c;background:rgba(224,138,60,.10)"><b>⚠ 市場 Risk Off · 真實寬度 ${r.ratio_pct==null?'—':r.ratio_pct+'%'}（漲 ${r.in_count??'—'} / 跌 ${r.out_count??'—'}，共 ${r.total??'—'} 檔）</b>：Layer 0 濾網開啟，${chain} 鏈降頻 — 以下候選一律僅供觀察、非進場依據。</div>`;}
-async function loadIntradayA(){const box=document.querySelector('#rvBody');if(!box)return;box.innerHTML='<div class="muted" style="padding:20px">讀取中…</div>';const banner=await _abRegimeBanner('A');let w={},v={};try{w=await (await fetch(API_BASE+'/ab/watchlist',{cache:'no-store'})).json();}catch(e){}try{v=await (await fetch(API_BASE+'/ab/verify-stats?days=30',{cache:'no-store'})).json();}catch(e){}if(!w||w.ok===false||!Array.isArray(w.items)){box.innerHTML=`<div class="muted" style="padding:20px">A鏈引擎未就緒：${esc((w&&(w.error||w.detail))||'無回應')}</div>`;return;}const items=w.items||[],tb=w.track_breakdown||{},hr=(v&&v.overall_hit_rate);box.innerHTML=`${banner}<div class="feature-grid"><div class="feature-card"><label>時段</label><strong>${esc(w.phase||'—')}</strong></div><div class="feature-card"><label>候選池</label><strong>${w.pool_size??items.length} 檔</strong></div><div class="feature-card"><label>引擎軌 / 觀察</label><strong>${tb['引擎軌']??0} / ${tb['觀察']??0}</strong></div><div class="feature-card"><label>滾動勝率(${(v&&v.window_days)||30}日)</label><strong class="${cls(hr)}">${hr==null?'—':hr+'%'}</strong></div></div><div class="feature-table"><h3>盤中觀測 A · Layer 1（資料日 ${esc(w.data_date||'')} · 適用次一交易日）</h3><div class="muted">${esc(w.purpose||'')}</div><table><thead><tr><th>代碼</th><th>名稱</th><th>分數</th><th>軌道</th><th>收盤</th><th>觸發價</th><th>進場規則</th><th>理由 / 缺資料</th></tr></thead><tbody>${items.map(x=>`<tr style="cursor:pointer"${x.has_data===false?' class="muted"':''} onclick="openStock('${esc(x.code)}')"><td><b>${esc(x.code)}</b></td><td>${esc(x.name||'—')}</td><td>${x.score??'—'}</td><td><span class="pill">${esc(x.track||'—')}</span></td><td>${x.close??'—'}</td><td>${x.trigger_price??'—'}</td><td class="muted">${esc(x.entry_rule||'—')}</td><td class="muted">${esc((x.reasons&&x.reasons.length?x.reasons.join('、'):(x.missing&&x.missing.length?'缺:'+x.missing.join('、'):'—')))}</td></tr>`).join('')||`<tr><td colspan="8">此時段尚無候選</td></tr>`}</tbody></table><div class="muted" style="margin-top:8px">勝率來源：screen_verify 滾動 ${(v&&v.window_days)||30} 交易日 · scored ${(v&&v.scored)??0} · hits ${(v&&v.hits)??0}（Learning 層，不回改當日訊號）</div></div>`;}
+let _histDate=null;
+async function loadHistory(){const box=document.querySelector('#rvBody');if(!box)return;box.innerHTML='<div class="muted" style="padding:20px">讀取中…</div>';let d={};try{d=await (await fetch(API_BASE+'/ab/verify-history'+(_histDate?('?date='+encodeURIComponent(_histDate)):''),{cache:'no-store'})).json();}catch(e){box.innerHTML='<div class="muted" style="padding:20px">讀取失敗</div>';return;}const dates=d.dates||[],rows=d.rows||[];_histDate=d.pool_date||_histDate;const opts=(dates.length?dates:(_histDate?[_histDate]:[])).map(x=>`<option value="${esc(x)}"${x===_histDate?' selected':''}>${esc(x)}</option>`).join('')||'<option>—</option>';const vd=v=>{const s=String(v||'');let c='v-obs';if(s==='命中')c='v-hit';else if(s.indexOf('未')>=0||s==='反向')c='v-rev';return `<span class="vd ${c}">${esc(s||'—')}</span>`;};box.innerHTML=`<div class="rv-bar"><label class="rv-date">回測交易日<select id="histDate">${opts}</select></label></div><div class="feature-grid"><div class="feature-card"><label>可判定(攻擊/引擎軌)</label><strong>${d.denom||0} 檔</strong></div><div class="feature-card"><label>命中</label><strong>${d.hits||0}</strong></div><div class="feature-card"><label>命中率</label><strong class="${cls((d.hit_rate||0)-50)}">${d.hit_rate==null?'—':d.hit_rate+'%'}</strong></div></div><div class="feature-table"><h3>當時入選理由 vs T+1 最終結果（池日 ${esc(_histDate||'')}）</h3><div class="muted">${esc(d.note||'')}</div><table><thead><tr><th>代碼</th><th>名稱</th><th>軌道</th><th>進場基準</th><th>T+1收盤</th><th>報酬%</th><th>判定</th><th>當時入選理由</th></tr></thead><tbody>${rows.map(x=>`<tr><td><b>${esc(x.code)}</b></td><td>${esc(x.name||'—')}</td><td>${esc(x.track||'—')}</td><td>${x.base_close??'—'}</td><td>${x.next_close??'—'}</td><td class="${cls(x.ret_pct)}">${x.ret_pct==null?'—':x.ret_pct+'%'}</td><td>${vd(x.verdict)}</td><td class="muted">${esc((x.reasons||[]).filter(Boolean).join('、')||'—')}</td></tr>`).join('')||'<tr><td colspan="8">此日尚無回測資料（每日 15:05 stage2 自動累積；觀察軌不計命中）</td></tr>'}</tbody></table></div>`;const sel=document.querySelector('#histDate');if(sel)sel.onchange=e=>{_histDate=e.target.value;loadHistory();};}
+async function loadIntradayA(){const box=document.querySelector('#rvBody');if(!box)return;box.innerHTML='<div class="muted" style="padding:20px">讀取中…</div>';const banner=await _abRegimeBanner('A');let w={},v={};try{w=await (await fetch(API_BASE+'/ab/watchlist',{cache:'no-store'})).json();}catch(e){}try{v=await (await fetch(API_BASE+'/ab/verify-stats?days=30',{cache:'no-store'})).json();}catch(e){}if(!w||w.ok===false||!Array.isArray(w.items)){box.innerHTML=`<div class="muted" style="padding:20px">A鏈引擎未就緒：${esc((w&&(w.error||w.detail))||'無回應')}</div>`;return;}
+if(w.phase==='INTRADAY'){const lc=w.light_counts||{},rows=w.items||[];box.innerHTML=`${banner}<div class="feature-grid"><div class="feature-card"><label>🟢 綠燈</label><strong>${lc['🟢']??0}</strong></div><div class="feature-card"><label>✅ 已確認可進</label><strong>${w.confirmed_count??0}</strong></div><div class="feature-card"><label>🟡 續盯</label><strong>${lc['🟡']??0}</strong></div><div class="feature-card"><label>🔴 出局</label><strong>${lc['🔴']??0}</strong></div></div><div class="feature-table"><h3>盤中嚴判 A · Layer 1（候選池 ${esc(w.pool_date||'')}）</h3><div class="muted">${esc(w.purpose||'')}</div><table><thead><tr><th>燈號</th><th>代碼</th><th>名稱</th><th>確認狀態</th><th>現價</th><th>漲跌%</th><th>軌道</th><th>四條件</th><th>進場判定</th><th>入選理由</th></tr></thead><tbody>${rows.map(x=>`<tr style="cursor:pointer" onclick="openStock('${esc(x.code)}')"><td>${esc(x.light||'—')}</td><td><b>${esc(x.code)}</b></td><td>${esc(x.name||'—')}</td><td>${x.confirm_state?`<span class="pill">${esc(x.confirm_state)}</span>`:'—'}</td><td>${x.price??'—'}</td><td class="${cls(x.change_rate)}">${x.change_rate==null?'—':(x.change_rate>0?'+':'')+x.change_rate+'%'}</td><td class="muted">${esc(x.track||'—')}</td><td>${x.hit??0}/4</td><td class="muted">${esc(x.action||'—')}</td><td class="muted">${esc((x.reasons&&x.reasons.length)?x.reasons.join('、'):'—')}</td></tr>`).join('')||`<tr><td colspan="10">候選池空</td></tr>`}</tbody></table><div class="muted" style="margin-top:8px">綠燈＝四條件全中(訊號成立)；須持穩且不跌破觸發才「已確認·可進」(鐵律2 Signal≠Entry)。系統不代為下單。</div></div>`;return;}
+const items=w.items||[],tb=w.track_breakdown||{},hr=(v&&v.overall_hit_rate);box.innerHTML=`${banner}<div class="feature-grid"><div class="feature-card"><label>時段</label><strong>${esc(w.phase||'—')}</strong></div><div class="feature-card"><label>候選池</label><strong>${w.pool_size??items.length} 檔</strong></div><div class="feature-card"><label>引擎軌 / 觀察</label><strong>${tb['引擎軌']??0} / ${tb['觀察']??0}</strong></div><div class="feature-card"><label>滾動勝率(${(v&&v.window_days)||30}日)</label><strong class="${cls(hr)}">${hr==null?'—':hr+'%'}</strong></div></div><div class="feature-table"><h3>盤中觀測 A · Layer 1（資料日 ${esc(w.data_date||'')} · 適用次一交易日）</h3><div class="muted">${esc(w.purpose||'')}</div><table><thead><tr><th>代碼</th><th>名稱</th><th>分數</th><th>軌道</th><th>收盤</th><th>觸發價</th><th>進場規則</th><th>理由 / 缺資料</th></tr></thead><tbody>${items.map(x=>`<tr style="cursor:pointer"${x.has_data===false?' class="muted"':''} onclick="openStock('${esc(x.code)}')"><td><b>${esc(x.code)}</b></td><td>${esc(x.name||'—')}</td><td>${x.score??'—'}</td><td><span class="pill">${esc(x.track||'—')}</span></td><td>${x.close??'—'}</td><td>${x.trigger_price??'—'}</td><td class="muted">${esc(x.entry_rule||'—')}</td><td class="muted">${esc((x.reasons&&x.reasons.length?x.reasons.join('、'):(x.missing&&x.missing.length?'缺:'+x.missing.join('、'):'—')))}</td></tr>`).join('')||`<tr><td colspan="8">此時段尚無候選</td></tr>`}</tbody></table><div class="muted" style="margin-top:8px">勝率來源：screen_verify 滾動 ${(v&&v.window_days)||30} 交易日 · scored ${(v&&v.scored)??0} · hits ${(v&&v.hits)??0}（Learning 層，不回改當日訊號）</div></div>`;}
 async function loadSwingB(){const box=document.querySelector('#rvBody');if(!box)return;box.innerHTML='<div class="muted" style="padding:20px">讀取中…</div>';const banner=await _abRegimeBanner('B');let disc={},pool={};try{disc=await (await fetch(API_BASE+'/ab/b-discovery',{cache:'no-store'})).json();}catch(e){}try{pool=await (await fetch(API_BASE+'/ab/pool-tomorrow',{cache:'no-store'})).json();}catch(e){}if((!disc||disc.ok===false)&&(!pool||pool.ok===false)){box.innerHTML=`<div class="muted" style="padding:20px">B鏈引擎未就緒：${esc((disc&&(disc.error||disc.detail))||'無回應')}</div>`;return;}const di=(disc&&disc.items)||[],pi=(pool&&pool.items)||[];box.innerHTML=`${banner}<div class="feature-table"><h3>B 鏈今日發現 · Layer 2（${esc((disc&&disc.data_date)||'')}）</h3><div class="muted">${esc((disc&&disc.purpose)||'')}</div><table><thead><tr><th>代碼</th><th>命中數</th><th>細節</th></tr></thead><tbody>${di.map(x=>`<tr style="cursor:pointer" onclick="openStock('${esc(x.code)}')"><td><b>${esc(x.code)}</b></td><td>${x.hits??'—'}</td><td class="muted">${esc(x.note||x.detail||'—')}</td></tr>`).join('')||'<tr><td colspan="3">今日尚無 B 鏈發現（盤中每5分快照 → 13:20 掃描 → 13:31 法人驗證）</td></tr>'}</tbody></table></div><div class="feature-table"><h3>明日盤中候選池 · 適用次一交易日（匯流後）</h3><div class="muted">${esc((pool&&pool.purpose)||'')}</div><table><thead><tr><th>#</th><th>代碼</th><th>名稱</th><th>分數</th><th>軌道</th><th>觸發價</th><th>進場規則</th></tr></thead><tbody>${pi.map((x,i)=>`<tr style="cursor:pointer" onclick="openStock('${esc(x.code)}')"><td>${i+1}</td><td><b>${esc(x.code)}</b></td><td>${esc(x.name||'—')}</td><td>${x.score??'—'}</td><td><span class="pill">${esc(x.track||'—')}</span></td><td>${x.trigger_price??'—'}</td><td class="muted">${esc(x.entry_rule||'—')}</td></tr>`).join('')||'<tr><td colspan="7">尚無候選池（盤後 merge_pool 匯流 A鏈寬篩 ∪ B鏈驗證通過）</td></tr>'}</tbody></table></div>`;}
 function _rvDecVerdict(x){const v=String(x.verdict||'');let c='v-obs';if(v==='盤中驗證中')c='v-cont';else if(v[0]==='A'||v==='命中')c='v-hit';else if(v[0]==='C'||v==='未命中')c='v-rev';else if(v[0]==='B')c='v-cont';return `<span class="vd ${c}">${esc(v||'—')}</span>`;}
 async function loadDecList(){const box=document.querySelector('#rvBody');if(!box)return;box.innerHTML='<div class="muted" style="padding:20px">讀取中…</div>';let d={};try{d=await (await fetch(API_BASE+'/api/dec/list?date='+encodeURIComponent(_rvDate||''),{cache:'no-store'})).json();}catch(e){box.innerHTML='<div class="muted" style="padding:20px">讀取失敗</div>';return;}const rows=d.rows||[],isT=d.is_today;const hitLabel=isT?'盤中即時':'真實命中 A';const hitVal=isT?'跟盤中跑':(d.hit_rate==null?'—':d.hit_rate+'%');box.innerHTML=`<div class="feature-grid"><div class="feature-card"><label>名單檔數</label><strong>${d.total||0} 檔</strong></div><div class="feature-card"><label>${hitLabel}</label><strong>${hitVal}</strong></div><div class="feature-card"><label>報酬中位</label><strong class="${cls(d.median_return)}">${d.median_return==null?'—':d.median_return+'%'}</strong></div><div class="feature-card"><label>狀態</label><strong>${isT?'今日 · 盤中驗證中':'已收盤 · T+1蓋章'}</strong></div></div><div class="feature-table"><h3>${esc(_rvDate||d.target_date||'')} 名單驗證（${isT?'盤中即時連動':'T+1 收盤蓋章'}）</h3><div class="muted">${esc(d.note||'')}</div><table><thead><tr><th>代碼</th><th>名稱</th><th>族群</th><th>軌道</th><th>進場基準</th><th>${isT?'現價':'T+1收盤%'}</th><th>漲跌%</th><th>aflow</th><th>判定</th><th>入選理由</th></tr></thead><tbody>${rows.map(x=>`<tr style="cursor:pointer" onclick="openStock('${esc(x.code)}')"><td><b>${esc(x.code)}</b></td><td>${esc(x.name||'—')}</td><td>${esc(x.sector||'—')}</td><td>${x.track==='engine'?'引擎軌':'攻擊軌'}</td><td>${x.entry_ref??'—'}</td><td>${isT?(x.price??'—'):(x.t1_close_pct==null?'—':x.t1_close_pct+'%')}</td><td class="${cls(x.change_rate)}">${x.change_rate==null?'—':x.change_rate+'%'}</td><td class="${cls(x.aflow)}">${isT?(x.aflow==null?'—':fmt(x.aflow)):'—'}</td><td>${_rvDecVerdict(x)}</td><td class="muted">${esc(x.reason||'—')}</td></tr>`).join('')||`<tr><td colspan="10">此日尚無名單（每日 18:00 盤後閉環自動產出）</td></tr>`}</tbody></table></div>`;}
@@ -985,6 +998,7 @@ window.renderTomorrowGroups=function(body,rows){
 .bh-case.dim{opacity:.4;filter:saturate(.5)}
 .bh-case.live{box-shadow:0 0 0 2px currentColor inset,0 8px 20px rgba(11,26,51,.1)}
 .bh-case.good.live{color:var(--bh-green)}.bh-case.bad.live{color:var(--bh-red)}
+.bh-case.neutral{border-color:#f3dcb8;background:var(--bh-orange-soft)}.bh-case.neutral .bh-cmain{color:var(--bh-orange)}.bh-case.neutral.live{color:var(--bh-orange)}
 /* 目前判讀 */
 .bh-verdict{background:var(--bh-soft);border:1px solid #f1f4f9;border-radius:12px;padding:12px 16px}
 .bh-verdict strong{display:block;font-weight:800;font-size:13px;color:var(--bh-green);margin-bottom:2px}
@@ -1056,7 +1070,22 @@ function renderBreadth(b){
   const ring=q('#bhRing');if(ring){ring.style.setProperty('--pct',(pct!=null?Math.max(0,Math.min(100,pct)):0).toFixed(1)+'%');ring.style.setProperty('--bh-ring',cool?'var(--bh-orange)':'var(--bh-green)');}
   T('#bhRingPct',pct!=null?pct.toFixed(0)+'%':'—');
   T('#bhHeadline',(b.level_advice||'—'));
-  T('#bhSub',b.total?`全市場 ${b.in_count} 檔上漲、${b.out_count} 檔下跌（共 ${b.total} 檔）。真實寬度＝上漲家數占比，非 aflow 推估。`:'資料樣本不足，暫以最近一日判讀。');
+  // 來源感知標籤：intraday_pool＝51 檔訂閱池盤中即時；eod_official＝官方收盤(盤中為昨收)。
+  // 池數不足全市場，一律不掛「全市場」字樣，避免拿 51 檔冒充全市場寬度。
+  const bsrc=b.breadth_source, bdate=b.breadth_date||b.data_date;
+  const pool=bsrc==='intraday_pool';
+  const scope=pool?'訂閱池':'全市場';
+  // 眉標 + 圓環標籤 隨來源改字
+  {const ey=document.querySelector('.bh-eyebrow');if(ey)ey.textContent=pool?'51 檔訂閱池 · 盤中即時漲家':'市場真實寬度 · 漲跌家數';
+   const gl=document.querySelector('.bh-gauge-label');if(gl)gl.textContent=pool?'池內盤中漲家占比':'上漲家數占比（真實寬度）';}
+  T('#bhSub',b.total?`${scope} ${b.in_count} 檔上漲、${b.out_count} 檔下跌（共 ${b.total} 檔）。${pool?'此為 51 檔訂閱池盤中即時漲家占比，非全市場寬度。':'真實寬度＝上漲家數占比，非 aflow 推估。'}`:'資料樣本不足，暫以最近一日判讀。');
+  if(b.total){const flat=b.total-b.in_count-b.out_count;
+    const srcTxt=pool
+      ? `🟢 51 檔訂閱池 · 盤中即時（Shioaji 逐筆；非全市場，全市場寬度收盤後校準）`
+      : (b.breadth_stale
+          ? `🟠 昨收 ${bdate||'—'} 收盤計數（今日盤中尚未產生，收盤後更新；不以昨收定調今天）`
+          : `TWSE＋TPEx 收盤計數`);
+    T('#bhCaption',`📐 指標口徑：上漲 ${b.in_count} ÷ ${scope}總家數 ${b.total} 檔＝${pct!=null?pct.toFixed(1):'—'}%（${srcTxt}，含平盤 ${flat} 檔，純價格層）`);}
   T('#bhMode',BH_MODE[lv]||'—');T('#bhPos',BH_POS[lv]||'—');T('#bhNext',BH_NEXT[lv]||'—');
   T('#mode',b.level_title||'—');window._regimeLevel=lv;window._regimeBreadth=b;/* Layer 0：首頁作戰模式吃真實 regime,並暴露給 A/B 分頁單向連動 */
   T('#bhP1Title',(pct!=null?pct.toFixed(0)+'% ':'')+'對操盤的完整意義');
@@ -1074,26 +1103,33 @@ function renderBreadth(b){
       gapEl.textContent='兩指標差距：資料不足,暫不計算';
     }else{
       const gap=Math.abs(pct-aflowPct);
+      // 左卡改吃 51 池「漲家%」(價格層,上漲日常近滿) vs 右卡 aflow「流入%」(資金層),
+      // 兩者量綱不同、天生有落差；門檻放寬避免每天誤標窄幅：<25 健康 / <40 注意 / 其餘 窄幅。
       let level,emoji,clr;
-      if(gap<5){level='健康';emoji='✅';clr='var(--bh-green)';}
-      else if(gap<15){level='注意';emoji='⚠️';clr='var(--bh-orange)';}
+      if(gap<25){level='健康';emoji='✅';clr='var(--bh-green)';}
+      else if(gap<40){level='注意';emoji='⚠️';clr='var(--bh-orange)';}
       else{level='窄幅假行情';emoji='🚨';clr='var(--bh-red)';}
-      gapEl.innerHTML=`${emoji} <b>差距 ${gap.toFixed(1)}pp → ${level}</b><br><span style="font-weight:600;color:var(--bh-mut)">左卡市場寬度 ${pct.toFixed(1)}% · 右卡 aflow 流入 ${aflowPct.toFixed(1)}%</span>`;
+      gapEl.innerHTML=`${emoji} <b>差距 ${gap.toFixed(1)}pp → ${level}</b><br><span style="font-weight:600;color:var(--bh-mut)">左卡${scope}漲家 ${pct.toFixed(1)}% · 右卡 aflow 流入 ${aflowPct.toFixed(1)}%</span>`;
       gapEl.style.color=clr;
     }
   }
-  // 兩張只是教學範例；用今日真實占比點亮命中的那張、淡出另一張，
-  // 避免「94% 卻同時顯示健康＋窄幅兩種結論」的錯覺。
-  // 兩張只是教學範例：命中的那張打亮綠/紅框、另一張淡出，不在卡上蓋任何字。
-  // 今日的實際占比與結論一律放下方 verdict box，避免和範例的 71%／26% 混淆。
+  // 兩張卡改吃「今日真實兩指標」，不再寫死 71%／26% 教學範例：
+  //   左卡 = 51 檔資金層 aflow 流入 %（錢有沒有進）
+  //   右卡 = 全市場漲家 %（漲勢有沒有全面）
+  // 每張卡依自己相對門檻(broad/narrow)動態上色；兩張顏色分歧＝正是窄幅假行情的畫面。
   const good=q('#bhScGood'),bad=q('#bhScBad');
-  if(good&&bad){good.className='bh-case good';bad.className='bh-case bad';
-    const healthy=['broad','broad_nomkt','resilient','aligned'].includes(b.state)
-      ||(pct!=null&&pct>=(b.thresholds?.broad??60));
-    const narrow=['narrow','broad_down','narrow_nomkt'].includes(b.state)
-      ||(pct!=null&&pct<(b.thresholds?.narrow??40));
-    if(pct!=null&&healthy&&!narrow){good.classList.add('live');bad.classList.add('dim');}
-    else if(pct!=null&&narrow&&!healthy){bad.classList.add('live');good.classList.add('dim');}}
+  const brd=b.thresholds?.broad??60,nrw=b.thresholds?.narrow??40;
+  const tone=(el,v)=>{if(!el)return;el.className='bh-case '+(v==null?'neutral':(v>=brd?'good':(v<nrw?'bad':'neutral')));};
+  if(good){tone(good,aflowPct);
+    T('#bhScGoodMain',aflowPct==null?'資料不足':'資金流入 '+aflowPct.toFixed(1)+'%');
+    T('#bhScGoodDesc',aflowPct==null?'51 檔資金層盤中逐筆累積中。':'51 檔固定池中 aflow>0 的占比：看「錢」有沒有進場。');}
+  if(bad){tone(bad,pct);
+    T('#bhScBadMain',pct==null?'資料不足':`${scope}漲家 `+pct.toFixed(1)+'%');
+    T('#bhScBadDesc',pct==null?`${scope}漲跌家數尚未取得。`:(b.total?`${scope} ${b.in_count} 檔上漲 / 共 ${b.total} 檔：看「漲勢」有沒有全面。`:`${scope}上漲家數占比：看「漲勢」有沒有全面。`));}
+  // 兩張都拿到值時，把落在健康/窄幅極端的那張打亮，凸顯背離。
+  if(good&&bad&&pct!=null&&aflowPct!=null){
+    const gapBig=Math.abs(pct-aflowPct)>=15;
+    if(gapBig){(aflowPct>=pct?good:bad).classList.add('live');}}
   // 時間序列長條圖
   const chart=q('#bhChart');if(chart){chart.querySelectorAll('.bh-bi').forEach(n=>n.remove());
     const series=(b.series||[]).slice(-8),max=Math.max(72,...series.map(r=>Number(r.ratio_pct||0)));

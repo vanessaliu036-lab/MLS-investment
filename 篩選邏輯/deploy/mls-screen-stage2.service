@@ -1,0 +1,13 @@
+[Unit]
+Description=MLS 篩選邏輯 盤後第二段（法人籌碼定案 → 二次篩 + 匯流定案明日觀察）
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/mls-screen
+Environment="HOME=/root"
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=/opt/mls-screen/deploy/run_stage2.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mls-screen-stage2

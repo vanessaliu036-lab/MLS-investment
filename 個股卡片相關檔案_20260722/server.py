@@ -1550,6 +1550,12 @@ def ab_pool_tomorrow():
     return _ab_get("/api/pool/tomorrow")
 
 
+@app.get("/ab/verify-history")
+def ab_verify_history(date: str = ""):
+    """歷史回測：某日候選池「當時入選理由 vs T+1 最終結果」逐檔對照(screen_verify)。"""
+    return _ab_get("/api/verify/history", {"date": date})
+
+
 @app.get("/ab/phase")
 def ab_phase():
     """AB 引擎當下時段(PRE/INTRADAY/POST/CLOSED)。"""

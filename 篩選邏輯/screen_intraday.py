@@ -30,6 +30,7 @@ import datetime as _dt
 import json
 
 import store
+import config
 import screen_post
 from envelope import run_all, persist_status, missing_labels
 from phase import Phase, now_tw, prev_trading_day, today_tw
@@ -42,8 +43,30 @@ GREEN_REQUIRED = 4          # 四條件全中才綠燈。少一個就是黃燈�
 BID_ASK_MIN = 1.2           # 內外盤比門檻
 VOLUME_PACE_MIN = 1.0       # 量能較昨日同時段的倍數
 
+# ---------------------------------------------------------------- step 3a 延遲確認
+# 鐵律2:Signal ≠ Entry。綠燈(訊號成立)不等於可進場,須「持穩 N 分鐘且不跌破觸發」
+# 才算延遲確認通過。VWAP/EMA5(3b)需盤中序列,暫緩,此處不算、不編造。
+CONFIRM_MINUTES = 3
+
+
+def confirm_signal(light, first_green_at, now, price, trigger_price):
+    """純函式(可單元測試)。回 (state, first_green_at_out, note)。
+    state ∈ {None,'待確認','已確認','確認失敗'}。first_green_at 為 iso 字串或 None。"""
+    if light != "🟢":
+        return None, None, None
+    if not first_green_at:
+        first_green_at = now.isoformat(timespec="seconds")
+    holding = price is not None and (trigger_price is None or price >= trigger_price)
+    if not holding:
+        return "確認失敗", None, f"跌破觸發 {trigger_price},延遲確認作廢,退回續盯"
+    elapsed = int((now - _dt.datetime.fromisoformat(first_green_at)).total_seconds() // 60)
+    if elapsed >= CONFIRM_MINUTES:
+        return "已確認", first_green_at, f"延遲確認通過(持穩 {elapsed} 分)· 可按 ATR 紀律進場"
+    return "待確認", first_green_at, f"訊號成立·待確認(持穩 {elapsed}/{CONFIRM_MINUTES} 分,跌破 {trigger_price} 作廢)"
+
 # ---------------------------------------------------------------- 三條鐵律
 OPENING_BLIND_MIN = 15      # 鐵律1:開盤前 15 分鐘的 aflow 負值一律忽略
+OPEN_BUY_BLIND_MIN = 10     # 鐵律4:09:00–09:10 一律禁新倉(禁 Open Buy),9:10 後才重確認可進
 SURGE_PCT = 8.0             # 鐵律2:漲幅超過此值視為噴漲,aflow 負數不判紅燈
 
 
@@ -154,6 +177,8 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
         "post_score": pool_row.get("score"),
         "trigger_price": pool_row.get("trigger_price"),
         "entry_rule": pool_row.get("entry_rule"),
+        # 盤後入選理由（screen_post 六因子）帶進盤中，供判斷持續/變化、盤後驗證準度
+        "reasons": pool_row.get("reasons") or [],
         "price": price, "change_rate": cr, "net_active": na,
         "conditions": conds, "hit": hit,
         "action": action, "notes": notes, "missing": missing,
@@ -176,6 +201,7 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
         "quote": lambda: store.read_date("quote_snap", today, db_path),
         "aflow": lambda: store.read_date("aflow", today, db_path),
         "bar_y": lambda: store.read_date("daily_bar", yday, db_path),
+        "prev": lambda: store.read_date("intraday_signal", today, db_path),
     }, phase=Phase.INTRADAY)
     persist_status(envs, db_path)
 
@@ -190,6 +216,11 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
     q = envs["quote"].get({}) or {}
     a = envs["aflow"].get({}) or {}
     b = envs["bar_y"].get({}) or {}
+    prev = envs["prev"].get({}) or {}
+    now = at or now_tw()
+    # 鐵律4 禁 Open Buy：09:00–09:10 一律不開新倉。此窗內綠燈也只標「待9:10重確認」，
+    # 不得可進（9:10 後的 VWAP/量/大盤重確認＝使用者定暫緩，先落地禁新倉時窗）。
+    open_blind = _dt.time(9, 0) <= now.time() < _dt.time(9, OPEN_BUY_BLIND_MIN)
 
     items = []
     for code, row in pool.items():
@@ -199,7 +230,36 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
                 pr.update(json.loads(pr["payload"]))
             except Exception:
                 pass
-        items.append(judge_one(code, pr, q.get(code), a.get(code), b.get(code), at))
+        it = judge_one(code, pr, q.get(code), a.get(code), b.get(code), at)
+        it["name"] = config.NAME.get(code)   # 名稱注入(事實,不參與判斷)
+
+        # step 3a 延遲確認:讀前次 first_green_at,綠燈須持穩 CONFIRM_MINUTES 才可進
+        pf = None
+        if prev.get(code):
+            try:
+                pn = json.loads(prev[code].get("note") or "{}")
+                pf = pn.get("cf_first_green") if isinstance(pn, dict) else None
+            except Exception:
+                pf = None
+        state, fg, cnote = confirm_signal(it["light"], pf, now,
+                                          it.get("price"), it.get("trigger_price"))
+        it["confirm_state"] = state
+        it["confirm_note"] = cnote
+        it["first_green_at"] = fg
+        if it["light"] == "🟢" and open_blind:
+            # 禁 Open Buy 時窗：綠燈退回續盯，明標禁新倉，不得可進
+            it["light"] = "🟡"
+            it["confirm_state"] = "禁新倉"
+            it["action"] = "09:00–09:10 禁新倉,待 9:10 重確認"
+        elif it["light"] == "🟢":
+            if state == "已確認":
+                it["action"] = f"✅ {cnote}"
+            elif state == "確認失敗":
+                it["light"] = "🟡"        # 跌破觸發 → 退回續盯,不得當進場
+                it["action"] = f"確認未過:{cnote}"
+            else:
+                it["action"] = f"🟢 {cnote}"   # 綠燈但未確認,不等於可進場
+        items.append(it)
 
     order = {"🟢": 0, "🟡": 1, "🔴": 2}
     items.sort(key=lambda x: (order[x["light"]], -x["hit"], x.get("rank") or 999))
@@ -209,20 +269,23 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
         "data_date": today.isoformat(), "code": it["code"],
         "light": it["light"],
         "conditions": json.dumps(it["conditions"], ensure_ascii=False),
-        "note": json.dumps(it["notes"], ensure_ascii=False),
+        "note": json.dumps({"notes": it["notes"], "cf_first_green": it.get("first_green_at"),
+                            "cf_state": it.get("confirm_state")}, ensure_ascii=False),
         "updated_at": gen,
     } for it in items], db_path)
 
     counts = {k: sum(1 for i in items if i["light"] == k) for k in ("🟢", "🟡", "🔴")}
+    confirmed = sum(1 for i in items if i.get("confirm_state") == "已確認")
 
     return {
         "phase": "INTRADAY", "data_date": today.isoformat(),
         "pool_date": yday.isoformat(),
-        "purpose": (f"盤中嚴判(候選池 {yday},{len(items)} 檔)— "
-                    f"綠燈 = 到你預設進場條件,系統不代為下單"),
+        "purpose": (f"盤中嚴判(候選池 {yday},{len(items)} 檔)— 綠燈=訊號成立,"
+                    f"須持穩 {CONFIRM_MINUTES} 分延遲確認才可進(已確認 {confirmed} 檔);系統不代為下單"),
         "actionable": False,
         "generated_at": gen,
         "degraded": missing_labels(envs),
         "light_counts": counts,
+        "confirmed_count": confirmed,
         "items": items,
     }
