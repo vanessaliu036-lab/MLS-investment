@@ -279,7 +279,14 @@ def _seven_factor_score(raw, ma20, chip):
 @router.get("/intraday-test/daily-report", response_class=HTMLResponse)
 def daily_report_page():
     """顯示指定的 0722 每日報告 UI；報告頁內的 API 仍走同一台 VPS。"""
-    report = ROOT / "每日報告 0722.html"
+    # 檔案在 repo 根＝BASE(vps_intraday_test.py 同層)。原本誤用 ROOT=BASE.parent
+    # (=/opt)，讀不到 → 500。找不到時回友善提示，不再吐 Internal Server Error。
+    report = BASE / "每日報告 0722.html"
+    if not report.exists():
+        return HTMLResponse(
+            f"<div style='padding:24px;font-family:sans-serif;color:#73809a'>"
+            f"每日報告尚未產出（找不到 {report.name}）。</div>",
+            status_code=200, headers={"Cache-Control": "no-store, max-age=0"})
     return HTMLResponse(report.read_text(encoding="utf-8"),
                         headers={"Cache-Control": "no-store, max-age=0"})
 
@@ -349,8 +356,9 @@ def _row(raw):
         "buy_volume": buy,
         "sell_volume": sell,
         "tick_type": raw.get("tick_type"),
-        "raw_bid_side_total_vol": sell,
-        "raw_ask_side_total_vol": buy,
+        # buy=主動買(=bid_side)、sell=主動賣(=ask_side)；raw_* 顯示回真實 bid/ask 側量
+        "raw_bid_side_total_vol": buy,
+        "raw_ask_side_total_vol": sell,
         "aflow": aflow,
         "quadrant": F.proxy_quadrant(aflow, change),
         "total_volume": int(raw.get("total_volume") or 0),
@@ -410,12 +418,40 @@ def _index_pct():
         return None
 
 
+# B：盤中即時寬度。EOD(STOCK_DAY_ALL)盤中只有昨收，全市場快照又吃流量；
+# 依 Vanessa 指示，改用「已訂閱的 51 檔觀察池」即時 buffer 逐檔數漲跌 —— 這批本來
+# 就在訂閱，零額外額度、盤中逐筆更新，資料日＝今天。標為 intraday_pool，明確不是
+# 全市場寬度（全市場寬度仍走 EOD，收盤後校準），避免拿 51 檔冒充全市場。
+_POOL_MIN_SAMPLE = 20      # 開盤初期 buffer 太少（<20 檔有價）不出手，退回 EOD
+
+
+def _intraday_pool_breadth(rows):
+    """用 51 檔訂閱池即時報價算盤中寬度（今日、非 stale）；樣本不足/失敗回 None。
+
+    rows：與 aflow 同源的即時列，需含 change_rate。"""
+    if market_breadth is None or not rows:
+        return None
+    try:
+        import market_regime as _mr
+        snaps = [{"change_rate": r.get("change_rate")}
+                 for r in rows if r.get("change_rate") is not None]
+        ib = _mr.breadth_from_snapshots(snaps)
+        if ib and ib.get("total", 0) >= _POOL_MIN_SAMPLE:
+            ib["source"] = "intraday_pool"     # 明示：51 檔訂閱池，非全市場
+            return ib
+    except Exception as exc:
+        print(f"[breadth] 盤中池寬度失敗，退回 EOD: {exc}", flush=True)
+    return None
+
+
 def _breadth(rows, live=True):
     """算今日資金廣度；即時來源才落地時間序列（快照／回退不記）。"""
     if market_breadth is None or not rows:
         return None
     try:
-        payload = market_breadth.api_payload(rows=rows, index_pct=_index_pct())
+        payload = market_breadth.api_payload(
+            rows=rows, index_pct=_index_pct(),
+            intraday_breadth=_intraday_pool_breadth(rows) if live else None)
         if live and not payload.get("stale"):
             market_breadth.record(payload)
         return payload
@@ -433,19 +469,41 @@ def market_breadth_api():
         rows = []
         for item in broker.raw_buffer_snapshots():
             rows.append({"code": str(item.get("code", "")),
+                         "change_rate": item.get("change_rate"),
                          "aflow": F.aflow_official(int(item.get("sell_volume") or 0),
                                                    int(item.get("buy_volume") or 0))})
         live = bool(rows)
         if not rows:
             saved = _read_intraday_snapshot(allow_prev_day=True) or {}
-            rows = [{"code": r.get("code"), "aflow": r.get("aflow")}
+            rows = [{"code": r.get("code"), "change_rate": r.get("change_rate"),
+                     "aflow": r.get("aflow")}
                     for r in (saved.get("rows") or []) if r.get("aflow") is not None]
-        payload = market_breadth.api_payload(rows=rows, index_pct=_index_pct())
+        payload = market_breadth.api_payload(
+            rows=rows, index_pct=_index_pct(),
+            intraday_breadth=_intraday_pool_breadth(rows) if live else None)
         if live and not payload.get("stale"):
             market_breadth.record(payload)
         return payload
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+@router.get("/api/market/live-index")
+def market_live_index():
+    """加權指數盤中即時（Shioaji TSE001，單一指數合約、5s 記憶體快取）。
+
+    只打 1 檔指數合約、且 broker.index_snapshot 內建 5s TTL — 不影響主迴圈、
+    額度可忽略。失敗回 {ok:False}，前端自動退回官方 EOD 值，永不弄壞版面。"""
+    try:
+        snap = broker.index_snapshot() or {}
+        if snap.get("index") is not None:
+            return {"ok": True, "index": snap.get("index"),
+                    "index_pct": snap.get("index_pct"),
+                    "amount_100m": snap.get("amount_100m"),
+                    "asof": datetime.now(TW_TZ).isoformat(timespec="seconds")}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": False}
 
 
 @router.get("/api/intraday-test")
