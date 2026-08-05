@@ -1839,7 +1839,8 @@ if(window.__singleMainTableRender){
       if(!rows.length)return;
       const postReady=rows.some(r=>{const t=r.children[6]?.textContent||'';return t.trim()&& !/待法人資料|資料待補/.test(t)});
       const verified=rows.some(r=>/命中|未觸發|觸發後失敗/.test(r.children[9]?.textContent||''));
-      pill.textContent=verified?'已收盤 · T+1 已蓋章':postReady?'已收盤 · 盤後資料已取得 · 等待 T+1':'已收盤 · 等待盤後資料';
+      const nextStatus=verified?'已收盤 · T+1 已蓋章':postReady?'已收盤 · 盤後資料已取得 · 等待 T+1':'已收盤 · 等待盤後資料';
+      if(pill.textContent!==nextStatus)pill.textContent=nextStatus;
     });
   };
   new MutationObserver(syncPostStatus).observe(document.body,{childList:true,subtree:true});
