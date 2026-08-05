@@ -72,9 +72,30 @@ def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,
         # 盤中嚴判:只盯昨日候選池,四條件全中才綠燈(不吃 universe,自己讀 pool)
         data = screen_intraday.build()
     else:
-        data = screen_post.build(config.UNIVERSE)
+        # 「盤後」是顯示,不是無條件重算。用真實時鐘分流:
+        #   真盤後(今日已收盤定案,13:31 後)才 build,產出明日候選;
+        #   盤中/盤前看盤後 = 攤上一交易日已定案那份(A一:對照昨篩今走)。
+        #   否則 build(today) 會拿今天未收盤的日期去要死值 → 六因子全 NO_DATA,
+        #   就是「資料待補、資金流沒勁」的病灶。
+        if get_phase() is Phase.POST:
+            data = screen_post.build(config.UNIVERSE)
+        else:
+            data = screen_post.load_last_post()
 
     return JSONResponse(data)
+
+
+@app.get("/api/funnel")
+def funnel_view(phase: Optional[str] = Query(None, description="INTRADAY|POST;預設依時段")):
+    """新版漏斗逐層淘汰（唯讀·對照/驗證用）。盤中 with_chips=False(L0→L2.5)、
+    盤後 with_chips=True(含 L3 籌碼)。尚未取代 /api/watchlist；先並存供驗證。
+    lazy import：funnel 若有問題只壞這條端點,不影響引擎啟動與其他名單。"""
+    import funnel
+    ph = Phase(phase) if phase else get_phase()
+    r = funnel.run(list(config.UNIVERSE), dict(config.CODE_GROUP),
+                   db_path="mls.db", with_chips=(ph is Phase.POST))
+    r["phase"] = ph.value
+    return JSONResponse(r)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -139,6 +160,12 @@ def pool_tomorrow():
             "score": r.get("score"), "track": r.get("track"),
             "trigger_price": r.get("trigger_price"), "entry_rule": r.get("entry_rule"),
             "source": payload.get("source"),
+            # payload 內已算好的欄位一併帶出（原本只取 source，導致明日候選頁
+            # close/入選理由全空。verify-history 端點有帶，這裡對齊）。
+            "close": payload.get("close"),
+            "reasons": payload.get("reasons") or [],
+            "missing": payload.get("missing") or [],
+            "has_data": payload.get("has_data"),
         })
     applies = next_trading_day(d).isoformat()
     scored = [x for x in items if (x.get("score") or 0) > 0]
@@ -179,7 +206,8 @@ def verify_history(date: str = Query("", description="pool_date;預設最近已�
     """歷史回測(唯讀):某日候選池的「當時入選理由 vs T+1 最終結果」逐檔對照。
     join pool_outcome(結果:命中/報酬/verdict)＋ candidate_pool(當時 reasons/軌道)。"""
     import sqlite3
-    conn = sqlite3.connect("mls.db")
+    conn = sqlite3.connect("mls.db", timeout=30)
+    conn.execute("PRAGMA busy_timeout=30000")
     conn.row_factory = sqlite3.Row
     dates = [r[0] for r in conn.execute(
         "SELECT DISTINCT pool_date FROM pool_outcome ORDER BY pool_date DESC")]
@@ -209,10 +237,23 @@ def verify_history(date: str = Query("", description="pool_date;預設最近已�
     conn.close()
     judged = [r for r in rows if r["hit"] is not None]
     hits = sum(1 for r in judged if r["hit"] == 1)
+
+    # 觀察軌摘要:不計命中,但仍看得到「這批實際 T+1 表現」。
+    # Risk Off 期整池被降觀察軌時,denom=0/命中率「—」,唯一有意義的訊號就在這裡。
+    obs = [r for r in rows if r["track"] == "觀察"]
+    obs_rets = sorted(x["ret_pct"] for x in obs if x["ret_pct"] is not None)
+    obs_median = obs_rets[len(obs_rets) // 2] if obs_rets else None
+    obs_pos = sum(1 for x in obs_rets if x > 0)
+
     return JSONResponse({
         "pool_date": pd, "dates": dates,
         "denom": len(judged), "hits": hits,
         "hit_rate": round(hits / len(judged) * 100, 1) if judged else None,
+        "obs_n": len(obs), "obs_scored": len(obs_rets),
+        "obs_ret_median": obs_median,
+        "obs_ret_avg": round(sum(obs_rets) / len(obs_rets), 2) if obs_rets else None,
+        "obs_pos": obs_pos,
+        "obs_pos_ratio": round(obs_pos / len(obs_rets) * 100, 1) if obs_rets else None,
         "note": "當時入選理由 vs T+1 最終結果；觀察軌不計命中(denom 只含攻擊/引擎軌)",
         "rows": rows,
     })

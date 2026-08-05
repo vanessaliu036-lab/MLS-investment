@@ -179,7 +179,9 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
         "entry_rule": pool_row.get("entry_rule"),
         # 盤後入選理由（screen_post 六因子）帶進盤中，供判斷持續/變化、盤後驗證準度
         "reasons": pool_row.get("reasons") or [],
-        "price": price, "change_rate": cr, "net_active": na,
+        # net_active = Shioaji 盤中主動買賣差(資金流)。前端(cardA/aRows/決策清單)
+        # 一律讀 `aflow`,故同值加別名,否則「盤中資金流」欄恆顯示「—」(2026-08-05)。
+        "price": price, "change_rate": cr, "net_active": na, "aflow": na,
         "conditions": conds, "hit": hit,
         "action": action, "notes": notes, "missing": missing,
         "has_data": quote is not None,

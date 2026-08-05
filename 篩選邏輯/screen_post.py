@@ -349,6 +349,29 @@ def load_pool(data_date: _dt.date | None = None, db_path: str = "mls.db") -> dic
     return store.read_date(POOL_TABLE, d, db_path)
 
 
+def load_last_post(db_path: str = "mls.db") -> dict:
+    """盤中/盤前的「盤後」顯示:攤出上一交易日『已定案』的盤後池 + 入選理由。
+
+    盤後是顯示、不是重算模式。今天盤中還沒收盤,build(today) 會讓收盤/法人/融資全 NO_DATA,
+    正是使用者看到的「資料待補、資金流沒勁」。A一 的語意是「對照昨天篩的、看今天怎麼走」,
+    所以這裡固定讀 prev_trading_day 那份定案結果,帶 reasons。
+    """
+    y = prev_trading_day()
+    rows = store.read_date(POOL_TABLE, y, db_path)
+    items = [json.loads(r["payload"]) for r in rows.values()]
+    items.sort(key=lambda x: x.get("rank", 999))
+    applies = next_trading_day(y).isoformat()   # = 今天
+    return {
+        "phase": "POST", "data_date": y.isoformat(), "applies_date": applies,
+        "purpose": (f"盤後篩選結果(資料日 {y})— 已定案,{len(items)} 檔候選;"
+                    f"適用今日 {applies} 盤中對照觀察,非重算"),
+        "actionable": False,
+        "generated_at": next(iter(rows.values()))["generated_at"] if rows else None,
+        "degraded": [] if items else ["昨日盤後候選池尚未產生"],
+        "items": items,
+    }
+
+
 def load_for_premarket(db_path: str = "mls.db") -> dict:
     """盤前開機:直接讀昨日盤後候選池,不重算、不重抓、零 API,秒開。"""
     y = prev_trading_day()
