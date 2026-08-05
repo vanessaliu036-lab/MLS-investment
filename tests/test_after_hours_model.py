@@ -18,30 +18,6 @@ import after_hours as ah   # noqa: E402
 import db                  # noqa: E402
 
 
-def test_compute_sector_flow_accepts_intraday_snapshot_without_total_amount():
-    """盤後兜底快照沒有 total_amount 時，族群流向仍應可計算。"""
-    import engine
-
-    original_map = engine.C.SECTOR_MAP
-    try:
-        engine.C.SECTOR_MAP = {
-            "1111": ("測試族群", "attack"),
-            "2222": ("測試族群", "attack"),
-        }
-        engine._prev_amount_share.clear()
-        sectors = engine.compute_sector_flow([
-            {"code": "1111", "price": 10, "total_volume": 100, "change_rate": 2.0},
-            {"code": "2222", "price": 20, "total_volume": 50, "change_rate": 1.0},
-        ])
-    finally:
-        engine.C.SECTOR_MAP = original_map
-        engine._prev_amount_share.clear()
-
-    sector = next(x for x in sectors if x["name"] == "測試族群")
-    assert sector["amount_100m"] == 0.0
-    assert sector["amount_share"] == 100.0
-
-
 def _round(t):
     v, h, r = t
     return (v, h, None if r is None else round(r, 4))

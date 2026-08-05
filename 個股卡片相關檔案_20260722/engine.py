@@ -69,20 +69,6 @@ def _all_sector_names():
 # ══════════════════════════════════════════════════════════
 # ① 資金流入板塊計算
 # ══════════════════════════════════════════════════════════
-def _amt(s):
-    """成交金額(元)容錯取值。盤後兜底走盤中快照(_row 格式)時無 total_amount,
-    以 price×total_volume 估算,杜絕 KeyError('total_amount')。"""
-    a = s.get("total_amount")
-    if a:
-        return a
-    a100 = s.get("amount_100m")
-    if a100:
-        return a100 * 1e8
-    price = s.get("price") or s.get("close") or s.get("avg_price") or 0
-    vol = s.get("total_volume") or 0
-    return price * vol
-
-
 def compute_sector_flow(snaps):
     """
     輸入全市場快照,輸出族群列表(含 flow_score 資金流入分數)排行。
@@ -90,7 +76,7 @@ def compute_sector_flow(snaps):
                + 中位漲幅 * FLOW_W_CHANGE
     """
     global _prev_amount_share
-    total_amt = sum(_amt(s) for s in snaps) or 1
+    total_amt = sum(s["total_amount"] for s in snaps) or 1
 
     groups = {}
     for s in snaps:
@@ -104,7 +90,7 @@ def compute_sector_flow(snaps):
     for name, g in groups.items():
         ms = g["members"]
         med = median([m["change_rate"] for m in ms])
-        amt = sum(_amt(m) for m in ms)
+        amt = sum(m["total_amount"] for m in ms)
         share = amt / total_amt * 100                       # 佔全市場 %
         share_delta = share - _prev_amount_share.get(name, share)
         flow_score = share_delta * 100 * C.FLOW_W_AMOUNT + med * C.FLOW_W_CHANGE * 10
