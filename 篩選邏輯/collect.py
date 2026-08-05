@@ -45,6 +45,7 @@ import absorption as absorp   # noqa: E402  (無 config 依賴)
 
 # ── 本系統模組(mls-v4 無同名檔,照常解析到本地) ──────────────────────
 import store                  # noqa: E402
+import official_price        # noqa: E402
 from phase import (            # noqa: E402
     today_tw, get_phase, is_trading_day, last_trading_day, Phase,
 )
@@ -62,8 +63,43 @@ def _mean(xs):
     return sum(xs) / len(xs) if xs else None
 
 
+def _signed_streak(series: list[int]) -> int:
+    """帶號連續天數。series：舊→新的每日淨額。以最後一日方向為準,往回數同號連續天。
+    正=連買天數、負=連賣天數、0=最後一日持平或無資料。funnel L3 據此:連買加分、
+    連賣≤-3 硬砍(見 funnel.layer3)。中間出現 0(持平)即中斷連續。"""
+    if not series:
+        return 0
+    last = series[-1]
+    if last == 0:
+        return 0
+    pos = last > 0
+    n = 0
+    for v in reversed(series):
+        if v != 0 and (v > 0) == pos:
+            n += 1
+        else:
+            break
+    return n if pos else -n
+
+
 def _today_inst(code: str, upto: str) -> dict | None:
-    """資料日(含)以前最近一個交易日的法人買賣超(張)。分外資/投信/自營三項。"""
+    """資料日(含)以前最近一個交易日的法人買賣超(張)。分外資/投信/自營三項。
+    另計三法人各自帶號連續天數(foreign_days/trust_days/dealer_days),供 L3 籌碼層。"""
+    official = {}
+    try:
+        ymd = upto.replace("-", "")
+        official.update(dc.fetch_twse_inst_today(ymd) or {})
+        official.update(dc.fetch_tpex_inst_today(ymd) or {})
+    except Exception:
+        official = {}
+    rec = official.get(str(code))
+    if rec:
+        return {"date": upto, "foreign_net": rec.get("foreign_lots"),
+                "trust_net": rec.get("invest_lots"), "dealer_net": rec.get("dealer_lots"),
+                "total_net": rec.get("total_lots"), "foreign_days": 0,
+                "trust_days": 0, "dealer_days": 0}
+
+    # 最後備援：官方端點暫時無回應時才使用 FinMind。
     rows = dc.fetch_finmind_inst(code, days=25)
     if not rows:
         return None
@@ -74,13 +110,23 @@ def _today_inst(code: str, upto: str) -> dict | None:
         by_date.setdefault(r["date"], {})[r["name"]] = int(r.get("buy", 0)) - int(r.get("sell", 0))
     if not by_date:
         return None
-    d = max(by_date)
+    dates = sorted(by_date)                       # 舊→新
+    d = dates[-1]
     b = by_date[d]
     f = (b.get("Foreign_Investor", 0) + b.get("Foreign_Dealer_Self", 0)) // 1000
     t = b.get("Investment_Trust", 0) // 1000
     dl = (b.get("Dealer_self", 0) + b.get("Dealer_Hedging", 0)) // 1000
+    # 三法人各自的每日淨額序列(股,sign 用即可) → 帶號連續天數
+    f_series = [(by_date[dt].get("Foreign_Investor", 0)
+                 + by_date[dt].get("Foreign_Dealer_Self", 0)) for dt in dates]
+    t_series = [by_date[dt].get("Investment_Trust", 0) for dt in dates]
+    dl_series = [(by_date[dt].get("Dealer_self", 0)
+                  + by_date[dt].get("Dealer_Hedging", 0)) for dt in dates]
     return {"date": d, "foreign_net": f, "trust_net": t, "dealer_net": dl,
-            "total_net": f + t + dl}
+            "total_net": f + t + dl,
+            "foreign_days": _signed_streak(f_series),
+            "trust_days": _signed_streak(t_series),
+            "dealer_days": _signed_streak(dl_series)}
 
 
 def _scoring_input(code, name, close, prev, chg, inst, brk, mgn, tech) -> scoring.StockInput:
@@ -113,8 +159,12 @@ def _scoring_input(code, name, close, prev, chg, inst, brk, mgn, tech) -> scorin
 def collect_one(code: str, d: _dt.date) -> dict:
     """單檔取數 + 計分,回傳各表 rows(未寫入)。缺價 → 回 {} 代表整檔無資料。"""
     dd = d.isoformat()
-    prows = dc.fetch_finmind_price(code, days=90)  # old→new
-    prows = [r for r in prows if r["date"] <= dd]  # 只用資料日(含)以前,FinMind 會回到今日
+    prows = official_price.fetch(code, d)  # twstock 官方日 K, old→new
+    price_source = "twstock"
+    if not prows:
+        prows = dc.fetch_finmind_price(code, days=90)  # 最後備援
+        price_source = "finmind_fallback"
+    prows = [r for r in prows if r["date"] <= dd]
     if not prows or len(prows) < 2:
         return {}
     closes = [r["close"] for r in prows]
@@ -124,7 +174,13 @@ def collect_one(code: str, d: _dt.date) -> dict:
     prev = closes[-2]
     chg = round((close - prev) / prev * 100, 2) if prev else 0.0
 
-    tech = analyst._price_tech(code, close, prev)
+    last20 = closes[-20:]
+    ma20 = _mean(last20) or close
+    tech = {
+        "ma20": round(ma20, 2), "above_ma20": close > ma20,
+        "bias": round((close - ma20) / ma20 * 100, 2) if ma20 else 0,
+        "trigger": round(min(max(r.get("max") or close for r in prows[-10:]), close * 1.05), 2),
+    }
     inst = analyst._inst_20d(code)
     brk = analyst._inst_breakdown(code)
     mgn = analyst._margin_trend(code)
@@ -133,27 +189,57 @@ def collect_one(code: str, d: _dt.date) -> dict:
     now = _dt.datetime.now().isoformat(timespec="seconds")
     out: dict = {}
 
-    # daily_bar(死值)
-    out["daily_bar"] = {
-        "code": code, "data_date": dd,
-        "open": last.get("open"), "high": last.get("max"), "low": last.get("min"),
-        "close": close, "volume": last.get("Trading_Volume"),
-        "ma5": round(_mean(closes[-5:]) or close, 2),
-        "ma20": tech["ma20"],
-        "ma60": round(_mean(closes[-60:]) or close, 2),
-        "vol_ma20": int(_mean(vols[-20:]) or 0),
-        "source": "finmind", "fetched_at": now,
-    }
+    # daily_bar(死值 · INSERT OR IGNORE:寫壞了事後蓋不掉,所以「當下就不能寫壞」)
+    #
+    # 護欄 — 只寫「已定案的真收盤」,擋兩種髒資料:
+    #   (1) 過時:FinMind 最新一筆日期 < 資料日 → 當日 EOD 還沒出,若照寫等於把
+    #       前一日 OHLC 貼上今天標籤(過時假 bar)。
+    #   (2) 退化預備價:當日那筆 open=high=low=close 單點(收盤剛過、FinMind 尚未
+    #       定案時常回漲停/試撮參考價)。這種和「真鎖漲停」在 OHLC 上無法區分,
+    #       故只在 EOD 定案前(台灣 <14:30)的當日即時跑才視為預備價跳過;
+    #       定案後(排程 14:40 才跑)或歷史補跑(帶 date)一律信任,真鎖漲停照收。
+    o_, hi_, lo_ = last.get("open"), last.get("max"), last.get("min")
+    _tw_hour = (_dt.datetime.utcnow() + _dt.timedelta(hours=8)).hour
+    _live_today = (dd == today_tw().isoformat())          # 非歷史補跑
+    _degenerate = (o_ is not None and o_ == hi_ == lo_ == close)
+    _preliminary = _degenerate and _live_today and _tw_hour < 14  # 定案前的退化單點價
+
+    if last["date"] == dd and not _preliminary:
+        out["daily_bar"] = {
+            "code": code, "data_date": dd,
+            "open": o_, "high": hi_, "low": lo_,
+            "close": close, "volume": last.get("Trading_Volume"),
+            "ma5": round(_mean(closes[-5:]) or close, 2),
+            "ma20": tech["ma20"],
+            "ma60": round(_mean(closes[-60:]) or close, 2),
+            "vol_ma20": int(_mean(vols[-20:]) or 0),
+            "source": price_source, "fetched_at": now,
+        }
+    else:
+        _why = "預備/退化單點價,待定案後補" if _preliminary else f"FinMind 最新僅到 {last['date']},無 {dd} 收盤"
+        print(f"  ⚠ {code}: 跳過 daily_bar({_why})")
 
     # inst_flow(死值)— 缺就不寫這張,screener 標 NO_DATA
-    if tinst:
+    #
+    # 護欄(2026-08-05):法人官方資料 ~15:00–16:00 才公布,collect 14:40 跑時最新常
+    # 只到「前一交易日」。_today_inst 會回那筆舊資料(其 date < dd);若照寫 = 把前一日
+    # 法人數字＋連買連賣天數蓋上今天標籤,且 inst_flow 不可變、事後永遠蓋不掉
+    # (3363 08-04 被寫成 08-03「連買3日」實際賣超的病灶)。故只在「資料實際日 == 資料日」
+    # 才寫,否則跳過標 NO_DATA,等公布後補跑。streak(consecutive_days/*_days)同源一起擋。
+    if tinst and tinst.get("date") == dd:
         out["inst_flow"] = {
             "code": code, "data_date": dd,
             "foreign_net": tinst["foreign_net"], "trust_net": tinst["trust_net"],
             "dealer_net": tinst["dealer_net"], "total_net": tinst["total_net"],
             "consecutive_days": inst["streak"],
-            "source": "finmind", "fetched_at": now,
+            # 三法人各自帶號連續天數(正連買/負連賣) — L3 才真正吃到。inst_flow 有
+            # immutable trigger,收盤後補不了,故一定要在寫入當下就算好(2026-08-04)。
+            "foreign_days": tinst["foreign_days"], "trust_days": tinst["trust_days"],
+            "dealer_days": tinst["dealer_days"],
+            "source": "TWSE T86 / TPEx 官方法人", "fetched_at": now,
         }
+    elif tinst:
+        print(f"  ⚠ {code}: 跳過 inst_flow(法人最新僅到 {tinst.get('date')},無 {dd} 蓋章,待公布後補)")
 
     # margin(死值)
     if not mgn.get("data_incomplete"):
