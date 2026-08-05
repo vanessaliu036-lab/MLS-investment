@@ -1678,7 +1678,9 @@ import urllib.error as _urlerr
 _AB_BASE = "http://127.0.0.1:8002"
 
 
-def _ab_get(path, params=None, timeout=8):
+def _ab_get(path, params=None, timeout=5):
+    # 前端主表的單次讀取上限是 8 秒；反向代理必須更早失敗，
+    # 讓前端依約退回 /api/dec/list，而不是和瀏覽器同時卡到逾時。
     url = _AB_BASE + path
     if params:
         q = _urlparse.urlencode({k: v for k, v in params.items() if v is not None})
