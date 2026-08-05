@@ -461,8 +461,16 @@ def build_state(watchlist_codes=None):
     print(f"[engine] table 評分結果: {len(table)} 檔")
 
     # 現金閘門(持股標記 hold + 滿手時進場降級)
-    import gatekeeper
-    table, gated, gate_note = gatekeeper.apply_gate(table)
+    # gatekeeper 目前不在部署包(幽靈模組)。缺就略過閘門,不可整條 build_state 崩掉
+    # 讓盤中畫面全空(2026-08-04 事故:ModuleNotFoundError 每輪炸 scheduler_loop)。
+    try:
+        import gatekeeper
+        table, gated, gate_note = gatekeeper.apply_gate(table)
+    except ModuleNotFoundError:
+        gated, gate_note = [], ""
+    except Exception as _e:
+        print(f"[engine] gatekeeper 略過:{_e}")
+        gated, gate_note = [], ""
 
     # 插件:資金健康度 + 三角驗證(失敗不影響主流程)
     sec_health = {}

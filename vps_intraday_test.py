@@ -24,6 +24,10 @@ if str(ROOT) not in sys.path:
 import broker  # noqa: E402  (VPS 的既有真實行情連線)
 import config  # noqa: E402
 try:
+    import quote_health  # noqa: E402  (行程內 MIS 備援 + 資料品質判定)
+except Exception:        # 備援模組缺席時不擋主流程(維持舊行為)
+    quote_health = None
+try:
     from mls_intraday import intraday_filter as F  # noqa: E402
 except ImportError:
     from app import intraday_filter as F  # noqa: E402
@@ -238,18 +242,27 @@ def _seven_factor_score(raw, ma20, chip):
         against.append(f"股價下跌 {change:+.2f}%")
 
     if extreme or fake_red or resting:
-        group, subgroup = "排除", "風險訊號"
+        group = "排除"
         if extreme:
-            why = f"漲跌幅 {change:+.2f}% 已達極端區間，追價風險過高"
+            # 漲停是追價風險，不是「太爛」；跌停則保留相反方向標籤。
+            subgroup = "漲停" if change > 0 else "跌停"
+            why = f"{subgroup} {change:+.2f}% ，追價風險高，不宜進場"
         elif fake_red:
+            subgroup = "假紅衝高"
             why = f"股價漲 {change:+.2f}% 但主動賣超 {abs(aflow):,} 張——假紅、主力邊拉邊出"
         else:
+            subgroup = "資金流出"
             why = f"股價 {change:+.2f}% 且主動賣超 {abs(aflow):,} 張——量價同步走弱"
         reason = why
     elif not missing and pct is not None and pct >= 65:
         group, subgroup = "可操作", "盤中因子達標"
-        reason = (f"盤中可計算 {points:.0f}/{avail:.0f} 分（{pct:.0f}%）達 65% 門檻："
-                  + "；".join(ev[:3]) + "。盤後仍須籌碼與融資蓋章。")
+        facts = []
+        if change > 0:
+            facts.append(f"上漲 {change:+.2f}%")
+        if aflow > 0:
+            facts.append(f"主動買超 {aflow:,} 張")
+        facts.extend(ev[:2])
+        reason = f"盤中達標 {pct:.0f}%｜" + "｜".join(dict.fromkeys(facts))
     else:
         group, subgroup = "觀察", "條件待確認"
         bits = []
@@ -263,7 +276,7 @@ def _seven_factor_score(raw, ma20, chip):
                         + (f"，差 {gap:.0f} 分達標" if gap > 0 else ""))
         if missing:
             bits.append("等待：" + "、".join(missing))
-        reason = "；".join(bits) + "。"
+        reason = "觀察｜" + "｜".join(bits)
 
     return {
         "score": round(points, 1), "score_max": 100,
@@ -316,6 +329,9 @@ def _row(raw):
     sell = int(raw.get("sell_volume") or 0)
     # broker 已把 buy/sell 正規化成 active_buy/active_sell；核心公式仍吃 raw bid/ask。
     aflow = F.aflow_official(sell, buy)
+    # 行情層死、價量走 MIS 備援時：aflow 只信 Shioaji，一律標停用,絕不用五檔偽裝。
+    aflow_unavail = bool(raw.get("_aflow_unavailable"))
+    aflow_out = None if aflow_unavail else aflow
     change = float(raw.get("change_rate") or 0)
     price = float(raw.get("price") or 0)
     ma20 = None
@@ -353,14 +369,19 @@ def _row(raw):
         "track": _sec[1] if _sec and len(_sec) > 1 else "attack",
         "price": price,
         "change_rate": round(change, 2),
-        "buy_volume": buy,
-        "sell_volume": sell,
+        "buy_volume": None if aflow_unavail else buy,
+        "sell_volume": None if aflow_unavail else sell,
         "tick_type": raw.get("tick_type"),
         # buy=主動買(=bid_side)、sell=主動賣(=ask_side)；raw_* 顯示回真實 bid/ask 側量
-        "raw_bid_side_total_vol": buy,
-        "raw_ask_side_total_vol": sell,
-        "aflow": aflow,
-        "quadrant": F.proxy_quadrant(aflow, change),
+        "raw_bid_side_total_vol": None if aflow_unavail else buy,
+        "raw_ask_side_total_vol": None if aflow_unavail else sell,
+        "aflow": aflow_out,
+        "quadrant": F.proxy_quadrant(aflow_out if aflow_out is not None else 0, change),
+        # 資料品質標記（§6）：讓畫面一眼看出是即時 Shioaji 還是 MIS 備援、aflow 是否停用
+        "price_source": raw.get("_price_source"),
+        "quote_status": raw.get("_quote_status"),
+        "aflow_status": "UNAVAILABLE" if aflow_unavail else "LIVE",
+        "last_tick_age": raw.get("_last_tick_age"),
         "total_volume": int(raw.get("total_volume") or 0),
         "ma20": ma20,
         "ma20_cache": ma20_status,
@@ -553,6 +574,14 @@ def intraday_test():
         else:
             fallback_source = False
         regime = _current_regime()
+        # 行情健康判定 + MIS 備援疊加：Shioaji 死時價量走 MIS、aflow 標停用（§1–§3）。
+        # 只在真正即時 buffer(非快照回退)時判健康,避免對盤後快照誤判/亂抓 MIS。
+        health_meta = None
+        if quote_health is not None and not fallback_source:
+            try:
+                raw, health_meta = quote_health.apply(raw)
+            except Exception as _e:
+                print(f"[intraday-test] quote_health 跳過: {_e}", flush=True)
         rows = [_row(item) for item in raw]
         # v5 分類攤平：可操作→觀察→排除；各群內仍維持漲幅優先，再按 aflow。
         group_order = {"可操作": 0, "觀察": 1, "排除": 2}
@@ -581,6 +610,8 @@ def intraday_test():
             "category_counts": category_counts,
             "regime": regime,
             "quota": quota,
+            # 資料品質總覽（§3 §6）：feed_state=LIVE/DEGRADED/BACKUP、aflow 是否可用
+            "feed_health": health_meta,
             "latency_ms": round((time.time() - started) * 1000, 1),
             "notes": [
                 "aflow 使用既有訂閱 buffer 的官方買賣盤累積量",

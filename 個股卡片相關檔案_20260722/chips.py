@@ -61,6 +61,27 @@ def _today_key():
     return datetime.now().strftime("%Y-%m-%d")
 
 
+def _official_detail(code, asof=None):
+    """讀取排程建立的 TWSE/TPEx 官方籌碼快取。
+
+    個股卡片與盤中觀察池必須使用同一份官方法人資料；FinMind 若尚未
+    發布最新交易日，不能把前一週資料當成最新五日資料。
+    """
+    try:
+        with open(CACHE_FILE, encoding="utf-8") as f:
+            payload = json.load(f)
+        row = (payload.get("stocks") or {}).get(str(code)) or {}
+        # 舊版官方快取可能尚未保存 5 日欄位；只要單日、20 日與連買
+        # 資料齊全，就可安全提供，5 日欄位維持 None，絕不回退舊 FinMind。
+        required = ("source_date", "inst_net_20d_lots", "foreign_net_20d",
+                    "trust_net_20d", "dealer_net_20d", "inst_streak")
+        if asof and row.get("source_date") != asof:
+            return None
+        return row if all(row.get(k) is not None for k in required) else None
+    except Exception:
+        return None
+
+
 def get_chips(code):
     """
     回傳該股籌碼摘要 dict:
@@ -154,7 +175,7 @@ def get_chips(code):
 # ════════════════════════════════════════════════════════
 # v2.3 新增:個股資訊卡細項籌碼(get_chips 保持不變,零影響)
 # ════════════════════════════════════════════════════════
-def get_chips_detail(code):
+def get_chips_detail(code, asof=None):
     """
     資訊卡籌碼面。回傳 dict(查無資料的欄位為 None,不假造):
       foreign_net_d / trust_net_d / dealer_net_d  最新一日外資/投信/自營買賣超(張)
@@ -171,12 +192,16 @@ def get_chips_detail(code):
     _load_disk()
     today = _today_key()
     key = f"detail:{code}"
+    official = _official_detail(code, asof=asof)
+    cached = (_cache.get("stocks") or {}).get(key) or {}
     if (_cache.get("date") == today and key in _cache.get("stocks", {})
-            and _cache["stocks"][key].get("source_date")
-            and "margin_source_date" in _cache["stocks"][key]
-            and "inst_streak" in _cache["stocks"][key]
-            and "trust_net_20d" in _cache["stocks"][key]):
-        return _cache["stocks"][key]
+            and cached.get("source_date")
+            and "margin_source_date" in cached
+            and "inst_streak" in cached
+            and "trust_net_20d" in cached
+            and (not asof or cached.get("source_date") == asof)
+            and (not official or cached.get("source_date") == official.get("source_date"))):
+        return cached
 
     result = {"foreign_net_d": None, "trust_net_d": None, "dealer_net_d": None,
               "foreign_net_5d": None, "trust_net_5d": None,
@@ -190,8 +215,25 @@ def get_chips_detail(code):
               "margin_change_d": None, "margin_change_5d": None,
               "margin_balance": None, "margin_source_date": None}
 
-    # ── 三大法人單日 + 外資20日(日資料) ──────────────
-    try:
+    # ── 三大法人單日 + 滾動5/20日：官方快取優先 ─────────
+    if official:
+        result.update({
+            "foreign_net_d": official.get("foreign_net_d", official.get("foreign")),
+            "trust_net_d": official.get("trust_net_d", official.get("trust")),
+            "dealer_net_d": official.get("dealer_net_d", official.get("dealer")),
+            "foreign_net_5d": official.get("foreign_net_5d"),
+            "trust_net_5d": official.get("trust_net_5d"),
+            "dealer_net_5d": official.get("dealer_net_5d"),
+            "inst_net_5d_lots": official.get("inst_net_5d_lots"),
+            "inst_streak": official.get("inst_streak"),
+            "foreign_net_20d": official.get("foreign_net_20d"),
+            "trust_net_20d": official.get("trust_net_20d"),
+            "dealer_net_20d": official.get("dealer_net_20d"),
+            "source": official.get("source") or "TWSE T86 / TPEx 官方三大法人",
+            "source_date": official.get("source_date"),
+        })
+    else:
+      try:
         start = (datetime.now() - timedelta(days=70)).strftime("%Y-%m-%d")
         rows = _finmind("TaiwanStockInstitutionalInvestorsBuySell", code, start)
         by_date = {}
@@ -237,7 +279,7 @@ def get_chips_detail(code):
                 else:
                     break
             result["inst_streak"] = streak
-    except Exception as e:
+      except Exception as e:
         print(f"[chips] 法人細項 {code} 失敗: {e}")
 
     # ── 大戶級距(集保週資料):400張 / 1000張 ─────────
@@ -266,6 +308,14 @@ def get_chips_detail(code):
     except Exception as e:
         print(f"[chips] 大戶級距 {code} 失敗: {e}")
 
+    # 官方快取沒有持股級距資料；不要讓 FinMind 舊日期的代理值混入
+    # 8/4 法人卡片，缺資料比錯日期更誠實。
+    if official:
+        result["big400_pct"] = None
+        result["big400_delta"] = None
+        result["big1000_pct"] = None
+        result["big1000_delta"] = None
+
     # ── 融資融券(日資料) ───────────────────────────────
     try:
         start = (datetime.now() - timedelta(days=20)).strftime("%Y-%m-%d")
@@ -286,6 +336,25 @@ def get_chips_detail(code):
                 )
     except Exception as e:
         print(f"[chips] 融資 {code} 失敗: {e}")
+
+    # 不允許法人與融資使用不同交易日卻被組成同一張「最新」卡片。
+    # FinMind 若仍停在上一週，融資欄位必須留白，不能冒充本日變化。
+    if (result.get("source_date") and asof and result["source_date"] != asof):
+        # 盤後報告指定的交易日尚未有完整法人資料，整組留白，避免
+        # 把前一週五日統計拼到今日價格上。
+        for field in ("foreign_net_d", "trust_net_d", "dealer_net_d",
+                      "foreign_net_5d", "trust_net_5d", "dealer_net_5d",
+                      "inst_net_5d_lots", "foreign_net_20d",
+                      "trust_net_20d", "dealer_net_20d", "inst_streak"):
+            result[field] = None
+        result["source"] = None
+        result["source_date"] = None
+    elif (result.get("source_date") and result.get("margin_source_date")
+            and result["margin_source_date"] != result["source_date"]):
+        result["margin_change_d"] = None
+        result["margin_change_5d"] = None
+        result["margin_balance"] = None
+        result["margin_source_date"] = None
 
     if _cache.get("date") != today:
         _cache = {"date": today, "stocks": {}}

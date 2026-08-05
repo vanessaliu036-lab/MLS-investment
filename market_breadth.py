@@ -125,12 +125,17 @@ def diagnose(ratio_pct, index_pct):
             f"加權指數 {index_pct:+.2f}%、資金流入占比 {ratio_pct:.0f}%，兩者沒有明顯背離")
 
 
-def compute(rows, index_pct=None):
+def compute(rows, index_pct=None, intraday_breadth=None):
     """今日市場廣度（Layer 0）。
 
     2026-07-28 定案：市場寬度 = 上漲家數 / 總家數（TWSE+TPEx 真實寬度），
     永不用 aflow 正值占比當寬度（崩盤日 aflow 系統性偏正 → 誤報 84% Risk On）。
     aflow 占比降級為診斷欄。TWSE 取數失敗才回退舊 aflow 邏輯（並明確標記）。
+
+    寬度來源優先序（2026-07-31 新增，修「盤中把昨收當今天」）：
+      1. intraday_breadth：盤中即時全市場寬度（B，資料日＝今天，最準）
+      2. _mr.fetch_breadth()：官方 EOD 收盤寬度；盤中拿到的是昨收(is_stale)，
+         照樣顯示但標明資料日，且 assess 內部不讓昨收驅動 Risk Off。
     """
     # aflow 正值占比 —— 僅供診斷，不再當市場寬度
     valid = [r for r in rows if r.get("aflow") is not None]
@@ -141,7 +146,8 @@ def compute(rows, index_pct=None):
     # Layer 0：全市場真實寬度 + Regime
     try:
         import market_regime as _mr
-        b = _mr.fetch_breadth()
+        # B 優先：盤中即時全市場寬度（今天）；沒有才退官方 EOD（可能昨收）
+        b = intraday_breadth if (intraday_breadth and intraday_breadth.get("true_breadth") is not None) else _mr.fetch_breadth()
     except Exception as exc:
         print(f"[breadth] market_regime 不可用: {exc}", flush=True)
         b = None
@@ -151,8 +157,13 @@ def compute(rows, index_pct=None):
         reg = _mr.assess(b, index_pct,
                          aflow_ratio=(aflow_ratio / 100 if aflow_ratio is not None else None))
         _lvl = {"ON": "risk_on", "NEUTRAL": "neutral", "OFF": "risk_off"}
+        b_date = b.get("data_date")
+        b_stale = bool(b.get("is_stale"))
+        b_src = b.get("source", "true_market")
+        # note 用正確口徑：51 檔訂閱池即時 vs 全市場，不拿池冒充全市場
+        _scope = "51 檔訂閱池盤中" if b_src == "intraday_pool" else "全市場真實"
         note = reg.get("banner") or (
-            f"全市場真實寬度 {ratio:.0f}%（漲 {b['advancing']} / 跌 {b['declining']}）")
+            f"{_scope}寬度 {ratio:.0f}%（漲 {b['advancing']} / 跌 {b['declining']}）")
         return {
             "total": b["total"], "in_count": b["advancing"],
             "out_count": b["declining"], "ratio_pct": ratio, "index_pct": index_pct,
@@ -160,7 +171,10 @@ def compute(rows, index_pct=None):
             "level_title": reg["title"], "level_advice": reg["advice"],
             "state": reg["regime"], "state_title": reg["title"], "state_note": note,
             "aflow_ratio": aflow_ratio,          # 診斷用
-            "breadth_source": "true_market",     # 真實寬度
+            # 來源：intraday_live=盤中即時 / eod_official=官方收盤 / true_market=舊值
+            "breadth_source": b_src,
+            "breadth_date": b_date,               # 寬度真正的資料日（西元）
+            "breadth_stale": b_stale,             # True＝目前顯示的是「昨收」寬度
             "thin_sample": False, "no_data": False,
         }
 
@@ -187,6 +201,10 @@ def record(breadth, now=None):
     """盤中每輪呼叫：更新今日廣度（最後一筆即收盤值），並落 5 分鐘日內曲線。"""
     now = now or _now()
     if breadth.get("no_data"):
+        return False
+    # 昨收(stale)寬度不得落地成今天：只有「今天的」寬度(盤中即時或當日收盤)才記，
+    # 否則會把昨天的下跌日灌進今天的日線序列、污染擴散判讀。
+    if breadth.get("breadth_stale"):
         return False
     hm = (now.hour, now.minute)
     if not (SESSION[0] <= hm <= SESSION[1]):
@@ -275,14 +293,19 @@ def trend(series):
             "delta": delta, "avg5": avg5, "note": note}
 
 
-def api_payload(rows=None, index_pct=None, now=None, days=10):
+def api_payload(rows=None, index_pct=None, now=None, days=10, intraday_breadth=None):
     """/api/market-breadth 回應：今日廣度 + 日內曲線 + 日線序列 + 擴散判讀。
 
-    rows 有帶就用即時值；沒帶（或今日尚無資料）則回退最近一日並標明資料日。"""
+    rows 有帶就用即時值；沒帶（或今日尚無資料）則回退最近一日並標明資料日。
+    intraday_breadth：盤中即時全市場寬度（B）；有帶就優先，資料日＝今天。"""
     now = now or _now()
     today = now.date().isoformat()
-    today_breadth = compute(rows or [], index_pct) if rows else None
+    today_breadth = compute(rows or [], index_pct, intraday_breadth=intraday_breadth) if (rows or intraday_breadth) else None
     data_date, stale = today, False
+    # 全市場寬度是「昨收」時（EOD 盤中尚未發布）：據實把資料日標成昨收、stale=True，
+    # 讓前端顯示「· 2026-07-30 最近一日」而不是假裝今天。
+    if today_breadth and today_breadth.get("breadth_stale") and today_breadth.get("breadth_date"):
+        data_date, stale = today_breadth["breadth_date"], True
 
     if today_breadth is None or today_breadth["no_data"]:
         rows_hist = history(1)

@@ -1,0 +1,11 @@
+[Unit]
+Description=每 5 分鐘觸發 b_snapshot 時序落地 (盤中 09:00–13:30)
+
+[Timer]
+# 台股盤中 09:00–13:30。09..13 時每 5 分鐘一發;13:30 後打到的由 b_snapshot.take
+# 自身 phase 閘 no-op,不會寫髒資料。非交易日同樣 no-op。
+OnCalendar=Mon..Fri 09..13:00/05:00 Asia/Taipei
+Persistent=false
+
+[Install]
+WantedBy=timers.target

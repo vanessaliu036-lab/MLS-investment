@@ -110,11 +110,11 @@ body{visibility:visible!important}body.ready{visibility:visible!important}
 <div class="sys-line muted">VPS Shioaji · API 延遲 <b id="latency">—</b> · 訂閱標的 <b id="subscribed">—</b> · 有效訊號 <b id="valid">—</b> · <b id="quality">資料完整度 —</b><i id="progress" class="sys-progress"></i><span id="notes" class="sys-notes"></span></div>
 
 <div class="section-head"><h2>今日最佳機會</h2><div class="filters"><button class="filter active" data-filter="全部">全部</button><button class="filter" data-filter="可操作">可進場</button><button class="filter" data-filter="觀察">等待突破</button><button class="filter" data-filter="排除">風險警報</button></div></div><section id="cards" class="opportunity-grid"></section>
-<section class="dashboard-grid"><div class="panel table-panel"><div class="table-head"><h3>盤中即時行情與分類</h3><input id="search" class="search" placeholder="搜尋代碼 / 名稱"></div><table><thead><tr><th>股票／現價</th><th>漲跌</th><th>aflow</th><th>分類</th><th>子分類</th><th>白話解讀</th></tr></thead><tbody id="rows"></tbody></table></div><div class="panel side-panel"><h3>盤中訊號時間軸</h3><div id="timeline" class="timeline"><div class="event"><time>—</time><strong>等待即時訊號</strong><p>資料更新後顯示目前觀察標的的分類與白話解讀。</p></div></div></div></section><section id="excludedSection" class="panel excluded-section" hidden><div class="table-head"><h3>下方排除名單</h3><span class="muted">今日明確不進場，保留排除原因</span></div><div class="feature-table"><table><thead><tr><th>股票／現價</th><th>漲跌</th><th>aflow</th><th>排除原因</th></tr></thead><tbody id="excludedRows"></tbody></table></div></section></main></div>
+<section class="dashboard-grid"><div class="panel table-panel"><div class="table-head"><h3>盤中即時行情與分類</h3><input id="search" class="search" placeholder="搜尋代碼 / 名稱"></div><table><thead><tr><th>股票／現價</th><th>漲跌</th><th>aflow</th><th>分類</th><th>子分類</th><th>白話解讀</th></tr></thead><tbody id="rows"></tbody></table></div><div class="panel side-panel"><h3>盤中訊號時間軸</h3><div id="timeline" class="timeline"><div class="event"><time>—</time><strong>等待即時訊號</strong><p>資料更新後顯示目前觀察標的的分類與白話解讀。</p></div></div></div></section></main></div>
 <section id="sidePanel" class="feature-panel" hidden><div class="feature-head"><div><h2 id="sideTitle">面板</h2><div id="sideStatus" class="muted">讀取中…</div></div><button class="btn" onclick="closePanel()">返回決策首頁</button></div><div id="sideBody"></div></section><section id="featurePanel" class="feature-panel" hidden><div class="feature-head"><div><h2 id="featureTitle">研究資料</h2><div id="featureStatus" class="muted">讀取中…</div></div><button class="btn" onclick="closeFeature()">返回決策首頁</button></div><div id="featureBody"></div></section>
 <section id="stockDetail" class="feature-panel" hidden><div class="feature-head"><div><h2 id="detailTitle">個股決策詳情</h2><div id="detailStatus" class="muted">讀取中…</div></div><button class="btn" onclick="closeStockDetail()">返回決策首頁</button></div><div id="detailBody"></div></section>
 <script>
-const API_BASE=location.protocol==='file:'?'http://66.42.42.150:8000':'';document.documentElement.style.visibility='visible';let data=[],filter='全部',paused=false;const esc=s=>String(s??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));const cls=v=>Number(v)>0?'positive':Number(v)<0?'negative':'';const fmt=v=>v==null?'—':(Number(v)>0?'+':'')+Number(v).toLocaleString('en-US');
+const API_BASE=(location.protocol==='file:'||location.hostname==='127.0.0.1'||location.hostname==='localhost')?'http://66.42.42.150:8000':'';document.documentElement.style.visibility='visible';let data=[],filter='全部',paused=false;const esc=s=>String(s??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));const cls=v=>Number(v)>0?'positive':Number(v)<0?'negative':'';const fmt=v=>v==null?'—':(Number(v)>0?'+':'')+Number(v).toLocaleString('en-US');
 function taipeiMinutes(){const p=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date());return Number(p.find(x=>x.type==='hour')?.value||0)*60+Number(p.find(x=>x.type==='minute')?.value||0)}
 function marketClosed(){return taipeiMinutes()>=810}
 function setMonitoringOff(){paused=true;const b=document.querySelector('#pause');if(b)b.textContent='恢復監控';const c=document.querySelector('#conn');if(c)c.textContent='盤後模式 OFF · 等待收盤資料固定';document.querySelector('.top-actions .dot')?.style.setProperty('background','#9aa4b8');document.querySelector('.sidebar .nav-item.active .count')?.classList.remove('live')}
@@ -357,14 +357,14 @@ function card(x){let c=x.group==='排除'?(x.subgroup==='漲停'?'risk limit-up'
 function render(){let q=(document.querySelector('#search').value||'').toLowerCase();let rs=data.filter(x=>(filter==='全部'||x.group===filter)&&(`${x.code}${x.name}`.toLowerCase().includes(q)));const cardRows=rs.slice(0,6);document.querySelector('#cards').innerHTML=cardRows.map(card).join('')||'<div class="panel" style="padding:20px">目前沒有符合條件的標的</div>';document.querySelector('#rows').innerHTML=rs.map(x=>`<tr class="${x.group==='可操作'?'actionable-row':x.group==='觀察'?'watch-row':x.subgroup==='漲停'?'risk-row':''}"><td><b>${esc(x.code)} ${esc(x.name)}</b> <span class="current-price">現價 ${esc(x.price??'—')}</span></td><td class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</td><td class="${cls(x.aflow)}">${fmt(x.aflow)}</td><td><span class="pill">${esc(x.group)}</span></td><td class="muted">${esc(x.subgroup)}</td><td class="muted">${esc(x.ai)}</td></tr>`).join('');document.querySelectorAll('#cards .stock-card').forEach((el,i)=>el.dataset.code=String(cardRows[i].code));document.querySelectorAll('#rows tr').forEach((el,i)=>el.dataset.code=String(rs[i].code));document.querySelector('#valid').textContent=rs.filter(x=>x.filter_no_data===false).length}
 async function load(){if(paused)return;try{let r=await fetch(API_BASE+'/api/intraday-test',{cache:'no-store'}),d=await r.json();if(!d.ok)throw Error(d.error||'API 回報失敗');data=d.rows||[];document.querySelector('#conn').textContent=`Shioaji 即時連線 · ${d.updated_at}`;document.querySelector('#time').textContent=`${d.updated_at||'—'} · 台股盤中`;document.querySelector('#latency').textContent=`${d.latency_ms} ms`;document.querySelector('#subscribed').textContent=d.quota?.subscribed??'—';let n=data.length,a=data.filter(x=>x.group==='可操作').length;document.querySelector('#actionable').textContent=a;document.querySelector('#risk').textContent=data.filter(x=>x.group==='排除').length;document.querySelector('#sectors').textContent='—';document.querySelector('#mode').textContent=d.regime||'盤中判定';document.querySelector('#score').textContent=n?Math.round(a/n*100):'—';if(typeof loadBreadth==='function')loadBreadth(d.breadth);document.querySelector('#advice').textContent=a?`目前 ${a} 檔可操作，依漲幅由高到低排列；正紅色、負綠色。`:'目前沒有符合全部條件的可操作標的。';document.querySelector('#quality').textContent=`資料完整度 ${n?Math.round(data.filter(x=>x.price!=null).length/n*100):0}%`;document.querySelector('#progress').style.width=(n?Math.round(data.filter(x=>x.price!=null).length/n*100):0)+'%';document.querySelector('#notes').textContent=(d.notes||[]).join(' · ');document.querySelector('#watchCount').textContent='51';const radarCount=document.querySelector('#navCount');if(radarCount){radarCount.textContent=n?String(n):'';radarCount.hidden=!n}render();updateFilterCounts();document.body.style.visibility='visible';
   }catch(e){console.error('load() err:',e);document.body.style.visibility='visible';document.querySelector('#conn').textContent='固定資料讀取失敗：'+e.message;document.querySelector('#mode').textContent='讀取失敗';}}
-async function openFeature(kind){const p=document.querySelector('#featurePanel'),title=document.querySelector('#featureTitle'),status=document.querySelector('#featureStatus'),body=document.querySelector('#featureBody');p.hidden=false;title.textContent=kind==='review'?'盤後驗證':'模型紀錄';status.textContent='讀取中…';body.innerHTML='';try{if(kind==='review'){await openReview();}else{const d=await (await fetch(API_BASE+'/api/roles/review',{cache:'no-store'})).json(),rows=d.rows||[];title.textContent='模型紀錄';status.textContent=`最近審查：${d.date||'尚無紀錄'} · 目前引擎：${(d.engines_now||[]).join('、')||'—'}`;body.innerHTML=`<div class="feature-grid"><div class="feature-card"><label>審查日期</label><strong>${esc(d.date||'—')}</strong></div><div class="feature-card"><label>模型候選</label><strong>${rows.length}</strong></div><div class="feature-card"><label>自動套用</label><strong>${d.auto_apply?'是':'否'}</strong></div></div><div class="feature-table"><div class="table-head" style="padding:0 0 12px;border:0"><h3>角色審查紀錄</h3><button class="danger-btn" onclick="applyModel()">手動套用建議</button></div><table><thead><tr><th>代碼</th><th>目前角色</th><th>建議</th><th>理由</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.code)}</td><td>${esc(x.current_role||x.role)}</td><td>${esc(x.suggest)}</td><td>${esc(x.reason)}</td></tr>`).join('')||'<tr><td colspan="4">尚無模型審查紀錄</td></tr>'}</tbody></table></div>`}}catch(e){status.textContent='讀取失敗：'+e.message;body.innerHTML='<div class="panel" style="padding:18px">目前無法取得資料，請稍後再試。</div>'}}
+async function openFeature(kind){const p=document.querySelector('#featurePanel'),title=document.querySelector('#featureTitle'),status=document.querySelector('#featureStatus'),body=document.querySelector('#featureBody');p.hidden=false;title.textContent=kind==='review'?'盤後驗證':'模型紀錄';status.textContent='讀取中…';body.innerHTML='';try{if(kind==='review'){await openReview();}else{const _ac=new AbortController(),_to=setTimeout(()=>_ac.abort('timeout'),8000);let d;try{const _r=await fetch(API_BASE+'/api/roles/review',{cache:'no-store',signal:_ac.signal});if(!_r.ok)throw new Error('HTTP '+_r.status);d=await _r.json();}finally{clearTimeout(_to);}const rows=d.rows||[];title.textContent='模型紀錄';status.textContent=`最近審查：${d.date||'尚無紀錄'} · 目前引擎：${(d.engines_now||[]).join('、')||'—'}`;body.innerHTML=`<div class="feature-grid"><div class="feature-card"><label>審查日期</label><strong>${esc(d.date||'—')}</strong></div><div class="feature-card"><label>模型候選</label><strong>${rows.length}</strong></div><div class="feature-card"><label>自動套用</label><strong>${d.auto_apply?'是':'否'}</strong></div></div><div class="feature-table"><div class="table-head" style="padding:0 0 12px;border:0"><h3>角色審查紀錄</h3><button class="danger-btn" onclick="applyModel()">手動套用建議</button></div><table><thead><tr><th>代碼</th><th>目前角色</th><th>建議</th><th>理由</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.code)}</td><td>${esc(x.current_role||x.role)}</td><td>${esc(x.suggest)}</td><td>${esc(x.reason)}</td></tr>`).join('')||'<tr><td colspan="4">尚無模型審查紀錄</td></tr>'}</tbody></table></div>`}}catch(e){const msg=(e&&(e.name==='AbortError'))||e==='timeout'?'請求逾時（超過 8 秒未回應）':((e&&e.message)||'未知錯誤');status.textContent='讀取失敗：'+msg;body.innerHTML='<div class="panel" style="padding:18px">目前無法取得資料（'+esc(msg)+'）。請稍後再試或重新整理。</div>'}}
 async function loadReviewDetails(){try{const d=await (await fetch(API_BASE+'/api/review/stocks',{cache:'no-store'})).json(),rows=d.rows||[],tables=document.querySelectorAll('#featureBody .feature-table');if(!tables.length)return;const box=tables[tables.length-1];box.innerHTML=`<h3>今日觀察個股明細</h3><div class="muted">${esc(d.note||'')}</div><table><thead><tr><th>代碼</th><th>名稱</th><th>族群</th><th>最新訊號</th><th>現價</th><th>漲跌%</th><th>量比</th><th>停損</th><th>驗證</th><th>觀察理由</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.code)}</td><td><b>${esc(x.name)}</b></td><td>${esc(x.sector)}</td><td>${esc(x.action||'—')}</td><td>${x.price??'—'}</td><td class="${cls(x.change_rate)}">${x.change_rate==null?'—':x.change_rate+'%'}</td><td>${x.volume_ratio??'—'}</td><td>${x.suggested_stop??'—'}</td><td>${x.hit?'命中':x.demoted?'降級':'待驗證'}</td><td class="muted">${esc(x.reason)}</td></tr>`).join('')||'<tr><td colspan="10">今日尚無個股資料</td></tr>'}</tbody></table>`}catch(e){console.warn('review stock details',e)}}
 let _rvDate=null,_rvTab='watch';
 async function openReview(){const title=document.querySelector('#featureTitle'),status=document.querySelector('#featureStatus'),body=document.querySelector('#featureBody');title.textContent='盤後驗證';status.textContent='AB 雙鏈 · 盤中觀測(A) / 盤後候選(B)';if(_rvTab!=='rules')_rvTab='watch';const tabs=[['watch','盤中驗證 A'],['rules','盤後驗證 B'],['history','歷史回測']];body.innerHTML=`<div class="rv-bar"><div class="rv-tabs">${tabs.map(([k,l])=>`<button class="rv-tab${k===_rvTab?' on':''}" data-tab="${k}">${l}</button>`).join('')}</div></div><div id="rvBody"><div class="muted" style="padding:20px">讀取中…</div></div>`;body.querySelectorAll('.rv-tab').forEach(b=>b.onclick=()=>{_rvTab=b.dataset.tab;body.querySelectorAll('.rv-tab').forEach(x=>x.classList.toggle('on',x===b));renderRvTab();});renderRvTab();}
 function renderRvTab(){if(_rvTab==='reject')_rvTab='watch';if(_rvTab==='history')loadHistory();else if(_rvTab==='rules')loadSwingB();else loadIntradayA();}
-async function _abRegimeBanner(chain){let r={},ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),5000);try{const res=await fetch(API_BASE+'/api/market-breadth',{cache:'no-store',signal:ctrl.signal});if(!res.ok)throw Error(`HTTP ${res.status}`);r=await res.json();}catch(e){return `<div class="filter-note" style="border-left:4px solid #d08a00;background:rgba(208,138,0,.10)"><b>市場寬度資料未取得</b>：${chain} 鏈驗證仍繼續；本次不使用市場 Risk Off 降頻判定。</div>`;}finally{clearTimeout(timer);}if(!r||r.level!=='risk_off')return '';return `<div class="filter-note" style="border-left:4px solid #e08a3c;background:rgba(224,138,60,.10)"><b>⚠ 市場 Risk Off · 真實寬度 ${r.ratio_pct==null?'—':r.ratio_pct+'%'}（漲 ${r.in_count??'—'} / 跌 ${r.out_count??'—'}，共 ${r.total??'—'} 檔）</b>：Layer 0 濾網開啟，${chain} 鏈降頻 — 以下候選一律僅供觀察、非進場依據。</div>`;}
+async function _abRegimeBanner(chain){let r={};try{r=await (await fetch(API_BASE+'/api/market-breadth',{cache:'no-store'})).json();}catch(e){}if(!r||r.level!=='risk_off')return '';return `<div class="filter-note" style="border-left:4px solid #e08a3c;background:rgba(224,138,60,.10)"><b>⚠ 市場 Risk Off · 真實寬度 ${r.ratio_pct==null?'—':r.ratio_pct+'%'}（漲 ${r.in_count??'—'} / 跌 ${r.out_count??'—'}，共 ${r.total??'—'} 檔）</b>：Layer 0 濾網開啟，${chain} 鏈降頻 — 以下候選一律僅供觀察、非進場依據。</div>`;}
 let _histDate=null;
-async function loadHistory(){const box=document.querySelector('#rvBody');if(!box)return;box.innerHTML='<div class="muted" style="padding:20px">讀取歷史驗證資料…</div>';let d={};try{const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),15000);const res=await fetch(API_BASE+'/ab/verify-history'+(_histDate?('?date='+encodeURIComponent(_histDate)):''),{cache:'no-store',signal:ctrl.signal});clearTimeout(timer);if(!res.ok)throw Error(`HTTP ${res.status}`);d=await res.json();}catch(e){box.innerHTML=`<div class="panel" style="padding:18px">歷史驗證資料讀取失敗：${esc(e.name==='AbortError'?'15 秒內沒有回應':e.message)}。請確認盤後驗證服務與資料庫狀態。</div>`;return;}const dates=d.dates||[],rows=d.rows||[];_histDate=d.pool_date||_histDate;const opts=(dates.length?dates:(_histDate?[_histDate]:[])).map(x=>`<option value="${esc(x)}"${x===_histDate?' selected':''}>${esc(x)}</option>`).join('')||'<option>—</option>';const vd=v=>{const s=String(v||'');let c='v-obs';if(s==='命中')c='v-hit';else if(s.indexOf('未')>=0||s==='反向')c='v-rev';return `<span class="vd ${c}">${esc(s||'尚未判定')}</span>`;};const reason=x=>{const raw=[x.non_trigger_reason,x.trigger_reason,x.failure_reason,x.attribution,x.cause,x.note,x.verdict_note,x.reason].filter(Boolean).join('、');if(raw)return raw;if(x.verdict==='觀察(不計)')return '觀察軌：不主動進場，本次不計入命中率';if(x.verdict==='未觸發')return '未觸發：T+1 最高價未達觸發價';if(x.verdict==='觸發未站穩')return '觸發未站穩：曾達觸發價，但 T+1 收盤低於觸發價';if(x.verdict==='跌破月線')return '跌破月線：T+1 收盤低於 MA20';if(x.verdict==='站月線未收紅')return '站月線未收紅：站上 MA20，但相對進場基準報酬未達 0%';if(x.verdict==='資料不足')return '資料不足：缺少 T+1 收盤、最高價、觸發價或 MA20，無法判定';if(x.verdict==='未知軌別')return '軌道資料錯誤：不是攻擊軌、引擎軌或觀察軌';if(x.verdict==='命中')return '條件成立：已達成該軌道的進場與收盤確認條件';return '沒有回傳判定原因：需檢查後端驗證結果欄位';};const entryReason=x=>{const rs=(x.reasons||[]).filter(Boolean);return rs.length?rs.join('、'):'沒有入選條件紀錄：候選池未保存選股條件';};box.innerHTML=`<div class="rv-bar"><label class="rv-date">回測交易日<select id="histDate">${opts}</select></label></div><div class="feature-grid"><div class="feature-card"><label>可判定(攻擊/引擎軌)</label><strong>${d.denom||0} 檔</strong></div><div class="feature-card"><label>命中</label><strong>${d.hits||0}</strong></div><div class="feature-card"><label>命中率</label><strong class="${cls((d.hit_rate||0)-50)}">${d.hit_rate==null?'—':d.hit_rate+'%'}</strong></div><div class="feature-card"><label>觀察軌 T+1（不計命中）</label><strong class="${cls(d.obs_ret_median)}">${d.obs_n||0} 檔</strong><div class="muted" style="font-size:11px;margin-top:2px">${d.obs_scored?`報酬中位 <span class="${cls(d.obs_ret_median)}">${d.obs_ret_median==null?'—':d.obs_ret_median+'%'}</span> · 正報酬 ${d.obs_pos_ratio==null?'—':d.obs_pos_ratio+'%'}（${d.obs_pos||0}/${d.obs_scored}）`:'尚無 T+1 資料'}</div></div></div><div class="feature-table"><h3>當時入選理由 vs T+1 最終結果（池日 ${esc(_histDate||'')}）</h3><div class="muted">${esc(d.note||'')}</div><table><thead><tr><th>代碼</th><th>名稱</th><th>軌道</th><th>進場基準</th><th>T+1收盤</th><th>報酬%</th><th>判定</th><th>未觸發原因</th><th>當時入選理由</th></tr></thead><tbody>${rows.map(x=>`<tr><td><b>${esc(x.code)}</b></td><td>${esc(x.name||'—')}</td><td>${esc(x.track||'—')}</td><td>${x.base_close??'—'}</td><td>${x.next_close??'—'}</td><td class="${cls(x.ret_pct)}">${x.ret_pct==null?'—':x.ret_pct+'%'}</td><td>${vd(x.verdict)}</td><td class="muted">${esc(reason(x))}</td><td class="muted">${esc(entryReason(x))}</td></tr>`).join('')||'<tr><td colspan="9">此日尚無回測資料（每日 15:05 stage2 自動累積；觀察軌不計命中）</td></tr>'}</tbody></table></div>`;const sel=document.querySelector('#histDate');if(sel)sel.onchange=e=>{_histDate=e.target.value;loadHistory();};}
+async function loadHistory(){const box=document.querySelector('#rvBody');if(!box)return;box.innerHTML='<div class="muted" style="padding:20px">讀取中…</div>';let d={};try{d=await (await fetch(API_BASE+'/ab/verify-history'+(_histDate?('?date='+encodeURIComponent(_histDate)):''),{cache:'no-store'})).json();}catch(e){box.innerHTML='<div class="muted" style="padding:20px">讀取失敗</div>';return;}const dates=d.dates||[],rows=d.rows||[];_histDate=d.pool_date||_histDate;const opts=(dates.length?dates:(_histDate?[_histDate]:[])).map(x=>`<option value="${esc(x)}"${x===_histDate?' selected':''}>${esc(x)}</option>`).join('')||'<option>—</option>';const vd=v=>{const s=String(v||'');let c='v-obs';if(s==='命中')c='v-hit';else if(s.indexOf('未')>=0||s==='反向')c='v-rev';return `<span class="vd ${c}">${esc(s||'—')}</span>`;};const reason=x=>{const raw=[x.non_trigger_reason,x.trigger_reason,x.failure_reason,x.attribution,x.cause,x.note,x.verdict_note,x.reason].filter(Boolean).join('、');if(/價格未達進場區|未回測/.test(raw))return '價格未達進場區';if(/資金流出|資金退潮|aflow\s*<\s*0|主動賣/.test(raw)||Number(x.aflow??x.active_flow??x.active_buy_diff)<0)return '盤中資金大幅流出';if(/量能不足|成交量不足|量縮|爆量未跟上/.test(raw)||Number(x.volume_ratio??x.volume_rate??x.volume_multiple)<1)return '盤中量能不足，買盤觀望';if(/大盤同步走弱|大盤走弱|指數下跌|市場拖累|大盤拖累/.test(raw)||Number(x.market_change_rate??x.index_change_rate??x.market_pct??x.index_pct)<0)return '大盤同步走弱拖累';return (x.verdict||'').includes('未')?'原定進場條件未成立':'—'};box.innerHTML=`<div class="rv-bar"><label class="rv-date">回測交易日<select id="histDate">${opts}</select></label></div><div class="feature-grid"><div class="feature-card"><label>可判定(攻擊/引擎軌)</label><strong>${d.denom||0} 檔</strong></div><div class="feature-card"><label>命中</label><strong>${d.hits||0}</strong></div><div class="feature-card"><label>命中率</label><strong class="${cls((d.hit_rate||0)-50)}">${d.hit_rate==null?'—':d.hit_rate+'%'}</strong></div><div class="feature-card"><label>觀察軌 T+1（不計命中）</label><strong class="${cls(d.obs_ret_median)}">${d.obs_n||0} 檔</strong><div class="muted" style="font-size:11px;margin-top:2px">${d.obs_scored?`報酬中位 <span class="${cls(d.obs_ret_median)}">${d.obs_ret_median==null?'—':d.obs_ret_median+'%'}</span> · 正報酬 ${d.obs_pos_ratio==null?'—':d.obs_pos_ratio+'%'}（${d.obs_pos||0}/${d.obs_scored}）`:'尚無 T+1 資料'}</div></div></div><div class="feature-table"><h3>當時入選理由 vs T+1 最終結果（池日 ${esc(_histDate||'')}）</h3><div class="muted">${esc(d.note||'')}</div><table><thead><tr><th>代碼</th><th>名稱</th><th>軌道</th><th>進場基準</th><th>T+1收盤</th><th>報酬%</th><th>判定</th><th>未觸發原因</th><th>當時入選理由</th></tr></thead><tbody>${rows.map(x=>`<tr><td><b>${esc(x.code)}</b></td><td>${esc(x.name||'—')}</td><td>${esc(x.track||'—')}</td><td>${x.base_close??'—'}</td><td>${x.next_close??'—'}</td><td class="${cls(x.ret_pct)}">${x.ret_pct==null?'—':x.ret_pct+'%'}</td><td>${vd(x.verdict)}</td><td class="muted">${esc(reason(x))}</td><td class="muted">${esc((x.reasons||[]).filter(Boolean).join('、')||'—')}</td></tr>`).join('')||'<tr><td colspan="9">此日尚無回測資料（每日 15:05 stage2 自動累積；觀察軌不計命中）</td></tr>'}</tbody></table></div>`;const sel=document.querySelector('#histDate');if(sel)sel.onchange=e=>{_histDate=e.target.value;loadHistory();};}
 async function loadIntradayA(){const box=document.querySelector('#rvBody');if(!box)return;box.innerHTML='<div class="muted" style="padding:20px">讀取中…</div>';const banner=await _abRegimeBanner('A');let w={},v={};try{w=await (await fetch(API_BASE+'/ab/watchlist',{cache:'no-store'})).json();}catch(e){}try{v=await (await fetch(API_BASE+'/ab/verify-stats?days=30',{cache:'no-store'})).json();}catch(e){}if(!w||w.ok===false||!Array.isArray(w.items)){box.innerHTML=`<div class="muted" style="padding:20px">A鏈引擎未就緒：${esc((w&&(w.error||w.detail))||'無回應')}</div>`;return;}
 if(w.phase==='INTRADAY'){const lc=w.light_counts||{},rows=w.items||[];box.innerHTML=`${banner}<div class="feature-grid"><div class="feature-card"><label>🟢 綠燈</label><strong>${lc['🟢']??0}</strong></div><div class="feature-card"><label>✅ 已確認可進</label><strong>${w.confirmed_count??0}</strong></div><div class="feature-card"><label>🟡 續盯</label><strong>${lc['🟡']??0}</strong></div><div class="feature-card"><label>🔴 出局</label><strong>${lc['🔴']??0}</strong></div></div><div class="feature-table"><h3>盤中嚴判 A · Layer 1（候選池 ${esc(w.pool_date||'')}）</h3><div class="muted">${esc(w.purpose||'')}</div><table><thead><tr><th>燈號</th><th>代碼</th><th>名稱</th><th>確認狀態</th><th>現價</th><th>漲跌%</th><th>軌道</th><th>四條件</th><th>進場判定</th><th>入選理由</th></tr></thead><tbody>${rows.map(x=>`<tr style="cursor:pointer" onclick="openStock('${esc(x.code)}')"><td>${esc(x.light||'—')}</td><td><b>${esc(x.code)}</b></td><td>${esc(x.name||'—')}</td><td>${x.confirm_state?`<span class="pill">${esc(x.confirm_state)}</span>`:'—'}</td><td>${x.price??'—'}</td><td class="${cls(x.change_rate)}">${x.change_rate==null?'—':(x.change_rate>0?'+':'')+x.change_rate+'%'}</td><td class="muted">${esc(x.track||'—')}</td><td>${x.hit??0}/4</td><td class="muted">${esc(x.action||'—')}</td><td class="muted">${esc((x.reasons&&x.reasons.length)?x.reasons.join('、'):'—')}</td></tr>`).join('')||`<tr><td colspan="10">候選池空</td></tr>`}</tbody></table><div class="muted" style="margin-top:8px">綠燈＝四條件全中(訊號成立)；須持穩且不跌破觸發才「已確認·可進」(鐵律2 Signal≠Entry)。系統不代為下單。</div></div>`;return;}
 const items=w.items||[],tb=w.track_breakdown||{},hr=(v&&v.overall_hit_rate);box.innerHTML=`${banner}<div class="feature-grid"><div class="feature-card"><label>時段</label><strong>${esc(w.phase||'—')}</strong></div><div class="feature-card"><label>候選池</label><strong>${w.pool_size??items.length} 檔</strong></div><div class="feature-card"><label>引擎軌 / 觀察</label><strong>${tb['引擎軌']??0} / ${tb['觀察']??0}</strong></div><div class="feature-card"><label>滾動勝率(${(v&&v.window_days)||30}日)</label><strong class="${cls(hr)}">${hr==null?'—':hr+'%'}</strong></div></div><div class="feature-table"><h3>盤中觀測 A · Layer 1（資料日 ${esc(w.data_date||'')} · 適用次一交易日）</h3><div class="muted">${esc(w.purpose||'')}</div><table><thead><tr><th>代碼</th><th>名稱</th><th>分數</th><th>軌道</th><th>收盤</th><th>觸發價</th><th>進場規則</th><th>理由 / 缺資料</th></tr></thead><tbody>${items.map(x=>`<tr style="cursor:pointer"${x.has_data===false?' class="muted"':''} onclick="openStock('${esc(x.code)}')"><td><b>${esc(x.code)}</b></td><td>${esc(x.name||'—')}</td><td>${x.score??'—'}</td><td><span class="pill">${esc(x.track||'—')}</span></td><td>${x.close??'—'}</td><td>${x.trigger_price??'—'}</td><td class="muted">${esc(x.entry_rule||'—')}</td><td class="muted">${esc((x.reasons&&x.reasons.length?x.reasons.join('、'):(x.missing&&x.missing.length?'缺:'+x.missing.join('、'):'—')))}</td></tr>`).join('')||`<tr><td colspan="8">此時段尚無候選</td></tr>`}</tbody></table><div class="muted" style="margin-top:8px">勝率來源：screen_verify 滾動 ${(v&&v.window_days)||30} 交易日 · scored ${(v&&v.scored)??0} · hits ${(v&&v.hits)??0}（Learning 層，不回改當日訊號）</div></div>`;}
@@ -577,6 +577,141 @@ document.addEventListener('click',e=>{
 .rv-tabs .rv-tab{white-space:normal;text-align:left;line-height:1.35}
 </style>
 <script>
+// colspan 會讓瀏覽器忽略 th 寬度；用 colgroup 鎖定實際欄位比例。
+(()=>{
+  const groups={
+    'dr-single-table':['9%','9%','7%','7%','11%','23%','9%','10%','7%','8%'],
+    'dr-ref-table':['10%','9%','7%','12%','23%','9%','10%','9%','11%']
+  };
+  const sync=()=>Object.entries(groups).forEach(([cls,widths])=>document.querySelectorAll(`table.${cls}`).forEach(t=>{
+    if(t.querySelector(':scope > colgroup'))return;
+    const cg=document.createElement('colgroup');
+    widths.forEach(w=>{const c=document.createElement('col');c.style.width=w;cg.appendChild(c)});
+    t.insertBefore(cg,t.firstChild);
+  }));
+  new MutationObserver(sync).observe(document.body,{childList:true,subtree:true});
+  sync();
+})();
+</script>
+<style>
+/* 單一主表資料生命週期版：A/B/C 僅為欄位群組，不拆頁、不拆表。 */
+.dr-single{padding:0!important;overflow:hidden!important;border:1px solid #dfe6ef!important;border-radius:18px!important;background:#fff!important;box-shadow:0 12px 34px rgba(32,54,84,.08)!important}
+.dr-single-toolbar{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:16px 18px;background:linear-gradient(135deg,#081524,#10243c);color:#fff;flex-wrap:wrap}
+.dr-single-toolbar b{display:block;font-size:20px}.dr-single-toolbar small{display:block;margin-top:4px;color:#b9c5d5}
+.dr-single-date{display:inline-block;margin-left:6px;padding:7px 10px;border-radius:999px;background:#26394f;color:#e5edf8;font-size:11px;font-weight:800}
+.dr-single-table-wrap{overflow:auto;max-height:68vh}.dr-single-table{width:100%;min-width:1450px;border-collapse:separate;border-spacing:0;font-size:14px;table-layout:auto}
+.dr-single-table th,.dr-single-table td{border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;text-align:center;vertical-align:middle}
+.dr-single-table th{padding:10px 8px;font-weight:850}.dr-single-table th.basic{background:#10243c;color:#fff;min-width:118px}.dr-single-table th.ga{background:#2e6fd8;color:#fff}.dr-single-table th.gb{background:#e77912;color:#fff}.dr-single-table th.gc{background:#2f8f4e;color:#fff}
+.dr-single-table th.sub{color:#14213d;background:#f8fafc}.dr-single-table th.sub.ga{background:#eaf3ff}.dr-single-table th.sub.gb{background:#fff3e3}.dr-single-table th.sub.gc{background:#eaf7ee}.dr-single-table th small{display:block;font-size:11.5px;margin-top:3px;color:#71809b}
+.dr-single-table td{padding:12px 10px;background:#fff;line-height:1.45}.dr-single-table tr:hover td{background:#f8fbff}.dr-single-table .stock{text-align:left;min-width:125px}.dr-single-table .stock b{display:block;font-size:16px}.dr-single-table td small{display:block;color:#71809b;font-size:12px;margin-top:3px}.dr-single-table .price{font-size:17px;font-weight:850}.dr-single-table .up{color:#e53935}.dr-single-table .down{color:#168447}.dr-single-table .flow{font-size:15px;font-weight:850}.dr-single-table .flow-in{color:#e53935}.dr-single-table .flow-out{color:#168447}.dr-single-table .muted-state{color:#71809b;font-weight:750}.dr-single-table .badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-weight:850;white-space:nowrap;background:#edf1f5;color:#58667a}.dr-single-table .post-ready{background:#fff3d9;color:#ad6500}.dr-single-table .verify-pending{background:#edf1f5;color:#58667a}.dr-single-table .explain{text-align:left;min-width:170px}.dr-single-table .group-label{font-weight:900}.dr-single-status{display:inline-block;padding:7px 10px;border-radius:999px;background:#dff4e5;color:#137533;font-size:11px;font-weight:850}.dr-single-note{padding:12px 16px;border-top:1px solid #dfe6ef;color:#4f5e73;font-size:12px;font-weight:700}.dr-single-reject{margin:12px 16px 16px;border:1px solid #f0d39a;border-radius:12px;background:#fffaf0}.dr-single-reject summary{cursor:pointer;padding:11px 13px;color:#956000;font-weight:850}.dr-single-reject table{width:100%;border-collapse:collapse;font-size:12px}.dr-single-reject th,.dr-single-reject td{padding:8px;border-top:1px solid #f1dfbb;text-align:left}.dr-single-empty{padding:24px;color:#71809b;text-align:center}
+.dr-single-table .explain .mr-bul{margin:0;padding-left:15px;text-align:left}.dr-single-table .explain .mr-bul li{font-size:13.5px;line-height:1.6;color:#334155}.dr-single-table .mr-hit{color:#0b9a6f;font-weight:850}.dr-single-table .mr-miss{color:#df4b67;font-weight:850}.dr-single-table .mr-lu{display:block;margin-top:4px;color:#e53935;font-weight:850;font-size:12px}.dr-single-table .mr-sig{font-weight:800}.dr-single-table .mr-arrow{color:#0b9a6f}.dr-single-table .mr-badge{display:inline-flex;align-items:center;gap:3px;padding:5px 10px;border-radius:999px;font-weight:850;font-size:13.5px}.dr-single-table .mr-badge.hit{background:#e8f7f1;color:#0b9a6f}.dr-single-table .mr-badge.warn{background:#fff6df;color:#c78313}.dr-single-table .mr-badge.miss{background:#fff0f3;color:#df4b67}.dr-single-table tr.mr-limit td{background:#fff0f3}.dr-single-table .cond b{display:block}
+.dr-stats{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#e5e9f2;border:1px solid #e5e9f2;border-radius:14px;overflow:hidden;margin:0 0 14px}.dr-stat{background:#fff;padding:13px 10px;text-align:center}.dr-stat .k{font-size:12px;color:#73809a;font-weight:800}.dr-stat .v{font-size:20px;font-weight:950;margin-top:4px;color:#182033}.dr-stat .v small{font-size:13px;font-weight:850}.dr-stat.b .v{color:#3b6eea}.dr-stat.g .v{color:#0b9a6f}.dr-stat.o .v{color:#c78313}.dr-stat.r .v{color:#df4b67}@media(max-width:900px){.dr-stats{grid-template-columns:repeat(3,1fr)}}
+</style>
+<script>
+// 新版單一主表：只改前端資料映射，保留既有 API 與原始檔案不動。
+(()=>{
+  const apiBase=(location.protocol==='file:'||location.hostname==='127.0.0.1'||location.hostname==='localhost')?'http://66.42.42.150:8000':'';
+  const esc2=v=>String(v??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const finite=v=>{const n=Number(v);return Number.isFinite(n)?n:null};
+  const numberText=v=>{const n=finite(v);return n==null?'—':`${n>0?'+':''}${n.toLocaleString('en-US')}`};
+  const pctText=v=>{const n=finite(v);return n==null?'—':`${n>0?'+':''}${n.toFixed(2)}%`};
+  const color=v=>{const n=finite(v);return n>0?'up':n<0?'down':''};
+  const phaseNow=()=>{const h=Number(new Intl.DateTimeFormat('en-US',{hour:'2-digit',hour12:false,timeZone:'Asia/Taipei'}).format(new Date()));return h>=18?'POST':'INTRADAY'};
+  const getJson=async path=>{const ac=new AbortController(),to=setTimeout(()=>ac.abort('timeout'),8000);try{const r=await fetch(apiBase+path,{cache:'no-store',signal:ac.signal});if(!r.ok)throw Error(`HTTP ${r.status}`);return await r.json();}finally{clearTimeout(to);}};
+  const textReason=x=>{const vals=[x.entry_rule,x.classification_reason,x.action,x.reason,x.note,x.conditions,x.reasons,x.notes];return vals.flatMap(v=>Array.isArray(v)?v:[v]).filter(v=>v!=null&&String(v).trim()).slice(0,3).map(v=>esc2(typeof v==='object'?JSON.stringify(v):v)).join('<br>')||'—'};
+  // 盤中入選理由：只留盤中訊號，剔除法人/大戶（那是盤後籌碼，另有專欄）
+  const pickReason=x=>{const r=String(x.reason||'').trim();if(r){const kept=r.split('·').map(s=>s.trim()).filter(s=>s&&!/法人|大戶|投信|外資|資金連續|連續\s*\d+\s*日|連買|連賣/.test(s));return kept.length?esc2(kept.join(' · ')):'—'}return textReason(x)};
+  const triggerCondition=x=>{const p=x.trigger_price??x.entry_ref??x.base_close??x.prev_high??x.previous_high??x.ma20??x.ma_20??x.month_line;const n=p==null?'—':Number(p).toLocaleString('en-US');const raw=String(x.entry_rule||x.track||x.action||x.classification_reason||x.reason||'');if(x.track==='engine'||/回測|月線|MA20|引擎/.test(raw))return `回測月線 ${n}`;if(x.track==='attack'||/突破|昨高|攻擊/.test(raw))return `突破昨高 ${n}`;return p==null?'待盤後產生':`關鍵價 ${n}`};
+  const signalType=x=>{if(x.track==='attack')return '突破前高';if(x.track==='engine')return '回測月線';const raw=[x.signal_type,x.signal,x.track,x.entry_rule,x.source,x.reasons].flatMap(v=>Array.isArray(v)?v:[v]).filter(Boolean).join('、');if(/突破|昨高/.test(raw))return '突破前高';if(/回測|月線|MA20/.test(raw))return '回測月線';if(/放量|長紅|爆量/.test(raw))return '放量長紅';if(/均線交叉|黃金交叉/.test(raw))return '均線黃金交叉';return '待更新'};
+  const signalDetail=x=>{const raw=[x.signal_type,x.signal,x.track,x.entry_rule,x.source,x.reasons].flatMap(v=>Array.isArray(v)?v:[v]).filter(Boolean).join('、'),ref=x.prev_high??x.previous_high??x.yesterday_high??x.trigger_price??x.entry_ref??x.base_close,price=ref==null?'API 未提供價位':Number(ref).toLocaleString('en-US'),post=String(x.entry_rule||x.classification_reason||x.action||'').trim();if(x.track==='attack'||/突破|昨高/.test(raw))return `${x.triggered?'已突破前高':'突破前高訊號'}｜${x.triggered?'站上':'等待站上'} ${price}${post?`｜入選依據：${post}`:''}`;if(x.track==='engine'||/回測|月線|MA20/.test(raw))return `${x.triggered?'已回測月線':'回測月線訊號'}｜${x.triggered?'回到':'等待回到'} ${price}${post?`｜入選依據：${post}`:''}`;if(/放量|長紅|爆量/.test(raw))return `放量長紅｜量能爆發類${post?`｜入選依據：${post}`:''}`;if(/均線交叉|黃金交叉/.test(raw))return `均線黃金交叉｜均線交叉類${post?`｜入選依據：${post}`:''}`;return post?`待更新｜入選依據：${post}`:'API 未提供訊號細節'};
+  const chips=x=>{const direct=x.institution_status||x.inst_status||x.institution||x.inst_note||x.chip_status||x.chip_note||x.inst_streak||x.chip_reasons;if(direct)return direct;const r=String(x.reason||'');const streak=r.match(/連[買賣]\s*\d+\s*日/);const net=r.match(/法人近月\s*([+\-−][\d,\.]+)\s*張/);if(streak)return (net?'法人'+net[1].replace('−','-')+'張,':'法人')+streak[0];if(net)return '法人近月'+net[1].replace('−','-')+'張';return '待法人資料';};
+  const rowCode=x=>String(x.code??x.stock_id??'');
+  const rowName=x=>x.name??x.stock_name??rowCode(x);
+  const flowValue=x=>x.aflow??x.active_flow??x.active_buy_diff??x.net_active??x.capital_flow;
+  // 命中＝觸發 + 收盤站穩門檻。後端 success 可能只看盤中觸發、漏了收盤確認（如 6173 收 165<門檻 169.5 卻標命中），前端再守一道：收盤<門檻一律不算命中。
+  const closeConfirm=x=>{const c=finite(x.price??x.close??x.close_price??x.base_close),e=finite(x.entry_ref??x.base_close??x.trigger_price);return (c!=null&&e!=null)?c>=e:null};
+  const isHit=x=>!!x.verified&&(x.triggered===1||x.triggered===true)&&!!x.success&&closeConfirm(x)!==false;
+  const intradayReason=x=>{const flow=flowValue(x),ch=x.change_rate??x.today_change??x.chg??x.pct,parts=[];parts.push({label:'即時資金流',detail:flow!=null?`${numberText(flow)}｜${Number(flow)>0?'主動買盤流入':Number(flow)<0?'主動賣盤流出':'方向不明'}`:'API 未提供即時資金流'});parts.push({label:'當日漲跌',detail:ch!=null?`${pctText(ch)}｜${Number(ch)>0?'當日上漲':Number(ch)<0?'當日下跌':'持平'}`:'API 未提供當日漲跌'});parts.push({label:'即時觸發條件',detail:triggerCondition(x)});return parts};
+  const phaseLabel=phase=>phase==='POST'?'18:00 後｜盤後正式名單':'盤中｜初篩資料逐步補齊';
+  const stateCell=(label,cls='')=>`<span class="badge ${cls}">${esc2(label)}</span>`;
+  function mainRows(items,phase,notTraded){
+    const isLimitUp=x=>Number(x.change_rate??x.chg??x.pct)>=9.8||x.subgroup==='漲停'||/漲停/.test(String(x.classification_reason||x.reason||''));
+    return [...items].sort((a,b)=>Number(isLimitUp(b))-Number(isLimitUp(a))).map((x,i)=>{
+      // 進場日還沒到（未來名單，如今晚才產出的隔日單）→ 交易日欄位全空白，只留盤後已決定的欄
+      if(notTraded){
+        const cond0=triggerCondition(x),reason0=(String(x.reason||'').trim()?pickReason(x):'待進場日盤中資料'),chip0=chips(x),chipCls0=/連賣|賣超/.test(chip0)?'down':/連買|買超|同步/.test(chip0)?'up':'',signal0=signalType(x);
+        return `<tr><td class="stock"><b>${esc2(rowName(x))}</b><small>${esc2(rowCode(x))}</small></td><td class="price muted-state">—<small>進場日未到</small></td><td class="muted-state">—</td><td class="flow muted-state">—<small>進場日未到</small></td><td class="cond">${esc2(cond0)}</td><td class="explain">${reason0}</td><td class="${chipCls0}">${chip0==='待法人資料'?stateCell('待法人資料','post-ready'):esc2(chip0)}</td><td>${signal0==='待更新'?stateCell('18:00 後更新','post-ready'):esc2(signal0)}</td><td>${stateCell('待進場日盤中','verify-pending')}</td><td>${stateCell('待進場日收盤','verify-pending')}</td></tr>`;
+      }
+      const price=x.price??x.close??x.close_price??x.base_close, ch=x.change_rate??x.today_change, flow=flowValue(x), fN=finite(flow);
+      const isToday=x.state==='live'||/驗證中/.test(String(x.verdict||''));
+      const limitUp=Number(ch)>=9.8;
+      const eref=x.entry_ref??x.base_close??x.trigger_price, erefT=eref==null?'—':Number(eref).toLocaleString('en-US');
+      const isEng=x.track==='engine'||/回測|月線|引擎/.test(String(x.reason||''));
+      const condMain=triggerCondition(x), condSub=eref==null?'':`（${isEng?'回測':'突破'} ${erefT}）`;
+      // 盤中入選理由只使用即時欄位；跨日資金連續資訊只留給盤後法人籌碼。
+      const reasonHtml=`<ul class="mr-bul">${intradayReason(x).map(b=>`<li><b>${esc2(b.label)}</b><small>${esc2(b.detail)}</small></li>`).join('')}</ul>`;
+      // 盤後法人籌碼：只顯示連買/連賣 N 日（連買紅、連賣綠）
+      const chipRaw=chips(x), streak=(String(chipRaw).match(/連[買賣]\s*\d+\s*日/)||[])[0], chipCls=/連買/.test(streak)?'up':/連賣/.test(streak)?'down':'';
+      const chipHtml=streak?`<b class="${chipCls}">法人${esc2(streak)}</b>`:(chipRaw==='待法人資料'?stateCell('待法人資料','post-ready'):`<b>${esc2(chipRaw)}</b>`);
+      const signal=signalType(x),signalNote=signalDetail(x);
+      // C｜今日觸發
+      let trigHtml;
+      if(x.triggered==null)trigHtml=stateCell(isToday?'待收盤蓋章':'待進場日盤中','verify-pending');
+      else if(x.triggered)trigHtml=`<b class="mr-hit">✅ 已${isEng?'回測':'突破'} ${erefT}</b>${limitUp?'<small class="mr-lu">盤中曾漲停</small>':''}`;
+      else trigHtml=`<b class="mr-miss">❌ 未${isEng?'回測':'突破'} ${erefT}</b>`;
+      // C｜驗證結果
+      let verHtml;
+      if(x.verified){
+        const closeN=finite(price), closeOk=closeConfirm(x), closeT=closeN==null?'—':Number(closeN).toLocaleString('en-US');
+        if(x.triggered&&closeOk===false)
+          verHtml=`<span class="mr-badge warn">⚠️ 盤中${isEng?'回測':'突破'}・收盤${isEng?'跌破':'失守'}</span><small>收盤 ${closeT} &lt; ${erefT}</small>`;
+        else if(isHit(x))verHtml=`<span class="mr-badge hit">✅ 命中</span><small>收盤 ${closeT} ≥ ${erefT}</small>`;
+        else if(x.triggered&&!x.success)verHtml=`<span class="mr-badge warn">⚠️ 觸發後失敗</span><small>收盤 &lt; ${erefT}</small>`;
+        else verHtml=`<span class="mr-badge miss">❌ 未觸發</span><small>未到達條件</small>`;
+      } else verHtml=stateCell(isToday?'待收盤驗證':'待進場日收盤','verify-pending');
+      return `<tr class="${limitUp?'mr-limit':''}"><td class="stock"><b>${esc2(rowName(x))}</b><small>${esc2(rowCode(x))}</small></td><td class="price">${esc2(price==null?'—':Number(price).toLocaleString('en-US'))}${limitUp?'<small class="mr-lu">收盤漲停</small>':''}</td><td class="${color(ch)}">${esc2(pctText(ch))}</td><td class="flow ${fN>0?'flow-in':fN<0?'flow-out':''}">${esc2(flow==null?'—':numberText(flow))}<small>${flow==null?'無資料':fN>0?'流入':fN<0?'流出':'中性'}</small></td><td class="cond"><b>${esc2(condMain)}</b>${condSub?`<small>${esc2(condSub)}</small>`:''}</td><td class="explain">${reasonHtml}</td><td>${chipHtml}</td><td class="mr-sig"><b>${esc2(signal)}</b><small>${esc2(signalNote)}</small><span class="mr-arrow">↗</span></td><td>${trigHtml}</td><td>${verHtml}</td></tr>`;
+    }).join('')||'<tr><td colspan="10" class="dr-single-empty">目前沒有可顯示的正式名單</td></tr>';
+  }
+  function rejects(items){if(!items.length)return '';return `<details class="dr-single-reject"><summary>查看盤後淘汰名單（${items.length} 檔）</summary><table><thead><tr><th>股票</th><th>盤中資料</th><th>盤中資金流</th><th>盤中入選理由</th><th>淘汰理由</th></tr></thead><tbody>${items.map(x=>`<tr><td>${esc2(x.name||x.stock_name||x.code)}<br>${esc2(x.code||x.stock_id)}</td><td>${esc2(x.close??x.price??'—')}／${esc2(x.change_rate==null?'—':pctText(x.change_rate))}</td><td>${esc2(flowValue(x)==null?'—':numberText(flowValue(x)))}</td><td>${textReason(x)}</td><td>${esc2(x.why||x.reason||x.detail||'盤後條件未達標')}</td></tr>`).join('')}</tbody></table></details>`}
+  function decRejects(rows){if(!rows||!rows.length)return '<div class="dr-single-note">此日尚無盤後淘汰／落選名單（或當日尚未產生）。</div>';return `<details class="dr-single-reject" open><summary>盤後淘汰名單（${rows.length} 檔｜保留淘汰理由，不刪除）</summary><table><thead><tr><th>股票</th><th>族群</th><th>來源</th><th>卡在因子</th><th>淘汰理由</th><th>七因子總分</th></tr></thead><tbody>${rows.map(x=>`<tr><td><b>${esc2(x.stock_name||x.stock_id)}</b><br><small>${esc2(x.stock_id)}</small></td><td>${esc2(x.sector||'—')}</td><td>${esc2(x.source||'—')}</td><td>${esc2(x.fail_factor||'—')}</td><td>${esc2(x.detail||x.reason||'盤後條件未達標')}</td><td>${esc2(x.score_total==null?'—':x.score_total+'／100')}</td></tr>`).join('')}</tbody></table></details>`}
+  function singleCard(data,phase,rejectRows){const _tm=(()=>{const f=n=>Number(new Intl.DateTimeFormat('en-US',Object.assign({hour12:false,timeZone:'Asia/Taipei'},{[n]:'2-digit'})).format(new Date()));return f('hour')*60+f('minute')})();const items=data.items||data.rows||[],isToday=data.is_today!==false,status=data._apiOk===false?'API 讀取失敗':(isToday?(_tm<540?'今日盤前 · 等待 09:00 開盤':_tm<=810?'今日盤中 · 即時驗證中（13:30 收盤）':'今日已收盤 · 等待盤後籌碼與驗證蓋章'):'已收盤 · T+1 蓋章'),date=data.target_date||data.data_date||data.pool_date||data.as_of||'—',dates=Array.isArray(data.dates)&&data.dates.length?data.dates:[date],dateOpts=dates.map(x=>`<option value="${esc2(x)}"${x===date?' selected':''}>${esc2(x)}</option>`).join('');return `<article class="dr-single"><div class="dr-single-toolbar"><div><b>盤中決策主表</b><small>同一筆資料依時間逐步補齊；A／B／C 僅為欄位群組</small></div><div><span class="dr-single-date">${esc2(status)}</span><span class="dr-single-date">資料日 <select onchange="window._pickMainDate&&window._pickMainDate(this.value)" style="border:0;background:transparent;font:inherit;font-weight:850;color:inherit;cursor:pointer">${dateOpts}</select></span></div></div>${(()=>{const s=items.reduce((a,x)=>{a.tot++;const tr=(x.triggered===1||x.triggered===true);if(tr)a.trig++;if(x.verified){if(isHit(x))a.hit++;else if(tr)a.fail++;else a.no++;}return a;},{tot:0,trig:0,hit:0,fail:0,no:0});const p=(n,d)=>d?Math.round(n/d*100):0;const cell=(k,v,cls)=>`<div class="dr-stat ${cls||''}"><div class="k">${k}</div><div class="v">${v}</div></div>`;return `<div class="dr-stats">${cell('入選檔數',s.tot)}${cell('已觸發',`${s.trig} <small>(${p(s.trig,s.tot)}%)</small>`,'b')}${cell('命中',`${s.hit} <small>(${p(s.hit,s.tot)}%)</small>`,'g')}${cell('觸發後失敗',`${s.fail} <small>(${p(s.fail,s.tot)}%)</small>`,'o')}${cell('未觸發',`${s.no} <small>(${p(s.no,s.tot)}%)</small>`,'r')}${cell('總名單命中率',`${p(s.hit,s.tot)}%`,'g')}${cell('觸發命中率',`${p(s.hit,s.trig)}%`,'g')}</div>`})()}<div class="dr-single-table-wrap"><table class="dr-single-table"><thead><tr><th rowspan="2" class="basic">股票</th><th rowspan="2" class="basic">收盤／現價</th><th rowspan="2" class="basic">漲跌</th><th colspan="2" class="ga"><span class="group-label">A｜盤中資料</span><small style="display:block;font-weight:600;opacity:.85">${esc2(date)} 當日盤中即時（收盤後應存檔，不得消失）</small></th><th colspan="3" class="gb"><span class="group-label">B｜盤後分析</span><small style="display:block;font-weight:600;opacity:.85">入選依據＝前一交易日盤後籌碼定案</small></th><th colspan="2" class="gc"><span class="group-label">C｜策略驗證</span><small style="display:block;font-weight:600;opacity:.85">次一交易日 T+1 收盤蓋章</small></th></tr><tr><th class="sub ga">盤中資金流</th><th class="sub ga">盤中觸發條件</th><th class="sub gb">盤中入選理由</th><th class="sub gb">盤後法人籌碼</th><th class="sub gb">入選訊號型態</th><th class="sub gc">今日觸發</th><th class="sub gc">驗證結果</th></tr></thead><tbody>${mainRows(items,phase,(!!date&&date>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei'}).format(new Date())))}</tbody></table></div><div class="dr-single-note">主表＝盤後留下的名單（同一筆逐步補齊）；被刷掉的移下方「淘汰名單」保留理由、不刪除。盤中資料保留、不覆蓋；18:00 後補法人與訊號型態並重新篩選；隔日更新今日觸發，收盤後補驗證結果。</div>${decRejects(rejectRows)}</article>`}
+  // AB 正宗（/ab/watchlist）→ 主表資料形狀。入選＝攻擊+引擎軌；觀察軌另列；不混計。
+  const _trackMap={'攻擊軌':'attack','引擎軌':'engine','觀察':'observe'};
+  function abToSingle(w){
+    const map=x=>({code:x.code,name:x.name,sector:x.sector,track:_trackMap[x.track]||x.track,
+      score:x.score,reason:(x.reasons||[]).join(' · '),reasons:x.reasons,
+      entry_ref:x.trigger_price??x.close,trigger_price:x.trigger_price,base_close:x.close,
+      entry_rule:x.entry_rule,missing:x.missing,
+      price:null,change_rate:null,aflow:null,triggered:null,success:null,verified:false});
+    const all=(w.items||[]).map(map);
+    const picks=all.filter(x=>x.track==='attack'||x.track==='engine');
+    const observe=all.filter(x=>x.track==='observe');
+    return {target_date:w.applies_date,is_today:false,rows:picks,observe_rows:observe,
+      universe_size:w.universe_size,pool_size:w.pool_size,_apiOk:true,_ab:true};
+  }
+  function observeSection(data){if(!data||!data._ab)return '';const obs=data.observe_rows||[],uni=data.universe_size||51,picks=(data.rows||[]).length,rest=Math.max(uni-picks-obs.length,0);
+    return `<div class="dr-single-note">觀察池 <b>${uni}</b> 檔｜入選 <b>${picks}</b>（攻擊+引擎軌）｜觀察軌 <b>${obs.length}</b>｜其餘未入選 <b>${rest}</b>（8/6 明日清單＝用 8/5 盤後籌碼定案；法人待 18:00 補）</div>`+
+      (obs.length?`<details class="dr-single-reject"><summary>觀察軌 ${obs.length} 檔（分數未達入選門檻，續盯）</summary><table><thead><tr><th>股票</th><th>收盤</th><th>分數</th><th>入選理由</th></tr></thead><tbody>${obs.map(x=>`<tr><td><b>${esc2(x.name||x.code)}</b><br><small>${esc2(x.code)}</small></td><td>${esc2(x.base_close==null?'—':x.base_close)}</td><td>${esc2(x.score==null?'—':x.score)}</td><td style="text-align:left">${esc2(pickReason(x))}</td></tr>`).join('')}</tbody></table></details>`:'');}
+  async function renderSingle(){const body=document.querySelector('#featureBody'),title=document.querySelector('#featureTitle'),status=document.querySelector('#featureStatus');if(!body)return;const phase=phaseNow();body.innerHTML='<div class="dr-single-empty">讀取主表資料中…</div>';try{
+    const sel=window._mainTableDate||'';
+    const [ab,dec]=await Promise.all([getJson('/ab/watchlist').catch(e=>({_err:e})),getJson('/api/dec/list'+(sel?('?date='+encodeURIComponent(sel)):'')).catch(e=>({_err:e}))]);
+    const fwd=ab&&!ab._err?ab.applies_date:null,decDates=(dec&&dec.dates)||[],allDates=[...new Set([fwd,...decDates].filter(Boolean))].sort().reverse();
+    const useAB=!!fwd&&(!sel||sel===fwd);
+    let data,rejectRows=[];
+    if(useAB){data=abToSingle(ab);data.dates=allDates;}
+    else{if(dec._err)throw dec._err;data=dec;data._apiOk=true;data.dates=allDates;try{const rd=data.target_date||sel||'';if(rd)rejectRows=((await getJson('/api/review/rejects?trade_date='+encodeURIComponent(rd)).catch(()=>({}))).rows)||[]}catch(e){}}
+    if(title)title.textContent='盤中決策主表';
+    if(status)status.textContent=useAB?'AB 正宗 /ab/watchlist · 明日觀察清單（入選＝攻擊+引擎軌）':'/api/dec/list · T+1 蓋章驗證';
+    body.innerHTML=singleCard(data,phase,rejectRows)+observeSection(data);
+  }catch(e){const msg=((e&&e.name==='AbortError')||e==='timeout')?'請求逾時（超過 8 秒未回應）':((e&&e.message)||String(e));if(status)status.textContent='資料讀取失敗';body.innerHTML=`<div class="dr-api-status fail">主表 API 讀取失敗：${esc2(msg)}<br><button class="btn" style="margin-top:10px" onclick="window.__singleMainTableRender&&window.__singleMainTableRender()">重新讀取</button></div>`}}
+  window._pickMainDate=v=>{window._mainTableDate=v||'';renderSingle();};
+  window.renderDualReview=renderSingle;
+  window.refreshDualA=renderSingle;
+  window.validateDualB=renderSingle;
+  window.__singleMainTableRender=renderSingle;
+})();
+</script>
+<script>
 // 先套用正確的 A/B 語意與收盤更新說明；保留原有資料 API、查詢與篩選邏輯。
 (()=>{
   const originalOpenFeature=window.openFeature;
@@ -668,6 +803,60 @@ document.addEventListener('click',e=>{
   .dr-flow{font-size:9.5px}
 }
 </style>
+<style>
+/* 盤後驗證主表：所有欄位收進同一畫面，文字緊密但保持可讀。 */
+.dr-single-table-wrap{overflow-x:hidden!important;overflow-y:visible!important;max-height:none!important}
+.dr-single-table{width:100%!important;min-width:0!important;table-layout:fixed!important;font-size:11px!important}
+.dr-single-table th,.dr-single-table td{padding:7px 5px!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word!important;line-height:1.3!important}
+.dr-single-table th{font-size:10px!important}
+.dr-single-table th.ga,.dr-single-table th.gb,.dr-single-table th.gc{color:#fff!important}
+.dr-single-table th.ga small,.dr-single-table th.gb small,.dr-single-table th.gc small{display:block!important;color:#fff!important;opacity:1!important;font-size:8px!important;line-height:1.25!important}
+.dr-single-table th.sub.ga,.dr-single-table th.sub.gb,.dr-single-table th.sub.gc{color:#24344d!important}
+.dr-single-table th.sub small,.dr-single-table td small{font-size:9px!important;line-height:1.25!important}
+.dr-single-table .group-label{font-size:12px!important;white-space:nowrap!important}
+.dr-single-table .stock,.dr-single-table .explain{min-width:0!important}
+.dr-single-table .stock b{font-size:12px!important;overflow-wrap:anywhere!important}
+.dr-single-table .price,.dr-single-table .flow{font-size:12px!important}
+.dr-single-table .mr-badge,.dr-single-table .badge{white-space:normal!important;padding:3px 5px!important;font-size:10px!important}
+.dr-single-table th:nth-child(1),.dr-single-table td:nth-child(1){width:9%}
+.dr-single-table th:nth-child(2),.dr-single-table td:nth-child(2){width:9%}
+.dr-single-table th:nth-child(3),.dr-single-table td:nth-child(3){width:7%}
+.dr-single-table th:nth-child(4),.dr-single-table td:nth-child(4){width:6%}
+.dr-single-table th:nth-child(5),.dr-single-table td:nth-child(5){width:10%}
+.dr-single-table th:nth-child(6),.dr-single-table td:nth-child(6){width:23%}
+.dr-single-table th:nth-child(7),.dr-single-table td:nth-child(7){width:9%}
+.dr-single-table th:nth-child(8),.dr-single-table td:nth-child(8){width:10%}
+.dr-single-table th:nth-child(9),.dr-single-table td:nth-child(9){width:7%}
+.dr-single-table th:nth-child(10),.dr-single-table td:nth-child(10){width:10%}
+</style>
+<style>
+/* 窄視窗改成可讀的單檔卡片，避免中文被壓成直排。 */
+@media(max-width:900px){
+  .dr-single-table-wrap{overflow:visible!important}
+  .dr-single-table{display:block!important;width:100%!important;min-width:0!important;table-layout:auto!important}
+  .dr-single-table thead{display:none!important}
+  .dr-single-table tbody,.dr-single-table tr,.dr-single-table td{display:block!important;width:100%!important}
+  .dr-single-table tr{padding:12px 10px!important;margin:0;border-bottom:1px solid #e5e9f2!important;background:#fff!important}
+  .dr-single-table tr.mr-limit{background:#fff0f3!important}
+  .dr-single-table td{display:grid!important;grid-template-columns:86px minmax(0,1fr);gap:8px;align-items:start;text-align:left!important;padding:5px 0!important;border:0!important;font-size:13px!important;line-height:1.45!important}
+  .dr-single-table td::before{font-weight:850;color:#71809b;content:''}
+  .dr-single-table td:nth-child(1)::before{content:'股票'}
+  .dr-single-table td:nth-child(2)::before{content:'收盤／現價'}
+  .dr-single-table td:nth-child(3)::before{content:'漲跌'}
+  .dr-single-table td:nth-child(4)::before{content:'盤中資金流'}
+  .dr-single-table td:nth-child(5)::before{content:'觸發條件'}
+  .dr-single-table td:nth-child(6)::before{content:'盤中入選理由'}
+  .dr-single-table td:nth-child(7)::before{content:'法人籌碼'}
+  .dr-single-table td:nth-child(8)::before{content:'訊號型態'}
+  .dr-single-table td:nth-child(9)::before{content:'今日觸發'}
+  .dr-single-table td:nth-child(10)::before{content:'驗證結果'}
+  .dr-single-table .stock,.dr-single-table .explain{min-width:0!important}
+  .dr-single-table .stock b{font-size:15px!important}
+  .dr-single-table .group-label{white-space:normal!important}
+  .dr-single-table td small{font-size:11px!important}
+  .dr-single-table .mr-badge,.dr-single-table .badge{display:inline-flex!important;width:max-content;max-width:100%;white-space:normal!important}
+}
+</style>
 <script>
 (()=>{
   const E=window.esc||((s)=>String(s??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])));
@@ -683,15 +872,13 @@ document.addEventListener('click',e=>{
   function aDataStatus(d){const all=d.items||d.rows||[],missing=all.filter(x=>x.pool_has_data===false||x.has_data===false||((x.price??x.close)==null)||Array.isArray(x.pool_missing)&&x.pool_missing.length),noTrigger=all.filter(x=>x.pool_has_data!==false&&x.has_data!==false&&(x.price??x.close)!=null&&institutionLabel(x)!=='法人資料待補'&&(x.trigger_price??x.ma20??x.ma_20)==null);if(!missing.length&&!noTrigger.length)return '';const missingText=missing.map(x=>{const miss=Array.isArray(x.pool_missing)&&x.pool_missing.length?x.pool_missing:x.missing;const fields=Array.isArray(miss)&&miss.length?[...(x.price??x.close)==null?['收盤／行情']:[],...miss.filter(v=>v!=='收盤／行情')].join('、'):'收盤／行情';return `${E(x.code||x.stock_id||'—')} ${E(x.name||x.stock_name||'—')}（缺：${E(fields)}）`}).join('、');const sourceDate=d.pool_date||d.data_date||d.trade_date||'以 API 回傳為準';return `<div class="dr-data-state"><b>資料狀態</b>：有效 ${aEligibleItems(d).length} 檔｜資料待補 ${missing.length} 檔｜無觸發價 ${noTrigger.length} 檔（資料齊·位置未到，非缺資料）${missing.length?`<br><span>資料明細：${missingText}</span>`:''}<br><small>資料日：${E(sourceDate)}；收盤／行情／法人缺資料不計入 A，無觸發另行統計。</small></div>`}
   function aRows(d){if(!d._apiOk)return `<div class="dr-empty">A API 讀取失敗：${E(apiError(d))}<br><small>未使用任何預設或模擬資料。</small></div>`;const items=aEligibleItems(d);return items.map((x,i)=>{const price=x.price??x.close??'—',flow=x.aflow??x.active_flow??x.active_buy_diff,raw=x.entry_rule||x.action||x.classification_reason||'',trigger=x.trigger_price??x.ma20??x.ma_20,signalType=aSignalType(x,raw),inst=institutionLabel(x),limitUp=Number(x.change_rate)>=9.8||x.subgroup==='漲停'||/漲停/.test(String(x.classification_reason||''));let cond=trigger!=null&&/昨高|突破/.test(String(raw))?`突破昨高 ${fmt(trigger)}`:trigger!=null&&/月線|回測|回月線|MA20/i.test(String(raw))?`回測月線 ${fmt(trigger)}`:'盤中條件缺資料';const flowClass=flow==null?'dr-flow-flat':Number(flow)>0?'dr-flow-in':Number(flow)<0?'dr-flow-out':'dr-flow-flat';const flowText=flow==null?'—':`${Number(flow)>0?'+':''}${fmt(flow)}`;return `<div class="dr-row${limitUp?' dr-limit':''}"><span class="dr-stock">${E(x.name||x.stock_name||'—')}<small>${E(x.code||x.stock_id||'—')}</small></span><span class="dr-price">${fmt(price)}</span><span class="dr-intraday-cell ${flowClass}">${E(flowText)}</span><span class="dr-intraday-cell"><span class="dr-badge">${E(cond)}</span></span><span class="dr-inst ${institutionClass(inst)}">${E(inst)}</span><span class="dr-ai">${E(signalType)}</span></div>`}).join('')||(function(){const all=d.items||d.rows||[];if(!all.length)return '<div class="dr-empty">A API 已連線，但目前沒有名單。</div>';return all.map(x=>`<div class="dr-row"><span class="dr-stock">${E(x.name||x.stock_name||'—')}<small>${E(x.code||x.stock_id||'—')}</small></span><span class="dr-price">${x.price!=null||x.close!=null?fmt(x.price??x.close):'—'}</span><span class="dr-intraday-cell dr-flow-flat">—</span><span class="dr-intraday-cell"><span class="dr-badge">盤後待更新</span></span><span class="dr-inst">—</span><span class="dr-ai">—</span></div>`).join('')+'<div class="dr-empty" style="margin-top:8px;text-align:left;color:#94734a;background:#fff7ec;border:1px solid #f3df9b">📅 盤後數據每日 18:00 後更新（收盤 → collect 14:40 → 驗證/匯流 15:05 → 定案）；上列為候選標的，數據補齊後自動填入。</div>';})()}
   function yesterdaySignal(x){const raw=[x.watch_reason,x.signal,x.signal_type,x.entry_rule,x.track,x.source,x.note].filter(Boolean).join('、');if(/黃金交叉|均線交叉|golden.?cross/i.test(raw))return {title:'📊 均線黃金交叉',desc:'均線交叉類'};if(/放量|爆量|長紅|volume.?surge/i.test(raw))return {title:'🔥 放量長紅',desc:'量能爆發類'};if(/W底|W 底|雙底|double.?bottom/i.test(raw))return {title:'🔺 W底成型',desc:'型態完成類'};if(/量縮|止跌|縮量/i.test(raw))return {title:'🧊 量縮止跌',desc:'量能＋支撐綜合類'};if(/回測|回月線|月線|引擎軌|engine/i.test(raw))return {title:'📉 回測月線',desc:'支撐回測類'};if(/突破|昨高|攻擊軌|attack/i.test(raw)||String(x.source||'')==='radar')return {title:'📈 突破前高',desc:'價格突破類'};if(String(x.source||'')==='resilient')return {title:'📉 回測月線',desc:'支撐回測類'};return {title:'訊號資料缺失',desc:'API 未提供昨日型態證據'}}
-  function verifyReason(x,trigger,v,result){const note=String(x.note||'');if(result==='待驗證')return '收盤資料尚未取得';if(/突破失敗/.test(v))return '盤中曾突破，但收盤跌回觸發價';if(/未突破/.test(v)||trigger==='未突破')return '未突破昨高，未觸發進場條件';if(/未回測/.test(v)||trigger==='未回測')return '未回測月線，未觸發進場條件';if(/未續強|抗跌失敗/.test(v))return '未達續強／相對族群偏強條件';if(/跌破月線|破月線/.test(v))return '收盤跌破 MA20（月線）';if(result==='命中'&&trigger==='突破')return '突破昨高且收盤站穩';if(result==='命中'&&trigger==='止穩')return '回測月線後止穩收盤';if(result==='命中')return '條件成立：已達成進場觸發與收盤確認';return note&&/相對族群/.test(note)?note:'驗證未成立：後端未提供可對應的觸發原因'}
+  function verifyReason(x,trigger,v,result){const note=String(x.note||'');if(result==='待驗證')return '收盤資料尚未取得';if(/突破失敗/.test(v))return '盤中曾突破，但收盤跌回觸發價';if(/未突破/.test(v)||trigger==='未突破')return '未突破昨高，未觸發進場條件';if(/未回測/.test(v)||trigger==='未回測')return '未回測月線，未觸發進場條件';if(/未續強|抗跌失敗/.test(v))return '未達續強／相對族群偏強條件';if(/跌破月線|破月線/.test(v))return '收盤跌破 MA20（月線）';if(result==='命中'&&trigger==='突破')return '突破昨高且收盤站穩';if(result==='命中'&&trigger==='止穩')return '回測月線後止穩收盤';if(result==='命中')return '符合原定進場條件';return note&&/相對族群/.test(note)?note:'未符合原定進場條件'}
   function bFlowValue(x){const value=x.aflow??x.active_flow??x.active_buy_diff??x.capital_flow??x.fund_flow??x.flow;const n=Number(value);return Number.isFinite(n)?n:null}
-  function bNonTriggerReason(x,trigger){const raw=[x.non_trigger_reason,x.trigger_reason,x.failure_reason,x.attribution,x.cause,x.note,x.verdict_note,x.reason].filter(Boolean).join('、');if(trigger==='未回測'||/價格未達進場區|未達進場區/.test(raw))return '價格未達進場區';if(/資金流出|資金退潮|aflow\s*<\s*0|主動賣/.test(raw))return '盤中資金大幅流出';if(/量能不足|成交量不足|量縮|爆量未跟上/.test(raw))return '盤中量能不足，買盤觀望';if(/大盤同步走弱|大盤走弱|指數下跌|市場拖累|大盤拖累/.test(raw))return '大盤同步走弱拖累';const flow=bFlowValue(x);if(flow!=null&&flow<0)return '盤中資金大幅流出';const volume=Number(x.volume_ratio??x.volume_rate??x.volume_multiple);if(Number.isFinite(volume)&&volume<1)return '盤中量能不足，買盤觀望';const market=Number(x.market_change_rate??x.index_change_rate??x.market_pct??x.index_pct);if(Number.isFinite(market)&&market<0)return '大盤同步走弱拖累';return '未觸發：後端未提供價格、量能或市場原因'}
-  function bEntryCondition(x,signal,trigger){const price=x.trigger_price??x.entry_price??x.entry_ref??x.prev_high??x.previous_high??x.yesterday_high??x.ma20??x.ma_20??x.month_line;const n=price==null?'API 未提供條件數值':fmt(price);const title=String(signal&&signal.title||'');const breakout=/突破前高|放量長紅|黃金交叉|均線交叉|W底|雙底/.test(title)||trigger==='突破'||trigger==='未突破';const pullback=/回測月線|量縮止跌|止跌/.test(title)||trigger==='止穩'||trigger==='未回測';if(breakout)return `突破昨高 ${n}`;if(pullback)return `回測月線 ${n}`;return `入選條件未提供：缺少觸發類型或觸發數值（${n}）`}
-  function bPlainTriggerReason(x,trigger){const price=x.trigger_price??x.entry_price??x.entry_ref??x.prev_high??x.previous_high??x.yesterday_high??x.ma20??x.ma_20??x.month_line,n=price==null?'觸發價未提供':fmt(price);if(trigger==='未突破')return `需突破昨高 ${n}`;if(trigger==='未回測')return `未進入回測 ${n} 進場區間`;return bNonTriggerReason(x,trigger)}
+  function bNonTriggerReason(x,trigger){const raw=[x.non_trigger_reason,x.trigger_reason,x.failure_reason,x.attribution,x.cause,x.note,x.verdict_note,x.reason].filter(Boolean).join('、');if(trigger==='未回測'||/價格未達進場區|未達進場區/.test(raw))return '價格未達進場區';if(/資金流出|資金退潮|aflow\s*<\s*0|主動賣/.test(raw))return '盤中資金大幅流出';if(/量能不足|成交量不足|量縮|爆量未跟上/.test(raw))return '盤中量能不足，買盤觀望';if(/大盤同步走弱|大盤走弱|指數下跌|市場拖累|大盤拖累/.test(raw))return '大盤同步走弱拖累';const flow=bFlowValue(x);if(flow!=null&&flow<0)return '盤中資金大幅流出';const volume=Number(x.volume_ratio??x.volume_rate??x.volume_multiple);if(Number.isFinite(volume)&&volume<1)return '盤中量能不足，買盤觀望';const market=Number(x.market_change_rate??x.index_change_rate??x.market_pct??x.index_pct);if(Number.isFinite(market)&&market<0)return '大盤同步走弱拖累';return '原定進場條件未成立'}
+  function bEntryCondition(x,signal,trigger){const price=x.trigger_price??x.entry_price??x.entry_ref??x.prev_high??x.previous_high??x.yesterday_high??x.ma20??x.ma_20??x.month_line;const n=price==null?'API 未提供條件數值':fmt(price);const title=String(signal&&signal.title||'');const breakout=/突破前高|放量長紅|黃金交叉|均線交叉|W底|雙底/.test(title)||trigger==='突破'||trigger==='未突破';const pullback=/回測月線|量縮止跌|止跌/.test(title)||trigger==='止穩'||trigger==='未回測';if(breakout)return `突破昨高 ${n}`;if(pullback)return `回測月線 ${n}`;return `API 未提供原定進場條件（${n}）`}
+  function bPlainTriggerReason(x,trigger){const price=x.trigger_price??x.entry_price??x.entry_ref??x.prev_high??x.previous_high??x.yesterday_high??x.ma20??x.ma_20??x.month_line,n=price==null?'原定':fmt(price);if(trigger==='未突破')return `需突破昨高 ${n}`;if(trigger==='未回測')return `未進入回測 ${n} 進場區間`;return bNonTriggerReason(x,trigger)}
   function bTriggerLabel(x,trigger){if(!/未突破|未回測|未續強|未觸發|沒機會/.test(String(trigger)))return trigger;const reason=bPlainTriggerReason(x,trigger);return `${trigger==='未回測'?'⏸️':'❌'} 未觸發：${reason}`}
-  function classifyB(x,trigger,v){const hasClose=x.close_price!=null||x.close!=null||x.change_rate!=null;if(!hasClose||/待資料|待驗證|資料缺/.test(v))return {code:'pending',label:'盤後數據缺漏',reason:'收盤數據尚未取得'};const flow=bFlowValue(x),note=String(x.note||x.verdict_note||x.reason||'');if(/突破失敗/.test(v))return {code:'false_break',label:'假突破／失敗',reason:'盤中曾突破，但收盤反向跌回起漲點'};if(/跌破月線|破月線|抗跌失敗/.test(v))return {code:'fail',label:'跌破支撐',reason:'收盤跌破月線／支撐'};if(/未突破|未回測|未續強|沒機會/.test(v)||trigger==='未突破'||trigger==='未回測'){const cause=bNonTriggerReason(x,trigger);if(cause==='盤中資金大幅流出')return {code:'idle',label:'未觸發',reason:'系統原本預期訊號延續，但外資／大戶賣出，未達明確觸發條件'};if(cause==='盤中量能不足，買盤觀望')return {code:'idle',label:'未觸發',reason:'價格有靠近，但買盤量能不足，未達突破條件'};if(cause==='大盤同步走弱拖累')return {code:'idle',label:'未觸發',reason:'個股訊號未能抵抗大盤走弱，未達明確觸發條件'};if(cause==='價格未達進場區')return {code:'idle',label:'未觸發',reason:'價格未進入回測／進場區間'};return {code:'idle',label:'未觸發',reason:'未觸發：後端未提供價格、量能或市場原因'}}const ch=Number(x.change_rate);if(Number.isFinite(ch)&&ch>3)return {code:'perfect',label:'完美命中',reason:'條件觸發，收盤漲幅超過 3%'};if(Number.isFinite(ch)&&ch>=0)return {code:'hit',label:'小賺命中',reason:'條件觸發，收盤漲幅介於 0%～3%'};if(trigger==='突破')return {code:'false_break',label:'假突破／失敗',reason:'突破條件曾觸發，但收盤反向'};return {code:'fail',label:'跌破支撐',reason:'條件觸發後收盤轉弱'} }
-  const _classifyBBeforeCloseConfirm=classifyB;
-  classifyB=function(x,trigger,v){const threshold=Number(x.trigger_price??x.entry_ref??x.prev_high??x.previous_high??x.yesterday_high),close=Number(x.close_price??x.close);if(/突破/.test(String(trigger||v))&&Number.isFinite(threshold)&&Number.isFinite(close)&&close<threshold)return {code:'false_break',label:'盤中突破／收盤失守',reason:`收盤 ${fmt(close)} ＜ 門檻 ${fmt(threshold)}`};return _classifyBBeforeCloseConfirm(x,trigger,v)};
+  function classifyB(x,trigger,v){const hasClose=x.close_price!=null||x.close!=null||x.change_rate!=null;if(!hasClose||/待資料|待驗證|資料缺/.test(v))return {code:'pending',label:'盤後數據缺漏',reason:'收盤數據尚未取得'};const flow=bFlowValue(x),note=String(x.note||x.verdict_note||x.reason||'');if(/突破失敗/.test(v))return {code:'false_break',label:'假突破／失敗',reason:'盤中曾突破，但收盤反向跌回起漲點'};if(/跌破月線|破月線|抗跌失敗/.test(v))return {code:'fail',label:'跌破支撐',reason:'收盤跌破月線／支撐'};if(/未突破|未回測|未續強|沒機會/.test(v)||trigger==='未突破'||trigger==='未回測'){const cause=bNonTriggerReason(x,trigger);if(cause==='盤中資金大幅流出')return {code:'idle',label:'未觸發',reason:'系統原本預期訊號延續，但外資／大戶賣出，未達原定進場條件'};if(cause==='盤中量能不足，買盤觀望')return {code:'idle',label:'未觸發',reason:'價格有靠近，但買盤量能不足，未達突破條件'};if(cause==='大盤同步走弱拖累')return {code:'idle',label:'未觸發',reason:'個股訊號未能抵抗大盤走弱，未達原定進場條件'};if(cause==='價格未達進場區')return {code:'idle',label:'未觸發',reason:'價格未進入原定回測／進場區間'};return {code:'idle',label:'未觸發',reason:'原定進場條件未成立'}}const ch=Number(x.change_rate);if(Number.isFinite(ch)&&ch>3)return {code:'perfect',label:'完美命中',reason:'條件觸發，收盤漲幅超過 3%'};if(Number.isFinite(ch)&&ch>=0)return {code:'hit',label:'小賺命中',reason:'條件觸發，收盤漲幅介於 0%～3%'};if(trigger==='突破')return {code:'false_break',label:'假突破／失敗',reason:'突破條件曾觸發，但收盤反向'};return {code:'fail',label:'跌破支撐',reason:'條件觸發後收盤轉弱'} }
   function bRows(d){if(!d._apiOk)return `<div class="dr-empty">B API 讀取失敗：${E(apiError(d))}<br><small>未使用任何預設或模擬資料。</small></div>`;const rows=d.outcomes||d.rows||d.items||[];return (rows||[]).map((x,i)=>{const change=x.change_rate??x.today_change,close=x.close_price??x.close??'—',verdict=x.verdict||x.result||'待驗證',v=String(verdict),signal=yesterdaySignal(x);let trigger=x.trigger_status||x.today_trigger||'';if(!trigger){if(/未回測/.test(v)||/未回測/.test(String(x.note||'')))trigger='未回測';else if(/未突破|突破失敗|未續強/.test(v))trigger='未突破';else if(/止穩|站穩|續強/.test(v))trigger='止穩';else if(/突破/.test(v))trigger='突破';else trigger='—'}const entryCondition=bEntryCondition(x,signal,trigger),shownTrigger=bTriggerLabel(x,trigger),verdictInfo=classifyB(x,trigger,v),bc=verdictInfo.code,reason=verdictInfo.reason;return `<div class="dr-row"><span class="dr-rank">${String(i+1).padStart(2,'0')}</span><span class="dr-stock">${E(x.name||x.stock_name||'—')}<small>${E(x.code||x.stock_id||'—')}</small></span><span class="dr-signal-type">${E(signal.title)}<small>${E(signal.desc)}</small></span><span><small class="dr-verify-reason">原定進場：${E(entryCondition)}</small><span class="dr-badge">${E(shownTrigger)}</span></span><span class="dr-price">${fmt(close)}<small class="${cls(change)}">${change==null?'—':(Number(change)>0?'+':'')+E(change)+(String(change).includes('%')?'':'%')}</small></span><span><span class="dr-badge ${bc}">${E(verdictInfo.label)}</span><small class="dr-verify-reason">${E(reason)}</small></span></div>`}).join('')||'<div class="dr-empty">B API 已連線，但目前沒有可驗證結果。</div>'}
   function bMeta(x){const verdict=x.verdict||x.result||'待驗證',v=String(verdict),signal=yesterdaySignal(x);let trigger=x.trigger_status||x.today_trigger||'';if(!trigger){if(/未回測/.test(v)||/未回測/.test(String(x.note||'')))trigger='未回測';else if(/未突破|突破失敗|未續強/.test(v))trigger='未突破';else if(/止穩|站穩|續強/.test(v))trigger='止穩';else if(/突破/.test(v))trigger='突破';else trigger='—'}const verdictInfo=classifyB(x,trigger,v),reason=/未突破|未回測/.test(trigger)?bPlainTriggerReason(x,trigger):verdictInfo.reason;return {verdict,v,signal,trigger,shownTrigger:bTriggerLabel(x,trigger),entryCondition:bEntryCondition(x,signal,trigger),verdictInfo,reason,close:x.close_price??x.close,change:x.change_rate??x.today_change}}
   function mergedRows(a,b){
@@ -728,62 +915,10 @@ document.addEventListener('click',e=>{
   async function bPeriodStats(selected,dates){const ds=(dates||[]).filter(Boolean),base=new Date(selected+'T00:00:00Z'),validDates=ds.filter(x=>x<=selected),weekDates=validDates.slice(0,5),monthDates=validDates.filter(x=>x.slice(0,7)===selected.slice(0,7)),needed=[...new Set([selected,...weekDates,...monthDates])];const reports=await Promise.all(needed.map(x=>get('/api/review?trade_date='+encodeURIComponent(x))));const byDate={};reports.forEach((r,i)=>{if(r._apiOk&&r.summary)byDate[needed[i]]=r.summary});const rate=list=>{const rows=list.map(x=>byDate[x]).filter(s=>s&&Number(s.watch_total)>0&&Number.isFinite(Number(s.watch_hit)));if(!rows.length)return '—';const total=rows.reduce((n,s)=>n+Number(s.watch_total),0),hits=rows.reduce((n,s)=>n+Number(s.watch_hit),0);return `${(hits/total*100).toFixed(1)}%`};return `<div class="dr-hit-periods"><div class="dr-hit-period"><b>每日命中率</b><strong>${rate([selected])}</strong></div><div class="dr-hit-period"><b>每週命中率</b><strong>${rate(weekDates)}</strong></div><div class="dr-hit-period"><b>每月命中率</b><strong>${rate(monthDates)}</strong></div></div>`}
   const _renderDualReviewWithHitCount=render;
   render=async function(){await _renderDualReviewWithHitCount();const aList=document.querySelector('.dr-a .dr-list');if(aList){const rows=[...aList.querySelectorAll('.dr-row')];rows.sort((a,b)=>Number(b.classList.contains('dr-limit'))-Number(a.classList.contains('dr-limit'))).forEach(row=>aList.appendChild(row))}const bList=document.querySelector('.dr-b .dr-list');const dateHits=document.querySelector('.dr-date-hit-count');if(bList&&dateHits){const hits=[...bList.querySelectorAll('.dr-row')].filter(row=>/完美命中|小賺命中/.test(row.textContent)).length;dateHits.textContent=` · 命中 ${hits} 檔`}const bHead=document.querySelector('.dr-b .dr-head'),dateSelect=document.querySelector('.dr-b .dr-sub select');if(bHead&&dateSelect){const periods=await bPeriodStats(dateSelect.value,[...dateSelect.options].map(o=>o.value));bHead.insertAdjacentHTML('afterend',periods)}};
-  const _renderWithReferenceText=render;
-  render=async function(){await _renderWithReferenceText();document.querySelectorAll('.dr-ref-reasons').forEach(list=>{[...list.children].filter(li=>li.textContent.includes('資金連續')).forEach(li=>li.remove());[...list.children].slice(4).forEach(li=>li.remove())});document.querySelectorAll('.dr-ref-table tbody tr').forEach(row=>{const cells=row.children,triggerCell=cells[7],condition=cells[3]?.querySelector('b')?.textContent.trim()||'觸發條件資料缺失';if(!triggerCell)return;triggerCell.classList.add('dr-ref-trigger-detail');const main=triggerCell.querySelector('b'),note=triggerCell.querySelector('small');if(!main||!note)return;const result=main.textContent.trim();let detail='盤中觸發紀錄已取得';if(/已突破/.test(result))detail=`盤中最高價已達觸發價；${condition}`;else if(/未突破/.test(result))detail=`盤中最高價未達觸發價；${condition}`;else if(/回測|止穩/.test(result))detail=`盤中曾進入條件區間；${condition}`;else if(/待|資料缺失/.test(result))detail='目前尚未取得盤中觸發紀錄';note.textContent=detail});const table=document.querySelector('.dr-ref-table'),head=table?.tHead?.rows?.[0];if(head){const date=(document.querySelector('.dr-ref-date')?.textContent||'').replace(/^A：/,'').trim()||'資料日';const set=(selector,title,sub)=>{const cell=head.querySelector(selector);if(cell)cell.innerHTML=`${title}<small>${sub}</small>`};set('th.ga[colspan="2"]','A｜盤中資料',`${date} 當日盤中即時（收盤後應存檔，不得消失）`);set('th.gb[colspan="3"]','B｜盤後分析','入選依據＝前一交易日盤後籌碼定案');set('th.gc[colspan="2"]','C｜策略驗證','次一交易日 T+1 收盤蓋章')}};
   const _renderWithADateLabels=render;
   render=async function(){await _renderWithADateLabels();const a=await get('/ab/watchlist?phase=INTRADAY'),chips=document.querySelectorAll('.dr-a .dr-sub .dr-chip');if(a._apiOk&&chips.length>=2){const filterDate=a.pool_date||a.signal_date||a.data_date||'—',observeDate=a.applies_date||a.data_date||'—';chips[0].textContent=`📅 篩選日：${filterDate}`;chips[1].textContent=`📅 觀察日：${observeDate}`}};
   const _renderWithStageGuide=render;
   render=async function(){try{await _renderWithStageGuide();const card=document.querySelector('.dr-merged'),list=card?.querySelector('.dr-list'),head=list?.querySelector('.dr-list-head');if(card&&list){card.querySelectorAll('.dr-stage-guide,.dr-legend').forEach(el=>el.remove());list.scrollLeft=0;if(head&&!list.querySelector('.dr-column-groups'))head.insertAdjacentHTML('beforebegin','<div class="dr-column-groups"><span class="cg-stock"></span><span class="cg-price"></span><span class="cg-a">A｜盤中資料（即時）</span><span class="cg-b">B｜盤後分析</span><span class="cg-c">C｜復盤驗證</span></div>')}}catch(e){const body=document.querySelector('#featureBody');if(body)body.innerHTML=`<div class="dr-api-status fail"><b>盤後驗證畫面載入失敗</b><br>${E(e&&e.message||e)}<br><small>未使用模擬資料，請按「重新整理」再試。</small></div>`;console.error('dual review render',e)}};
-  const _renderWithOriginalHeader=render;
-  render=async function(){await _renderWithOriginalHeader();const card=document.querySelector('.dr-reference'),toolbar=card?.querySelector('.dr-ref-toolbar');if(!toolbar)return;const dates=[...toolbar.querySelectorAll('.dr-ref-date')],aDate=(dates[0]?.textContent||'').replace(/^A：/,'').trim()||'—',bDate=(dates[1]?.textContent||'').replace(/^B：/,'').trim()||aDate,nextDate=(()=>{const d=new Date(`${bDate}T00:00:00`);if(!Number.isNaN(d.getTime())){d.setDate(d.getDate()+1);if(d.getDay()===6)d.setDate(d.getDate()+2);if(d.getDay()===0)d.setDate(d.getDate()+1);return d.toISOString().slice(0,10)}return bDate})();toolbar.querySelector('b').textContent='盤中決策主表';const sub=toolbar.querySelector('small');if(sub)sub.textContent='同一筆資料依時間逐步補齊；A／B／C 僅為欄位群組';const right=toolbar.lastElementChild;if(right)right.innerHTML=`<span class="dr-ref-status">已收盤・T+1 蓋章</span><span class="dr-ref-date">資料日　${E(nextDate)}　⌃</span>`;const head=card.querySelector('.dr-ref-table thead')?.rows?.[0];if(head){const set=(selector,title,subText)=>{const cell=head.querySelector(selector);if(cell)cell.innerHTML=`${title}<small>${subText}</small>`};set('th.ga[colspan="2"]','A｜盤中資料',`${E(aDate)} 當日盤中即時（收盤後應存檔，不得消失）`);set('th.gb[colspan="3"]','B｜盤後分析','入選依據＝前一交易日盤後籌碼定案');set('th.gc[colspan="2"]','C｜策略驗證','次一交易日 T+1 收盤蓋章')}};
-  const _renderRightHeader=render;
-  render=async function(){
-    await _renderRightHeader();
-    const table=document.querySelector('.dr-ref-table');
-    if(!table)return;
-    const toolbar=document.querySelector('.dr-ref-toolbar'),dateLabel=toolbar?.querySelector('.dr-ref-date');
-    if(toolbar&&dateLabel){
-      const current=(dateLabel.textContent.match(/\d{4}-\d{2}-\d{2}/)||[])[0]||'',history=await get('/api/review'),dates=[...new Set([_drBDate||current,...(history.dates||[])].filter(Boolean))].sort().reverse(),selected=_drBDate||current;
-      dateLabel.outerHTML=`<label class="dr-ref-date dr-ref-date-select">資料日　<select onchange="window._drBPick&&window._drBPick(this.value)">${dates.map(d=>`<option value="${E(d)}"${d===selected?' selected':''}>${E(d)}</option>`).join('')}</select></label>`;
-    }
-    const head=table.tHead?.rows;
-    if(head?.length>=2){
-      const basic=[['股票',''],['收盤／現價',''],['漲跌','']];
-      basic.forEach(([title,sub],i)=>{
-        let cell=head[0].children[i];
-        if(i===2){cell=document.createElement('th');head[0].insertBefore(cell,head[0].children[2]);}
-        cell.rowSpan=2;cell.className='basic';cell.innerHTML=title+(sub?`<small>${sub}</small>`:'');
-      });
-      const groups=head[0].children;
-      if(groups[3])groups[3].innerHTML='A｜盤中資料<small>當日盤中即時（收盤後應存檔，不得消失）</small>';
-      if(groups[4])groups[4].innerHTML='B｜盤後分析<small>入選依據＝前一交易日盤後籌碼定案</small>';
-      if(groups[5])groups[5].innerHTML='C｜策略驗證<small>次一交易日 T+1 收盤蓋章</small>';
-    }
-    table.tBodies[0]?.querySelectorAll('tr').forEach(row=>{
-      const price=row.children[1],change=price?.querySelector('.dr-ref-change');
-      if(price&&change&&!row.children[2]?.classList.contains('dr-ref-change-cell')){
-        const cell=document.createElement('td');cell.className='dr-ref-change-cell';cell.appendChild(change);price.after(cell);
-      }
-    });
-    table.querySelectorAll('.dr-ref-reasons li').forEach(li=>{if(/融資/.test(li.textContent||''))li.remove();});
-    const wrap=table.closest('.dr-ref-table-wrap'),rows=[...(table.tBodies[0]?.rows||[])],total=rows.length;
-    if(wrap&&!wrap.previousElementSibling?.classList.contains('dr-ref-summary')){
-      const triggered=rows.filter(row=>!/(資料缺失|尚未取得|^—$)/.test(row.children[8]?.textContent||'')).length;
-      const hit=rows.filter(row=>/命中/.test(row.children[9]?.textContent||'')).length;
-      const failed=rows.filter(row=>/失敗|跌破支撐/.test(row.children[9]?.textContent||'')).length;
-      const idle=rows.filter(row=>/未觸發/.test(row.children[9]?.textContent||'')).length;
-      const pct=n=>total?`${(n/total*100).toFixed(1)}%`:'0%';
-      wrap.insertAdjacentHTML('beforebegin',`<div class="dr-ref-summary"><div><b>入選檔數</b><strong>${total}</strong></div><div class="blue"><b>已觸發</b><strong>${triggered} <small>(${pct(triggered)})</small></strong></div><div class="green"><b>命中</b><strong>${hit} <small>(${pct(hit)})</small></strong></div><div class="amber"><b>觸發後失敗</b><strong>${failed} <small>(${pct(failed)})</small></strong></div><div class="red"><b>未觸發</b><strong>${idle} <small>(${pct(idle)})</small></strong></div><div class="green"><b>總名單命中率</b><strong>${pct(hit)}</strong></div><div class="green"><b>觸發命中率</b><strong>${triggered?`${(hit/triggered*100).toFixed(1)}%`:'0%'}</strong></div></div>`);
-    }
-    const card=table.closest('.dr-reference');
-    if(card&&!card.querySelector('.dr-ref-rejects')){
-      try{
-        const res=await fetch(`${API_BASE}/api/review/rejects`,{cache:'no-store'}),data=await res.json(),rejects=data.rows||[];
-        const source=s=>s==='radar'?'雷達':s==='resilient'?'抗跌':'舊格式';
-        card.insertAdjacentHTML('beforeend',`<section class="dr-ref-rejects"><div class="dr-ref-rejects-head">▼ 盤後淘汰名單　<span>（${rejects.length} 檔｜保留淘汰理由，不刪除）</span></div><div class="dr-ref-rejects-wrap"><table><thead><tr><th>股票</th><th>族群</th><th>來源</th><th>卡在因子</th><th>淘汰理由</th><th>七因子總分</th></tr></thead><tbody>${rejects.map(r=>`<tr><td><b>${E(r.stock_name||'—')}</b><small>${E(r.stock_id||'—')}</small></td><td>${E(r.sector||'—')}</td><td>${E(source(r.source))}</td><td>${E(r.fail_factor||'—')}</td><td>${E(r.detail||'—')}</td><td><b>${r.score_total==null?'—':E(r.score_total+' / 100')}</b></td></tr>`).join('')||'<tr><td colspan="6">目前沒有盤後淘汰紀錄</td></tr>'}</tbody></table></div></section>`);
-      }catch(e){console.warn('review rejects',e);}
-    }
-  };
   window.renderDualReview=render;
   window.refreshDualA=async()=>{await render()};
   window.validateDualB=async()=>{await render()};
@@ -1573,71 +1708,13 @@ async function loadBreadth(embedded){
 @media(max-width:640px){.dr-stage-guide{grid-template-columns:1fr!important;gap:8px!important}}
 </style>
 <script>
-// 研究資料 API 加逾時，避免網路或 VPS 回應異常時永久停在「讀取中」。
-(()=>{
-  const originalOpenFeature=window.openFeature;
-  if(!originalOpenFeature)return;
-  window.openFeature=async function(kind){
-    if(kind!=='models')return originalOpenFeature(kind);
-    const panel=document.querySelector('#featurePanel'),title=document.querySelector('#featureTitle'),status=document.querySelector('#featureStatus'),body=document.querySelector('#featureBody');
-    if(!panel||!title||!status||!body)return originalOpenFeature(kind);
-    panel.hidden=false;title.textContent='模型紀錄';status.textContent='讀取中…';body.innerHTML='';
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
-    try{
-      const response=await fetch(API_BASE+'/api/roles/review',{cache:'no-store',signal:controller.signal});
-      if(!response.ok)throw new Error(`HTTP ${response.status}`);
-      const d=await response.json(),rows=d.rows||[];
-      status.textContent=`最近審查：${d.date||'尚無紀錄'} · 目前引擎：${(d.engines_now||[]).join('、')||'—'}`;
-      body.innerHTML=`<div class="feature-grid"><div class="feature-card"><label>審查日期</label><strong>${esc(d.date||'—')}</strong></div><div class="feature-card"><label>模型候選</label><strong>${rows.length}</strong></div><div class="feature-card"><label>自動套用</label><strong>${d.auto_apply?'是':'否'}</strong></div></div><div class="feature-table"><div class="table-head" style="padding:0 0 12px;border:0"><h3>角色審查紀錄</h3><button class="danger-btn" onclick="applyModel()">手動套用建議</button></div><table><thead><tr><th>代碼</th><th>目前角色</th><th>建議</th><th>理由</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.code)}</td><td>${esc(x.current_role||x.role)}</td><td>${esc(x.suggest)}</td><td>${esc(x.reason||x.note||'')}</td></tr>`).join('')||'<tr><td colspan="4">尚無模型審查紀錄</td></tr>'}</tbody></table></div>`;
-    }catch(e){
-      status.textContent='讀取失敗';
-      body.innerHTML=`<div class="panel" style="padding:20px">研究資料目前無法取得：${esc(e.name==='AbortError'?'VPS 回應逾時（8 秒）':e.message)}<br><small>請稍後再試。</small></div>`;
-    }finally{clearTimeout(timer);}
-  };
-})();
-</script>
-<style>
-/* A／B／C 總表內容允許換行，避免全域 table 的 nowrap 造成文字重疊。 */
-.dr-ref-table td{white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word!important;}
-.dr-ref-table td b,.dr-ref-table td small{display:block!important;}
-.dr-ref-table th.basic:nth-child(1){min-width:118px!important}.dr-ref-table th.basic:nth-child(2){min-width:126px!important}.dr-ref-table th.basic:nth-child(3){min-width:82px!important}
-.dr-ref-table th.ga,.dr-ref-table th.gb,.dr-ref-table th.gc{font-size:14px!important}.dr-ref-table th.ga small,.dr-ref-table th.gb small,.dr-ref-table th.gc small{display:block!important;margin-top:3px!important;font-size:10px!important;line-height:1.25!important}
-.dr-ref-change-cell{min-width:82px!important}.dr-ref-change-cell .dr-ref-change{display:block!important}
-.dr-ref-summary{display:grid!important;grid-template-columns:repeat(7,minmax(0,1fr))!important;background:#fff;border:1px solid #dfe6ef;border-radius:18px;margin:0!important;overflow:hidden;text-align:center}.dr-ref-summary>div{padding:18px 8px 16px;border-right:1px solid #dfe6ef}.dr-ref-summary>div:last-child{border-right:0}.dr-ref-summary b{display:block;color:#71809b;font-size:12px}.dr-ref-summary strong{display:block;margin-top:7px;color:#182033;font-size:25px;line-height:1.1}.dr-ref-summary strong small{display:inline;font-size:15px}.dr-ref-summary .blue strong{color:#3d6ee8}.dr-ref-summary .green strong{color:#0b9a6f}.dr-ref-summary .amber strong{color:#c78313}.dr-ref-summary .red strong{color:#df4b67}
-@media(max-width:900px){.dr-ref-summary{min-width:980px}}
-.dr-ref-date-select{display:inline-flex!important;align-items:center;gap:7px}.dr-ref-date-select select{border:0;background:transparent;color:inherit;font:inherit;font-weight:800;outline:0;cursor:pointer;appearance:auto}.dr-ref-date-select select option{color:#182033;background:#fff}
-.dr-ref-rejects{margin-top:14px;border:1px solid #f1d28c;border-radius:18px;background:#fffaf0;overflow:hidden}.dr-ref-rejects-head{padding:16px 22px;border-bottom:1px solid #f1d28c;color:#9a6508;font-size:20px;font-weight:900}.dr-ref-rejects-head span{font-size:16px}.dr-ref-rejects-wrap{overflow:auto}.dr-ref-rejects table{width:100%;min-width:900px;border-collapse:collapse;table-layout:fixed}.dr-ref-rejects th,.dr-ref-rejects td{padding:12px 14px;border-bottom:1px solid #e7eaf2;text-align:left;vertical-align:middle;white-space:normal!important}.dr-ref-rejects th{background:#f8fafc;color:#71809b;font-size:12px}.dr-ref-rejects td{font-size:14px}.dr-ref-rejects td small{display:block;color:#71809b;margin-top:3px;font-size:11px}
-</style>
-<style>
-/* A／B／C 原版總表使用整個內容寬度，不落入舊雙欄容器的左半邊。 */
-.dual-review:has(.dr-reference){grid-template-columns:1fr!important}
-.dr-reference{width:100%!important;grid-column:1/-1!important}
-</style>
-<style>
-/* A／B／C 總表字級：壓縮列高，保留九欄資訊密度。 */
-.dr-ref-table{font-size:11px!important}
-.dr-ref-table th.basic{font-size:12px!important;padding:10px 6px!important}
-.dr-ref-table th.sub{font-size:11px!important;padding:7px 5px 8px!important}
-.dr-ref-table th.sub small{font-size:9px!important;margin-top:2px!important}
-.dr-ref-table td{font-size:11px!important;padding:8px 6px!important;line-height:1.3!important}
-.dr-ref-stock{gap:5px!important;min-width:0!important}
-.dr-ref-stock b{font-size:12px!important}
-.dr-ref-stock small,.dr-ref-table td small{font-size:9px!important;margin-top:2px!important}
-.dr-ref-star{font-size:14px!important}
-.dr-ref-price,.dr-ref-money{font-size:12px!important}
-.dr-ref-change{font-size:10px!important}
-.dr-ref-reasons{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:2px 10px!important;min-width:0!important;padding-left:0!important;list-style-position:inside!important;text-align:left!important;overflow:hidden!important}.dr-ref-reasons li{min-width:0!important;max-width:100%!important;line-height:1.3!important;overflow-wrap:anywhere!important;word-break:break-word!important;white-space:normal!important}
-.dr-ref-table td b{font-size:11px!important;line-height:1.25!important}.dr-ref-table td small{font-size:9px!important;line-height:1.25!important}.dr-ref-trigger-detail b,.dr-ref-trigger-detail small{display:block!important}.dr-ref-trigger-detail small{margin-top:3px!important;color:#71809b!important;font-weight:600!important}
-.dr-ref-badge{font-size:10px!important;padding:3px 5px!important}
-@media(max-width:640px){
-  .dr-ref-table{font-size:10px!important}
-  .dr-ref-table th.basic{font-size:11px!important}
-  .dr-ref-table th.sub{font-size:10px!important}
-  .dr-ref-table td{font-size:10px!important;padding:6px 4px!important}
-  .dr-ref-stock b,.dr-ref-price,.dr-ref-money{font-size:11px!important}
-  .dr-ref-table td small,.dr-ref-stock small{font-size:8px!important}
+// 最終覆寫：舊版仍保留在檔案中，但實際開啟盤後面板時只使用單一主表 renderer。
+if(window.__singleMainTableRender){
+  window.renderDualReview=window.__singleMainTableRender;
+  window.refreshDualA=window.__singleMainTableRender;
+  window.validateDualB=window.__singleMainTableRender;
 }
-</style>
+</script>
 <style>
 /* 合併表安全還原：固定 8 欄、強制顯示表頭與每一列內容。 */
 .dr-merged .dr-list{display:block!important;overflow-x:auto!important;min-height:120px!important}
@@ -1676,4 +1753,103 @@ async function loadBreadth(embedded){
 .dr-stage br{display:block!important}.dr-stage b{display:block!important;margin:0 -12px 8px!important;padding:8px 12px!important;font-size:14px!important;color:#fff!important}
 .dr-stage.a b{background:linear-gradient(135deg,#174b9b,#0b70d8)!important}.dr-stage.b b{background:linear-gradient(135deg,#e8750b,#f6a21a)!important}.dr-stage.c b{background:linear-gradient(135deg,#17743d,#24964f)!important}
 @media(max-width:640px){.dr-stage-guide{grid-template-columns:1fr!important;gap:8px!important}}
+</style>
+<style>
+/* 舊版九欄 A/B/C 表也要在同一視窗完整顯示。 */
+.dr-ref-table-wrap{overflow-x:hidden!important;overflow-y:visible!important;max-height:none!important}
+.dr-ref-table{width:100%!important;min-width:0!important;table-layout:fixed!important;font-size:11px!important}
+.dr-ref-table th,.dr-ref-table td{padding:7px 5px!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word!important;line-height:1.3!important}
+.dr-ref-table th.sub{min-width:0!important;font-size:10px!important}
+.dr-ref-table th.sub small,.dr-ref-table td small{font-size:9px!important;line-height:1.25!important}
+.dr-ref-table .dr-ref-stock,.dr-ref-table .dr-ref-reasons{min-width:0!important}
+.dr-ref-table .dr-ref-stock b{font-size:12px!important}
+.dr-ref-table .dr-ref-price,.dr-ref-table .dr-ref-money{font-size:12px!important}
+.dr-ref-table .dr-ref-badge{white-space:normal!important;padding:3px 5px!important;font-size:10px!important}
+.dr-ref-table th:nth-child(1),.dr-ref-table td:nth-child(1){width:10%}
+.dr-ref-table th:nth-child(2),.dr-ref-table td:nth-child(2){width:9%}
+.dr-ref-table th:nth-child(3),.dr-ref-table td:nth-child(3){width:7%}
+.dr-ref-table th:nth-child(4),.dr-ref-table td:nth-child(4){width:13%}
+.dr-ref-table th:nth-child(5),.dr-ref-table td:nth-child(5){width:20%}
+.dr-ref-table th:nth-child(6),.dr-ref-table td:nth-child(6){width:10%}
+.dr-ref-table th:nth-child(7),.dr-ref-table td:nth-child(7){width:10%}
+.dr-ref-table th:nth-child(8),.dr-ref-table td:nth-child(8){width:10%}
+.dr-ref-table th:nth-child(9),.dr-ref-table td:nth-child(9){width:11%}
+@media(max-width:900px){
+  .dr-ref-table{display:block!important}
+  .dr-ref-table thead{display:none!important}
+  .dr-ref-table tbody,.dr-ref-table tr,.dr-ref-table td{display:block!important;width:100%!important}
+  .dr-ref-table tr{padding:12px 10px!important;border-bottom:1px solid #e5e9f2!important}
+  .dr-ref-table td{display:grid!important;grid-template-columns:86px minmax(0,1fr);gap:8px;text-align:left!important;border:0!important;padding:5px 0!important}
+  .dr-ref-table td::before{font-weight:850;color:#71809b}
+  .dr-ref-table td:nth-child(1)::before{content:'股票'}
+  .dr-ref-table td:nth-child(2)::before{content:'收盤價／漲跌'}
+  .dr-ref-table td:nth-child(3)::before{content:'盤中資金流'}
+  .dr-ref-table td:nth-child(4)::before{content:'觸發條件'}
+  .dr-ref-table td:nth-child(5)::before{content:'入選理由'}
+  .dr-ref-table td:nth-child(6)::before{content:'法人籌碼'}
+  .dr-ref-table td:nth-child(7)::before{content:'訊號型態'}
+  .dr-ref-table td:nth-child(8)::before{content:'今日觸發'}
+  .dr-ref-table td:nth-child(9)::before{content:'驗證結果'}
+}
+</style>
+
+<style>
+.dr-single-table.dr-merged-trigger .condition-verification{margin-top:7px;padding-top:5px;border-top:1px solid #e5eaf1;text-align:center}
+.dr-single-table.dr-merged-trigger .condition-verification-label{display:block;margin-bottom:3px;color:#71809b;font-size:10px;font-weight:700;line-height:14px}
+.dr-single-table.dr-merged-trigger .condition-verification>b,.dr-single-table.dr-merged-trigger .condition-verification>span{font-size:11px!important;line-height:17px!important}
+@media(max-width:900px){.dr-single-table.dr-merged-trigger .condition-verification{text-align:left}.dr-single-table.dr-merged-trigger .condition-verification-label{font-size:11px}}
+</style>
+
+<script>
+// 將「今日觸發」併入「盤中觸發條件」下方，避免同一判斷分散在兩欄。
+(()=>{
+  const merge=table=>{
+    if(!table||table.classList.contains('dr-merged-trigger'))return;
+    const headRows=table.querySelectorAll('thead tr');
+    const group=headRows[0]?.querySelector('th.gc');
+    if(group)group.colSpan=1;
+    headRows[1]?.querySelector('th:nth-child(6)')?.remove();
+    table.querySelectorAll('tbody tr').forEach(row=>{
+      const condition=row.children[4],today=row.children[8];
+      if(!condition||!today)return;
+      const block=document.createElement('div');block.className='condition-verification';
+      const label=document.createElement('small');label.className='condition-verification-label';label.textContent='盤中驗證';block.appendChild(label);
+      while(today.firstChild)block.appendChild(today.firstChild);
+      condition.appendChild(block);today.remove();
+    });
+    const colgroup=table.querySelector(':scope > colgroup');
+    if(colgroup){const widths=['9%','9%','7%','7%','18%','23%','9%','10%','8%'];[...colgroup.children].slice(9).forEach(c=>c.remove());widths.forEach((w,i)=>{if(colgroup.children[i])colgroup.children[i].style.width=w})}
+    table.classList.add('dr-merged-trigger');
+  };
+  const sync=()=>document.querySelectorAll('.dr-single-table').forEach(merge);
+  new MutationObserver(sync).observe(document.body,{childList:true,subtree:true});
+  sync();
+})();
+</script>
+
+<script>
+// 將收盤、盤後資料取得、T+1 驗證分開顯示；不再用「T+1 蓋章」代表盤後資料已抓到。
+(()=>{
+  const syncPostStatus=()=>{
+    document.querySelectorAll('.dr-single').forEach(card=>{
+      const pill=card.querySelector('.dr-single-toolbar .dr-single-date');
+      const table=card.querySelector('.dr-single-table');
+      if(!pill||!table||/空白模板/.test(pill.textContent))return;
+      const rows=[...table.querySelectorAll('tbody tr')];
+      if(!rows.length)return;
+      const postReady=rows.some(r=>{const t=r.children[6]?.textContent||'';return t.trim()&& !/待法人資料|資料待補/.test(t)});
+      const verified=rows.some(r=>/命中|未觸發|觸發後失敗/.test(r.children[9]?.textContent||''));
+      pill.textContent=verified?'已收盤 · T+1 已蓋章':postReady?'已收盤 · 盤後資料已取得 · 等待 T+1':'已收盤 · 等待盤後資料';
+    });
+  };
+  new MutationObserver(syncPostStatus).observe(document.body,{childList:true,subtree:true});
+  syncPostStatus();
+})();
+</script>
+
+<style>
+/* 入選理由保留「欄位名稱＋實際值＋解釋」，不以泛用狀態取代原因。 */
+.dr-single-table .mr-bul li b{display:block!important;font-size:11px!important;line-height:15px!important;font-weight:700!important;color:#334155!important}
+.dr-single-table .mr-bul li small{display:block!important;margin-top:1px!important;font-size:10px!important;line-height:14px!important;color:#71809b!important}
+@media(max-width:900px){.dr-single-table .mr-bul li b{font-size:10px!important}.dr-single-table .mr-bul li small{font-size:9px!important}}
 </style>

@@ -412,13 +412,22 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
             # 唯讀開啟：本行程只讀不寫，避免與容器寫入互鎖。
             with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as conn:
                 conn.row_factory = sqlite3.Row
+                # 不同版本的盤後 DB 欄位名稱不同：
+                # 舊版使用 quad/ratio，VPS 本地正本使用
+                # quadrant/aflow_ratio。統一轉成下方使用的別名，
+                # 避免五日歷史整段查詢失敗後只剩當天補值。
+                _cols = {r[1] for r in conn.execute("PRAGMA table_info(dec_health)").fetchall()}
+                _quad_col = "quad" if "quad" in _cols else "quadrant"
+                _ratio_col = "ratio" if "ratio" in _cols else "aflow_ratio"
+                _ratio_src_col = "ratio_src" if "ratio_src" in _cols else "flow_src"
                 row = conn.execute(
-                    "SELECT * FROM dec_health WHERE code=? AND trade_date<=? "
+                    f"SELECT *, {_quad_col} AS _quad, {_ratio_col} AS _ratio, "
+                    f"{_ratio_src_col} AS _ratio_src FROM dec_health WHERE code=? AND trade_date<=? "
                     "ORDER BY trade_date DESC LIMIT 1", (str(code), asof_limit)
                 ).fetchone()
                 # 近5日收盤資金象限紀錄(盤後每日定調，不是盤中即時)
                 _hist = conn.execute(
-                    "SELECT trade_date, quad, chg, close FROM dec_health WHERE code=? "
+                    f"SELECT trade_date, {_quad_col} AS quad, chg, close FROM dec_health WHERE code=? "
                     "AND trade_date<=? ORDER BY trade_date DESC LIMIT 5",
                     (str(code), asof_limit)).fetchall()
             # mls-v4 若 Shioaji 斷線，snapshot() 會回 demo 假資料(每日同一價、chg 固定)，
@@ -435,15 +444,16 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
                               "chg": h["chg"]} for h in _hist]
             if row:
                 post_health_row = dict(row)
-                post_ratio = row["ratio"]
-                post_ratio_source = row["ratio_src"]
-                eod_quadrant = eod_quadrant or row["quad"]
+                post_ratio = row["_ratio"]
+                post_ratio_source = row["_ratio_src"]
+                eod_quadrant = eod_quadrant or row["_quad"]
                 eod_group = eod_group or {"Ready": "可操作", "Watch": "觀察", "Hold": "排除"}.get(row["grade"])
                 if not post_health:
                     post_health = {
                         "health_score": row["score"], "score": row["score"],
-                        "quadrant": row["quad"], "label": row["grade"],
-                        "stars": row["stars"], "chip_quality": row["chip_note"],
+                        "quadrant": row["_quad"], "label": row["grade"],
+                        "stars": row["stars"] if "stars" in row.keys() else None,
+                        "chip_quality": row["chip_note"],
                     }
                 post_source = f"盤後固定 DB dec_health（{row['trade_date']}）＋FinMind"
                 break
@@ -503,7 +513,8 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
         health = post_health or (_health_for_card(code, snap or {"code": code}, all_rows) if snap else None)
         grade_map = {"可操作": "Ready", "觀察": "Watch", "排除": "Hold"}
         grade = grade_map.get((snap or {}).get("group"))
-        card = stock_card.build_card(code, snap=snap, health=health, grade=grade)
+        card = stock_card.build_card(code, snap=snap, health=health, grade=grade,
+                                     chip_asof=asof_limit)
         card["decision"] = _decision_factors(card, snap or {})
     except Exception as e:
         return {"ok": False, "code": code, "error": f"build_card failed: {e}",
@@ -517,9 +528,12 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
         _sec_name = C.SECTOR_MAP.get(code, ("其他",))[0]
         _sec_avg, _mkt_pct = _sector_market_pct(_sec_name)
         _own = _latest_code_snap(code) or {}
-        if snap.get("aflow") is None and _own.get("buy_volume") is not None:
-            snap["aflow"] = int(_own.get("buy_volume") or 0) - int(_own.get("sell_volume") or 0)
-            snap["aflow_source"] = "Shioaji 官方收盤 snapshot(最近交易日)"
+        # 不可用 snapshots 的 buy_volume/sell_volume 代替主動買賣差：
+        # broker.batch_snapshots() 的兩欄是委買/委賣掛單量，漲停股會把
+        # 巨量委買誤報成 aflow。卡片只接受盤中 eod 蓋章的真實 tick aflow；
+        # 沒有就顯示缺資料，不把委買量偽裝成全日主動買賣差。
+        if snap.get("aflow") is None:
+            snap["aflow_source"] = None
         if snap.get("volume_ratio") in (None, 0) and _own.get("volume_ratio"):
             snap["volume_ratio"] = _own.get("volume_ratio")
         # dec_health 被判 demo 棄用時(quadrant/quad_history 為空)，用「真實 aflow＋真實收盤

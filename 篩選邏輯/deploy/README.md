@@ -9,7 +9,7 @@
 | 單元 | 何時 | 做什麼 |
 |---|---|---|
 | `mls-screen-api.service` | 常駐 | uvicorn 提供 `/api/watchlist` 唯一名單端點 |
-| `mls-screen-collect.timer` | 週一~五 13:40 | 盤後採集 51 檔 + 落地明日盤前名單 `watchlist_post` |
+| `mls-screen-collect.timer` | 週一~五 14:40 | 盤後採集 51 檔 + A 鏈收盤復盤 + B 鏈驗證/匯流 |
 | `mls-screen-feed.timer` | 週一~五 08:55 | 拉起盤中 Shioaji 訂閱,寫 `quote_snap`/`aflow`,收盤自停 |
 | `mls-screen-calendar.timer` | 週一 06:00 | 更新 TWSE 官方假日 → `holidays.json`(跨年自動補) |
 
@@ -64,7 +64,7 @@ cd 篩選邏輯 && python3 -m uvicorn api:app --port 8011
 ```
 排程用 `crontab -e` 加(等同上面三個 timer):
 ```
-40 13 * * 1-5  cd /path/篩選邏輯 && ./deploy/run_collect.sh
+40 14 * * 1-5  cd /path/篩選邏輯 && ./deploy/run_collect.sh
 55 8  * * 1-5  cd /path/篩選邏輯 && ./deploy/run_feed.sh
 0  6  * * 1    cd /path/篩選邏輯 && ./deploy/run_calendar.sh
 ```

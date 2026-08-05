@@ -1,0 +1,14 @@
+[Unit]
+Description=MLS 漏斗 b_snapshot 盤中時序 producer (讀 quote_snap/aflow → b_snapshot)
+After=network-online.target mls-screen-feedbridge.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/mls-screen
+Environment="HOME=/root"
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=/usr/bin/python3 snapshot_producer.py
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mls-screen-snapshot

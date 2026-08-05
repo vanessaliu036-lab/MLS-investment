@@ -129,6 +129,12 @@ def _init_tables():
                 c.execute(f"ALTER TABLE {t} ADD COLUMN track TEXT")
             except Exception:
                 pass
+        # v3.1 盤中資金流存檔:盤中 aflow 一收盤就從即時快照消失,write-through 落地到名單列,
+        # 讓歷史日(target_date<今天)也讀得到當日盤中 aflow,不再「無資料」。
+        try:
+            c.execute("ALTER TABLE dec_watchlist ADD COLUMN aflow REAL")
+        except Exception:
+            pass
 
 
 def _today():

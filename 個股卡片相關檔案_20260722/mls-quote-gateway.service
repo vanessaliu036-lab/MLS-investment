@@ -1,0 +1,20 @@
+[Unit]
+Description=MLS Quote Gateway (唯一 Shioaji 擁有者 + TWSE MIS 備援 + Watchdog)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/mls-intraday/個股卡片相關檔案_20260722
+EnvironmentFile=/opt/mls-intraday/.env
+ExecStart=/usr/bin/python3 quote_gateway.py
+Restart=always
+RestartSec=5
+# 殺乾淨：連同 forkserver 子行程一起收（根治「重啟殺不乾淨 → 多重登入互踢」）
+KillMode=control-group
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

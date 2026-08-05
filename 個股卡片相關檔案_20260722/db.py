@@ -125,6 +125,20 @@ def init():
         _add_column(c, "watchlist", "factor_score", "REAL")
         _add_column(c, "watchlist", "group_at_pick", "TEXT")
         _add_column(c, "watchlist", "model_version", "TEXT")
+        # watchlist：昨日訊號型態 + 明日觸發價（六型態分類，選股當下算並存，
+        # 供 B 卡盤後驗證顯示「昨日訊號型態」與「原定進場：突破昨高 X」）。
+        _add_column(c, "watchlist", "signal_type", "TEXT")
+        _add_column(c, "watchlist", "trigger_price", "REAL")
+        # watch_outcome：今日觸發判定 + 未觸發的【明確原因】（T+1 蓋章當下算，
+        # 取代前端「原定進場條件未成立」廣泛語）。
+        _add_column(c, "watch_outcome", "signal_type", "TEXT")
+        _add_column(c, "watch_outcome", "trigger_status", "TEXT")
+        _add_column(c, "watch_outcome", "trigger_price", "REAL")
+        _add_column(c, "watch_outcome", "non_trigger_reason", "TEXT")
+        _add_column(c, "watch_outcome", "entry_ref", "REAL")
+        _add_column(c, "watch_outcome", "today_high", "REAL")
+        _add_column(c, "watch_outcome", "intraday_breakout", "INTEGER")
+        _add_column(c, "watch_outcome", "close_confirmed", "INTEGER")
         # watch_reject：逐因子分數（radar 路徑回填）。radar 七因子 taxonomy 為
         # money_health/absorption/net_active/vs_ma20/inst_streak/margin，與下列
         # 通用欄非一一對應；只把「真正對得上」的填入具名欄（volume=net_active、
@@ -250,12 +264,14 @@ def save_watchlist(trade_date, rows):
         for r in rows:
             c.execute("""INSERT OR REPLACE INTO watchlist
               (trade_date,stock_id,stock_name,sector,reason,
-               source,entry_ref,factor_score,group_at_pick,model_version)
-              VALUES(?,?,?,?,?,?,?,?,?,?)""",
+               source,entry_ref,factor_score,group_at_pick,model_version,
+               signal_type,trigger_price)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
               (trade_date, r["code"], r["name"], r["sector"], r["reason"],
                r.get("source"), r.get("entry_ref"), r.get("factor_score"),
                r.get("group_at_pick"),
-               r.get("model_version", getattr(_C, "MODEL_VERSION", None))))
+               r.get("model_version", getattr(_C, "MODEL_VERSION", None)),
+               r.get("signal_type"), r.get("trigger_price")))
 
 
 def save_watch_rejects(trade_date, rows):
@@ -295,12 +311,19 @@ def save_watch_outcome(trade_date, rows):
             c.execute("""INSERT OR REPLACE INTO watch_outcome
               (trade_date,stock_id,stock_name,sector,watch_reason,open_group,
                close_group,close_price,change_rate,aflow,volume_ratio,
-               verdict,note,stamped_at)
-              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               verdict,note,stamped_at,
+               signal_type,trigger_status,trigger_price,non_trigger_reason,
+               entry_ref,today_high,intraday_breakout,close_confirmed)
+              VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
               (trade_date, r.get("code"), r.get("name"), r.get("sector"),
                r.get("watch_reason"), r.get("open_group"), r.get("close_group"),
                r.get("close_price"), r.get("change_rate"), r.get("aflow"),
-               r.get("volume_ratio"), r.get("verdict"), r.get("note"), now_iso()))
+               r.get("volume_ratio"), r.get("verdict"), r.get("note"), now_iso(),
+               r.get("signal_type"), r.get("trigger_status"),
+               r.get("trigger_price"), r.get("non_trigger_reason"),
+               r.get("entry_ref"), r.get("today_high"),
+               1 if r.get("intraday_breakout") else 0 if r.get("intraday_breakout") is not None else None,
+               1 if r.get("close_confirmed") else 0 if r.get("close_confirmed") is not None else None))
 
 
 def load_watch_outcome(trade_date=None, limit_days=30):
@@ -374,6 +397,17 @@ def latest_review_date():
         return r["d"] if r and r["d"] else None
 
 
+def latest_review_date_with_data():
+    """最近一個『真的有收盤資料』的驗證日：watch_outcome 至少一筆 close_price 非空。
+    B 卡保底用——避免落在只有 review_log 空殼、outcomes 全無收盤的日子而顯示
+    『尚未抓到資料』。無任何有資料日時回 None，呼叫端再退回 latest_review_date。"""
+    with _lock, _conn() as c:
+        r = c.execute(
+            """SELECT MAX(trade_date) d FROM watch_outcome
+               WHERE close_price IS NOT NULL""").fetchone()
+        return r["d"] if r and r["d"] else None
+
+
 def recent_hit_rates(days=30):
     """逐日命中率趨勢，含報酬分布（Phase 2 趨勢表用）。"""
     with _lock, _conn() as c:
@@ -413,6 +447,11 @@ def review_outcomes(trade_date):
                 "close_group": o.get("close_group"), "close_price": o.get("close_price"),
                 "change_rate": o.get("change_rate"), "verdict": o.get("verdict"),
                 "note": o.get("note"), "watch_reason": o.get("watch_reason"),
+                # 昨日訊號型態 + 今日觸發狀態 + 未觸發明確原因（B 卡直接讀）
+                "signal_type": o.get("signal_type") or w.get("signal_type"),
+                "trigger_price": o.get("trigger_price") or w.get("trigger_price"),
+                "trigger_status": o.get("trigger_status"),
+                "non_trigger_reason": o.get("non_trigger_reason"),
             })
     else:
         for sid, w in sorted(wl.items()):
@@ -423,6 +462,11 @@ def review_outcomes(trade_date):
                 "group_at_pick": w.get("group_at_pick"), "close_group": None,
                 "close_price": None, "change_rate": None, "verdict": "待驗證",
                 "note": None, "watch_reason": w.get("reason"),
+                # 尚未蓋章：型態/觸發價已在選股當下存於 watchlist，先帶出；
+                # 觸發狀態/原因要等 T+1 收盤才有。
+                "signal_type": w.get("signal_type"),
+                "trigger_price": w.get("trigger_price"),
+                "trigger_status": None, "non_trigger_reason": None,
             })
     return rows
 

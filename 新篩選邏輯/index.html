@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MLS v4.0 動態資金驅動選股系統</title>
+<style>
+:root{
+  --bg:#fdfbf6; --card:#ffffff; --line:#e8e2d6;
+  --ink:#1a1d23; --sub:#2a2e36; --gold:#8a6d1a;
+  --up:#c0392b; --down:#1e8449; --in:#1f5fa8; --out:#c96a1b;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);
+  font-family:"Noto Sans TC",-apple-system,"Segoe UI",sans-serif;
+  padding:20px;line-height:1.6}
+h1{color:var(--gold);font-size:22px;margin-bottom:4px;letter-spacing:.5px}
+.purpose{background:#fff8e7;border-left:4px solid var(--gold);
+  padding:12px 16px;margin:14px 0;font-weight:600;color:var(--ink);font-size:15px}
+.purpose.act{background:#eef6ee;border-left-color:var(--down)}
+.meta{font-size:13px;color:var(--sub);margin-bottom:14px}
+.degraded{background:#fdf0e6;border-left:4px solid var(--out);
+  padding:10px 14px;margin:10px 0;font-size:14px;color:var(--sub)}
+.tabs{display:flex;gap:8px;margin:16px 0;flex-wrap:wrap}
+.tab{padding:8px 16px;border:1px solid var(--line);border-radius:6px;
+  background:var(--card);cursor:pointer;font-size:14px;color:var(--sub)}
+.tab.on{background:var(--gold);color:#fff;border-color:var(--gold)}
+table{width:100%;border-collapse:collapse;background:var(--card);
+  border:1px solid var(--line);font-size:14px}
+th{background:#f7f2e6;color:var(--ink);padding:10px 8px;text-align:left;
+  font-weight:600;border-bottom:2px solid var(--line)}
+td{padding:9px 8px;border-bottom:1px solid var(--line);color:var(--ink)}
+tr.nodata td{opacity:.55;font-style:italic}
+.score{font-weight:700;color:var(--gold)}
+.up{color:var(--up);font-weight:600} .down{color:var(--down);font-weight:600}
+.tag{display:inline-block;background:#f4efe2;padding:2px 7px;border-radius:4px;
+  font-size:12px;margin-right:4px;color:var(--sub)}
+.miss{font-size:12px;color:var(--out)}
+.cap{background:#fbe9e7;color:var(--up);padding:1px 6px;border-radius:4px;font-size:12px}
+</style>
+</head>
+<body>
+
+<h1>MLS 動態資金驅動選股系統 v4.0</h1>
+<div class="meta" id="meta">載入中…</div>
+
+<!-- purpose 由後端給,前端不准自己寫 -->
+<div class="purpose" id="purpose"></div>
+<div class="degraded" id="degraded" style="display:none"></div>
+
+<!--
+  分頁之間的唯一差別是 slice(0,N) —— 取前幾筆。
+  沒有任何 filter、沒有任何 if 判定分組、沒有任何自訂排序。
+  排序由後端的 rank 決定,前端原封不動照著印。
+-->
+<div class="tabs" id="tabs"></div>
+
+<table>
+<thead><tr>
+  <th>#</th><th>代號</th><th>分數</th><th>價格</th><th>漲跌%</th>
+  <th>理由</th><th>缺少資料</th>
+</tr></thead>
+<tbody id="rows"></tbody>
+</table>
+
+<script>
+// ============================================================
+// 前端只准做兩件事:選欄位顯示、取前 N 筆。
+// 任何 filter / 分組判定 / 排序邏輯都不准寫在這裡。
+// 違反此規則 = preflight 自檢會擋下服務啟動。
+// ============================================================
+
+const VIEWS = [
+  { label: '完整名單',   take: null },
+  { label: '前 10 檔',   take: 10 },
+  { label: '前 20 檔',   take: 20 }
+];
+
+let DATA = null;
+let view = 0;
+
+async function load() {
+  const r = await fetch('/api/watchlist');
+  DATA = await r.json();
+  render();
+}
+
+function render() {
+  const p = document.getElementById('purpose');
+  p.textContent = DATA.purpose;
+  p.className = 'purpose' + (DATA.actionable ? ' act' : '');
+
+  document.getElementById('meta').textContent =
+    `時段 ${DATA.phase} ・ 資料日 ${DATA.data_date} ・ 產生於 ${DATA.generated_at || '—'} ・ 共 ${DATA.items.length} 檔`;
+
+  const dg = document.getElementById('degraded');
+  if (DATA.degraded && DATA.degraded.length) {
+    dg.style.display = 'block';
+    dg.textContent = '以下資料格未取得,該項不計分,名單照常產出:' + DATA.degraded.join('、');
+  } else { dg.style.display = 'none'; }
+
+  document.getElementById('tabs').innerHTML = VIEWS.map((v, i) =>
+    `<span class="tab ${i===view?'on':''}" onclick="view=${i};render()">${v.label}</span>`
+  ).join('');
+
+  // 唯一允許的操作:取前 N 筆。不 filter、不 sort。
+  const take = VIEWS[view].take;
+  const rows = take ? DATA.items.slice(0, take) : DATA.items;
+
+  document.getElementById('rows').innerHTML = rows.map(it => `
+    <tr class="${it.has_data ? '' : 'nodata'}">
+      <td>${it.rank}</td>
+      <td><b>${it.code}</b></td>
+      <td class="score">${it.score}${it.risk_capped ? ' <span class="cap">風險封頂</span>' : ''}</td>
+      <td>${it.price ?? it.close ?? '—'}</td>
+      <td class="${(it.change_rate ?? 0) >= 0 ? 'up' : 'down'}">${it.change_rate ?? '—'}</td>
+      <td>${(it.reasons || []).map(r => `<span class="tag">${r}</span>`).join('')}</td>
+      <td class="miss">${(it.missing || []).join('、') || '—'}</td>
+    </tr>`).join('');
+}
+
+load();
+setInterval(load, 30000);
+</script>
+</body>
+</html>

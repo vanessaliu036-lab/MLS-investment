@@ -1,9 +1,13 @@
 [Unit]
-Description=每交易日盤後 13:40 觸發採集(休市日 collect.py 自身會略過)
+Description=每交易日盤後採集(06:40 UTC=14:40 TW,EOD 定案後、stage2 前;休市日 collect.py 自身略過)
 
 [Timer]
-# 週一~五 13:40(收盤 13:30 後,法人/融資約此時可抓)。國定假日由 app 層擋。
-OnCalendar=Mon..Fri 13:40:00
+# 時間帶 Asia/Taipei 後綴,直接以台灣時間解讀(VPS 系統時區雖為 UTC,此後綴會換算)。
+# 14:40 台灣:台股 13:30 收盤,FinMind 當日 EOD 價約 14:xx 才定案;早於此抓到的是
+# 漲停/試撮參考的退化單點價(open=high=low=close),會灌壞回測 next_close 與寬度漲停數。
+# 需在 stage2 verify(15:05 TW)之前跑完,順序:collect(14:40) → stage2(15:05)。
+# 舊設定 13:35 Asia/Taipei(收盤僅 5 分)就是 8/3 假 bar 的成因,已改。
+OnCalendar=Mon..Fri 14:40:00 Asia/Taipei
 Persistent=true
 Unit=mls-screen-collect.service
 

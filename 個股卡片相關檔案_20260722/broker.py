@@ -164,12 +164,33 @@ def _bind_quote_callback():
                     "avg_price": (float(getattr(q, "avg_price", 0) or 0)
                                   or prev.get("avg_price")),
                     "tick_type": getattr(q, "tick_type", None),
-                    # 對下游統一語意：buy_volume=主動買(ask)，sell_volume=主動賣(bid)。
-                    "buy_volume": int(getattr(q, "ask_side_total_vol", 0) or prev.get("buy_volume", 0) or 0),
-                    "sell_volume": int(getattr(q, "bid_side_total_vol", 0) or prev.get("sell_volume", 0) or 0),
+                    # Shioaji TickSTKv1 正解：bid_side_total_vol=買方(主動買/外盤)累積成交量，
+                    # ask_side_total_vol=賣方(主動賣/內盤)。原本接反 → 漲停(買方巨量)被算成
+                    # aflow 大負「資金流出」。驗證：鎖漲停股 ask_side≈0、bid_side 巨大 = 純買盤。
+                    # 對下游統一語意：buy_volume=主動買，sell_volume=主動賣。
+                    "buy_volume": int(getattr(q, "bid_side_total_vol", 0) or prev.get("buy_volume", 0) or 0),
+                    "sell_volume": int(getattr(q, "ask_side_total_vol", 0) or prev.get("sell_volume", 0) or 0),
                 }
         except Exception as e:
             print(f"[broker] quote callback 解析失敗 {getattr(q,'code','?')}: {e}")
+
+    # 我們只用 tick 更新 buffer；但 ensure_subscribed 也掛了 bidask(保連線/相容舊版)。
+    # 若 bidask 沒有 handler，Shioaji 預設會把每一筆 BidAsk 印到 stdout —— 盤中 51 檔
+    # 逐筆 ≈ 數十行/秒灌爆 journald，拖慢整個服務。綁一個 no-op handler 即可靜音。
+    try:
+        @api.on_bidask_stk_v1()
+        def _on_bidask(_q):
+            return
+    except Exception as e:
+        print(f"[broker] bidask handler 綁定失敗:{e}")
+    for target in (getattr(api, "quote", None), api):
+        bsetter = getattr(target, "set_on_bidask_stk_v1_callback", None) if target else None
+        if bsetter:
+            try:
+                bsetter(lambda _q: None)
+                print(f"[broker] bidask no-op bound on {type(target).__name__}")
+            except Exception as e:
+                print(f"[broker] bidask direct callback 綁定失敗:{e}")
 
     # Shioaji 不同版本對 decorator / quote 物件的 callback 掛載位置不同；
     # 只用 @api.on_tick_stk_v1() 時，部分 VPS 版本只收到 bidask、成交 tick 不進 buffer。
@@ -304,10 +325,12 @@ def batch_snapshots(codes, retries=3):
                     "total_amount": (s.total_amount or 0),      # 元
                     "avg_price": getattr(s, "average_price", None),
                     "tick_type": getattr(s, "tick_type", None),
-                    # Shioaji Snapshot 的 buy_volume 是 bid、sell_volume 是 ask；
-                    # 對下游仍輸出 active_buy/active_sell 語意，故此處交換。
-                    "buy_volume": getattr(s, "sell_volume", 0) or 0,
-                    "sell_volume": getattr(s, "buy_volume", 0) or 0,
+                    # Snapshot 的 buy_volume=委買量(買盤掛單)、sell_volume=委賣量(賣盤掛單)。
+                    # 委買>委賣＝買盤強＝流入。原本交換使漲停(委買巨量)被算成流出，方向反了。
+                    # 不交換：active_buy=委買、active_sell=委賣，下游 aflow=委買−委賣，漲停為正。
+                    # 註：這是掛單量壓力代理(非 tick 累積主動成交量)，僅供盤後/回退用。
+                    "buy_volume": getattr(s, "buy_volume", 0) or 0,
+                    "sell_volume": getattr(s, "sell_volume", 0) or 0,
                 })
             time.sleep(0.3)
         if out:
@@ -321,6 +344,28 @@ def batch_snapshots(codes, retries=3):
     return out  # 空 list,呼叫端 fallback
 
 
+def _resolve_taiex_contract(api):
+    """取 TAIEX 加權指數合約。Shioaji 現行代碼＝IX0001「發行量加權股價指數」(價格指數)。
+    務必避開 IR0001「發行量加權股價報酬指數」(含息報酬指數，數值/漲跌幅都不同)。"""
+    idx = getattr(api.Contracts, "Indexs", None)
+    grp = getattr(idx, "TSE", None) if idx is not None else None
+    if grp is None:
+        return None
+    try:                              # 首選：直接用代碼 IX0001
+        c = grp["IX0001"]
+        if hasattr(c, "code"):
+            return c
+    except Exception:
+        pass
+    try:                              # 退：精準名稱命中價格指數（排除「報酬」）
+        for c in grp:
+            if (getattr(c, "name", "") or "") == "發行量加權股價指數":
+                return c
+    except Exception:
+        pass
+    return None
+
+
 def index_snapshot():
     """加權指數快照(Shioaji 指數合約 TSE001)。
     5s TTL 記憶體快取:一輪 build_state 內多次呼叫會全部命中同一份,
@@ -332,8 +377,11 @@ def index_snapshot():
             return _INDEX_CACHE.get("data") if not _INDEX_CACHE.get("err") else {}
     api = get_api()
     try:
-        # shioaji 1.5+ 改 API:Indexs 是 ContractCategory,用 .get("TSE001") 取代舊的 .TSE["001"]
-        contract = api.Contracts.Indexs.get("TSE001")
+        # 加權指數合約(TSE 001)取法各 SDK 版本不一;.get("TSE001") 常回 category/None，
+        # 傳給 snapshots 會噴 "expected BaseContract"。多法容錯，最後掃描找 code=='001'。
+        contract = _resolve_taiex_contract(api)
+        if contract is None:
+            raise RuntimeError("找不到加權指數合約(TSE001)")
         snaps = api.snapshots([contract])
         if not snaps:
             raise RuntimeError("index snapshots 回空 list")

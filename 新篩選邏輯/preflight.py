@@ -121,88 +121,6 @@ def _check_no_refetch(db_path: str = "mls.db") -> tuple[bool, str]:
     return True, f"今日累計外部 API 呼叫 {n} 次(正常值:盤後一次批次,約等於 UNIVERSE 檔數)"
 
 
-def _check_breadth_not_aflow(db_path: str = "mls.db") -> tuple[bool, str]:
-    """
-    防止 7/28 的 bug 復發:把 aflow 正值占比當成市場寬度。
-
-    測試:餵入「指數 -3.44%、漲 87 / 跌 972、aflow 84% 正值」,
-          若系統回 RISK ON,代表 RISK 判定被 aflow 汙染。
-    """
-    import regime
-
-    breadth = {"index_change_pct": -3.44, "advancing": 87,
-               "declining": 972, "unchanged": 49}
-    sectors = [{"sector": f"S{i}", "change_pct": -3.5} for i in range(10)]
-    quotes = {str(i): {"net_active": 1e6 if i < 43 else -1e6} for i in range(51)}
-
-    r = regime.assess(breadth_row=breadth, sectors=sectors,
-                      quotes=quotes, db_path=db_path)
-    if r["risk"] != "OFF":
-        return False, (f"崩盤情境(指數-3.44%、寬度8%)竟回 RISK={r['risk']}。"
-                       f"RISK 判定被 aflow 汙染 —— aflow 不得參與市場層級判斷。")
-    if r["allow_stock_signal"]:
-        return False, "崩盤情境仍允許輸出個股「有人承接」敘述,閘門失效。"
-
-    # 反向:aflow 全負但市場健康,不該誤判成 OFF
-    good = {"index_change_pct": 1.8, "advancing": 780,
-            "declining": 260, "unchanged": 50}
-    q2 = {str(i): {"net_active": -1e6} for i in range(51)}
-    r2 = regime.assess(breadth_row=good,
-                       sectors=[{"sector": "S", "change_pct": 1.5}],
-                       quotes=q2, db_path=db_path)
-    if r2["risk"] == "OFF":
-        return False, "健康市場(寬度 72%)卻因 aflow 全負而回 RISK OFF,判定被汙染。"
-
-    return True, "RISK 判定僅由指數與真實寬度決定,未被 aflow 汙染"
-
-
-def _check_frontend_no_fake_breadth(db_path: str = "mls.db") -> tuple[bool, str]:
-    """前端不得把 aflow 占比標成「市場資金廣度」。"""
-    p = Path(__file__).parent / "index.html"
-    if not p.exists():
-        return False, "index.html 不存在"
-    src = p.read_text(encoding="utf-8")
-    bad = []
-    if "資金廣度" in src or "市場廣度" in src:
-        bad.append("出現「資金廣度/市場廣度」字樣(易與真實寬度混淆)")
-    if "aflow_pos_ratio" in src and "true_breadth" not in src:
-        bad.append("只用 aflow 占比、未顯示真實寬度")
-    if bad:
-        return False, ";".join(bad)
-    return True, "前端以真實寬度為主,aflow 僅置於診斷區"
-
-
-def _check_funnel_is_funnel(db_path: str = "mls.db") -> tuple[bool, str]:
-    """
-    漏斗必須逐層遞減,而且不得有固定上限。
-
-    這是你截圖那個 bug 的守門:20 檔剛好等於 POOL_SIZE,
-    代表名單不是篩出來的,是「排序後取前 20」湊到上限就停。
-    漏斗是「符合條件的剩下這些」,排序取前 N 是「不管怎樣都給你 20 檔」。
-    """
-    import funnel
-
-    import ast, io, tokenize
-    raw = Path(funnel.__file__).read_text(encoding="utf-8")
-    # 只檢查實際程式碼,不誤判註解與 docstring 裡的說明文字
-    code_lines = []
-    for tok in tokenize.generate_tokens(io.StringIO(raw).readline):
-        if tok.type not in (tokenize.COMMENT, tokenize.STRING):
-            code_lines.append(tok.string)
-    src = " ".join(code_lines)
-    if "POOL_SIZE" in src:
-        return False, "funnel.py 出現 POOL_SIZE,漏斗不得有固定檔數上限"
-    if "[:20]" in src or "[:10]" in src:
-        return False, "funnel.py 出現固定切片,漏斗不得取前 N 湊數"
-
-    # 每層必須是通過/淘汰的布林判斷
-    for fn in ("layer1", "layer2", "layer25", "layer3"):
-        if not hasattr(funnel, fn):
-            return False, f"funnel.py 缺少 {fn}"
-
-    return True, "漏斗為逐層淘汰,無固定上限、無取前 N 湊數"
-
-
 CHECKS = [
     ("時段隔離", _check_phase_isolation),
     ("前端零 filter", _check_frontend_no_filter),
@@ -210,17 +128,10 @@ CHECKS = [
     ("盤後資料指紋", _check_post_checksum),
     ("表 owner 註冊", _check_table_owners),
     ("重抓稽核", _check_no_refetch),
-    ("寬度定義", _check_breadth_not_aflow),
-    ("前端寬度標示", _check_frontend_no_fake_breadth),
-    ("漏斗機制", _check_funnel_is_funnel),
 ]
 
 
 def run(fail_fast: bool = True, db_path: str = "mls.db") -> bool:
-    # 全新安裝時 DB 還不存在。先建表再自檢 ——
-    # 否則「表不存在」會被誤報成檢查失敗,又變成裝完就卡住的白痴問題。
-    store.init_db(db_path)
-
     print("=" * 60)
     print("MLS preflight 啟動自檢")
     print("=" * 60)

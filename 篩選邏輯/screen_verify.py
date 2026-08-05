@@ -6,7 +6,7 @@ screen_verify.py — 當日收盤復盤(命中率 / 勝率分析層)
 
 問的問題不同:
   b_verify   問「盤中發現的檔,今天法人有沒有買」(產生名單用)。
-  screen_verify 問「昨天候選池那批,經過今天收盤,實際會不會賺」(衡量模型準度用)。
+  screen_verify 問「昨天盤中訊號那批,經過今天收盤,實際會不會賺」(衡量模型準度用)。
   兩者完全不同,不要混。
 
 判定(對齊 screen_post 預標的進場軌,判定日 = T+1 收盤):
@@ -16,7 +16,7 @@ screen_verify.py — 當日收盤復盤(命中率 / 勝率分析層)
 
 門檻集中在檔頭常數,要調靈敏度只改這裡。命中率 = 命中數 / (攻擊+引擎 且有資料)。
 
-owner 規範:本支自建 pool_outcome 表,只寫這張;讀 candidate_pool / daily_bar。
+owner 規範:本支自建 pool_outcome 表,只寫這張;讀 intraday_signal / candidate_pool / daily_bar。
 與 A/B 兩鏈的名單產生完全脫鉤,這支爆掉不影響任何名單。
 """
 
@@ -101,32 +101,38 @@ def judge_row(track: str, base_close, trigger_price, next_high, next_close, ma20
 
 def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
     """
-    用 data_date(T+1)當天收盤,復盤 pool_date(前一交易日)產出的候選池。
+    用 data_date(T+1)當天收盤,復盤 pool_date(前一交易日)產出的盤中訊號。
     """
     _ensure_table(db_path)
     d = data_date or today_tw()
     pool_date = prev_trading_day(d)
 
     envs = run_all({
+        # 正確驗證來源：昨日盤中實際產出的燈號，而不是昨日盤後候選池。
+        "signal": lambda: store.read_date("intraday_signal", pool_date, db_path),
+        # candidate_pool 只補軌道、觸發價與 T 日收盤基準，不代表驗證名單來源。
         "pool": lambda: store.read_date("candidate_pool", pool_date, db_path),
         "bar": lambda: store.read_date("daily_bar", d, db_path),
     }, phase=Phase.POST)
     persist_status(envs, db_path)
 
+    signals = envs["signal"].get({}) or {}
     pool = envs["pool"].get({}) or {}
     bar = envs["bar"].get({}) or {}
 
-    if not pool:
+    if not signals:
         return {
             "phase": "POST", "data_date": d.isoformat(), "pool_date": pool_date.isoformat(),
-            "purpose": f"當日收盤復盤 — {pool_date} 無候選池可驗",
+            "purpose": f"當日收盤復盤 — {pool_date} 無昨日盤中訊號可驗",
             "degraded": missing_labels(envs), "items": [],
             "denom": 0, "hits": 0, "hit_rate": None,
         }
 
     now = _dt.datetime.now().isoformat(timespec="seconds")
     rows, items = [], []
-    for code, prow in pool.items():
+    for code, signal in signals.items():
+        # 用昨日盤中訊號作為主資料；候選池只提供盤後預標的軌道資訊。
+        prow = pool.get(code) or {}
         payload = {}
         if prow.get("payload"):
             try:
@@ -142,6 +148,8 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
         triggered, hit, ret, verdict = judge_row(track, base_close, trig, nh, nc, ma20)
         rec = {
             "data_date": d.isoformat(), "pool_date": pool_date.isoformat(), "code": code,
+            "signal_light": signal.get("light"),
+            "signal_note": signal.get("note"),
             "track": track, "trigger_price": trig, "base_close": base_close,
             "next_high": nh, "next_close": nc, "ma20": ma20,
             "triggered": triggered, "hit": hit, "ret_pct": ret,
@@ -163,7 +171,7 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
                               -(r["ret_pct"] or -999)))
     return {
         "phase": "POST", "data_date": d.isoformat(), "pool_date": pool_date.isoformat(),
-        "purpose": (f"當日收盤復盤:候選池 {len(pool)} 檔,可判定 {denom} 檔,"
+        "purpose": (f"當日收盤復盤:昨日盤中訊號 {len(signals)} 檔,可判定 {denom} 檔,"
                     f"命中 {hits} → 命中率 {round(hits/denom*100,1) if denom else '—'}%"),
         "verified_at": now,
         "degraded": missing_labels(envs),

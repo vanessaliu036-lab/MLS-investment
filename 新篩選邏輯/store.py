@@ -46,16 +46,6 @@ TABLE_OWNER: dict[str, str] = {
     "watchlist_post": "screen_post",
     "candidate_pool": "screen_post",     # 隔日候選池:盤後產出,盤中只讀
     "intraday_signal": "screen_intraday", # 盤中燈號
-    # ---- B 鏈專屬表。owner 全歸 B 鏈,A 鏈永遠寫不進來。 ----
-    "b_snapshot": "b_snapshot",       # 盤中時序快照(每5分鐘)
-    "b_discovery": "b_discover",      # 13:20 掃描標記
-    "b_verified": "b_verify",         # 盤後法人驗證結果
-    # ---- 市場層級資料(TWSE/TPEx 官方,免費無上限) ----
-    "market_breadth": "market",       # 指數、成交金額、漲跌家數
-    "sector_index": "market",         # 類股指數與成交比重
-    # ---- 漏斗(逐層淘汰) ----
-    "funnel_result": "funnel",        # 每日各層存活名單
-    "funnel_log": "funnel",           # 每層淘汰理由統計
     "fetch_log": "store",
     "plugin_status": "store",
     "post_checksum": "store",
@@ -96,7 +86,6 @@ CREATE TABLE IF NOT EXISTS inst_flow (
     code TEXT NOT NULL, data_date TEXT NOT NULL,
     foreign_net INTEGER, trust_net INTEGER, dealer_net INTEGER, total_net INTEGER,
     consecutive_days INTEGER,
-    foreign_days INTEGER, trust_days INTEGER, dealer_days INTEGER,
     source TEXT, fetched_at TEXT,
     PRIMARY KEY (code, data_date)
 );
@@ -174,73 +163,6 @@ CREATE TABLE IF NOT EXISTS intraday_signal (
     PRIMARY KEY (data_date, code)
 );
 
--- ============ B 鏈專屬表(獨立於 A 鏈,不共用任何表) ============
-
--- 盤中時序快照:每 5 分鐘從記憶體 buffer 寫一筆。零 API 呼叫。
-CREATE TABLE IF NOT EXISTS b_snapshot (
-    data_date TEXT NOT NULL, code TEXT NOT NULL, slot TEXT NOT NULL,
-    price REAL, change_rate REAL, volume INTEGER,
-    net_active REAL, bid_vol INTEGER, ask_vol INTEGER,
-    created_at TEXT,
-    PRIMARY KEY (data_date, code, slot)
-);
-CREATE INDEX IF NOT EXISTS idx_b_snap ON b_snapshot(data_date, code, slot);
-
--- 13:20 最終掃描的標記結果
-CREATE TABLE IF NOT EXISTS b_discovery (
-    data_date TEXT NOT NULL, code TEXT NOT NULL,
-    hits INTEGER, criteria TEXT, detail TEXT, scanned_at TEXT,
-    PRIMARY KEY (data_date, code)
-);
-
--- 盤後法人驗證結果
-CREATE TABLE IF NOT EXISTS b_verified (
-    data_date TEXT NOT NULL, code TEXT NOT NULL,
-    verdict TEXT, inst_net INTEGER, reason TEXT, verified_at TEXT,
-    PRIMARY KEY (data_date, code)
-);
-
--- ============ 市場層級(TWSE/TPEx 官方) ============
--- 真正的市場寬度 = 上漲家數 / 總家數。不是 aflow 正值占比。
-CREATE TABLE IF NOT EXISTS market_breadth (
-    data_date TEXT NOT NULL, market TEXT NOT NULL, slot TEXT NOT NULL,
-    index_value REAL, index_change REAL, index_change_pct REAL,
-    turnover REAL,
-    advancing INTEGER, declining INTEGER, unchanged INTEGER,
-    limit_up INTEGER, limit_down INTEGER,
-    source TEXT, created_at TEXT,
-    PRIMARY KEY (data_date, market, slot)
-);
-
--- 類股指數:判斷是全面性下跌還是單一族群被壓
-CREATE TABLE IF NOT EXISTS sector_index (
-    data_date TEXT NOT NULL, market TEXT NOT NULL,
-    sector TEXT NOT NULL, slot TEXT NOT NULL,
-    value REAL, change_pct REAL, turnover REAL, turnover_share REAL,
-    source TEXT, created_at TEXT,
-    PRIMARY KEY (data_date, market, sector, slot)
-);
-
--- ============ 漏斗:逐層淘汰(不是排序取前 N) ============
--- 每一層都是通過/淘汰的判斷。留下幾檔就是幾檔,可能 0 檔。
-CREATE TABLE IF NOT EXISTS funnel_result (
-    data_date TEXT NOT NULL, layer TEXT NOT NULL, code TEXT NOT NULL,
-    survived INTEGER,          -- 1=通過 0=淘汰
-    reasons TEXT,              -- 淘汰或通過的理由
-    detail TEXT,
-    decided_at TEXT,           -- 這一層定案的時間
-    PRIMARY KEY (data_date, layer, code)
-);
-
--- 每層淘汰理由分布。兩週後靠這張表決定放鬆哪一條門檻。
-CREATE TABLE IF NOT EXISTS funnel_log (
-    data_date TEXT NOT NULL, layer TEXT NOT NULL,
-    entered INTEGER, survived INTEGER, dropped INTEGER,
-    reason_breakdown TEXT,     -- {"量能不足":12,"破月線":6}
-    decided_at TEXT,
-    PRIMARY KEY (data_date, layer)
-);
-
 CREATE TABLE IF NOT EXISTS fetch_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     table_name TEXT, code TEXT, data_date TEXT,
@@ -298,33 +220,10 @@ BEGIN SELECT RAISE(ABORT, 'IMMUTABLE: quote_snap 過往交易日已凍結,不可
 """
 
 
-# 既有 DB 的欄位補丁：CREATE TABLE IF NOT EXISTS 不會替「已存在的表」加新欄,
-# 故 schema 新增欄位時,舊 DB 需在此明列 ADD COLUMN(冪等:已存在就跳過)。
-# ADD COLUMN 不觸發 immutable 的 BEFORE UPDATE/DELETE trigger,對死值表安全。
-_COLUMN_MIGRATIONS = {
-    "inst_flow": [("foreign_days", "INTEGER"), ("trust_days", "INTEGER"),
-                  ("dealer_days", "INTEGER")],
-}
-
-
-def _migrate_columns(c) -> None:
-    for table, cols in _COLUMN_MIGRATIONS.items():
-        try:
-            have = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
-        except Exception:
-            continue
-        if not have:            # 表還不存在(將由 _SCHEMA 建成最新版),不需補
-            continue
-        for name, typ in cols:
-            if name not in have:
-                c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {typ}")
-
-
 def init_db(db_path: str = DB_PATH) -> None:
     with conn(db_path) as c:
         c.executescript(_SCHEMA)
         c.executescript(_TRIGGERS)
-        _migrate_columns(c)
         c.commit()
 
 

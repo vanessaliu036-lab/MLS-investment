@@ -9,9 +9,15 @@ User=root
 WorkingDirectory=/opt/mls-intraday/個股卡片相關檔案_20260722
 Environment="HOME=/root"
 Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+# 啟動前先清掉任何殘留的舊代 server:app（根治「重啟殺不乾淨→多重登入互踢 Shioaji
+# session」；2026-08-04 事故）。- 前綴：沒有殘留也不報錯。
+ExecStartPre=-/usr/bin/pkill -f "uvicorn server:app"
 ExecStart=/usr/bin/python3 -m uvicorn server:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=5
+# 收乾淨：停止時對整個 cgroup 送訊號，逾時強殺，杜絕殘留 process 疊加登入。
+KillMode=mixed
+TimeoutStopSec=15
 # 日誌走 journald（會自動輪替）。原本 append 到 /tmp/mls-intraday.log，
 # 但 /tmp 是 476M tmpfs，Shioaji 行情列印量大會把它塞滿，一滿服務就寫不進、
 # 開機即 exit 120 陷入 crash loop（2026-07-24 事故）。改用 journald 根治。

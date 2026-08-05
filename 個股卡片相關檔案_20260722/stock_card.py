@@ -68,7 +68,7 @@ def _flow_days(bars, n):
 
 
 def build_card(code, snap=None, health=None, grade=None,
-               injected_bars=None, chip_detail=None):
+               injected_bars=None, chip_detail=None, chip_asof=None):
     """
     組完整資訊卡。snap(盤中/收盤快照)、health(money_health 或
     dec_health 結果)、grade(Ready/Watch/Hold)由呼叫端提供可省 API;
@@ -88,7 +88,7 @@ def build_card(code, snap=None, health=None, grade=None,
     if chip_detail is None:
         try:
             import chips
-            chip_detail = chips.get_chips_detail(code)
+            chip_detail = chips.get_chips_detail(code, asof=chip_asof)
         except Exception as e:
             print(f"[stock_card] 籌碼細項失敗:{e}")
             chip_detail = {}
@@ -191,10 +191,22 @@ def build_card(code, snap=None, health=None, grade=None,
         t1 = round(buy + T1_ATR * atr_v, 1)
         t2 = round(buy + T2_ATR * atr_v, 1)
         rr = round((t1 - buy) / (buy - stop), 2) if buy > stop else None
+        close = (snap or {}).get("price")
+        change = (snap or {}).get("change_rate")
+        breakout_already_happened = (
+            close is not None and float(close) >= buy
+            and change is not None and float(change) >= 9.0
+        )
         trade_block.update({
-            "advice": {"Ready": "突破進場(攻擊軌)", "Watch": "等待",
-                       "Hold": "觀望"}.get(grade, "等待"),
-            "buy": buy, "stop": stop, "t1": t1, "t2": t2, "rr": rr})
+            "advice": ("觀察突破後承接" if breakout_already_happened else
+                       {"Ready": "突破進場(攻擊軌)", "Watch": "等待",
+                        "Hold": "觀望"}.get(grade, "等待")),
+            # 已收盤突破的股票不能再把當日高點顯示成「尚未觸發」買點。
+            "buy": None if breakout_already_happened else buy,
+            "reference_high": buy,
+            "breakout_status": ("已突破，觀察是否守住前高與隔日承接"
+                                 if breakout_already_happened else "尚未確認"),
+            "stop": stop, "t1": t1, "t2": t2, "rr": rr})
     elif grade:
         trade_block["advice"] = {"Ready": "突破進場", "Watch": "等待",
                                  "Hold": "觀望"}.get(grade, "等待")

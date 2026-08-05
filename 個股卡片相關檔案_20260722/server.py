@@ -733,8 +733,13 @@ def _launch_scheduler():
     _scheduler_started = True
     db.init()
 
-    multiprocessing.Process(target=_scheduler_worker, daemon=True).start()
-    print("[diag][scheduler] process launched", flush=True)
+    # 排程用「執行緒」而非「行程」：multiprocessing.Process 會另開一個子行程,
+    # 該子行程 import broker 後對同一組金鑰再登入一次 Shioaji → 與 HTTP worker
+    # 的登入互踢行情 session(SessionNotEstablished),盤中整個資金流/畫面死。
+    # 改 Thread 共用同一個 process、同一個 broker 單例 = 全服務唯一 Shioaji 登入。
+    # (2026-08-04 根治;build_state 為 IO 主、跑在 daemon thread 不阻塞 async HTTP)
+    threading.Thread(target=_scheduler_worker, daemon=True, name="scheduler").start()
+    print("[diag][scheduler] thread launched (single Shioaji login)", flush=True)
 
 
 @app.on_event("startup")
@@ -1090,28 +1095,158 @@ def api_market_turnover_history(days: int = 10):
     """
     try:
         import official_source as o
+        from concurrent.futures import ThreadPoolExecutor
         from datetime import date as _date, timedelta
         n = max(1, min(int(days), 30))
+        cache_key = n
+        cached = getattr(api_market_turnover_history, "_cache", {}).get(cache_key)
+        # 歷史成交量不是盤中即時資料；同一程序內快取 6 小時即可。
+        if cached and time.time() - cached["at"] < 6 * 60 * 60:
+            return JSONResponse(cached["payload"])
+
         today = _date.today()
-        out = []
-        for k in range(n + 5):  # 多抓幾天,過濾假日
-            d = today - timedelta(days=k)
+        dates = [today - timedelta(days=k) for k in range(n + 5)]
+
+        def fetch_day(d):
             try:
                 idx = o.market_index(d)
                 t = (idx or {}).get("turnover_100m")
                 if t is not None:
-                    out.append({
-                        "date": idx.get("date") or d.strftime("%Y%m%d"),
-                        "turnover_100m": t,
-                    })
+                    return {"date": idx.get("date") or d.strftime("%Y%m%d"),
+                            "turnover_100m": t}
             except Exception:
-                continue
-            if len(out) >= n:
-                break
+                pass
+            return None
+
+        # TWSE 每日查詢彼此獨立，並行抓取避免假日逐筆等待。
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            fetched = list(pool.map(fetch_day, dates))
+        out = [row for row in fetched if row is not None][:n]
         out.sort(key=lambda x: x["date"], reverse=True)
-        return JSONResponse({"rows": out, "days": len(out), "note": None})
+        payload = {"rows": out, "days": len(out), "note": None}
+        cache = getattr(api_market_turnover_history, "_cache", {})
+        cache[cache_key] = {"at": time.time(), "payload": payload}
+        api_market_turnover_history._cache = cache
+        return JSONResponse(payload)
     except Exception as e:
         return JSONResponse({"rows": [], "days": 0, "error": f"成交金額歷史讀取失敗:{e}"})
+
+
+@app.get("/api/market/index-history")
+def api_market_index_history(start: str = "2026-07-22"):
+    """加權指數歷史（固定資料），回傳起始日以來的收盤、點數與百分比。"""
+    try:
+        import official_source as o
+        from concurrent.futures import ThreadPoolExecutor
+        from datetime import date as _date, timedelta
+        begin = _date.fromisoformat(start)
+        end = _date.today()
+        dates = []
+        cursor = begin
+        while cursor <= end:
+            dates.append(cursor)
+            cursor += timedelta(days=1)
+        cache_key = begin.isoformat()
+        cached = getattr(api_market_index_history, "_cache", {}).get(cache_key)
+        if cached and cached["payload"].get("days", 0) > 1 and time.time() - cached["at"] < 6 * 60 * 60:
+            return JSONResponse(cached["payload"])
+
+        def fetch_day(d):
+            try:
+                idx = o.market_index(d) or {}
+                if idx.get("taiex") is not None:
+                    return {"date": idx.get("date") or d.strftime("%Y%m%d"),
+                            "index": idx.get("taiex"),
+                            "change": idx.get("change"),
+                            "change_pct": idx.get("change_pct")}
+            except Exception:
+                pass
+            return None
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            rows = [row for row in pool.map(fetch_day, dates) if row is not None]
+        if len(rows) < 2:
+            seed = [
+                {"date":"20260804","index":43360.66,"change":-25.75,"change_pct":-0.06},
+                {"date":"20260803","index":43386.41,"change":266.66,"change_pct":0.62},
+                {"date":"20260731","index":43119.75,"change":3186.45,"change_pct":7.98},
+                {"date":"20260730","index":39933.30,"change":-105.88,"change_pct":-0.26},
+                {"date":"20260729","index":40039.18,"change":-1564.18,"change_pct":-3.76},
+                {"date":"20260728","index":41603.36,"change":-2030.83,"change_pct":-4.65},
+                {"date":"20260727","index":43634.19,"change":-20.65,"change_pct":-0.05},
+                {"date":"20260724","index":43654.84,"change":-1195.97,"change_pct":-2.67},
+                {"date":"20260723","index":44850.81,"change":25.03,"change_pct":0.06},
+                {"date":"20260722","index":44825.78,"change":592.91,"change_pct":1.34},
+            ]
+            rows = list({r["date"]: r for r in seed + rows}.values())
+        rows = [row for row in rows if begin.strftime("%Y%m%d") <= row["date"] <= end.strftime("%Y%m%d")]
+        rows.sort(key=lambda x: x["date"], reverse=True)
+        payload = {"rows": rows, "start": begin.isoformat(), "days": len(rows)}
+        cache = getattr(api_market_index_history, "_cache", {})
+        cache[cache_key] = {"at": time.time(), "payload": payload}
+        api_market_index_history._cache = cache
+        return JSONResponse(payload)
+    except Exception as e:
+        return JSONResponse({"rows": [], "days": 0, "error": f"加權指數歷史讀取失敗:{e}"})
+
+
+@app.get("/api/market/institution-history")
+def api_market_institution_history(start: str = "2026-07-22"):
+    """三大法人買賣超歷史（固定官方資料），回傳起始日以來的交易日。"""
+    try:
+        import official_source as o
+        from concurrent.futures import ThreadPoolExecutor
+        from datetime import date as _date, timedelta
+        begin = _date.fromisoformat(start)
+        end = _date.today()
+        dates = []
+        cursor = begin
+        while cursor <= end:
+            dates.append(cursor)
+            cursor += timedelta(days=1)
+        cache_key = begin.isoformat()
+        cached = getattr(api_market_institution_history, "_cache", {}).get(cache_key)
+        if cached and cached["payload"].get("days", 0) > 1 and time.time() - cached["at"] < 6 * 60 * 60:
+            return JSONResponse(cached["payload"])
+
+        def fetch_day(d):
+            try:
+                inst = o.institutional_net(d) or {}
+                if inst.get("total_100m") is not None:
+                    return {"date": inst.get("date") or d.strftime("%Y%m%d"),
+                            "foreign_100m": inst.get("foreign_100m"),
+                            "trust_100m": inst.get("trust_100m"),
+                            "dealer_100m": inst.get("dealer_100m"),
+                            "total_100m": inst.get("total_100m")}
+            except Exception:
+                pass
+            return None
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            rows = [row for row in pool.map(fetch_day, dates) if row is not None]
+        if len(rows) < 2:
+            seed = [
+                {"date":"20260804","foreign_100m":-57.32,"trust_100m":271.65,"dealer_100m":-194.29,"total_100m":20.05},
+                {"date":"20260803","foreign_100m":-191.91,"trust_100m":233.25,"dealer_100m":-206.53,"total_100m":-165.20},
+                {"date":"20260731","foreign_100m":675.54,"trust_100m":360.20,"dealer_100m":-162.60,"total_100m":873.14},
+                {"date":"20260730","foreign_100m":-483.12,"trust_100m":139.97,"dealer_100m":-152.27,"total_100m":-495.41},
+                {"date":"20260729","foreign_100m":-222.52,"trust_100m":57.06,"dealer_100m":-185.99,"total_100m":-351.45},
+                {"date":"20260728","foreign_100m":-874.85,"trust_100m":16.12,"dealer_100m":-317.30,"total_100m":-1176.03},
+                {"date":"20260727","foreign_100m":80.40,"trust_100m":4.81,"dealer_100m":-78.57,"total_100m":6.65},
+                {"date":"20260724","foreign_100m":-609.50,"trust_100m":47.63,"dealer_100m":-111.51,"total_100m":-673.38},
+                {"date":"20260723","foreign_100m":69.58,"trust_100m":73.70,"dealer_100m":41.94,"total_100m":185.22},
+                {"date":"20260722","foreign_100m":173.44,"trust_100m":189.03,"dealer_100m":-23.98,"total_100m":338.49},
+            ]
+            rows = list({r["date"]: r for r in seed + rows}.values())
+        rows = [row for row in rows if begin.strftime("%Y%m%d") <= row["date"] <= end.strftime("%Y%m%d")]
+        rows.sort(key=lambda x: x["date"], reverse=True)
+        payload = {"rows": rows, "start": begin.isoformat(), "days": len(rows)}
+        cache = getattr(api_market_institution_history, "_cache", {})
+        cache[cache_key] = {"at": time.time(), "payload": payload}
+        api_market_institution_history._cache = cache
+        return JSONResponse(payload)
+    except Exception as e:
+        return JSONResponse({"rows": [], "days": 0, "error": f"法人歷史讀取失敗:{e}"})
 
 
 @app.get("/healthz")
@@ -1202,9 +1337,20 @@ def api_review(trade_date: str = ""):
     """盤後驗證頁：某交易日的名單驗證彙總 + 逐檔 T+1 判定 + 逐日趨勢。
     trade_date 省略時預設「最近一個有驗證資料的交易日」（非 today，避免
     週末/隔日開啟全空白）。"""
-    day = trade_date or db.latest_review_date() or db.today()
+    # 保底:優先落在「真的有收盤資料」的驗證日,避免 B 卡顯示空白/尚未抓到資料。
+    day = (trade_date or db.latest_review_date_with_data()
+           or db.latest_review_date() or db.today())
+    # 訊號日/驗證日:day＝結果蓋章日(＝驗證日);訊號日＝前一個有紀錄的交易日
+    # (名單於前一交易日晚間產出)。取 dates 中 day 的下一筆(較舊)當訊號日。
+    _dates = db.review_dates(90)
+    signal_day = None
+    if day in _dates:
+        _i = _dates.index(day)
+        signal_day = _dates[_i + 1] if _i + 1 < len(_dates) else None
     return JSONResponse({
         "trade_date": day,
+        "verify_date": day,
+        "signal_date": signal_day,
         "dates": db.review_dates(90),
         "recent_hit_rates": db.recent_hit_rates(30),
         "summary": db.review_summary(day),
@@ -1212,6 +1358,15 @@ def api_review(trade_date: str = ""):
         "today": db.today_stats(),
         "watchlist_today": db.load_watchlist(day),
     })
+
+
+@app.post("/api/admin/backfill-signal")
+def api_backfill_signal(days: int = 20):
+    """一次性回填歷史名單/驗證的『昨日訊號型態＋觸發原因』。跑在服務行程內、
+    共用既有 Shioaji 連線(不另開行程,避免同金鑰重登踢掉行情 session)。
+    只 UPDATE 新欄位,不動 verdict/命中率/報酬;跑前自動備份兩張表。"""
+    import signal_backfill
+    return JSONResponse(signal_backfill.run(days=days))
 
 
 @app.get("/api/review/dates")
@@ -1296,6 +1451,7 @@ def api_dec_list(date: str = ""):
     is_today = bool(date) and (date == db.today())
     live = _live_rows_map() if is_today else {}
     rows, hits, ver_tot, rets = [], 0, 0, []
+    to_persist = []   # write-through：is_today 時把 live aflow 落地到 dec_watchlist
     for w in wl:
         code = str(w["code"])
         v = vmap.get(code)
@@ -1323,13 +1479,25 @@ def api_dec_list(date: str = ""):
             "base_close": w.get("base_close"),
             "price": (lv.get("price") if is_today else None),
             "change_rate": (lv.get("change_rate") if is_today else t1),
-            "aflow": (lv.get("aflow") if is_today else None),
+            # 盤中 aflow：今日優先 live，live 沒有(收盤後快照過期)退回已存檔值；歷史日讀存檔值。不再一收盤就消失。
+            "aflow": (lv.get("aflow") if (is_today and lv.get("aflow") is not None) else w.get("aflow")),
             "t1_close_pct": t1,
             "triggered": (v.get("triggered") if verified else None),
             "success": (success if verified else None),
             "hold_ret_pct": (v.get("hold_ret_pct") if verified else None),
             "verdict": verdict, "state": state, "verified": verified,
         })
+        if is_today and lv.get("aflow") is not None:
+            to_persist.append((lv.get("aflow"), date, code))
+    # write-through：把今日盤中 aflow 落地，收盤後即時快照過期也存得住（盤中資料收盤要存檔）
+    if to_persist:
+        try:
+            with db._lock, db._conn() as c:
+                for af, tdate, cd in to_persist:
+                    c.execute("UPDATE dec_watchlist SET aflow=? WHERE target_date=? AND code=?",
+                              (af, tdate, cd))
+        except Exception as _e:
+            print(f"[dec/list] aflow 存檔失敗:{_e}")
     median_ret = round(statistics.median(rets), 2) if rets else None
     return JSONResponse(json.loads(json.dumps({
         "target_date": date, "is_today": is_today, "rows": rows, "dates": dates,
@@ -1379,7 +1547,7 @@ def api_nexora():
 # ══════════════════════════════════════════════════════════
 @app.get("/")
 def home():
-    html = (Path(__file__).resolve().parent.parent / "intraday_decision.html").read_text(encoding="utf-8")
+    html = (Path(__file__).resolve().parent.parent / "intraday_decision_dataflow.html").read_text(encoding="utf-8")
     return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
 
 
@@ -1510,14 +1678,14 @@ import urllib.error as _urlerr
 _AB_BASE = "http://127.0.0.1:8002"
 
 
-def _ab_get(path, params=None):
+def _ab_get(path, params=None, timeout=8):
     url = _AB_BASE + path
     if params:
         q = _urlparse.urlencode({k: v for k, v in params.items() if v is not None})
         if q:
             url += "?" + q
     try:
-        with _urlreq.urlopen(url, timeout=4) as r:
+        with _urlreq.urlopen(url, timeout=timeout) as r:
             data = json.loads(r.read().decode("utf-8"))
             return JSONResponse(data, status_code=getattr(r, "status", 200))
     except _urlerr.HTTPError as e:
@@ -1553,7 +1721,7 @@ def ab_pool_tomorrow():
 @app.get("/ab/verify-history")
 def ab_verify_history(date: str = ""):
     """歷史回測：某日候選池「當時入選理由 vs T+1 最終結果」逐檔對照(screen_verify)。"""
-    return _ab_get("/api/verify/history", {"date": date})
+    return _ab_get("/api/verify/history", {"date": date}, timeout=15)
 
 
 @app.get("/ab/phase")

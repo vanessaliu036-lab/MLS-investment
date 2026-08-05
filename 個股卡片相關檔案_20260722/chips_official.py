@@ -170,10 +170,18 @@ def build_cache(codes, merge=True):
             else:
                 break
         latest_date, latest = series[0]
+        recent5 = [x for _, x in series[:5]]
         rec = dict(payload["stocks"].get(code) or {})
         rec.update({
             "inst_net_20d_lots": net20,
             "inst_streak": streak,
+            "foreign_net_d": round(latest["foreign"]),
+            "trust_net_d": round(latest["trust"]),
+            "dealer_net_d": round(latest["dealer"]),
+            "foreign_net_5d": round(sum(x["foreign"] for x in recent5)),
+            "trust_net_5d": round(sum(x["trust"] for x in recent5)),
+            "dealer_net_5d": round(sum(x["dealer"] for x in recent5)),
+            "inst_net_5d_lots": round(sum(x["total"] for x in recent5)),
             "foreign_net_20d": round(sum(x["foreign"] for _, x in series)),
             "trust_net_20d": round(sum(x["trust"] for _, x in series)),
             "dealer_net_20d": round(sum(x["dealer"] for _, x in series)),

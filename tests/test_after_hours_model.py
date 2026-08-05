@@ -90,6 +90,8 @@ def test_observe_four_state():
     assert v("radar", 2.5, 1.0, group="觀察", high=105, entry_ref=100) == ("突破延續", True)
     assert v("radar", 0.5, 1.0, group="觀察", high=101, entry_ref=100) == ("突破站穩", False)
     assert v("radar", -1.0, 1.0, group="觀察", high=101, entry_ref=100) == ("突破失敗", False)
+    # 盤中突破不等於收盤命中：6173 信昌電類型（收盤 165 < 門檻 169.5）。
+    assert v("radar", -2.6549, 5.0, group="觀察", high=170, entry_ref=169.5) == ("突破失敗", False)
     assert v("radar", -1.0, 1.0, group="觀察", high=99, entry_ref=100) == ("未突破", False)
     assert v("radar", 2.5, 1.0, group="觀察", high=None, entry_ref=100) == ("A_突破成功", True)
     assert v("radar", 2.5, 1.0, group="可操作", high=105, entry_ref=100) == ("A_突破成功", True)

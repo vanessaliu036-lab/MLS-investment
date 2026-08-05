@@ -36,7 +36,7 @@ a{text-decoration:none;color:inherit}
 .hero-block:last-child{border-right:0}
 .identity{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .code{font-size:14px;color:var(--muted);font-weight:900}
-.name{font-size:32px;font-weight:950;letter-spacing:-.04em}
+.name{font-size:32px;font-weight:950;letter-spacing:-.04em}.current-price{display:inline-block;padding:5px 9px;border-radius:8px;background:var(--red-soft);color:var(--red);font-size:16px;font-weight:950;white-space:nowrap}
 .tag{padding:5px 10px;border-radius:999px;background:#eef1f6;color:#5e687b;font-size:12px;font-weight:850}
 .stars{font-size:22px;color:#d89a00;letter-spacing:2px;margin:8px 0}
 .quick-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:14px}
@@ -97,7 +97,7 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
  .quick-grid,.summary-grid,.data-grid,.plan-grid{grid-template-columns:1fr 1fr}.module-grid{grid-template-columns:1fr 1fr}
 }
 @media(max-width:560px){
- .name{font-size:27px}.quick-grid,.summary-grid,.data-grid,.plan-grid,.evidence{grid-template-columns:1fr}.hero-bottom{grid-template-columns:1fr}.factor{border-right:0}.funnel{grid-template-columns:1fr}.module-grid{grid-template-columns:1fr}
+ .name{font-size:27px}.current-price{font-size:13px;padding:4px 7px}.quick-grid,.summary-grid,.data-grid,.plan-grid,.evidence{grid-template-columns:1fr}.hero-bottom{grid-template-columns:1fr}.factor{border-right:0}.funnel{grid-template-columns:1fr}.module-grid{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -115,7 +115,7 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
   <div class="hero-main">
     <div class="hero-block">
       <div class="identity">
-        <span class="code">代碼</span><span class="name">名稱</span>
+        <span class="code">代碼</span><span class="name">名稱</span><span class="current-price">現價 —</span>
         <span class="tag">族群</span><span class="tag">軌跡</span>
       </div>
       <div class="stars">—</div>
@@ -251,13 +251,13 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
           <div class="row"><div class="k">象限</div><div class="v">—</div></div>
           <div class="row"><div class="k">法人連續（買）</div><div class="v">—</div></div>
           <div class="row"><div class="k">收盤量比</div><div class="v">—</div></div>
-          <div class="row full">
+          <div class="row full" style="display:none" aria-hidden="true">
             <div>
               <div class="k">收盤資金象限 · 時序</div>
               <div class="timeline" id="quad-seq" style="margin-top:9px"><span class="timechip">—</span><span class="arrow">→</span><span class="timechip">—</span><span class="badge blue">—</span></div>
             </div>
           </div>
-          <div class="row full">
+          <div class="row full" style="display:none" aria-hidden="true">
             <div>
               <div class="k">近5日資金象限收盤紀錄</div>
               <div class="timeline" id="quad-5d" style="margin-top:9px"><span class="timechip">—</span><span class="timechip">—</span><span class="timechip">—</span><span class="timechip">—</span><span class="timechip">—</span></div>
@@ -497,7 +497,7 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
     document.title=`${code} ${d.name||code}｜個股決策報告`;
     const tn=document.getElementById('topnote');if(tn)tn.textContent=`${d.name||code} ${code}｜盤後固定資料 ${p.source_date||d.data_date||'—'}`;
     // 身分 + 快捷
-    set('.identity .code',code);set('.identity .name',d.name||code);
+    set('.identity .code',code);set('.identity .name',d.name||code);set('.identity .current-price',`現價 ${price??'—'}`);
     const tags=document.querySelectorAll('.identity .tag');if(tags[0])tags[0].textContent=d.sector||'—';if(tags[1])tags[1].textContent=c.stock_type==='engine'?'引擎軌':'攻擊軌';
     const starN=Math.max(1,Math.min(5,(c.health_stars??Math.round((Number(score)||0)/20))||1));
     set('.stars','★'.repeat(starN)+'☆'.repeat(5-starN));
@@ -536,7 +536,7 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
     cardVals('#market',1,[cN(p.aflow),qmap[p.quadrant]||p.quadrant||'—',chip.inst_streak==null?'—':(chip.inst_streak>0?'連買'+chip.inst_streak+'日':'連賣'+Math.abs(chip.inst_streak)+'日'),p.volume_ratio??'—']);
     cardVals('#market',2,[cP(change),cP(p.sector_avg),cP(p.market_pct),cP(p.vs_sector),cP(p.vs_market)]);
     const mc2=document.querySelectorAll('#market .card')[2];if(mc2){const bd=mc2.querySelector('.badge');if(bd)bd.textContent=(p.vs_sector||0)>=0?'領先':'落後';const nt=mc2.querySelector('.notice');if(nt)nt.textContent=(change!=null&&p.sector_avg!=null&&p.market_pct!=null)?`個股 ${pct(change)}，${(p.vs_sector||0)>=0?'領先':'落後'}族群 ${pct(Math.abs(p.vs_sector||0))}、${(p.vs_market||0)>=0?'領先':'落後'}大盤 ${pct(Math.abs(p.vs_market||0))}。`:'族群／大盤官方資料回補中。'}
-    // 收盤資金象限時序（近5日盤後定調；漲紅跌綠）
+    // 收盤資金象限五日暫停顯示；待資料口徑確認後再恢復。
     const QL={in_up:'流入↗漲',in_down:'流入↘跌',out_up:'流出↗漲',out_down:'流出↘跌'};
     const qh=p.quad_history||[];
     const qchip=x=>{if(!x||!x.quadrant)return'<span class="timechip">—</span>';const up=/_up$/.test(x.quadrant);return `<span class="timechip" style="background:${up?'var(--red-bg)':'var(--green-bg)'};color:${up?'var(--red)':'var(--green)'}">${QL[x.quadrant]||x.quadrant}</span>`};

@@ -23,6 +23,7 @@ import broker
 import chips
 import db
 import notifier
+import signal_pattern
 
 TW_TZ = timezone(timedelta(hours=8))
 
@@ -169,6 +170,12 @@ def judge_watchlist_row(source, close_change, relative,
                 high_break = float(high) > float(entry_ref)
             except (TypeError, ValueError):
                 high_break = False
+            # 盤中突破與收盤確認必須分開判斷；只突破盤中高點不等於命中。
+            # close_change 的基準是 entry_ref，因此 ret >= 0 等價於
+            # today_close >= entry_ref。先擋住「盤中突破、收盤失守」再判續強。
+            close_confirmed = ret >= 0
+            if high_break and not close_confirmed:
+                return ("突破失敗", False, ret)      # 盤中拉過但收盤低於門檻
             if rel_ok and ret >= succ:
                 return ("突破延續", True, ret)      # 收盤站穩且續強＝真實命中
             if rel_ok and ret >= 0:
@@ -313,6 +320,29 @@ def rotation_analysis(sectors, snaps):
 # ══════════════════════════════════════════════════════
 # ① 收盤驗證
 # ══════════════════════════════════════════════════════
+def _tag_signal_types(wl):
+    """選股當下(盤後 T 日)：逐檔用日K判「昨日訊號型態」+ 明日進場觸發價,
+    就地寫回 wl 的 signal_type / trigger_price / signal_kind,供 save_watchlist 落庫。
+    任何一檔取數/判定失敗都不影響其他檔,也不擋名單產出(型態留空,B 卡退回 source 舊判定)。"""
+    for w in wl:
+        try:
+            bars = broker.daily_kbars(str(w["code"]), days=70)
+            r = signal_pattern.classify(bars)
+            if r.get("signal_type"):
+                w["signal_type"] = r["signal_type"]
+                w["signal_kind"] = r["kind"]          # breakout / pullback(給 T+1 觸發判定用)
+                if r.get("trigger_price") is not None:
+                    w["trigger_price"] = r["trigger_price"]
+            else:
+                # 無具名型態:仍給預設觸發價,讓 T+1 能算出明確原因(不留『缺觸發價』)
+                kind = signal_pattern.kind_of(None, w.get("source"))
+                tp = signal_pattern.default_trigger(bars, kind)
+                if tp is not None:
+                    w["trigger_price"] = tp
+        except Exception as exc:
+            print(f"[after_hours] 型態判定失敗 {w.get('code')}：{exc}")
+
+
 def verify_today(snaps, sectors, today_signals_codes, strong_codes):
     """T+1 收盤驗證今日觀察名單（名單於前一交易日晚間產出，故 change_rate
     基準＝選股日收盤，直接就是相對進場的報酬）。依 source 分流判定：
@@ -362,6 +392,26 @@ def verify_today(snaps, sectors, today_signals_codes, strong_codes):
             hit += 1
         if ret is not None:
             returns.append(ret * 100)     # 存成百分比
+
+        # ── 今日觸發判定 + 未觸發的【明確原因】(取代前端「原定進場條件未成立」) ──
+        stype = w.get("signal_type")
+        tprice = w.get("trigger_price")
+        kind = signal_pattern.kind_of(stype, source)
+        trig_status, non_trig_reason = signal_pattern.describe_trigger(
+            kind, tprice,
+            today_high=s.get("high"), today_low=s.get("low"),
+            today_close=s.get("price"), chg=cc,
+            volume_ratio=s.get("volume_ratio"), aflow=s.get("aflow"), rel=rel)
+        try:
+            entry_ref_num = float(w.get("entry_ref"))
+            high_num = float(s.get("high"))
+            close_num = float(s.get("price"))
+            intraday_breakout = high_num >= entry_ref_num
+            close_confirmed = close_num >= entry_ref_num
+        except (TypeError, ValueError):
+            intraday_breakout = None
+            close_confirmed = None
+
         outcomes.append({
             "code": code, "name": w.get("stock_name") or code,
             "sector": w.get("sector"), "watch_reason": w.get("reason"),
@@ -370,7 +420,13 @@ def verify_today(snaps, sectors, today_signals_codes, strong_codes):
             "close_price": s.get("price"), "change_rate": cc,
             "aflow": s.get("aflow"), "volume_ratio": s.get("volume_ratio"),
             "verdict": verdict,
+            "entry_ref": w.get("entry_ref"),
+            "today_high": s.get("high"),
+            "intraday_breakout": intraday_breakout,
+            "close_confirmed": close_confirmed,
             "note": f"source={source or '舊格式'} 相對族群{'' if rel is None else f'{rel:+.1f}pp'}",
+            "signal_type": stype, "trigger_price": tprice,
+            "trigger_status": trig_status, "non_trigger_reason": non_trig_reason,
         })
 
     missed = sorted(strong_codes - {w["stock_id"] for w in wl})
@@ -530,6 +586,7 @@ def run(last_state):
         wl, radar_rejects = resilient_pool[:10], []
         src_note = "回退純抗跌"
     print(f"[after_hours] 明日名單 {tomorrow}：{len(wl)} 檔（{src_note}）")
+    _tag_signal_types(wl)          # 選股當下算「昨日訊號型態」+ 明日觸發價,存進 watchlist
     db.save_watchlist(tomorrow, wl)
     # 落選留痕：radar 落選 + 抗跌未過濾 + 抗跌過關但名額被 radar 佔走
     picked = {w["code"] for w in wl}
