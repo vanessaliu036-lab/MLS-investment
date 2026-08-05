@@ -66,7 +66,13 @@ def once():
     if quotes:
         store.upsert_intraday("quote_snap", PLUGIN, quotes, DB)
     if aflows:
-        store.upsert_intraday("aflow", PLUGIN, aflows, DB)
+        # 8000 源頭偶發「51 檔 aflow 全 0」的壞輪詢(真實盤中不可能同時全 0,
+        # 根因在該 app 的 Shioaji tick 聚合會週期性歸零)。這種輪詢跳過 aflow
+        # 寫入、保留上一輪好值,避免 net_active 被抹成 0 讓盤中資金流/嚴判/B鏈失真。
+        if any(a["net_active"] for a in aflows):
+            store.upsert_intraday("aflow", PLUGIN, aflows, DB)
+        else:
+            print("[bridge] aflow 整批全 0 → 判壞輪詢,跳過寫入(保留上輪好值)", flush=True)
     return len(quotes), d.get("source")
 
 
