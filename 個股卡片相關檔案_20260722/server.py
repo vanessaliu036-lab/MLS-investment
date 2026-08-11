@@ -1728,9 +1728,11 @@ def _ab_get(path, params=None, timeout=20):
 
 
 @app.get("/ab/dropped")
-def ab_dropped(pool_date: str = None):
-    """複盤:某池日被篩掉名單+今日盤中說明(預設前一交易日=今天在盤的那個池)。"""
-    return _ab_get("/api/dropped", {"pool_date": pool_date})
+def ab_dropped(pool_date: str = None, applies_date: str = None):
+    """複盤:某池日被篩掉名單+今日盤中說明。
+    applies_date=主表檢視日 → 引擎回該日『前一交易日』的池(=驗證組,看12→11、看10→7);
+    pool_date=直接指定資料日(優先於 applies_date);皆空=預設今天的前一交易日。"""
+    return _ab_get("/api/dropped", {"pool_date": pool_date, "applies_date": applies_date})
 
 
 @app.get("/ab/watchlist")

@@ -805,8 +805,10 @@ document.addEventListener('click',e=>{
     //   淘汰 = 錨定 applies_date==今天 的池(=前一交易日 build),這批才有『今天表現』
     //          可回頭驗證當初淘汰對不對 → 優化未來篩選。
     // 所以淘汰必須留在前一交易日的池,不可跟著主表跳到「還沒有今天表現的新池」。
-    // /ab/dropped 預設即回 prev_trading_day(applies==今天)+ 附今日盤中說明,為唯一正宗來源。
-    if(!rejectRows.length){try{const rv=await getJson('/ab/dropped').catch(()=>({}));if((rv.dropped||[]).length){rejectRows=rv.dropped;rejectRows.__refDate=rv.data_date||'';}}catch(e){}}
+    // 淘汰 = 主表「顯示日」的前一交易日(看12→11、看11→10、看10→7)。把主表顯示日(target_date=applies_date)
+    // 傳給 /ab/dropped?applies_date=,由 server 算前一交易日(避開前端假日計算)。切下拉日期時淘汰會跟著換。
+    const _viewDate=(data&&(data.target_date||data.data_date||data.pool_date))||sel||fwd||'';
+    if(!rejectRows.length){try{const rv=await getJson('/ab/dropped'+(_viewDate?('?applies_date='+encodeURIComponent(_viewDate)):'')).catch(()=>({}));if((rv.dropped||[]).length){rejectRows=rv.dropped;rejectRows.__refDate=rv.data_date||'';}}catch(e){}}
     // 歷史複盤:使用者從下拉手選過去交易日(sel)時,抓該日舊 watch_reject。只帶日期、不抓 latest。
     // ⚠不退回 /ab/watchlist?phase=POST —— 盤後那條回的是今天新 build 的淘汰(applies=明日、無今天表現),
     //   會讓淘汰跟著主表跳到新池,違反「驗證組=前一交易日」定義。/ab/dropped 空就顯示尚無,不亂補。

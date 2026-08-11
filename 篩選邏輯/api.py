@@ -33,6 +33,8 @@ import b_verify
 import merge_pool
 # 當日收盤復盤(命中率/勝率分析層)。衡量模型準度,與名單產生脫鉤。
 import screen_verify
+# 淘汰名單「今日盤中說明」:後台算事實(今日資金流 vs 淘汰理由背離/確認),前台只印。
+import intraday_note
 
 app = FastAPI(title="MLS v4.0")
 
@@ -47,6 +49,35 @@ def _startup():
     store.init_db()
     import preflight
     preflight.run(fail_fast=True)
+
+
+def _attach_intraday_note(dropped):
+    """為淘汰列附加今日盤中資金流與一句白話說明(唯讀,不影響名單)。
+    以 quote_snap/aflow 各自最新日為今日盤中;缺資料則說明標『待補』。"""
+    import sqlite3
+    c = sqlite3.connect("mls.db"); c.row_factory = sqlite3.Row
+    try:
+        q = {r["code"]: r for r in c.execute(
+            "SELECT code,price,change_rate FROM quote_snap "
+            "WHERE data_date=(SELECT MAX(data_date) FROM quote_snap)")}
+        a = {r["code"]: r for r in c.execute(
+            "SELECT code,net_active FROM aflow "
+            "WHERE data_date=(SELECT MAX(data_date) FROM aflow)")}
+    finally:
+        c.close()
+    for row in dropped:
+        if not isinstance(row, dict):
+            continue
+        code = str(row.get("stock_id") or row.get("code") or "")
+        qq, aa = q.get(code), a.get(code)
+        chg = qq["change_rate"] if qq else None
+        flow = aa["net_active"] if aa else None
+        why = row.get("why") or row.get("reason") or row.get("detail") or ""
+        if qq is not None:
+            row["today_price"] = qq["price"]
+        row["today_change"] = chg
+        row["today_aflow"] = flow
+        row["intraday_note"] = intraday_note.build(why, flow, chg)
 
 
 @app.get("/api/watchlist")
@@ -68,6 +99,10 @@ def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,
             data["phase"] = info["phase"]
             data["purpose"] = info["purpose"]
             data["actionable"] = False
+            # 週末/國定假日不出表單:清空名單,只留休市狀態。避免把上一交易日的
+            # 池貼上「今日/明日」標籤,造成「非交易日卻多一張不一樣的表」的混淆。
+            data["market_closed"] = True
+            data["items"] = []
     elif ph is Phase.INTRADAY:
         # 盤中嚴判:只盯昨日候選池,四條件全中才綠燈(不吃 universe,自己讀 pool)
         data = screen_intraday.build()
@@ -82,7 +117,39 @@ def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,
         else:
             data = screen_post.load_last_post()
 
+    # 淘汰名單附加「今日盤中說明」(後台算、前台印;唯讀,壞了不影響名單)
+    if isinstance(data, dict) and data.get("dropped"):
+        try:
+            _attach_intraday_note(data["dropped"])
+        except Exception as _e:
+            print(f"[watchlist] intraday_note skip: {_e}")
     return JSONResponse(data)
+
+
+@app.get("/api/dropped")
+def dropped_review(pool_date: Optional[str] = Query(None, description="池日(=淘汰資料日);直接指定則優先"),
+                   applies_date: Optional[str] = Query(None, description="檢視日(正在盯盤中的那天);回該日的前一交易日池=驗證組")):
+    """複盤用:某池日的被篩掉名單 + 今日盤中資金流/說明。
+
+    淘汰名單＝驗證組,永遠 = 檢視日的『前一交易日』那個 build:
+      看 8/11 → 淘汰 8/10;看 8/10 → 淘汰 8/7(8/8、8/9 週末)。
+    這批才有『檢視日當天表現』可回頭驗證當初淘汰對不對 → 優化未來篩選,
+    故意落後主表一個 build,不跟著主表跳到收盤剛滾出、還沒有今天表現的新池。
+    參數優先序:pool_date(直接指定資料日) > applies_date(檢視日→前一交易日) > 預設(今天→前一交易日)。"""
+    from phase import prev_trading_day, today_tw
+    import datetime as _dt
+    if pool_date:
+        pd = _dt.date.fromisoformat(pool_date)
+    elif applies_date:
+        pd = prev_trading_day(_dt.date.fromisoformat(applies_date))
+    else:
+        pd = prev_trading_day(today_tw())
+    rows = screen_post.load_dropped(pd)
+    try:
+        _attach_intraday_note(rows)
+    except Exception as _e:
+        print(f"[dropped] intraday_note skip: {_e}")
+    return JSONResponse({"data_date": pd.isoformat(), "dropped": rows})
 
 
 @app.get("/api/funnel")
