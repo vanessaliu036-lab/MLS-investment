@@ -69,6 +69,13 @@ OPENING_BLIND_MIN = 15      # 鐵律1:開盤前 15 分鐘的 aflow 負值一律�
 OPEN_BUY_BLIND_MIN = 10     # 鐵律4:09:00–09:10 一律禁新倉(禁 Open Buy),9:10 後才重確認可進
 SURGE_PCT = 8.0             # 鐵律2:漲幅超過此值視為噴漲,aflow 負數不判紅燈
 
+# ---------------------------------------------------------------- 盤中大盤 regime 閘(2026-08-11)
+# 命中率暴起暴落的主因是「隔天 T+1 大盤方向」(只做多動能策略的 beta):大盤大漲整批命中、
+# 大盤下殺整批熄火。盤後 regime 閘看的是選股當天寬度,預測不了 T+1;真正能擋的位置在這裡——
+# T+1 盤中大盤寬度轉弱時,攻擊軌(追突破)綠燈自動降續盯,不追進正在跌的市場。
+# 只擋攻擊軌(突破追價,最吃 beta);引擎軌是回月線低接、不在此列。
+RISK_OFF_BREADTH_PCT = 30.0   # 盤中大盤上漲占比 < 此值 = Risk Off → 攻擊軌不追突破(對齊盤後 risk_off 定義)
+
 
 def _minutes_since_open(at: _dt.datetime | None = None) -> int:
     at = at or now_tw()
@@ -188,6 +195,29 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
     }
 
 
+def _intraday_breadth(quotes: dict) -> dict:
+    """盤中大盤寬度(上漲占比)。優先用全市場真實寬度(與盤後 regime 同定義 market_regime);
+    取數失敗退回候選池 51 檔即時漲跌占比(至少反映手上這批是不是普跌)。缺資料 → risk_off=False,不亂擋。"""
+    try:
+        import market_regime
+        b = market_regime.fetch_breadth()
+        tb = b.get("true_breadth")
+        if tb is not None:
+            pct = round(tb * 100, 1)
+            return {"pct": pct, "risk_off": pct < RISK_OFF_BREADTH_PCT, "source": "market",
+                    "advancing": b.get("advancing"), "declining": b.get("declining")}
+    except Exception:
+        pass
+    crs = [(q or {}).get("change_rate") for q in quotes.values()]
+    crs = [x for x in crs if x is not None]
+    if crs:
+        up = sum(1 for x in crs if x > 0)
+        pct = round(up / len(crs) * 100, 1)
+        return {"pct": pct, "risk_off": pct < RISK_OFF_BREADTH_PCT, "source": "pool51",
+                "advancing": up, "declining": len(crs) - up}
+    return {"pct": None, "risk_off": False, "source": "none"}
+
+
 def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
     """
     盤中只盯昨日盤後產出的候選池,不掃全市場。
@@ -220,6 +250,8 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
     b = envs["bar_y"].get({}) or {}
     prev = envs["prev"].get({}) or {}
     now = at or now_tw()
+    # 盤中大盤 regime:寬度轉弱(Risk Off)時,攻擊軌不追突破(見上方常數說明)
+    regime = _intraday_breadth(q)
     # 鐵律4 禁 Open Buy：09:00–09:10 一律不開新倉。此窗內綠燈也只標「待9:10重確認」，
     # 不得可進（9:10 後的 VWAP/量/大盤重確認＝使用者定暫緩，先落地禁新倉時窗）。
     open_blind = _dt.time(9, 0) <= now.time() < _dt.time(9, OPEN_BUY_BLIND_MIN)
@@ -248,7 +280,13 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
         it["confirm_state"] = state
         it["confirm_note"] = cnote
         it["first_green_at"] = fg
-        if it["light"] == "🟢" and open_blind:
+        if regime["risk_off"] and it["light"] == "🟢" and it.get("track") == "攻擊軌":
+            # 大盤 Risk Off:攻擊軌(追突破)綠燈降續盯,不追進正在跌的市場;標記供驗證不計命中
+            it["light"] = "🟡"
+            it["confirm_state"] = "大盤RiskOff禁追"
+            it["regime_blocked"] = True
+            it["action"] = f"大盤 Risk Off(上漲占比 {regime['pct']}%)·攻擊軌不追突破,降續盯"
+        elif it["light"] == "🟢" and open_blind:
             # 禁 Open Buy 時窗：綠燈退回續盯，明標禁新倉，不得可進
             it["light"] = "🟡"
             it["confirm_state"] = "禁新倉"
@@ -289,5 +327,7 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
         "degraded": missing_labels(envs),
         "light_counts": counts,
         "confirmed_count": confirmed,
+        "regime": regime,
+        "regime_blocked_count": sum(1 for i in items if i.get("regime_blocked")),
         "items": items,
     }

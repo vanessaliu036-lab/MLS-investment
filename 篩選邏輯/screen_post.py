@@ -25,6 +25,7 @@ import json
 
 import store
 import config
+import layered_score
 from envelope import run_all, persist_status, missing_labels
 from phase import Phase, prev_trading_day, next_trading_day, today_tw
 
@@ -40,17 +41,36 @@ def _name_map():
         return _NAME_MAP
     _NAME_MAP = getattr(config, "NAME", None)
     if not _NAME_MAP:                      # 撞名成 mls-v4 → 從本地 config.py 讀
-        try:
-            import importlib.util as _ilu
-            from pathlib import Path as _P
-            _p = _P(__file__).resolve().parent / "config.py"
-            _spec = _ilu.spec_from_file_location("_screen_config", _p)
-            _m = _ilu.module_from_spec(_spec)
-            _spec.loader.exec_module(_m)
-            _NAME_MAP = getattr(_m, "NAME", {}) or {}
-        except Exception:
-            _NAME_MAP = {}
+        _NAME_MAP = _local_config_attr("NAME") or {}
     return _NAME_MAP
+
+
+_CODE_GROUP = None
+
+
+def _code_group() -> dict:
+    """族群對照 {code: 族群}。與 _name_map 同樣防 config 撞名。"""
+    global _CODE_GROUP
+    if _CODE_GROUP is not None:
+        return _CODE_GROUP
+    _CODE_GROUP = getattr(config, "CODE_GROUP", None)
+    if not _CODE_GROUP:
+        _CODE_GROUP = _local_config_attr("CODE_GROUP") or {}
+    return _CODE_GROUP
+
+
+def _local_config_attr(name: str):
+    """撞名時直接從本檔同層 config.py 讀指定屬性。"""
+    try:
+        import importlib.util as _ilu
+        from pathlib import Path as _P
+        _p = _P(__file__).resolve().parent / "config.py"
+        _spec = _ilu.spec_from_file_location("_screen_config", _p)
+        _m = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_m)
+        return getattr(_m, name, None)
+    except Exception:
+        return None
 
 
 def _read_regime() -> dict:
@@ -86,6 +106,7 @@ def _pool_purpose(applies, pool, regime) -> str:
 PLUGIN = "screen_post"
 TABLE = "watchlist_post"
 POOL_TABLE = "candidate_pool"   # 隔日盤中只盯這張表
+DROPPED_TABLE = "dropped_pool"  # 被淘汰名單留痕(真結構失效),供淘汰名單顯示/複盤
 
 store.register_table(POOL_TABLE, PLUGIN)
 
@@ -225,7 +246,29 @@ def score_one(code, bar, inst, margin, health, absorb) -> dict:
 # 隔天盤中你看的不是「誰分數高」,是「哪幾檔到了我預設的進場條件」。
 # 判斷前移到盤後,盤中只執行 —— 命中率的提升來自這裡。
 
-def assign_track(bar: dict | None, item: dict) -> dict:
+# 升級閘門檻:盤中資金健康度、法人態度、可容忍的月線下方距離。
+# 定案(2026-08-11):分軌原本只看價格(close≥ma20)+量,盤中資金與盤後籌碼沒進到
+# 「可操作」這一關 → 選股日在月線下但盤中大買、隔日續強的贏家(如 2492/3026)被丟觀察軌
+# 不計命中,月線上的弱勢股反而進攻擊/引擎軌。升級閘:資金強 AND 法人買時,close 在月線下
+# STRONG_BELOW_MA20_PCT 內也可升『引擎軌』(等站回月線+法人買進場),兩關真正進到可操作閘。
+STRONG_HEALTH_MIN = 60.0        # money_health score ≥ 此值 = 盤中資金健康度強(對齊 score_one「>0.6 佳」)
+STRONG_BELOW_MA20_PCT = 3.0     # close 在月線下方、但差距 ≤ 此% → 升級閘可考慮
+
+
+def _strong_money(health: dict | None) -> bool:
+    s = (health or {}).get("score")
+    return s is not None and s >= STRONG_HEALTH_MIN
+
+
+def _inst_buying(inst: dict | None) -> bool:
+    """法人買超/連買:當日總淨額為正,或法人連買(consecutive_days>0)。"""
+    i = inst or {}
+    cd, tn = i.get("consecutive_days"), i.get("total_net")
+    return (cd is not None and cd > 0) or (tn is not None and tn > 0)
+
+
+def assign_track(bar: dict | None, item: dict,
+                 health: dict | None = None, inst: dict | None = None) -> dict:
     close = (bar or {}).get("close")
     high = (bar or {}).get("high")
     ma20 = (bar or {}).get("ma20")
@@ -234,6 +277,9 @@ def assign_track(bar: dict | None, item: dict) -> dict:
 
     on_ma20 = close is not None and ma20 and close >= ma20
     volumed = vol is not None and vma and vol >= vma * 1.2
+    # 月線下、但差距在容忍% 內(如 close ≥ ma20×0.97)
+    near_below_ma20 = (close is not None and ma20 and close < ma20
+                       and close >= ma20 * (1 - STRONG_BELOW_MA20_PCT / 100))
 
     if on_ma20 and volumed:
         item["track"] = "攻擊軌"
@@ -243,11 +289,77 @@ def assign_track(bar: dict | None, item: dict) -> dict:
         item["track"] = "引擎軌"
         item["entry_rule"] = f"等回月線 {ma20} 支撐 + 法人買進,月線停損"
         item["trigger_price"] = ma20
+    elif near_below_ma20 and _strong_money(health) and _inst_buying(inst):
+        # 升級閘:月線下 ≤3% + 盤中資金強 + 法人買 → 引擎軌(需站回月線才進場,月線停損)
+        item["track"] = "引擎軌"
+        item["entry_rule"] = f"月線下但盤中資金強+法人買,等站回月線 {ma20} 確認進場,月線停損"
+        item["trigger_price"] = ma20
+        item["track_upgraded"] = True   # 標記升級來源,供量測升級閘是否真的接對贏家
     else:
         item["track"] = "觀察"
         item["entry_rule"] = "位置不佳,等盤中訊號,不主動進場"
         item["trigger_price"] = None
     return item
+
+
+# ============================================================ 多日衍生(給 layered_score)
+#
+# 現有 DB 就有多日 daily_bar / inst_flow,直接算出對昨收漲跌、連漲天數、
+# 近 3/5 日法人累計 —— 讓 layered_score 這幾項不再 Pending,盤後判斷更準。
+
+def _derive_multiday(code: str, d: _dt.date, db_path: str) -> dict:
+    bars = store.read_recent("daily_bar", code, d, 6, db_path)     # 新→舊,含 d 當日
+    insts = store.read_recent("inst_flow", code, d, 5, db_path)
+    change_rate = up_days = inst_3d = inst_5d = None
+
+    closes = [x.get("close") for x in bars if x.get("close") is not None]
+    if len(closes) >= 2 and closes[1]:
+        change_rate = round((closes[0] - closes[1]) / closes[1] * 100, 2)
+    if closes:
+        ud = 0
+        for today_c, prev_c in zip(closes, closes[1:]):
+            if today_c is not None and prev_c is not None and today_c > prev_c:
+                ud += 1
+            else:
+                break
+        up_days = ud
+
+    nets = [x.get("total_net") for x in insts if x.get("total_net") is not None]
+    if len(nets) >= 3:
+        inst_3d = sum(nets[:3])
+    if len(nets) >= 5:
+        inst_5d = sum(nets[:5])
+
+    return {"change_rate": change_rate, "up_days": up_days,
+            "inst_3d": inst_3d, "inst_5d": inst_5d}
+
+
+def _relative_strength(universe: list[str], derivs: dict) -> dict:
+    """族群強度 + 相對大盤(個股漲跌 − 基準漲跌)。
+
+    族群基準 = 同族群成員漲跌中位數(config.CODE_GROUP);
+    大盤基準 = 整池漲跌中位數(daily_bar 無加權指數,故以 51 池中位數代理;
+              對「我盯的候選誰相對強」其實比對 TAIEX 更貼題)。缺 change_rate 者不參與、標 None(Pending)。
+    """
+    import statistics
+    from collections import defaultdict
+    cg = _code_group()
+    chg = {c: derivs.get(c, {}).get("change_rate") for c in universe}
+    valid = [v for v in chg.values() if v is not None]
+    market = statistics.median(valid) if valid else None
+    sec_vals: dict[str, list] = defaultdict(list)
+    for c in universe:
+        s, v = cg.get(c), chg[c]
+        if s and v is not None:
+            sec_vals[s].append(v)
+    sec_med = {s: statistics.median(vs) for s, vs in sec_vals.items() if vs}
+    out = {}
+    for c in universe:
+        v, s = chg[c], cg.get(c)
+        sr = (round(v - sec_med[s], 2) if (v is not None and s in sec_med) else None)
+        mr = (round(v - market, 2) if (v is not None and market is not None) else None)
+        out[c] = {"sector_rel": sr, "market_rel": mr}
+    return out
 
 
 # ============================================================ 主流程
@@ -271,24 +383,59 @@ def build(universe: list[str], db_path: str = "mls.db",
     h = envs["health"].get({}) or {}
     ab = envs["absorb"].get({}) or {}
 
+    # 多日衍生 + 族群/大盤相對強度(前置一次算好,迴圈裡引用)
+    derivs = {c: _derive_multiday(c, d, db_path) for c in universe}
+    rels = _relative_strength(universe, derivs)
+
     kept, dropped = [], []
     for c in universe:
-        drop, hits = hard_drop(b.get(c), i.get(c))
-        if drop:
-            dropped.append({"code": c, "why": hits})
+        # 雙分數分層接管淘汰(治誤刪):只有 tier==淘汰(≥2結構失效)才移出主名單;
+        # 強勢禁追/核心/候補全部保留。舊 hard_drop 仍算,但只當「量測對照」記錄,不再當閘。
+        lay = layered_score.score_layered(
+            layered_score.build_input(c, b.get(c), i.get(c),
+                                      **derivs[c], **rels[c]))
+        old_drop, old_hits = hard_drop(b.get(c), i.get(c))   # 舊制對照,供誤刪率量測
+        lay_fields = {
+            "tier": lay["tier"], "continuation": lay["continuation"],
+            "chase_risk": lay["chase_risk"], "chase_safety": lay["chase_safety"],
+            "chip_status": lay["chip_status"],
+            "structural_failures": lay["structural_failures"],
+            "old_would_drop": old_drop, "old_drop_hits": old_hits,
+        }
+        if lay["tier"] == layered_score.TIER_REJECTED:
+            # 真淘汰:帶結構失效原因(不是「分數低」),供淘汰名單顯示與 T+1 錯殺量測
+            dropped.append({"code": c, "why": lay["structural_failures"] or old_hits,
+                            **lay_fields})
             continue
         it = score_one(c, b.get(c), i.get(c), m.get(c), h.get(c), ab.get(c))
-        kept.append(assign_track(b.get(c), it))
+        it = assign_track(b.get(c), it, health=h.get(c), inst=i.get(c))
+        it.update(lay_fields)
+        it["layered_reasons"] = lay["reasons"]
+        it["layered_risks"] = lay["risks"]
+        it["pending_factors"] = lay["pending"]
+        kept.append(it)
 
-    kept.sort(key=lambda x: (-x["score"], x["code"]))
+    # 排序改吃「延續機率」(明天值不值得看),而非舊單一 score;同分以追價安全高者優先。
+    # 保留 score 於 payload 供相容/對照,但不再主導名單順序。
+    _tier_rank = {layered_score.TIER_CORE: 0, layered_score.TIER_NO_CHASE: 1,
+                  layered_score.TIER_CANDIDATE: 2}
+    kept.sort(key=lambda x: (_tier_rank.get(x["tier"], 3),
+                             -(x.get("continuation") or 0),
+                             -(x.get("chase_safety") or 0), x["code"]))
     pool = kept[:POOL_SIZE]
     for n, it in enumerate(pool, 1):
         it["rank"] = n
 
     # 名稱注入(事實對照,非 mock);缺名則留空,不編造
     name_map = _name_map()
+    cg = _code_group()
     for it in kept:
         it["name"] = name_map.get(it["code"])
+        it["sector"] = cg.get(it["code"])   # 族群注入(事實對照),前端所有 AB 表族群不再空白
+        _streak = (i.get(it["code"]) or {}).get("consecutive_days")
+        it["inst_streak"] = _streak          # 連買連賣 streak(顯示端並列用)
+        it["chip_label"] = _chip_label(it.get("chip_status"), _streak)  # 含背離並顯的籌碼標籤
+        it["explain"] = _item_explain(it)     # 觀察軌白話說明(語意層),取代 reasons 原文
 
     # Layer 0 閘(鐵律6):Risk Off → 禁新倉,全數降觀察、清進場軌與觸發價
     regime = _read_regime()
@@ -300,6 +447,9 @@ def build(universe: list[str], db_path: str = "mls.db",
 
     gen = _dt.datetime.now().isoformat(timespec="seconds")
 
+    # 寫前清該日舊列(治同日重建殘留:落選碼舊列會留著顯示缺籌碼/錯 chip)
+    _purge_date(POOL_TABLE, d, db_path)
+    _purge_date(DROPPED_TABLE, d, db_path)
     # 候選池落地 —— 隔天盤中只讀這張表
     store.upsert_intraday(POOL_TABLE, PLUGIN, [{
         "data_date": d.isoformat(), "code": it["code"],
@@ -316,6 +466,13 @@ def build(universe: list[str], db_path: str = "mls.db",
         "rank": it.get("rank", 999), "score": it["score"],
         "payload": json.dumps(it, ensure_ascii=False), "generated_at": gen,
     } for it in kept], db_path)
+
+    # 淘汰名單留痕(真結構失效):存 dropped_pool,供顯示端「被篩掉名單」與 T+1 複盤,不刪除。
+    if dropped:
+        store.upsert_intraday(DROPPED_TABLE, PLUGIN, [{
+            "data_date": d.isoformat(), "code": it["code"],
+            "payload": json.dumps(it, ensure_ascii=False), "generated_at": gen,
+        } for it in dropped], db_path)
 
     try:
         store.snapshot_post(d, db_path)
@@ -339,7 +496,8 @@ def build(universe: list[str], db_path: str = "mls.db",
         "pool_size": len(pool),
         "track_breakdown": tracks,
         "items": pool,
-        "dropped": dropped,
+        "dropped": [_shape_dropped_row(x["code"], x, _name_map(), _code_group())
+                    for x in dropped],
     }
 
 
@@ -347,6 +505,90 @@ def load_pool(data_date: _dt.date | None = None, db_path: str = "mls.db") -> dic
     """隔天盤中呼叫這支拿候選池。預設讀上一個交易日產出的那份。"""
     d = data_date or prev_trading_day()
     return store.read_date(POOL_TABLE, d, db_path)
+
+
+def _shape_dropped_row(code, p, name_map, cg):
+    """把一列淘汰(build 的原始 dropped 或 dropped_pool payload)映成顯示端欄位。
+    build() 與 load_dropped() 共用這支,兩條路形狀一致(根治名字/族群空白)。"""
+    sf = p.get("structural_failures") or p.get("why") or []
+    detail = "、".join(sf) if isinstance(sf, list) else str(sf)
+    return {
+        "stock_id": code, "stock_name": name_map.get(code, code),
+        "sector": cg.get(code), "source": "ab",
+        "fail_factor": "結構失效", "detail": detail,
+        "tier": p.get("tier"), "tier_label": "淘汰",
+        "explain": (f"{detail} → 結構失效,移出主名單。" if detail
+                    else "結構失效(2 項以上),移出主名單。"),
+        "tags": [],
+        "continuation": p.get("continuation"), "chase_risk": p.get("chase_risk"),
+    }
+
+
+_TIER_ACTION = {
+    "核心觀察": "結構最強,列核心續盯。",
+    "強勢觀察｜禁止追價": "禁開盤追,等回測昨高或 5MA。",
+    "候補觀察": "候補,盤中觸發再升級。",
+}
+
+
+def _chip_label(chip_status, streak):
+    """盤後法人籌碼顯示字串(語意層,不參與篩選):含連買/連賣 streak;
+    chip_status(單日)與 streak 背離(今日買但連賣)時並顯,消除『positive 但連賣』誤解。"""
+    s = streak
+    if s is not None and s >= 2:
+        return f"法人連買{int(s)}日"
+    if s is not None and s <= -2:
+        base = f"法人連賣{int(abs(s))}日"
+        return f"今日買超｜{base}" if chip_status == "positive" else base
+    if chip_status == "positive":
+        return "法人今日買超"
+    if chip_status == "negative":
+        return "法人今日賣超"
+    if chip_status == "pending":
+        return "法人待補"
+    return "法人中性"
+
+
+def _item_explain(it):
+    """入選/觀察列的一句白話(語意層):tier + 強項(layered_reasons) + 風險(layered_risks)。
+    純翻譯已算好的分層結果,不做篩選、不吃分數。取代前端印 reasons 原文(融資增/收破月線)。"""
+    tier = it.get("tier") or ""
+    strengths = it.get("layered_reasons") or []
+    risks = list(it.get("layered_risks") or [])
+    _s = it.get("inst_streak")
+    if it.get("chip_status") == "positive" and _s is not None and _s <= -2:
+        risks.append(f"惟法人連賣{int(abs(_s))}日(今日翻買)")
+    parts = []
+    if strengths:
+        parts.append("、".join(strengths[:3]))
+    if risks:
+        parts.append("但" + "、".join(risks[:2]))
+    body = ",".join(parts) if parts else "結構成立、細節待補"
+    action = _TIER_ACTION.get(tier, "續觀察。")
+    prefix = f"{tier}:" if tier else ""
+    return f"{prefix}{body} → {action}"
+
+
+def _purge_date(table: str, d, db_path: str) -> None:
+    """刪某交易日該表所有列(僅 screen_post 自有可變池表 candidate_pool/dropped_pool)。
+    治『同一天多次 build,舊 build 落選碼殘留、顯示缺籌碼/錯 chip』。"""
+    with store.conn(db_path) as _c:
+        _c.execute(f"DELETE FROM {table} WHERE data_date=?", (d.isoformat(),))
+        _c.commit()
+
+
+def load_dropped(data_date: _dt.date | None = None, db_path: str = "mls.db") -> list[dict]:
+    """讀某交易日被淘汰名單(真結構失效),映成顯示端「被篩掉名單」需要的欄位。
+    說明照結構失效原因走(非分數低);今日漲跌/資金流由前端併入。"""
+    d = data_date or prev_trading_day()
+    rows = store.read_date(DROPPED_TABLE, d, db_path)
+    name_map = _name_map()
+    cg = _code_group()
+    out = []
+    for code, r in rows.items():
+        p = json.loads(r["payload"])
+        out.append(_shape_dropped_row(code, p, name_map, cg))
+    return out
 
 
 def load_last_post(db_path: str = "mls.db") -> dict:
@@ -369,6 +611,7 @@ def load_last_post(db_path: str = "mls.db") -> dict:
         "generated_at": next(iter(rows.values()))["generated_at"] if rows else None,
         "degraded": [] if items else ["昨日盤後候選池尚未產生"],
         "items": items,
+        "dropped": load_dropped(y, db_path),
     }
 
 
@@ -385,4 +628,5 @@ def load_for_premarket(db_path: str = "mls.db") -> dict:
         "generated_at": next(iter(rows.values()))["generated_at"] if rows else None,
         "degraded": [] if items else ["昨日盤後候選池尚未產生"],
         "items": items,
+        "dropped": load_dropped(y, db_path),
     }
