@@ -53,6 +53,8 @@ import daily_close_report
 import engine_review
 import money_health
 import money_health_api
+import explain  # 說明語意層:後台算白話,前台只印(見 說明語意層規格.md)
+import intraday_note  # 淘汰名單「今日盤中說明」:淘汰理由 × 今日盤中資金流/漲跌 → 背離/確認
 
 TW_TZ = timezone(timedelta(hours=8))
 
@@ -1377,9 +1379,36 @@ def api_review_dates():
 
 @app.get("/api/review/rejects")
 def api_review_rejects(trade_date: str = ""):
-    """某交易日落選池（含卡在哪個因子 / 七因子總分），供落選複盤。"""
+    """某交易日落選池（含卡在哪個因子 / 七因子總分），供落選複盤。
+    歷史日照實顯示（8/5 以前只有 radar 落選留痕，不可濾成空白）；
+    「只留真淘汰」改由寫入端負責（after_hours 不再落地 radar_rejects），
+    未來新產生的名單自然只剩 resilient/名額不足，歷史仍保留原樣可複盤。"""
     day = trade_date or db.latest_review_date() or db.today()
-    return JSONResponse({"trade_date": day, "rows": db.load_watch_rejects(day)})
+    rows = db.load_watch_rejects(day)
+    # 說明語意層:每列補上白話 explain/tags/tier(唯一嘴巴,前端不再現算)
+    for r in rows:
+        r.update({k: v for k, v in explain.explain_row(r, kind="reject").items()
+                  if k in ("explain", "tags", "tier", "tier_label")})
+    # 今日盤中說明:淘汰理由 × 今日盤中資金流/漲跌 → 背離(誤刪候選)/確認(淘汰對了)。
+    # 只在複盤日=今天時掛,拿今日盤中即時值;歷史日不臆造(否則拿今天流量套舊淘汰=誤導)。
+    # aflow 走行程內韌性層:UNAVAILABLE 時 flow=None,intraday_note 自動標「資料未到」不偽裝。
+    if day == db.today():
+        try:
+            live_map = _live_rows_map()
+            for r in rows:
+                code = str(r.get("stock_id") or r.get("code") or "")
+                lv = live_map.get(code) or {}
+                chg = lv.get("change_rate")
+                flow = lv.get("aflow") if lv.get("aflow_status") != "UNAVAILABLE" else None
+                why = r.get("detail") or r.get("reason") or r.get("fail_factor") or r.get("explain") or ""
+                if lv.get("price") is not None:
+                    r["today_price"] = lv.get("price")
+                r["today_change"] = chg
+                r["today_aflow"] = flow
+                r["intraday_note"] = intraday_note.build(why, flow, chg)
+        except Exception as _e:
+            print(f"[review/rejects] intraday_note 跳過: {_e}", flush=True)
+    return JSONResponse({"trade_date": day, "rows": rows})
 
 
 @app.get("/api/review/stocks")
@@ -1474,10 +1503,12 @@ def api_dec_list(date: str = ""):
         rows.append({
             "code": code, "name": w.get("name"), "sector": w.get("sector"),
             "track": w.get("track"), "grade": w.get("grade"), "score": w.get("score"),
-            "reason": w.get("reason"),
+            "reason": w.get("reason"), "signal_type": w.get("signal_type"),
             "entry_ref": w.get("trigger_price") or w.get("base_close"),
             "base_close": w.get("base_close"),
             "price": (lv.get("price") if is_today else None),
+            # 盤中最高：僅今日盤中提供，供前端「今日觸發」三態燈判定曾觸及後回落
+            "intraday_high": (lv.get("high") if is_today else None),
             "change_rate": (lv.get("change_rate") if is_today else t1),
             # 盤中 aflow：今日優先 live，live 沒有(收盤後快照過期)退回已存檔值；歷史日讀存檔值。不再一收盤就消失。
             "aflow": (lv.get("aflow") if (is_today and lv.get("aflow") is not None) else w.get("aflow")),
@@ -1678,7 +1709,7 @@ import urllib.error as _urlerr
 _AB_BASE = "http://127.0.0.1:8002"
 
 
-def _ab_get(path, params=None, timeout=5):
+def _ab_get(path, params=None, timeout=20):
     # 前端主表的單次讀取上限是 8 秒；反向代理必須更早失敗，
     # 讓前端依約退回 /api/dec/list，而不是和瀏覽器同時卡到逾時。
     url = _AB_BASE + path
@@ -1696,10 +1727,16 @@ def _ab_get(path, params=None, timeout=5):
         return JSONResponse({"ok": False, "error": "AB 引擎未就緒", "detail": str(e)}, status_code=502)
 
 
+@app.get("/ab/dropped")
+def ab_dropped(pool_date: str = None):
+    """複盤:某池日被篩掉名單+今日盤中說明(預設前一交易日=今天在盤的那個池)。"""
+    return _ab_get("/api/dropped", {"pool_date": pool_date})
+
+
 @app.get("/ab/watchlist")
 def ab_watchlist(phase: str = None):
     """A 鏈名單(盤中觀測A)：phase 驅動 — 盤中=screen_intraday 嚴判燈號,盤後=screen_post 產池。"""
-    return _ab_get("/api/watchlist", {"phase": phase})
+    return _ab_get("/api/watchlist", {"phase": phase}, timeout=5)  # 主表關鍵路徑:冷啟 fail-fast 退 dec/list
 
 
 @app.get("/ab/verify-stats")

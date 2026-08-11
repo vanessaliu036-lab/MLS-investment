@@ -70,11 +70,17 @@ def apply(rows: list[dict]):
     rows = rows or []
     by_code = {str(r.get("code")): r for r in rows if r.get("code")}
 
-    # 全域 tick 進展偵測：buffer 量總和有變 = 有新 tick
+    # 全域 tick 進展偵測：buffer 量總和有變 = 有新 tick。
+    # 冷啟護欄：首見(last_vol_sum<0)只記基準、不宣稱新鮮——否則「量非 0 但凍結」
+    # 的 buffer(重啟進入死 feed)第一筆就被當成有進展 → 假 LIVE 20s。改成沒有真正
+    # 進展前 last_tick_ts 維持 0 → tick_age=None → 死盤老化成 BACKUP(失效向安全端)。
     vol_sum = sum(int(r.get("total_volume") or 0) for r in rows)
-    if rows and vol_sum > 0 and vol_sum != _S["last_vol_sum"]:
-        _S["last_vol_sum"] = vol_sum
-        _S["last_tick_ts"] = now
+    if rows and vol_sum > 0:
+        if _S["last_vol_sum"] < 0:
+            _S["last_vol_sum"] = vol_sum          # 首見:只記基準
+        elif vol_sum != _S["last_vol_sum"]:
+            _S["last_vol_sum"] = vol_sum
+            _S["last_tick_ts"] = now              # 真正有進展才更新新鮮度
     tick_age = round(now - _S["last_tick_ts"], 1) if _S["last_tick_ts"] else None
 
     market = _market_hours()

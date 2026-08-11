@@ -95,11 +95,16 @@ class Gateway:
             vol_sum += int(r.get("total_volume") or 0)
         with self._lock:
             self._sha_buf = buf
-        # 全域進展偵測：買賣量總和變動 = 有新 tick 進來
-        if vol_sum != self._last_vol_sum and vol_sum > 0:
-            self._last_vol_sum = vol_sum
-            self._last_tick_ts = time.time()
-            return True
+        # 全域進展偵測：買賣量總和變動 = 有新 tick 進來。
+        # 冷啟護欄：首見(_last_vol_sum<0)只記基準、不宣稱新鮮——否則死 feed(量非0但
+        # 凍結)第一筆就被當進展 → 假 LIVE。沒有真進展前 _last_tick_ts 維持 0 → 老化重連。
+        if vol_sum > 0:
+            if self._last_vol_sum < 0:
+                self._last_vol_sum = vol_sum
+            elif vol_sum != self._last_vol_sum:
+                self._last_vol_sum = vol_sum
+                self._last_tick_ts = time.time()
+                return True
         return False
 
     def _full_reconnect(self):
