@@ -6,7 +6,7 @@ screen_verify.py — 當日收盤復盤(命中率 / 勝率分析層)
 
 問的問題不同:
   b_verify   問「盤中發現的檔,今天法人有沒有買」(產生名單用)。
-  screen_verify 問「昨天盤中訊號那批,經過今天收盤,實際會不會賺」(衡量模型準度用)。
+  screen_verify 問「昨天候選池那批,經過今天收盤,實際會不會賺」(衡量模型準度用)。
   兩者完全不同,不要混。
 
 判定(對齊 screen_post 預標的進場軌,判定日 = T+1 收盤):
@@ -16,7 +16,7 @@ screen_verify.py — 當日收盤復盤(命中率 / 勝率分析層)
 
 門檻集中在檔頭常數,要調靈敏度只改這裡。命中率 = 命中數 / (攻擊+引擎 且有資料)。
 
-owner 規範:本支自建 pool_outcome 表,只寫這張;讀 intraday_signal / candidate_pool / daily_bar。
+owner 規範:本支自建 pool_outcome 表,只寫這張;讀 candidate_pool / daily_bar。
 與 A/B 兩鏈的名單產生完全脫鉤,這支爆掉不影響任何名單。
 """
 
@@ -31,6 +31,15 @@ from phase import Phase, prev_trading_day, today_tw
 
 PLUGIN = "screen_verify"
 TABLE = "pool_outcome"
+
+# ── 大盤 regime 排除(對齊 screen_intraday 盤中閘)─────────────────
+# 命中率暴起暴落主因是 T+1 大盤方向(只做多動能策略的 beta)。盤中 regime 閘在下殺日
+# 已把攻擊軌降續盯、不會進場 → 這種日子的攻擊軌也不該計入命中率分母(否則普跌日灌壞命中率)。
+# 判定用 T+1 當天候選池上漲占比(base_close→next_close),可回填歷史、與盤中閘同門檻。
+try:
+    from screen_intraday import RISK_OFF_BREADTH_PCT
+except Exception:
+    RISK_OFF_BREADTH_PCT = 30.0
 
 # ── 命中門檻(可調) ───────────────────────────────────────────────
 ATTACK_HOLD = 1.0     # 攻擊軌:T+1 收盤 ≥ 觸發價 × 此倍數才算站穩(1.0=不跌破觸發價)
@@ -101,38 +110,35 @@ def judge_row(track: str, base_close, trigger_price, next_high, next_close, ma20
 
 def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
     """
-    用 data_date(T+1)當天收盤,復盤 pool_date(前一交易日)產出的盤中訊號。
+    用 data_date(T+1)當天收盤,復盤 pool_date(前一交易日)產出的候選池。
     """
     _ensure_table(db_path)
     d = data_date or today_tw()
     pool_date = prev_trading_day(d)
 
     envs = run_all({
-        # 正確驗證來源：昨日盤中實際產出的燈號，而不是昨日盤後候選池。
-        "signal": lambda: store.read_date("intraday_signal", pool_date, db_path),
-        # candidate_pool 只補軌道、觸發價與 T 日收盤基準，不代表驗證名單來源。
         "pool": lambda: store.read_date("candidate_pool", pool_date, db_path),
         "bar": lambda: store.read_date("daily_bar", d, db_path),
+        # T 日(pool_date)全 51 收盤:算 T+1 全市場寬度用(對齊盤中 regime 閘的母體,非只看選中的池成員)
+        "bar_prev": lambda: store.read_date("daily_bar", pool_date, db_path),
     }, phase=Phase.POST)
     persist_status(envs, db_path)
 
-    signals = envs["signal"].get({}) or {}
     pool = envs["pool"].get({}) or {}
     bar = envs["bar"].get({}) or {}
+    bar_prev = envs["bar_prev"].get({}) or {}
 
-    if not signals:
+    if not pool:
         return {
             "phase": "POST", "data_date": d.isoformat(), "pool_date": pool_date.isoformat(),
-            "purpose": f"當日收盤復盤 — {pool_date} 無昨日盤中訊號可驗",
+            "purpose": f"當日收盤復盤 — {pool_date} 無候選池可驗",
             "degraded": missing_labels(envs), "items": [],
             "denom": 0, "hits": 0, "hit_rate": None,
         }
 
     now = _dt.datetime.now().isoformat(timespec="seconds")
     rows, items = [], []
-    for code, signal in signals.items():
-        # 用昨日盤中訊號作為主資料；候選池只提供盤後預標的軌道資訊。
-        prow = pool.get(code) or {}
+    for code, prow in pool.items():
         payload = {}
         if prow.get("payload"):
             try:
@@ -148,8 +154,6 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
         triggered, hit, ret, verdict = judge_row(track, base_close, trig, nh, nc, ma20)
         rec = {
             "data_date": d.isoformat(), "pool_date": pool_date.isoformat(), "code": code,
-            "signal_light": signal.get("light"),
-            "signal_note": signal.get("note"),
             "track": track, "trigger_price": trig, "base_close": base_close,
             "next_high": nh, "next_close": nc, "ma20": ma20,
             "triggered": triggered, "hit": hit, "ret_pct": ret,
@@ -158,9 +162,30 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
         rows.append(rec)
         items.append(rec)
 
+    # ── T+1 大盤 regime 排除:普跌日攻擊軌不計命中(對齊盤中 regime 閘)──────────
+    # 寬度用全 51 universe(daily_bar T+1 vs T 收盤),不是只看選中的池成員 —— 與盤中閘同母體,
+    # 否則「我的選股跌得比大盤兇」會誤判 Risk Off、排除盤中閘根本沒擋的日子。上漲占比 <門檻 = Risk Off。
+    ups = tot = 0
+    for _c, _bb in bar.items():
+        _nc = (_bb or {}).get("close")
+        _pc = (bar_prev.get(_c) or {}).get("close")
+        if _nc is not None and _pc:
+            tot += 1
+            ups += (_nc > _pc)
+    breadth_pct = round(ups / tot * 100, 1) if tot else None
+    risk_off = breadth_pct is not None and breadth_pct < RISK_OFF_BREADTH_PCT
+    regime_excluded = 0
+    if risk_off:
+        for r in items:
+            # 攻擊軌(追突破)當天會被盤中 regime 閘擋下、不進場 → hit 設 None 剔出分母
+            if r["track"] == "攻擊軌" and r["hit"] is not None:
+                r["hit"] = None
+                r["verdict"] = f"大盤RiskOff({breadth_pct}%)·攻擊軌不追(不計)"
+                regime_excluded += 1
+
     store.upsert_intraday(TABLE, PLUGIN, rows, db_path)
 
-    scored = [r for r in items if r["hit"] is not None]     # 攻擊+引擎(有資料)
+    scored = [r for r in items if r["hit"] is not None]     # 攻擊+引擎(有資料;普跌日攻擊軌已剔除)
     denom = len(scored)
     hits = sum(1 for r in scored if r["hit"] == 1)
     rets = [r["ret_pct"] for r in scored if r["ret_pct"] is not None]
@@ -171,12 +196,14 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
                               -(r["ret_pct"] or -999)))
     return {
         "phase": "POST", "data_date": d.isoformat(), "pool_date": pool_date.isoformat(),
-        "purpose": (f"當日收盤復盤:昨日盤中訊號 {len(signals)} 檔,可判定 {denom} 檔,"
+        "purpose": (f"當日收盤復盤:候選池 {len(pool)} 檔,可判定 {denom} 檔,"
                     f"命中 {hits} → 命中率 {round(hits/denom*100,1) if denom else '—'}%"),
         "verified_at": now,
         "degraded": missing_labels(envs),
         "pool_size": len(pool), "denom": denom, "hits": hits,
         "hit_rate": round(hits / denom * 100, 1) if denom else None,
+        "breadth_pct": breadth_pct, "risk_off": risk_off,
+        "regime_excluded": regime_excluded,
         "ret_median": median,
         "ret_avg": round(sum(rets) / len(rets), 2) if rets else None,
         "items": items,
