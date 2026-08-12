@@ -53,16 +53,17 @@ def _startup():
 
 def _attach_intraday_note(dropped):
     """為淘汰列附加今日盤中資金流與一句白話說明(唯讀,不影響名單)。
-    以 quote_snap/aflow 各自最新日為今日盤中;缺資料則說明標『待補』。"""
+    只認『今天這一盤』的 quote_snap/aflow;開盤前最新一筆仍是昨日盤中,
+    抓進來會被誤標成今日 → 一律以 data_date==今天交易日為閘,不等於就當作
+    資料未到(flow/change=None),讓 intraday_note 說『待開盤後判讀』。"""
     import sqlite3
+    td = today_tw().isoformat()
     c = sqlite3.connect("mls.db"); c.row_factory = sqlite3.Row
     try:
         q = {r["code"]: r for r in c.execute(
-            "SELECT code,price,change_rate FROM quote_snap "
-            "WHERE data_date=(SELECT MAX(data_date) FROM quote_snap)")}
+            "SELECT code,price,change_rate FROM quote_snap WHERE data_date=?", (td,))}
         a = {r["code"]: r for r in c.execute(
-            "SELECT code,net_active FROM aflow "
-            "WHERE data_date=(SELECT MAX(data_date) FROM aflow)")}
+            "SELECT code,net_active FROM aflow WHERE data_date=?", (td,))}
     finally:
         c.close()
     for row in dropped:
