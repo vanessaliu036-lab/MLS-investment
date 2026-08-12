@@ -229,6 +229,20 @@ def build_card(code, snap=None, health=None, grade=None,
         reasons.append("✕ 籌碼尚未完全集中(分點資料待接)")
     ai_pct = hs
 
+    # chip_quality：法人近月淨額/連買天數一律以本卡新鮮 chip_block（FinMind/官方
+    # 快取,source_date=最新交易日）為準,不採 dec_health.chip_note——後者由 mls-v4
+    # 已凍結的 inst_daily 產生,會回過期連買天數（南亞科案:真連買7日卻顯示連買4日）。
+    # 對齊「同一事實只准一套算法,後台算事實前台只翻譯」。chip_block 無資料才回退。
+    _streak = chip_block.get("inst_streak")
+    _net20 = chip_block.get("inst_net_20d_lots")
+    _cq_parts = []
+    if _net20 is not None:
+        _cq_parts.append(f"法人近月{_net20:+,}張")
+    if _streak:
+        _cq_parts.append(f"連{'買' if _streak > 0 else '賣'}{abs(int(_streak))}日")
+    chip_quality = ",".join(_cq_parts) if _cq_parts else (
+        (health or {}).get("chip_quality") if health else None)
+
     return {
         "code": code, "name": name, "sector": sector,
         "stock_type": "engine" if is_engine else styp,
@@ -239,7 +253,7 @@ def build_card(code, snap=None, health=None, grade=None,
         "health_quadrant": (health or {}).get("quadrant") if health else None,
         "health_label": (health or {}).get("label") if health else None,
         "health_stars": (health or {}).get("stars") if health else None,
-        "chip_quality": (health or {}).get("chip_quality") if health else None,
+        "chip_quality": chip_quality,
         "chip": chip_block, "flow": flow_block, "tech": tech_block,
         "trade": trade_block,
         "ai": {"pct": ai_pct, "reasons": reasons},
