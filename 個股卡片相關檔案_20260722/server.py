@@ -1479,6 +1479,17 @@ def api_dec_list(date: str = ""):
             "SELECT DISTINCT target_date d FROM dec_watchlist ORDER BY d DESC LIMIT 90")]
     is_today = bool(date) and (date == db.today())
     live = _live_rows_map() if is_today else {}
+    # 法人連買天數改吃新鮮 chips_cache(source_date=最新交易日),不再讓前端從
+    # dec_watchlist.reason 抽凍結的「連買N日」(decision_v22 舊殼理由會停在選股當下)。
+    # 對齊個股卡片修法:同一事實只准一套算法,顯示端一律以 chips_cache 為準。
+    _fresh_streak = {}
+    try:
+        _cc = json.loads(Path(__file__).with_name("chips_cache.json").read_text(encoding="utf-8"))
+        for _cd, _r in (_cc.get("stocks") or {}).items():
+            if _r.get("inst_streak") is not None:
+                _fresh_streak[str(_cd)] = _r["inst_streak"]
+    except Exception:
+        pass
     rows, hits, ver_tot, rets = [], 0, 0, []
     to_persist = []   # write-through：is_today 時把 live aflow 落地到 dec_watchlist
     for w in wl:
@@ -1517,6 +1528,8 @@ def api_dec_list(date: str = ""):
             "success": (success if verified else None),
             "hold_ret_pct": (v.get("hold_ret_pct") if verified else None),
             "verdict": verdict, "state": state, "verified": verified,
+            "chip_label": ((lambda s: f"法人連{'買' if s > 0 else '賣'}{abs(int(s))}日")(_fresh_streak[code])
+                           if _fresh_streak.get(code) else None),
         })
         if is_today and lv.get("aflow") is not None:
             to_persist.append((lv.get("aflow"), date, code))

@@ -269,6 +269,39 @@ def verify_stats(days: int = Query(30, description="滾動交易日窗")):
     return JSONResponse(screen_verify.stats(days))
 
 
+@app.get("/api/verify/reject")
+def verify_reject(date: str = Query("", description="判定日 data_date;預設最近已驗證日"),
+                  days: int = Query(30, description="滾動誤刪率窗")):
+    """淘汰名單誤刪率(唯讀):被淘汰那批的隔日表現。
+    誤刪=買得到且隔日盤中漲幅≥4%+主動資金轉正+相對強度合格;≥7%=嚴重誤刪。
+    stats=滾動各淘汰因子誤刪率(最該放寬門檻的排前面);rows=某判定日逐檔明細。"""
+    import sqlite3
+    import reject_verify
+    stats = reject_verify.stats(days)
+    conn = sqlite3.connect("mls.db", timeout=30)
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.row_factory = sqlite3.Row
+    dates = [r[0] for r in conn.execute(
+        "SELECT DISTINCT data_date FROM reject_outcome ORDER BY data_date DESC")]
+    dd = date or (dates[0] if dates else None)
+    rows = []
+    if dd:
+        order = {"嚴重誤刪": 0, "誤刪": 1, "排對": 2, "買不到(不計)": 3, "資料不足": 4}
+        for r in conn.execute("SELECT * FROM reject_outcome WHERE data_date=?", (dd,)):
+            d = dict(r); d["name"] = config.NAME.get(d["code"])
+            rows.append(d)
+        rows.sort(key=lambda r: (order.get(r["verdict"], 9), -(r["t1_high_ret"] or -999)))
+    conn.close()
+    return JSONResponse({
+        "data_date": dd, "dates": dates,
+        "overall_miskill_rate": stats["overall_miskill_rate"],
+        "severe_rate": stats["severe_rate"],
+        "by_factor": stats["by_factor"], "daily": stats["daily"],
+        "note": "誤刪率高的淘汰因子=最該放寬的門檻;族群相對強度族群index未接,暫用大盤相對代理",
+        "rows": rows,
+    })
+
+
 @app.get("/api/verify/history")
 def verify_history(date: str = Query("", description="pool_date;預設最近已驗證日")):
     """歷史回測(唯讀):某日候選池的「當時入選理由 vs T+1 最終結果」逐檔對照。
