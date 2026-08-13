@@ -32,6 +32,8 @@ import json
 import store
 import config
 import screen_post
+import decision_view
+from tw_price_limit import is_limit_up
 from envelope import run_all, persist_status, missing_labels
 from phase import Phase, now_tw, prev_trading_day, today_tw
 
@@ -232,6 +234,7 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
         "pool": lambda: screen_post.load_pool(yday, db_path),
         "quote": lambda: store.read_date("quote_snap", today, db_path),
         "aflow": lambda: store.read_date("aflow", today, db_path),
+        "aflow_y": lambda: store.read_date("aflow", yday, db_path),
         "bar_y": lambda: store.read_date("daily_bar", yday, db_path),
         "prev": lambda: store.read_date("intraday_signal", today, db_path),
     }, phase=Phase.INTRADAY)
@@ -247,6 +250,7 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
 
     q = envs["quote"].get({}) or {}
     a = envs["aflow"].get({}) or {}
+    a_y = envs["aflow_y"].get({}) or {}
     b = envs["bar_y"].get({}) or {}
     prev = envs["prev"].get({}) or {}
     now = at or now_tw()
@@ -266,6 +270,27 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
                 pass
         it = judge_one(code, pr, q.get(code), a.get(code), b.get(code), at)
         it["name"] = config.NAME.get(code)   # 名稱注入(事實,不參與判斷)
+        quote = q.get(code) or {}
+        aflow = (a.get(code) or {}).get("net_active")
+        prior_market = b.get(code) or {}
+        market = {
+            **prior_market,
+            "close": it.get("price"), "current_price": it.get("price"),
+            "high": quote.get("high") or quote.get("intraday_high") or it.get("price"),
+            "prior_high": (it.get("trigger_price") if it.get("track") == "攻擊軌" else
+                           (pr.get("prior_high") or prior_market.get("high"))),
+            "change_rate": it.get("change_rate"),
+            "aflow_today": aflow,
+            "aflow_previous": (pr.get("aflow_today") if pr.get("aflow_today") is not None
+                               else (a_y.get(code) or {}).get("net_active")),
+            "margin_change": pr.get("margin_change"),
+            "margin_balance": pr.get("margin_balance"),
+            "institution_label": pr.get("institution_label") or pr.get("chip_label"),
+            "is_limit_up": is_limit_up(it.get("price"), change_rate=it.get("change_rate")),
+        }
+        view = decision_view.build(pr, market, it)
+        it.update(view)
+        it["reasons"] = view["reason_tags"]
 
         # step 3a 延遲確認:讀前次 first_green_at,綠燈須持穩 CONFIRM_MINUTES 才可進
         pf = None

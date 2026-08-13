@@ -285,6 +285,13 @@ def pool_tomorrow():
             "reasons": payload.get("reasons") or [],
             "missing": payload.get("missing") or [],
             "has_data": payload.get("has_data"),
+            **{key: payload.get(key) for key in (
+                "classification", "display_pool", "potential_grade", "trend_stage",
+                "entry_quality", "entry_state", "entry_state_label",
+                "next_upgrade_condition", "reason_tags", "chip_tags",
+                "institution_label", "flow_label", "margin_label", "volume_label",
+                "pressure_absorption", "buying_efficiency",
+                "chip_reversal_acceleration", "decision_rank_score")},
         })
     applies = next_trading_day(d).isoformat()
     scored = [x for x in items if (x.get("score") or 0) > 0]
@@ -385,6 +392,10 @@ def verify_history(date: str = Query("", description="pool_date;預設最近已�
                 "hit": o.get("hit"), "ret_pct": o.get("ret_pct"),
                 "base_close": o.get("base_close"), "next_close": o.get("next_close"),
                 "reasons": payload.get("reasons") or [],
+                "chip_tags": payload.get("chip_tags") or [],
+                "next_upgrade_condition": payload.get("next_upgrade_condition"),
+                "display_pool": payload.get("display_pool"),
+                "entry_state_label": payload.get("entry_state_label"),
             })
         rows.sort(key=lambda r: (0 if r["hit"] == 1 else 1 if r["hit"] == 0 else 2,
                                  -(r["ret_pct"] if r["ret_pct"] is not None else -999)))

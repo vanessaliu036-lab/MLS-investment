@@ -29,6 +29,28 @@ class FunnelRetentionTests(unittest.TestCase):
         self.assertIn("recovery_scan.scan", funnel_source)
         self.assertIn('if rec["in_recovery_pool"]:', funnel_source)
 
+    def test_all_pipelines_use_the_shared_decision_view(self):
+        intraday_source = (Path(screen_post.__file__).parent / "screen_intraday.py").read_text(encoding="utf-8")
+        for source in (Path(screen_post.__file__).read_text(encoding="utf-8"),
+                       Path(funnel.__file__).read_text(encoding="utf-8"), intraday_source):
+            self.assertIn("decision_view.build", source)
+
+    def test_financing_is_not_emitted_as_screen_post_entry_reason(self):
+        positive = screen_post.score_one("TEST", {"close": 101, "ma20": 100,
+            "volume": 120, "vol_ma20": 100}, None,
+            {"margin_change": 100, "margin_balance": 10100}, None, None)
+        negative = screen_post.score_one("TEST", {"close": 101, "ma20": 100,
+            "volume": 120, "vol_ma20": 100}, None,
+            {"margin_change": -100, "margin_balance": 9900}, None, None)
+        self.assertFalse(any("融資" in reason for reason in positive["reasons"] + negative["reasons"]))
+
+    def test_financing_is_not_emitted_as_funnel_chip_reason(self):
+        _, reasons, _ = funnel.layer3("TEST", {
+            "foreign_net": 100, "trust_net": 50, "dealer_net": 0,
+            "foreign_days": 1, "trust_days": 1,
+        }, {"margin_change": 100, "margin_balance": 10100})
+        self.assertFalse(any("融資" in reason for reason in reasons))
+
     def test_below_monthly_average_is_feature_not_drop(self):
         series = [{"slot": "1320", "price": 95.0, "change_rate": -2.5,
                    "volume": 80, "net_active": -500}]

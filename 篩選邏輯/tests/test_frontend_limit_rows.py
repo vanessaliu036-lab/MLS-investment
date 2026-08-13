@@ -31,6 +31,24 @@ class FrontendLimitRowTests(unittest.TestCase):
         for label in ("淘汰原因", "救援訊號", "Recovery Score", "隔日觸發條件"):
             self.assertIn(label, self.html)
 
+    def test_mobile_decision_ui_uses_four_expandable_pools(self):
+        for pool in ("core", "reversal", "pullback", "watch"):
+            self.assertIn(f"key:'{pool}'", self.html)
+        self.assertIn('data-decision-pool="${p.key}"', self.html)
+        self.assertIn("decision-pool-summary", self.html)
+
+    def test_ui_uses_canonical_entry_state_and_upgrade_fields(self):
+        for field in ("entry_state_label", "next_upgrade_condition", "reason_tags",
+                      "potential_grade", "entry_quality", "chip_tags"):
+            self.assertIn(field, self.html)
+        for label in ("尚未觸發", "接近觸發", "已觸發", "觸發後失敗", "禁止追價", "等待回測"):
+            self.assertIn(label, self.html)
+
+    def test_uniform_source_column_is_removed_from_mobile_decision_table(self):
+        decision_block = self.html.split("// Canonical Decision View", 1)[1].split("observeSection=()=>''", 1)[0]
+        self.assertNotIn("<th>來源</th>", decision_block)
+        self.assertNotIn("decision-source", decision_block)
+
 
 if __name__ == "__main__":
     unittest.main()

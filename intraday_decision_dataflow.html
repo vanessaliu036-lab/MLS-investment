@@ -753,7 +753,7 @@ document.addEventListener('click',e=>{
   // AB 正宗（/ab/watchlist）→ 主表資料形狀。入選＝攻擊+引擎軌；觀察軌另列；不混計。
   const _trackMap={'攻擊軌':'attack','引擎軌':'engine','觀察':'observe'};
   function abToSingle(w){
-    const map=x=>({code:x.code,name:x.name,sector:x.sector,track:_trackMap[x.track]||x.track,
+    const map=x=>({...x,code:x.code,name:x.name,sector:x.sector,track:_trackMap[x.track]||x.track,
       score:x.score,reason:(x.reasons||[]).join(' · '),reasons:x.reasons,explain:x.explain,chip_label:x.chip_label,
       entry_ref:x.trigger_price??x.close,trigger_price:x.trigger_price,base_close:x.close,
       entry_rule:x.entry_rule,missing:x.missing,
@@ -787,16 +787,68 @@ document.addEventListener('click',e=>{
       :`觀察池 <b>${uni}</b> 檔｜入選 <b>${picks}</b>（攻擊+引擎軌）｜觀察軌 <b>${obs.length}</b>｜其餘未入選 <b>${rest}</b>（明日清單＝用前一交易日盤後籌碼定案；法人待 18:00 補）`;
     return `<div class="dr-single-note">${note}</div>`+
       (obs.length?`<details class="dr-single-reject"><summary>${data._radar?'觀察':'觀察軌'} ${obs.length} 檔（未達入選門檻，續盯）</summary><table><thead><tr><th>股票</th><th>族群</th><th>來源</th><th>觀察說明（卡在因子＋理由）</th></tr></thead><tbody>${obs.map(x=>`<tr><td><b>${esc2(x.name||x.code)}</b><br><small>${esc2(x.code)}</small></td><td>${esc2(x.sector||'—')}</td><td>${esc2(srcLabel(x.source||(data._radar?'radar':'ab')))}</td><td>${esc2(x.explain||pickReason(x))}</td></tr>`).join('')}</tbody></table></details>`:'');}
+
+  // Canonical Decision View：分類池由後端 display_pool 唯一決定；track 只描述買點，不再決定股票被放在哪張表。
+  const ENTRY_STATE_COPY={not_triggered:'尚未觸發',near_trigger:'接近觸發',triggered:'已觸發',trigger_failed:'觸發後失敗',no_chase:'禁止追價',wait_pullback:'等待回測'};
+  const DECISION_POOLS=[
+    {key:'core',label:'🔥 A級',empty:'目前沒有 A級啟動標的'},
+    {key:'reversal',label:'🔄 反轉',empty:'目前沒有反轉待確認標的'},
+    {key:'pullback',label:'⏳ 等回測',empty:'目前沒有強勢等待回測標的'},
+    {key:'watch',label:'👀 觀察',empty:'目前沒有一般觀察標的'}
+  ];
+  const canonicalItems=data=>[...(data.rows||[]),...(data.observe_rows||[])].filter((x,i,a)=>a.findIndex(y=>rowCode(y)===rowCode(x))===i);
+  const poolSort=(a,b)=>{
+    const near={triggered:0,near_trigger:1,wait_pullback:2,not_triggered:3,trigger_failed:4,no_chase:5};
+    return (near[a.entry_state]??9)-(near[b.entry_state]??9)||Number(b.decision_rank_score??-1)-Number(a.decision_rank_score??-1)||rowCode(a).localeCompare(rowCode(b));
+  };
+  const metricTags=x=>{
+    const tags=Array.isArray(x.chip_tags)&&x.chip_tags.length?x.chip_tags:[
+      x.institution_label||'法人 —',x.flow_label||'資金 —',x.margin_label||'融資 —',x.volume_label||'量能 —'];
+    return tags.slice(0,4).map(t=>`<span class="decision-metric ${/—/.test(String(t))?'pending':''}">${esc2(t)}</span>`).join('');
+  };
+  const reasonTags=x=>{const tags=Array.isArray(x.reason_tags)?x.reason_tags:(Array.isArray(x.reasons)?x.reasons:[]);return tags.filter(t=>!/融資/.test(String(t))).slice(0,3).map(t=>`<span class="decision-reason-tag">${esc2(t)}</span>`).join('')||'<span class="decision-reason-tag pending">理由待補</span>'};
+  const decisionRow=(x,index,pool)=>{
+    const price=x.price??x.close??x.close_price??x.base_close,ch=x.change_rate??x.today_change;
+    const state=x.entry_state_label||ENTRY_STATE_COPY[x.entry_state]||'尚未觸發';
+    const near=pool==='watch'&&index<5&&['near_trigger','triggered'].includes(x.entry_state);
+    const trend=x.trend_stage||'未啟動',quality=x.entry_quality||'C',potential=x.potential_grade||'B';
+    const trigger=x.trigger_price,current=price==null?'—':Number(price).toLocaleString('en-US');
+    const triggerLine=trigger!=null?`觸發 ${Number(trigger).toLocaleString('en-US')} · 目前 ${current} · ${state}`:`目前 ${current} · ${state}`;
+    return `<article class="decision-stock ${exactLimitUp(x,price,ch)?'limit-up-row':''}" onclick="openStock('${esc2(rowCode(x))}')">
+      <div class="decision-stock-head"><div><b>${esc2(rowName(x))}</b><small>${esc2(rowCode(x))} · ${esc2(x.sector||'其他')}</small></div><div class="decision-price ${color(ch)}">${price==null?'—':Number(price).toLocaleString('en-US')}<small>${pctText(ch)}</small></div></div>
+      <div class="decision-grades"><span>股票潛力 <b>${esc2(potential)}</b></span><span>趨勢 <b>${esc2(trend)}</b></span><span>買點品質 <b>${esc2(quality)}</b></span><span class="entry-${esc2(x.entry_state||'not_triggered')}">Entry <b>${esc2(state)}</b></span></div>
+      <div class="decision-trigger-line">${esc2(triggerLine)}</div>
+      <div class="decision-reasons">${near?'<span class="decision-near">最接近升級</span>':''}${reasonTags(x)}</div>
+      <div class="decision-upgrade"><small>下一個升級條件</small><b>${esc2(x.next_upgrade_condition||'等待下一個價格／資金確認')}</b></div>
+      <div class="decision-metrics">${metricTags(x)}</div>
+    </article>`;
+  };
+  singleCard=(data,phase,rejectRows)=>{
+    const items=canonicalItems(data),groups=Object.fromEntries(DECISION_POOLS.map(p=>[p.key,items.filter(x=>(x.display_pool||'watch')===p.key).sort(poolSort)]));
+    const first=DECISION_POOLS.find(p=>groups[p.key].length)?.key||'watch',date=data.target_date||data.data_date||data.pool_date||data.as_of||'—';
+    const summaries=DECISION_POOLS.map(p=>{
+      const rows=groups[p.key];
+      let body=rows.map((x,i)=>decisionRow(x,i,p.key)).join('');
+      if(p.key==='watch'&&rows.length){
+        const nearest=rows.filter(x=>['triggered','near_trigger'].includes(x.entry_state)).slice(0,5),nearestCodes=new Set(nearest.map(rowCode));
+        const general=rows.filter(x=>!nearestCodes.has(rowCode(x)));
+        body=`${nearest.length?`<div class="decision-subhead">最接近升級 <b>${nearest.length}</b></div>${nearest.map((x,i)=>decisionRow(x,i,p.key)).join('')}`:''}${general.length?`<div class="decision-subhead">一般觀察 <b>${general.length}</b></div>${general.map((x,i)=>decisionRow(x,i+nearest.length,p.key)).join('')}`:''}`;
+      }
+      return `<details class="decision-pool" data-decision-pool="${p.key}"${p.key===first?' open':''}><summary class="decision-pool-summary"><span>${p.label}</span><b>${rows.length}</b></summary><div class="decision-pool-body">${body||`<div class="decision-empty">${p.empty}</div>`}</div></details>`;
+    }).join('');
+    return `<article class="dr-single decision-view"><div class="dr-single-toolbar"><div><b>明日觀察 · 決策分池</b><small>股票潛力與現在能不能進場分開判斷</small></div><span class="dr-single-date">資料日 ${esc2(date)}</span></div><nav class="decision-pool-nav">${DECISION_POOLS.map(p=>`<span>${p.label} ${groups[p.key].length}</span>`).join('')}</nav>${summaries}<div class="decision-state-legend">尚未觸發 · 接近觸發 · 已觸發 · 觸發後失敗 · 禁止追價 · 等待回測</div>${decRejects(rejectRows)}</article>`;
+  };
+  observeSection=()=>'';
   async function renderSingle(quiet){const body=document.querySelector('#featureBody'),title=document.querySelector('#featureTitle'),status=document.querySelector('#featureStatus');if(!body)return;const phase=phaseNow();if(!quiet)body.innerHTML='<div class="dr-single-empty">讀取主表資料中…</div>';try{
     const sel=window._mainTableDate||'';
     const [ab,dec]=await Promise.all([getJson('/ab/watchlist').catch(e=>({_err:e})),getJson('/api/dec/list'+(sel?('?date='+encodeURIComponent(sel)):'')).catch(e=>({_err:e}))]);
     const fwd=ab&&!ab._err?ab.applies_date:null,decDates=(dec&&dec.dates)||[],allDates=[...new Set([fwd,...decDates].filter(Boolean))].sort().reverse();
     // 收盤後 AB 明日清單(如 8/7)要等 18:00 才產出入選；預設檢視時若 AB 尚無入選(攻擊/引擎軌)，
     // 退回顯示「今天」的名單，不要讓主表變空。使用者從下拉手動選未來日時仍尊重其選擇。
-    const _abPicks=(ab&&!ab._err&&Array.isArray(ab.items))?ab.items.filter(x=>['attack','engine'].includes(_trackMap[x.track]||x.track)).length:0;
-    const useAB=!!fwd&&(!sel||sel===fwd)&&(!!sel||_abPicks>0);
+    const _abRows=(ab&&!ab._err&&Array.isArray(ab.items))?ab.items.length:0;
+    const useAB=!!fwd&&(!sel||sel===fwd)&&_abRows>0;
     // 收盤後 AB 明日清單(如 8/7)18:00 前無入選 → 用今天 radar 快照帶入(可操作/觀察/排除)，不讓主表變空
-    const wantRadar=!sel&&!!fwd&&_abPicks===0;
+    const wantRadar=!sel&&!!fwd&&_abRows===0;
     let data,rejectRows=[];
     if(useAB){data=abToSingle(ab);data.dates=allDates;}
     else if(wantRadar){
@@ -811,7 +863,7 @@ document.addEventListener('click',e=>{
     // 歷史複盤 fallback 只在 AB 沒有該 build 留痕時使用。
     if(!rejectRows.length){try{const rd=sel||'',twToday=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei'}).format(new Date());if(rd&&rd<twToday){const rr=await getJson('/api/review/rejects?trade_date='+encodeURIComponent(rd)).catch(()=>({}));if((rr.rows||[]).length){rejectRows=rr.rows;rejectRows.__refDate=rr.trade_date||rd;}}}catch(e){}}
     if(title)title.textContent='盤中決策主表';
-    if(status)status.textContent=data&&data._radar?'收盤帶入 · 今日盤中七因子分類（可操作/觀察/排除＝51）':useAB?'AB 正宗 /ab/watchlist · 明日觀察清單（入選＝攻擊+引擎軌）':'/api/dec/list · T+1 蓋章驗證';
+    if(status)status.textContent=data&&data._radar?'收盤帶入 · 今日盤中七因子分類（可操作/觀察/排除＝51）':useAB?'AB /ab/watchlist · 後端五分類同步':'/api/dec/list · T+1 蓋章驗證';
     body.innerHTML=singleCard(data,phase,rejectRows)+observeSection(data);
   }catch(e){const msg=((e&&e.name==='AbortError')||e==='timeout')?'請求逾時（自動重試 3 次後仍無回應，可能正在重啟，請稍候再試）':((e&&e.message)||String(e));if(status)status.textContent='資料讀取失敗';if(!quiet)body.innerHTML=`<div class="dr-api-status fail">主表 API 讀取失敗：${esc2(msg)}<br><button class="btn" style="margin-top:10px" onclick="window.__singleMainTableRender&&window.__singleMainTableRender()">重新讀取</button></div>`}}
   window._pickMainDate=v=>{window._mainTableDate=v||'';renderSingle();};
@@ -2036,4 +2088,9 @@ if(window.__singleMainTableRender){
 .dr-single-table .mr-bul li small{display:block!important;margin-top:2px!important;font-size:12px!important;line-height:17px!important;color:#5b6a80!important}
 .dr-single-table .mr-radar-reason{text-align:left!important;font-size:12.5px!important;line-height:1.55!important;color:#334155!important}
 @media(max-width:900px){.dr-single-table .mr-bul li b{font-size:13px!important}.dr-single-table .mr-bul li small{font-size:12px!important}}
+</style>
+<style>
+/* Canonical Decision View：四類折疊、短理由、籌碼小標。 */
+.decision-view{overflow:visible!important}.decision-pool-nav{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;margin:14px 16px;border:1px solid #dfe6ef;border-radius:12px;overflow:hidden;background:#dfe6ef}.decision-pool-nav span{padding:11px 8px;background:#fff;text-align:center;font-weight:900;color:#334155}.decision-pool{margin:10px 16px;border:1px solid #dfe6ef;border-radius:14px;background:#fff;overflow:hidden}.decision-pool-summary{display:flex;align-items:center;justify-content:space-between;padding:13px 15px;cursor:pointer;font-weight:900;list-style:none}.decision-pool-summary::-webkit-details-marker{display:none}.decision-pool-summary b{min-width:30px;padding:4px 8px;border-radius:999px;background:#eef2f7;text-align:center}.decision-pool-body{display:grid;gap:1px;background:#e5e9f2;border-top:1px solid #e5e9f2}.decision-subhead{padding:8px 15px;background:#f5f7fa;color:#67758a;font-size:11px;font-weight:900}.decision-subhead b{float:right}.decision-stock{padding:14px 15px;background:#fff;cursor:pointer}.decision-stock:hover{background:#f8fbff}.decision-stock-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.decision-stock-head b{font-size:16px}.decision-stock-head small,.decision-price small{display:block;margin-top:3px;color:#71809b;font-size:11px}.decision-price{text-align:right;font-size:17px;font-weight:900}.decision-grades{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px}.decision-grades span,.decision-reason-tag,.decision-near{padding:5px 8px;border-radius:8px;background:#f2f5f8;color:#536176;font-size:11px}.decision-grades b{color:#172033}.decision-grades .entry-no_chase,.decision-grades .entry-trigger_failed{background:#fff0e4;color:#a85c00}.decision-grades .entry-triggered{background:#e7f6ed;color:#137533}.decision-grades .entry-near_trigger{background:#fff6dc;color:#9a6900}.decision-trigger-line{margin-top:8px;color:#67758a;font-size:11px;font-weight:800}.decision-reasons{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}.decision-reason-tag{background:#edf4ff;color:#285a9c;font-weight:800}.decision-reason-tag.pending{background:#f4f5f7;color:#8a94a4}.decision-near{background:#fff0cd;color:#9a6700;font-weight:900}.decision-upgrade{display:flex;align-items:center;gap:8px;margin-top:11px;padding-top:10px;border-top:1px solid #edf0f4}.decision-upgrade small{color:#78859a}.decision-upgrade b{font-size:12px;color:#27364d}.decision-metrics{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.decision-metric{padding:4px 7px;border-radius:7px;background:#f5f7fa;color:#4f5e73;font-size:10.5px;font-weight:750}.decision-metric.pending{color:#9aa4b2}.decision-empty{padding:22px;text-align:center;background:#fff;color:#8792a3}.decision-state-legend{margin:12px 16px;color:#71809b;font-size:11px;text-align:center}.decision-stock.limit-up-row{background:#e53935!important;color:#fff!important}.decision-stock.limit-up-row *{color:#fff!important}.decision-stock.limit-up-row .decision-grades span,.decision-stock.limit-up-row .decision-reason-tag,.decision-stock.limit-up-row .decision-near,.decision-stock.limit-up-row .decision-metric{background:rgba(255,255,255,.2)!important;color:#fff!important}.decision-stock.limit-up-row .decision-upgrade{border-color:rgba(255,255,255,.3)}
+@media(max-width:700px){.decision-pool-nav{position:sticky;top:0;z-index:3;margin:8px;background:#dfe6ef}.decision-pool-nav span{padding:9px 3px;font-size:10px}.decision-pool{margin:8px}.decision-pool:not([open]) .decision-pool-body{display:none}.decision-stock{padding:13px 12px}.decision-grades{display:grid;grid-template-columns:1fr 1fr}.decision-grades span{min-width:0}.decision-upgrade{align-items:flex-start;flex-direction:column;gap:2px}.decision-state-legend{display:none}}
 </style>

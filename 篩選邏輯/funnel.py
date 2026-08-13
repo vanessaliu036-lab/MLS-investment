@@ -47,6 +47,7 @@ import json
 import store
 import layered_score
 import recovery_scan
+import decision_view
 from envelope import run_all, persist_status, missing_labels
 from phase import Phase, prev_trading_day, today_tw
 
@@ -314,10 +315,8 @@ def layer3(code, inst: dict | None, margin: dict | None) -> tuple[bool, list[str
         ch = margin["margin_change"]
         if ch < 0:
             score += L3_W["margin"]
-            reasons.append("融資減(散戶洗出)")
         else:
             score -= L3_W["margin"] * 0.5
-            reasons.append("融資增")
 
     if not any("買" in r for r in reasons):
         reasons.append("無法人買進證據")
@@ -472,6 +471,7 @@ def run(universe: list[str], code_group: dict[str, str],
 
     # ---------- 中央分類器唯一去留門
     classified = {}
+    market_by_code = {}
     central_final = []
     recovery_pool = []
     flow_now = {c: _latest_flow(snaps.get(c, [])) for c in final}
@@ -499,6 +499,21 @@ def run(universe: list[str], code_group: dict[str, str],
             previous_bar=bar_y.get(c), aflow_today=_latest_flow(snaps[c]),
             aflow_previous=(aflow_y.get(c) or {}).get("net_active")))
         classified[c] = lay
+        previous_bar = bar_y.get(c) or {}
+        margin_row = margin.get(c) or {}
+        inst_row = inst.get(c) or {}
+        market_by_code[c] = {
+            **current_bar,
+            "current_price": current_bar.get("close"),
+            "prior_high": previous_bar.get("high"),
+            "previous_close": previous_bar.get("close"),
+            "change_rate": last.get("change_rate"),
+            "aflow_today": flow_now.get(c),
+            "aflow_previous": flow_prev.get(c),
+            "total_net": inst_row.get("total_net"),
+            "margin_change": margin_row.get("margin_change"),
+            "margin_balance": margin_row.get("margin_balance"),
+        }
         if central_keep(lay):
             central_final.append(c)
         else:
@@ -554,7 +569,16 @@ def run(universe: list[str], code_group: dict[str, str],
             ok, why, sc = layer3(c, inst.get(c), margin.get(c))
             it["chip_score"] = sc
             it["chip_reasons"] = why
+        view = decision_view.build(classified[c], market_by_code[c], {})
+        it.update(view)
+        it["reasons"] = view["reason_tags"]
         items.append(it)
+
+    _pool_rank = {"core": 0, "reversal": 1, "pullback": 2, "watch": 3}
+    items.sort(key=lambda row: (_pool_rank.get(row.get("display_pool"), 4),
+                                -(row.get("decision_rank_score") or -1), row["code"]))
+    for rank, row in enumerate(items, 1):
+        row["rank"] = rank
 
     return {
         "data_date": d.isoformat(),

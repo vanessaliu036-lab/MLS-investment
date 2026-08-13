@@ -27,6 +27,7 @@ import store
 import config
 import layered_score
 import recovery_scan
+import decision_view
 from tw_price_limit import is_limit_up
 from envelope import run_all, persist_status, missing_labels
 from phase import Phase, prev_trading_day, next_trading_day, today_tw
@@ -196,10 +197,8 @@ def score_one(code, bar, inst, margin, health, absorb) -> dict:
         ch = margin["margin_change"]
         if ch < 0:
             pts += W["margin"]
-            reasons.append("融資減(籌碼乾淨)")
         elif ch > 0:
             pts -= W["margin"] * 0.4
-            reasons.append("融資增")
     else:
         missing.append("融資")
 
@@ -462,14 +461,43 @@ def build(universe: list[str], db_path: str = "mls.db",
         it["layered_reasons"] = lay["reasons"]
         it["layered_risks"] = lay["risks"]
         it["pending_factors"] = lay["pending"]
+        _margin = m.get(c) or {}
+        _inst = i.get(c) or {}
+        _market = {
+            **bar,
+            "current_price": bar.get("close"),
+            "prior_high": (previous_bar or {}).get("high"),
+            "previous_close": (previous_bar or {}).get("close"),
+            "change_rate": change,
+            "aflow_today": flow_now.get(c),
+            "aflow_previous": flow_prev.get(c),
+            "sector_rel": rels[c].get("sector_rel"),
+            "total_net": _inst.get("total_net"),
+            "margin_change": _margin.get("margin_change"),
+            "margin_balance": _margin.get("margin_balance"),
+            "institution_label": _chip_label(lay.get("chip_status"),
+                                              _inst.get("consecutive_days")),
+            "is_limit_up": bool(lay.get("limit_up")),
+        }
+        view = decision_view.build(lay, _market, it)
+        it.update(view)
+        it["tier"] = view["classification"]
+        it["reasons"] = view["reason_tags"]
+        it["prior_high"] = _market["prior_high"]
+        it["ma5"] = bar.get("ma5")
+        it["ma20"] = bar.get("ma20")
+        # 保留事實值，讓 T+1 盤中能重算 Decision View，不必依賴舊文案。
+        it["aflow_today"] = flow_now.get(c)
+        it["aflow_previous"] = flow_prev.get(c)
+        it["margin_change"] = _margin.get("margin_change")
+        it["margin_balance"] = _margin.get("margin_balance")
         kept.append(it)
 
     # 排序改吃「延續機率」(明天值不值得看),而非舊單一 score;同分以追價安全高者優先。
     # 保留 score 於 payload 供相容/對照,但不再主導名單順序。
-    _tier_rank = {layered_score.TIER_CORE: 0, layered_score.TIER_REVERSAL: 1,
-                  layered_score.TIER_NO_CHASE: 2, layered_score.TIER_CANDIDATE: 3}
-    kept.sort(key=lambda x: (_tier_rank.get(x["tier"], 3),
-                             -(x.get("continuation") or 0),
+    _pool_rank = {"core": 0, "reversal": 1, "pullback": 2, "watch": 3}
+    kept.sort(key=lambda x: (_pool_rank.get(x.get("display_pool"), 4),
+                             -(x.get("decision_rank_score") or -1),
                              -(x.get("chase_safety") or 0), x["code"]))
     pool = select_pool(kept)
     for n, it in enumerate(pool, 1):
@@ -661,7 +689,7 @@ def load_last_post(db_path: str = "mls.db") -> dict:
     """
     y = prev_trading_day()
     rows = store.read_date(POOL_TABLE, y, db_path)
-    items = [json.loads(r["payload"]) for r in rows.values()]
+    items = _decorate_saved_items([json.loads(r["payload"]) for r in rows.values()], y, db_path)
     items.sort(key=lambda x: x.get("rank", 999))
     applies = next_trading_day(y).isoformat()   # = 今天
     return {
@@ -680,7 +708,7 @@ def load_for_premarket(db_path: str = "mls.db") -> dict:
     """盤前開機:直接讀昨日盤後候選池,不重算、不重抓、零 API,秒開。"""
     y = prev_trading_day()
     rows = store.read_date(POOL_TABLE, y, db_path)
-    items = [json.loads(r["payload"]) for r in rows.values()]
+    items = _decorate_saved_items([json.loads(r["payload"]) for r in rows.values()], y, db_path)
     items.sort(key=lambda x: x.get("rank", 999))
     return {
         "phase": "PRE", "data_date": y.isoformat(), "applies_date": today_tw().isoformat(),
@@ -691,3 +719,44 @@ def load_for_premarket(db_path: str = "mls.db") -> dict:
         "items": items,
         "dropped": load_dropped(y, db_path),
     }
+
+
+def _decorate_saved_items(items: list[dict], d: _dt.date, db_path: str) -> list[dict]:
+    """Read-time adapter for pools produced before Decision View existed.
+
+    Old builds remain immutable audit records.  Their presentation fields are
+    derived from dated facts when read, so financing never leaks back into an
+    entry reason and every date uses the same five-way classifier.
+    """
+    previous = prev_trading_day(d)
+    bars = store.read_date("daily_bar", d, db_path)
+    bars_previous = store.read_date("daily_bar", previous, db_path)
+    flows = store.read_date("aflow", d, db_path)
+    flows_previous = store.read_date("aflow", previous, db_path)
+    margins = store.read_date("margin", d, db_path)
+    institutions = store.read_date("inst_flow", d, db_path)
+    for item in items:
+        code = item.get("code")
+        bar = bars.get(code) or {}
+        prior_bar = bars_previous.get(code) or {}
+        margin = margins.get(code) or {}
+        institution = institutions.get(code) or {}
+        market = {
+            **bar,
+            "current_price": bar.get("close") or item.get("close"),
+            "prior_high": prior_bar.get("high") or item.get("prior_high"),
+            "previous_close": prior_bar.get("close"),
+            "change_rate": item.get("change_rate"),
+            "aflow_today": (flows.get(code) or {}).get("net_active"),
+            "aflow_previous": (flows_previous.get(code) or {}).get("net_active"),
+            "total_net": institution.get("total_net"),
+            "margin_change": margin.get("margin_change"),
+            "margin_balance": margin.get("margin_balance"),
+            "institution_label": item.get("chip_label") or item.get("institution_label"),
+            "is_limit_up": item.get("is_limit_up"),
+        }
+        view = decision_view.build(item, market, item)
+        item.update(view)
+        item["tier"] = view["classification"]
+        item["reasons"] = view["reason_tags"]
+    return items
