@@ -39,7 +39,8 @@ class FrontendLimitRowTests(unittest.TestCase):
 
     def test_ui_uses_canonical_entry_state_and_upgrade_fields(self):
         for field in ("entry_state_label", "next_upgrade_condition", "reason_tags",
-                      "potential_grade", "entry_quality", "chip_tags"):
+                      "potential_grade", "entry_quality", "chip_tags",
+                      "decision_summary", "priority_label"):
             self.assertIn(field, self.html)
         for label in ("尚未觸發", "接近觸發", "已觸發", "觸發後失敗", "禁止追價", "等待回測"):
             self.assertIn(label, self.html)

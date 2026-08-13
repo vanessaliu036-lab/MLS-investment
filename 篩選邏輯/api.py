@@ -290,6 +290,8 @@ def pool_tomorrow():
                 "entry_quality", "entry_state", "entry_state_label",
                 "next_upgrade_condition", "reason_tags", "chip_tags",
                 "institution_label", "flow_label", "margin_label", "volume_label",
+                "decision_summary", "decision_priority", "priority_label",
+                "trigger_source", "flow_status_label",
                 "pressure_absorption", "buying_efficiency",
                 "chip_reversal_acceleration", "decision_rank_score")},
         })
@@ -396,6 +398,11 @@ def verify_history(date: str = Query("", description="pool_date;預設最近已�
                 "next_upgrade_condition": payload.get("next_upgrade_condition"),
                 "display_pool": payload.get("display_pool"),
                 "entry_state_label": payload.get("entry_state_label"),
+                "decision_summary": payload.get("decision_summary"),
+                "decision_priority": payload.get("decision_priority"),
+                "priority_label": payload.get("priority_label"),
+                "trigger_source": payload.get("trigger_source"),
+                "flow_status_label": payload.get("flow_status_label"),
             })
         rows.sort(key=lambda r: (0 if r["hit"] == 1 else 1 if r["hit"] == 0 else 2,
                                  -(r["ret_pct"] if r["ret_pct"] is not None else -999)))

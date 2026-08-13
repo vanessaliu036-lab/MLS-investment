@@ -101,7 +101,7 @@ def ranking_factors(market: dict) -> dict:
     }
 
 
-def _reason_tags(classified: dict, market: dict) -> list[str]:
+def _reason_tags(classified: dict, market: dict, trigger_price=None) -> list[str]:
     close = _num(market.get("close"))
     prior_high = _num(market.get("prior_high"))
     ma20 = _num(market.get("ma20"))
@@ -111,6 +111,14 @@ def _reason_tags(classified: dict, market: dict) -> list[str]:
     change = _num(market.get("change_rate"))
     volume, vol_ma20 = _num(market.get("volume")), _num(market.get("vol_ma20"))
     tags = []
+    resistance = _num(trigger_price)
+    weak_watch = (classified.get("classification") == layered_score.TIER_CANDIDATE and
+                  flow is not None and flow < 0)
+    if weak_watch:
+        if close is not None and resistance is not None and close <= resistance:
+            tags.append(f"未突破 {_fmt(resistance)}")
+        tags.extend(["主動資金流出", "結構尚未失效"])
+        return tags[:3]
     if close is not None and prior_high is not None and close > prior_high:
         tags.append("突破前高")
     if previous_flow is not None and previous_flow < 0 and flow is not None and flow > 0:
@@ -122,18 +130,19 @@ def _reason_tags(classified: dict, market: dict) -> list[str]:
     if (change is not None and change > 0 and volume is not None and vol_ma20 and
             volume / vol_ma20 >= 1.2):
         tags.append("量價同步")
-    if not tags:
-        for reason in classified.get("reasons") or []:
-            if "融資" not in str(reason):
-                tags.append(str(reason).replace("價漲量增收盤穩", "量價同步"))
+    if not tags and classified.get("classification") != layered_score.TIER_REJECTED:
+        tags.append("結構尚未失效")
     return list(dict.fromkeys(tags))[:3]
 
 
-def _next_upgrade(classification: str, market: dict) -> str:
+def _next_upgrade(classification: str, market: dict, trigger_price=None) -> str:
     close = _num(market.get("current_price"))
     if close is None:
         close = _num(market.get("close"))
     prior_high, ma5, ma20 = (_num(market.get(k)) for k in ("prior_high", "ma5", "ma20"))
+    resistance = _num(trigger_price)
+    if resistance is None:
+        resistance = prior_high
     flow = _num(market.get("aflow_today"))
     if classification == layered_score.TIER_CORE:
         return f"回測 MA5 {_fmt(ma5)} 不破 → 可進" if ma5 is not None else "等待低風險買點"
@@ -150,6 +159,9 @@ def _next_upgrade(classification: str, market: dict) -> str:
     if classification == layered_score.TIER_CANDIDATE:
         if ma20 is not None and (close is None or close < ma20):
             return f"站回 MA20 {_fmt(ma20)} → 反轉"
+        if (flow is None or flow <= 0) and resistance is not None and \
+                (close is None or close <= resistance):
+            return f"站上 {_fmt(resistance)} + 主動資金翻正 → A級"
         if flow is None or flow <= 0:
             return "主動資金翻正 → 反轉"
         return f"突破昨高 {_fmt(prior_high)} → A級" if prior_high is not None else "突破壓力 → 反轉"
@@ -181,6 +193,31 @@ def _entry_state(classification: str, market: dict, trigger: dict) -> tuple[str,
     return "not_triggered", "尚未觸發", "C"
 
 
+def _canonical_trigger(market: dict, trigger: dict) -> tuple[float | None, str]:
+    """Single trigger source; a weak day cannot lower structural resistance."""
+    track = str(trigger.get("track") or "")
+    supplied = _num(trigger.get("trigger_price"))
+    prior_high = _num(market.get("prior_high"))
+    ma20 = _num(market.get("ma20"))
+    if track in ("attack", "攻擊軌"):
+        values = [x for x in (supplied, prior_high) if x is not None]
+        return (max(values), "structure_resistance") if values else (None, "pending")
+    if track in ("engine", "引擎軌"):
+        return (ma20 if ma20 is not None else supplied), "ma20"
+    return (supplied if supplied is not None else prior_high), "structure_resistance"
+
+
+def _summary(classification: str, market: dict, trigger_price) -> str:
+    flow = _num(market.get("aflow_today"))
+    close = _num(market.get("close"))
+    resistance = _num(trigger_price)
+    if (classification == layered_score.TIER_CANDIDATE and flow is not None and flow < 0 and
+            resistance is not None and (close is None or close <= resistance)):
+        return (f"今日未突破 {_fmt(resistance)}，主動資金 {flow:+,.0f} 張，"
+                "短線動能降溫；結構尚未失效，因此保留觀察。")
+    return ""
+
+
 def build(classified: dict, market: dict | None, trigger: dict | None) -> dict:
     market = dict(market or {})
     trigger = dict(trigger or {})
@@ -198,13 +235,21 @@ def build(classified: dict, market: dict | None, trigger: dict | None) -> dict:
     if confirmed_reversal:
         classification = layered_score.TIER_CORE
 
-    state, state_label, quality = _entry_state(classification, market, trigger)
+    canonical_price, trigger_source = _canonical_trigger(market, trigger)
+    canonical_trigger = {**trigger, "trigger_price": canonical_price}
+    state, state_label, quality = _entry_state(classification, market, canonical_trigger)
     factors = ranking_factors(market)
     margin_label = margin_tag(market)
     institution = market.get("institution_label") or "法人 —"
     flow_label = "資金 —" if flow is None else f"資金 {flow:+,.0f}"
+    flow_status_label = ("資金 —" if flow is None else
+                         (f"資金 {flow:+,.0f} · 轉弱待翻正" if flow < 0 else flow_label))
     volume, vol_ma20 = _num(market.get("volume")), _num(market.get("vol_ma20"))
     volume_label = f"量能 {volume / vol_ma20:.1f}x" if volume is not None and vol_ma20 else "量能 —"
+    low_priority = (classification == layered_score.TIER_CANDIDATE and flow is not None and
+                    flow < 0 and canonical_price is not None and
+                    (close is None or close <= canonical_price))
+    next_upgrade = _next_upgrade(classification, market, canonical_price)
     result = {
         "classification": classification,
         "display_pool": POOL_MAP[classification],
@@ -214,11 +259,18 @@ def build(classified: dict, market: dict | None, trigger: dict | None) -> dict:
         "entry_quality": quality,
         "entry_state": state,
         "entry_state_label": state_label,
-        "next_upgrade_condition": _next_upgrade(classification, market),
-        "reason_tags": _reason_tags(classified, market),
-        "chip_tags": [institution, flow_label, margin_label, volume_label],
+        "trigger_price": canonical_price,
+        "trigger_source": trigger_source,
+        "entry_rule": next_upgrade,
+        "next_upgrade_condition": next_upgrade,
+        "reason_tags": _reason_tags(classified, market, canonical_price),
+        "decision_priority": "low" if low_priority else "normal",
+        "priority_label": "👀 低優先觀察" if low_priority else "",
+        "decision_summary": _summary(classification, market, canonical_price),
+        "chip_tags": [institution, flow_status_label, margin_label, volume_label],
         "institution_label": institution,
         "flow_label": flow_label,
+        "flow_status_label": flow_status_label,
         "margin_label": margin_label,
         "volume_label": volume_label,
     }

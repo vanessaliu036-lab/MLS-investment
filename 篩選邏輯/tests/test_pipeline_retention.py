@@ -48,6 +48,12 @@ class FunnelRetentionTests(unittest.TestCase):
                        Path(funnel.__file__).read_text(encoding="utf-8"), intraday_source):
             self.assertIn("decision_view.build", source)
 
+    def test_api_keeps_canonical_interpretation_fields(self):
+        api_source = (Path(screen_post.__file__).parent / "api.py").read_text(encoding="utf-8")
+        for field in ("decision_summary", "decision_priority", "priority_label",
+                      "trigger_source", "flow_status_label"):
+            self.assertIn(f'"{field}"', api_source)
+
     def test_financing_is_not_emitted_as_screen_post_entry_reason(self):
         positive = screen_post.score_one("TEST", {"close": 101, "ma20": 100,
             "volume": 120, "vol_ma20": 100}, None,

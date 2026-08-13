@@ -576,6 +576,7 @@ def run(universe: list[str], code_group: dict[str, str],
 
     _pool_rank = {"core": 0, "reversal": 1, "pullback": 2, "watch": 3}
     items.sort(key=lambda row: (_pool_rank.get(row.get("display_pool"), 4),
+                                1 if row.get("decision_priority") == "low" else 0,
                                 -(row.get("decision_rank_score") or -1), row["code"]))
     for rank, row in enumerate(items, 1):
         row["rank"] = rank

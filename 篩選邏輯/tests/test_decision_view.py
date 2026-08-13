@@ -98,6 +98,34 @@ class DecisionViewTests(unittest.TestCase):
         self.assertGreaterEqual(absorbed["pressure_absorption"], 60)
         self.assertNotIn("inst_streak", strong)
 
+    def test_breakout_trigger_keeps_the_higher_structural_resistance(self):
+        result = dv.build(classified(), market(
+            close=196, current_price=196, high=200.5, prior_high=205,
+            ma20=155.4, aflow_today=-1236, change_rate=-.25), {
+                "track": "attack", "trigger_price": 200.5})
+        self.assertEqual(result["trigger_price"], 205)
+        self.assertEqual(result["trigger_source"], "structure_resistance")
+        self.assertEqual(result["entry_state"], "not_triggered")
+
+    def test_weak_flow_watch_is_low_priority_without_stale_bullish_copy(self):
+        result = dv.build(classified(reasons=[
+            "資金健康度佳", "融資增", "收在月線上", "溫和放量"]), market(
+                close=196, current_price=196, high=200.5, prior_high=205,
+                ma20=155.4, aflow_today=-1236, change_rate=-.25), {
+                    "track": "attack", "trigger_price": 200.5})
+        self.assertEqual(result["classification"], ls.TIER_CANDIDATE)
+        self.assertEqual(result["decision_priority"], "low")
+        self.assertEqual(result["priority_label"], "👀 低優先觀察")
+        self.assertEqual(result["next_upgrade_condition"],
+                         "站上 205 + 主動資金翻正 → A級")
+        self.assertEqual(result["reason_tags"],
+                         ["未突破 205", "主動資金流出", "結構尚未失效"])
+        self.assertEqual(result["decision_summary"],
+                         "今日未突破 205，主動資金 -1,236 張，短線動能降溫；"
+                         "結構尚未失效，因此保留觀察。")
+        self.assertFalse(any(term in "".join(result["reason_tags"])
+                             for term in ("資金健康", "融資", "溫和放量")))
+
 
 if __name__ == "__main__":
     unittest.main()

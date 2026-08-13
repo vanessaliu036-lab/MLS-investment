@@ -532,6 +532,7 @@ def build(universe: list[str], db_path: str = "mls.db",
     # 保留 score 於 payload 供相容/對照,但不再主導名單順序。
     _pool_rank = {"core": 0, "reversal": 1, "pullback": 2, "watch": 3}
     kept.sort(key=lambda x: (_pool_rank.get(x.get("display_pool"), 4),
+                             1 if x.get("decision_priority") == "low" else 0,
                              -(x.get("decision_rank_score") or -1),
                              -(x.get("chase_safety") or 0), x["code"]))
     pool = select_pool(kept)
@@ -676,6 +677,8 @@ def _chip_label(chip_status, streak):
 def _item_explain(it):
     """入選/觀察列的一句白話(語意層):tier + 強項(layered_reasons) + 風險(layered_risks)。
     純翻譯已算好的分層結果,不做篩選、不吃分數。取代前端印 reasons 原文(融資增/收破月線)。"""
+    if it.get("decision_summary"):
+        return it["decision_summary"]
     tier = it.get("tier") or ""
     strengths = it.get("layered_reasons") or []
     risks = list(it.get("layered_risks") or [])
