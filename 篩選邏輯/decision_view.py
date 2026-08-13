@@ -189,7 +189,10 @@ def build(classified: dict, market: dict | None, trigger: dict | None) -> dict:
     prior_high = _num(market.get("prior_high"))
     ma20 = _num(market.get("ma20"))
     flow = _num(market.get("aflow_today"))
-    confirmed_reversal = (classification == layered_score.TIER_REVERSAL and
+    confirmed_reversal = (classification in (
+                              layered_score.TIER_REVERSAL,
+                              layered_score.TIER_NO_CHASE,
+                              layered_score.TIER_CANDIDATE) and
                           None not in (close, prior_high, ma20, flow) and
                           close > prior_high and close >= ma20 and flow > 0)
     if confirmed_reversal:

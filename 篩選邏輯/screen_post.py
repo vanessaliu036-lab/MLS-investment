@@ -517,6 +517,7 @@ def build(universe: list[str], db_path: str = "mls.db",
         it.update(view)
         it["tier"] = view["classification"]
         it["reasons"] = view["reason_tags"]
+        it["change_rate"] = change
         it["prior_high"] = _market["prior_high"]
         it["ma5"] = bar.get("ma5")
         it["ma20"] = bar.get("ma20")

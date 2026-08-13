@@ -45,6 +45,15 @@ class DecisionViewTests(unittest.TestCase):
         self.assertEqual(result["potential_grade"], "A")
         self.assertEqual(result["entry_state"], "no_chase")
 
+    def test_confirmed_strong_no_chase_is_a_stock_with_separate_entry_block(self):
+        result = dv.build(classified(ls.TIER_NO_CHASE),
+                          market(close=102, current_price=102, prior_high=101, ma20=99,
+                                 aflow_today=3000, is_limit_up=True), {})
+        self.assertEqual(result["classification"], ls.TIER_CORE)
+        self.assertEqual(result["display_pool"], "core")
+        self.assertEqual(result["potential_grade"], "A")
+        self.assertEqual(result["entry_state"], "no_chase")
+
     def test_margin_is_a_chip_tag_and_never_an_entry_reason(self):
         result = dv.build(classified(reasons=["融資增", "融資減(籌碼乾淨)", "價漲量增收盤穩"]),
                           market(), {"trigger_price": 100})
