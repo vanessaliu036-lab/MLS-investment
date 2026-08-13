@@ -26,6 +26,7 @@ import json
 import store
 import config
 import layered_score
+from tw_price_limit import is_limit_up
 from envelope import run_all, persist_status, missing_labels
 from phase import Phase, prev_trading_day, next_trading_day, today_tw
 
@@ -110,7 +111,7 @@ DROPPED_TABLE = "dropped_pool"  # 被淘汰名單留痕(真結構失效),供淘�
 
 store.register_table(POOL_TABLE, PLUGIN)
 
-POOL_SIZE = 20          # 候選池上限。寬,不是準。
+POOL_SIZE = None        # V3：非四重結構失效者全部保留，不再用名額做隱性淘汰。
 DROP_THRESHOLD = 2      # 硬性排除:中兩個條件就砍(已依指示放寬)
 
 
@@ -240,6 +241,11 @@ def score_one(code, bar, inst, margin, health, absorb) -> dict:
     }
 
 
+def select_pool(kept: list[dict]) -> list[dict]:
+    """中央分類器已決定去留；這裡不得再按名額切掉非淘汰股票。"""
+    return list(kept)
+
+
 # ============================================================ 第三層:標進場軌
 #
 # 每檔預先標好隔日的進場條件。
@@ -308,13 +314,16 @@ def assign_track(bar: dict | None, item: dict,
 # 近 3/5 日法人累計 —— 讓 layered_score 這幾項不再 Pending,盤後判斷更準。
 
 def _derive_multiday(code: str, d: _dt.date, db_path: str) -> dict:
-    bars = store.read_recent("daily_bar", code, d, 6, db_path)     # 新→舊,含 d 當日
+    bars = store.read_recent("daily_bar", code, d, 11, db_path)    # 新→舊,含 d；生命週期看前10日
     insts = store.read_recent("inst_flow", code, d, 5, db_path)
     change_rate = up_days = inst_3d = inst_5d = None
+    previous_change_rate = None
 
     closes = [x.get("close") for x in bars if x.get("close") is not None]
     if len(closes) >= 2 and closes[1]:
         change_rate = round((closes[0] - closes[1]) / closes[1] * 100, 2)
+    if len(closes) >= 3 and closes[2]:
+        previous_change_rate = round((closes[1] - closes[2]) / closes[2] * 100, 2)
     if closes:
         ud = 0
         for today_c, prev_c in zip(closes, closes[1:]):
@@ -330,7 +339,12 @@ def _derive_multiday(code: str, d: _dt.date, db_path: str) -> dict:
     if len(nets) >= 5:
         inst_5d = sum(nets[:5])
 
-    return {"change_rate": change_rate, "up_days": up_days,
+    prior_changes = []
+    for current, previous in zip(closes[1:], closes[2:]):
+        if previous:
+            prior_changes.append(round((current - previous) / previous * 100, 2))
+    return {"change_rate": change_rate, "previous_change_rate": previous_change_rate,
+            "prior_changes": prior_changes, "up_days": up_days,
             "inst_3d": inst_3d, "inst_5d": inst_5d}
 
 
@@ -374,6 +388,8 @@ def build(universe: list[str], db_path: str = "mls.db",
         "margin": lambda: store.read_date("margin", d, db_path),
         "health": lambda: store.read_date("money_health", d, db_path),
         "absorb": lambda: store.read_date("absorption", d, db_path),
+        "aflow_today": lambda: store.read_date("aflow", d, db_path),
+        "aflow_previous": lambda: store.read_date("aflow", prev_trading_day(d), db_path),
     }, phase=Phase.POST)
     persist_status(envs, db_path)
 
@@ -382,6 +398,8 @@ def build(universe: list[str], db_path: str = "mls.db",
     m = envs["margin"].get({}) or {}
     h = envs["health"].get({}) or {}
     ab = envs["absorb"].get({}) or {}
+    af_t = envs["aflow_today"].get({}) or {}
+    af_y = envs["aflow_previous"].get({}) or {}
 
     # 多日衍生 + 族群/大盤相對強度(前置一次算好,迴圈裡引用)
     derivs = {c: _derive_multiday(c, d, db_path) for c in universe}
@@ -391,18 +409,32 @@ def build(universe: list[str], db_path: str = "mls.db",
     for c in universe:
         # 雙分數分層接管淘汰(治誤刪):只有 tier==淘汰(≥2結構失效)才移出主名單;
         # 強勢禁追/核心/候補全部保留。舊 hard_drop 仍算,但只當「量測對照」記錄,不再當閘。
-        lay = layered_score.score_layered(
-            layered_score.build_input(c, b.get(c), i.get(c),
-                                      **derivs[c], **rels[c]))
+        prev_rows = store.read_recent("daily_bar", c, d, 2, db_path)
+        previous_bar = prev_rows[1] if len(prev_rows) > 1 else None
+        bar = b.get(c) or {}
+        change = derivs[c].get("change_rate")
+        lay = layered_score.score_layered(layered_score.build_input(
+            c, bar, i.get(c), previous_bar=previous_bar,
+            aflow_today=(af_t.get(c) or {}).get("net_active"),
+            aflow_previous=(af_y.get(c) or {}).get("net_active"),
+            is_limit_up=is_limit_up(bar.get("close"),
+                                    reference_price=(previous_bar or {}).get("close"),
+                                    change_rate=change),
+            **derivs[c], **rels[c]))
         old_drop, old_hits = hard_drop(b.get(c), i.get(c))   # 舊制對照,供誤刪率量測
         lay_fields = {
-            "tier": lay["tier"], "continuation": lay["continuation"],
+            "tier": lay["tier"], "classification": lay["classification"],
+            "potential_grade": lay["potential_grade"], "trend_stage": lay["trend_stage"],
+            "entry_status": lay["entry_status"], "turn_signals": lay["turn_signals"],
+            "failure_gates": lay["failure_gates"], "failure_gate_count": lay["failure_gate_count"],
+            "is_limit_up": bool(lay.get("limit_up")),
+            "continuation": lay["continuation"],
             "chase_risk": lay["chase_risk"], "chase_safety": lay["chase_safety"],
             "chip_status": lay["chip_status"],
             "structural_failures": lay["structural_failures"],
             "old_would_drop": old_drop, "old_drop_hits": old_hits,
         }
-        if lay["tier"] == layered_score.TIER_REJECTED:
+        if lay["classification"] == layered_score.TIER_REJECTED:
             # 真淘汰:帶結構失效原因(不是「分數低」),供淘汰名單顯示與 T+1 錯殺量測
             dropped.append({"code": c, "why": lay["structural_failures"] or old_hits,
                             **lay_fields})
@@ -417,12 +449,12 @@ def build(universe: list[str], db_path: str = "mls.db",
 
     # 排序改吃「延續機率」(明天值不值得看),而非舊單一 score;同分以追價安全高者優先。
     # 保留 score 於 payload 供相容/對照,但不再主導名單順序。
-    _tier_rank = {layered_score.TIER_CORE: 0, layered_score.TIER_NO_CHASE: 1,
-                  layered_score.TIER_CANDIDATE: 2}
+    _tier_rank = {layered_score.TIER_CORE: 0, layered_score.TIER_REVERSAL: 1,
+                  layered_score.TIER_NO_CHASE: 2, layered_score.TIER_CANDIDATE: 3}
     kept.sort(key=lambda x: (_tier_rank.get(x["tier"], 3),
                              -(x.get("continuation") or 0),
                              -(x.get("chase_safety") or 0), x["code"]))
-    pool = kept[:POOL_SIZE]
+    pool = select_pool(kept)
     for n, it in enumerate(pool, 1):
         it["rank"] = n
 
@@ -517,6 +549,9 @@ def _shape_dropped_row(code, p, name_map, cg):
         "sector": cg.get(code), "source": "ab",
         "fail_factor": "結構失效", "detail": detail,
         "tier": p.get("tier"), "tier_label": "淘汰",
+        "classification": p.get("classification") or p.get("tier"),
+        "failure_gates": p.get("failure_gates") or {},
+        "failure_gate_count": p.get("failure_gate_count"),
         "explain": (f"{detail} → 結構失效,移出主名單。" if detail
                     else "結構失效(2 項以上),移出主名單。"),
         "tags": [],
@@ -525,9 +560,10 @@ def _shape_dropped_row(code, p, name_map, cg):
 
 
 _TIER_ACTION = {
-    "核心觀察": "結構最強,列核心續盯。",
-    "強勢觀察｜禁止追價": "禁開盤追,等回測昨高或 5MA。",
-    "候補觀察": "候補,盤中觸發再升級。",
+    "🔥 A級啟動": "資金與價格加速,列核心續盯。",
+    "🔄 反轉候選": "弱轉強背離出現,等待確認。",
+    "⏳ 強勢但不追": "禁開盤追,等回測昨高或 5MA。",
+    "👀 保留觀察": "尚未確認,盤中觸發再升級。",
 }
 
 

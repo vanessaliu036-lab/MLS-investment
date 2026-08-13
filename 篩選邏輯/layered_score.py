@@ -36,15 +36,16 @@ CHIP_POSITIVE = "positive"  # 確認法人買超 → 加分
 CHIP_NEUTRAL = "neutral"
 CHIP_NEGATIVE = "negative"  # 確認法人賣超 → 扣分
 
-# ── 四層 ─────────────────────────────────────────────────────
-TIER_CORE = "核心觀察"
-TIER_NO_CHASE = "強勢觀察｜禁止追價"
-TIER_CANDIDATE = "候補觀察"
-TIER_REJECTED = "淘汰"
+# ── 唯一五分類（潛力與追價狀態分離）─────────────────────────
+TIER_CORE = "🔥 A級啟動"
+TIER_REVERSAL = "🔄 反轉候選"
+TIER_CANDIDATE = "👀 保留觀察"
+TIER_NO_CHASE = "⏳ 強勢但不追"
+TIER_REJECTED = "❌ 結構失效"
 
 CONT_CORE_MIN = 65    # 延續機率 >= 此值 → 核心
 CHASE_RISK_MAX = 70   # 追價風險 >= 此值 → 禁追
-STRUCT_FAIL_MIN = 2   # 結構失效 >= 此值才真淘汰
+STRUCT_FAIL_MIN = 4   # 四重閘門全部成立才真淘汰
 HIGH_BIAS_PCT = 7.0   # 距 5MA >= 此值 = 高乖離警戒 → 類別性禁追(規格明列 7%)
 
 
@@ -66,6 +67,12 @@ def _num(v) -> Optional[float]:
 # ══════════════════════════════════════════════════════════
 def build_input(code: str, bar: Optional[dict], inst: Optional[dict],
                 *, change_rate: Optional[float] = None,
+                previous_change_rate: Optional[float] = None,
+                previous_bar: Optional[dict] = None,
+                aflow_today: Optional[float] = None,
+                aflow_previous: Optional[float] = None,
+                prior_changes: Optional[list[float]] = None,
+                is_limit_up: Optional[bool] = None,
                 inst_3d: Optional[float] = None,
                 inst_5d: Optional[float] = None,
                 sector_rel: Optional[float] = None,
@@ -86,6 +93,7 @@ def build_input(code: str, bar: Optional[dict], inst: Optional[dict],
     total_net = _num(i.get("total_net"))
     # 法人占成交量比(張/張):有量有淨額才算,否則 None
     inst_ratio = (total_net / volume) if (total_net is not None and volume) else None
+    pb = previous_bar or {}
     return {
         "code": code,
         "open": _num(b.get("open")), "high": _num(b.get("high")),
@@ -102,6 +110,15 @@ def build_input(code: str, bar: Optional[dict], inst: Optional[dict],
         "sector_rel": _num(sector_rel), "market_rel": _num(market_rel),
         "up_days": _num(up_days), "catalyst": catalyst,
         "change_rate": _num(change_rate),
+        "previous_change_rate": _num(previous_change_rate),
+        "previous_close": _num(pb.get("close")),
+        "previous_volume": _num(pb.get("volume")),
+        "previous_ma5": _num(pb.get("ma5")),
+        "previous_ma20": _num(pb.get("ma20")),
+        "aflow_today": _num(aflow_today),
+        "aflow_previous": _num(aflow_previous),
+        "prior_changes": [_num(x) for x in (prior_changes or []) if _num(x) is not None],
+        "is_limit_up": is_limit_up,
     }
 
 
@@ -304,35 +321,92 @@ def failure_categories(fails: list[str]) -> set[str]:
     return {_FAIL_CATEGORY.get(x, x) for x in fails}
 
 
-def structural_failures(f: dict, g: dict) -> list[str]:
-    """真結構失效(四類,每類獨立破壞模式;classify 以「>=2 不同類」才淘汰)。
+def failure_gates(f: dict, g: dict) -> dict[str, bool]:
+    """唯一淘汰門：四項必須全部為真；缺資料自然為 False。"""
+    c, h = f.get("close"), f.get("high")
+    ma5, ma20 = f.get("ma5"), f.get("ma20")
+    price_broken = (None not in (c, ma5, ma20) and c < ma5 and c < ma20)
 
-    2026-08-12 V2 校準(量測誤刪率 37% 後):
-      · 治重複計分:舊「法人賣超且收黑」含「收黑」=價格弱勢,與「跌破月線」高度重疊,
-        單根黑 K 就同時中兩項 → 誤刪。改為純籌碼「法人連續賣超」(inst_streak<=-2),
-        要求「持續性」——單日賣超只降級不淘汰(對齊規格:單日訊號不得永久淘汰)。
-      · 四類:價格結構 / 量價結構 / 法人籌碼 / 族群結構,淘汰需 >=2「不同類」。
-    2026-08-08 舊校準保留:價格只認跌破月線(跌破5MA 歸追價非淘汰);族群門檻 -2.0。
-    """
-    fails: list[str] = []
-    c = f["close"]
-    # ① 價格結構:跌破月線(關鍵結構位失守)
-    if c is not None and f["ma20"] and c < f["ma20"]:
-        fails.append("跌破月線")
-    # ② 量價結構:假突破——爆量長上影且收黑(衝高被打下來)
-    if (g["vol_ratio"] is not None and g["vol_ratio"] >= 2 and
-            g["upper_shadow"] is not None and g["upper_shadow"] >= 0.3 and
-            g["change"] is not None and g["change"] < 0):
-        fails.append("爆量長上影收黑")
-    # ③ 法人籌碼:法人「連續」賣超(inst_streak<=-2,持續出貨)。
-    #    不再用「單日賣超+收黑」——收黑屬價格類、且單日不足以定結構失效(只降級)。
-    streak = f.get("inst_streak")
-    if streak is not None and streak <= -2:
-        fails.append("法人連續賣超")
-    # ④ 族群結構:明顯落後族群(收緊門檻,非零和的半數雜訊)
-    if f["sector_rel"] is not None and f["sector_rel"] < -2.0:
-        fails.append("族群明顯落後")
-    return fails
+    af_t, af_y = f.get("aflow_today"), f.get("aflow_previous")
+    persistent_outflow = (af_t is not None and af_y is not None and af_t < 0 and af_y < 0)
+
+    vol, prev_vol = f.get("volume"), f.get("previous_volume")
+    price_down = g.get("change") is not None and g["change"] < 0
+    volume_expanded = (vol is not None and prev_vol is not None and vol > prev_vol)
+    blowout_weak = (g.get("vol_ratio") is not None and g["vol_ratio"] >= 1.5 and
+                    g.get("close_pos") is not None and g["close_pos"] <= 0.5)
+    volume_price_weak = bool(price_down and (volume_expanded or blowout_weak))
+
+    touched_average = (None not in (h, ma5, ma20) and h >= min(ma5, ma20))
+    rebound_failed = bool(price_broken and touched_average)
+    return {
+        "價格結構破壞": bool(price_broken),
+        "主動資金持續流出": bool(persistent_outflow),
+        "量價轉弱": volume_price_weak,
+        "反彈失敗": rebound_failed,
+    }
+
+
+def structural_failures(f: dict, g: dict) -> list[str]:
+    """回傳成立的四重閘門，供顯示與複盤；不是任兩項投票制。"""
+    return [name for name, hit in failure_gates(f, g).items() if hit]
+
+
+def reversal_signals(f: dict, g: dict) -> list[str]:
+    """抓弱轉強背離；每一項只負責升為反轉候選，不負責淘汰。"""
+    signals: list[str] = []
+    change = g.get("change")
+    c, o, l = f.get("close"), f.get("open"), f.get("low")
+    ma5, ma20 = f.get("ma5"), f.get("ma20")
+    streak, total_net = f.get("inst_streak"), f.get("total_net")
+    inst_selling = ((streak is not None and streak < 0) or
+                    (total_net is not None and total_net < 0))
+    price_resists = (change is not None and change >= 0) or (None not in (c, o) and c >= o)
+    if inst_selling and price_resists:
+        signals.append("法人賣超但價格抗跌")
+    if (f.get("aflow_previous") is not None and f["aflow_previous"] < 0 and
+            f.get("aflow_today") is not None and f["aflow_today"] > 0):
+        signals.append("主動資金由負翻正")
+    if None not in (l, c, ma5) and l < ma5 <= c:
+        signals.append("跌破 MA5 後收復")
+    if None not in (l, c, ma20) and l < ma20 <= c:
+        signals.append("跌破月線後收復")
+    if g.get("vol_ratio") is not None and g["vol_ratio"] >= 1.5 and price_resists:
+        signals.append("大量賣壓但股價不跌")
+    if (f.get("previous_change_rate") is not None and f["previous_change_rate"] < 0 and
+            change is not None and change > 0 and f.get("aflow_today") is not None and
+            f["aflow_today"] > 0):
+        signals.append("前日弱勢、今日價量背離轉強")
+    if (f.get("sector_rel") is not None and f["sector_rel"] < 0 and
+            change is not None and change > 0 and f.get("aflow_today") is not None and
+            f["aflow_today"] > 0):
+        signals.append("族群落後但資金突然集中")
+    return list(dict.fromkeys(signals))
+
+
+def lifecycle_stage(f: dict, g: dict) -> str:
+    """以最近交易日的強勢延伸辨識 Day 1～Day 4+。"""
+    change = g.get("change")
+    prior = f.get("prior_changes") or []
+    if change is None or change < 5:
+        return "未啟動"
+    if change >= 9 and not any(x >= 9 for x in prior[:10]):
+        return "🔥 Day 1 首次突破"
+    run = 1
+    for x in prior:
+        if x >= 5:
+            run += 1
+        else:
+            break
+    if prior and prior[0] >= 9:
+        run = max(run, 2)
+    if run == 2:
+        return "🔥 Day 2 主升確認"
+    if run == 3:
+        return "⚡ Day 3 強勢延伸"
+    if run >= 4:
+        return "⏳ Day 4+ 高乖離／等待整理"
+    return "未啟動"
 
 
 # ══════════════════════════════════════════════════════════
@@ -340,7 +414,8 @@ def structural_failures(f: dict, g: dict) -> list[str]:
 # ══════════════════════════════════════════════════════════
 def limit_up_model(f: dict, g: dict) -> Optional[dict]:
     ch = g["change"]
-    is_limit = (ch is not None and ch >= 9.5) or f.get("is_limit_up")
+    exact = f.get("is_limit_up")
+    is_limit = bool(exact) if exact is not None else (ch is not None and ch >= 9.5)
     if not is_limit:
         return None
     healthy = True
@@ -368,14 +443,16 @@ def limit_up_model(f: dict, g: dict) -> Optional[dict]:
 # 5. 分層(使用者定案的優先序;分數只排序,不單獨刪)
 # ══════════════════════════════════════════════════════════
 def classify(cont: float, chase: float, fails: list[str],
-             chase_block: bool = False) -> str:
-    # V2:數的是「不同類」失效數(同類多訊號只算一次),需 >=2 類才淘汰。
-    if len(failure_categories(fails)) >= STRUCT_FAIL_MIN:
+             chase_block: bool = False, turns: Optional[list[str]] = None,
+             lifecycle: str = "未啟動") -> str:
+    if len(fails) == STRUCT_FAIL_MIN:
         return TIER_REJECTED
-    # chase_block=高乖離/漲停/追價風險高 → 類別性禁追(不被收盤穩等好因子稀釋掉)
-    if chase_block or chase >= CHASE_RISK_MAX:
+    strong = lifecycle != "未啟動" or cont >= CONT_CORE_MIN
+    if turns and not strong:
+        return TIER_REVERSAL
+    if (chase_block or chase >= CHASE_RISK_MAX) and strong:
         return TIER_NO_CHASE
-    if cont >= CONT_CORE_MIN:
+    if strong:
         return TIER_CORE
     return TIER_CANDIDATE
 
@@ -385,23 +462,34 @@ def score_layered(f: dict) -> dict:
     g = _geometry(f)
     cont = continuation_score(f, g)
     chase = chase_risk_score(f, g)
+    gates = failure_gates(f, g)
     fails = structural_failures(f, g)
+    turns = reversal_signals(f, g)
+    lifecycle = lifecycle_stage(f, g)
     limit = limit_up_model(f, g)
     # 高乖離(距5MA≥7%)或漲停 → 類別性禁追閘,不讓收盤穩等好因子把追價風險稀釋掉
     high_bias = g["bias5"] is not None and g["bias5"] >= HIGH_BIAS_PCT
-    chase_block = high_bias or (limit is not None)
-    tier = classify(cont["score"], chase["score"], fails, chase_block=chase_block)
-    # 漲停護欄(規格 §5):漲停股不因無盤後籌碼被打成淘汰;未達 2 類結構失效一律禁追,不刪。
-    if limit and len(failure_categories(fails)) < STRUCT_FAIL_MIN and tier == TIER_REJECTED:
-        tier = TIER_NO_CHASE
+    late_stage = lifecycle.startswith("⚡ Day 3") or lifecycle.startswith("⏳ Day 4+")
+    chase_block = high_bias or (limit is not None) or late_stage
+    tier = classify(cont["score"], chase["score"], fails,
+                    chase_block=chase_block, turns=turns, lifecycle=lifecycle)
+    potential = "A" if lifecycle in ("🔥 Day 1 首次突破", "🔥 Day 2 主升確認") or cont["score"] >= CONT_CORE_MIN else "B"
+    entry_status = "禁止追高" if chase_block else "等待觸發"
     return {
         "code": f["code"],
         "continuation": cont["score"],
         "chase_risk": chase["score"],
         "chase_safety": round(100 - chase["score"], 1),
         "tier": tier,
+        "classification": tier,
+        "potential_grade": potential,
+        "trend_stage": lifecycle,
+        "entry_status": entry_status,
         "chip_status": chip_status(f),
+        "failure_gates": gates,
+        "failure_gate_count": sum(1 for hit in gates.values() if hit),
         "structural_failures": fails,
+        "turn_signals": turns,
         "limit_up": limit,
         "reasons": cont["reasons"],
         "risks": chase["risks"],

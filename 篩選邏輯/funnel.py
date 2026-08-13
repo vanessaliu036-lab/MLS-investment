@@ -45,6 +45,7 @@ import datetime as _dt
 import json
 
 import store
+import layered_score
 from envelope import run_all, persist_status, missing_labels
 from phase import Phase, prev_trading_day, today_tw
 
@@ -91,6 +92,17 @@ def _usable(series: list[dict]) -> list[dict]:
             if int(s["slot"][:2]) * 60 + int(s["slot"][2:]) >= 9 * 60 + BLIND_MIN]
 
 
+def central_keep(classified: dict) -> bool:
+    """兩條管線唯一去留邊界：只有中央分類器的四重失效可以淘汰。"""
+    return classified.get("classification") != layered_score.TIER_REJECTED
+
+
+def _latest_flow(series: list[dict]):
+    vals = [row.get("net_active") for row in _usable(series)
+            if row.get("net_active") is not None]
+    return vals[-1] if vals else None
+
+
 # ================================================================ L1 減量層
 
 def layer1(code: str, series: list[dict], bar_y: dict | None,
@@ -129,7 +141,8 @@ def layer1(code: str, series: list[dict], bar_y: dict | None,
         if last["change_rate"] - group_avg[group] <= L1_REL_WEAK:
             votes.append("弱於族群")
 
-    return len(votes) < L1_DROP_VOTES, votes
+    # V3:減量條件只記特徵。最終去留統一交給 layered_score 四重閘門。
+    return True, votes
 
 
 # ================================================================ L2 核心層
@@ -244,7 +257,7 @@ def layer25(series) -> tuple[bool, str]:
     if cr is None or na is None:
         return True, ""      # NO_DATA 不淘汰
     if cr >= DIVERGE_UP_PCT and na < DIVERGE_OUTFLOW:
-        return False, f"邊拉邊出:漲 {cr:+.1f}% 但資金流出 {na/1e4:,.0f} 萬"
+        return True, f"邊拉邊出:漲 {cr:+.1f}% 但資金流出 {na/1e4:,.0f} 萬"
     return True, ""
 
 
@@ -256,7 +269,7 @@ def layer3(code, inst: dict | None, margin: dict | None) -> tuple[bool, list[str
     連續天數權重高於單日金額 —— 依你的實際觀察標準。
     """
     if inst is None:
-        return False, ["籌碼未到位"], 0.0
+        return True, ["籌碼未到位"], 0.0
 
     reasons: list[str] = []
     score = 0.0
@@ -267,23 +280,24 @@ def layer3(code, inst: dict | None, margin: dict | None) -> tuple[bool, list[str
     f_days = inst.get("foreign_days")
     t_days = inst.get("trust_days")
 
-    # 硬性淘汰:外資與投信同步賣超
     if f_net is not None and t_net is not None and f_net < 0 and t_net < 0:
-        return False, [f"外資賣 {abs(f_net)}、投信賣 {abs(t_net)},同步賣超"], 0.0
+        reasons.append(f"外資賣 {abs(f_net)}、投信賣 {abs(t_net)},同步賣超")
 
     if f_days is not None:
         if f_days > 0:
             score += L3_W["foreign_streak"] * min(1.0, f_days / 5)
             reasons.append(f"外資連買{f_days}日")
-        elif f_days <= -3:
-            return False, [f"外資連賣{-f_days}日"], 0.0
+        elif f_days < 0:
+            score -= L3_W["foreign_streak"] * min(1.0, -f_days / 5)
+            reasons.append(f"外資連賣{-f_days}日")
 
     if t_days is not None:
         if t_days > 0:
             score += L3_W["trust_streak"] * min(1.0, t_days / 5)
             reasons.append(f"投信連買{t_days}日")
-        elif t_days <= -3:
-            return False, [f"投信連賣{-t_days}日"], 0.0
+        elif t_days < 0:
+            score -= L3_W["trust_streak"] * min(1.0, -t_days / 5)
+            reasons.append(f"投信連賣{-t_days}日")
 
     if f_net is not None:
         if f_net > 0:
@@ -304,9 +318,8 @@ def layer3(code, inst: dict | None, margin: dict | None) -> tuple[bool, list[str
             score -= L3_W["margin"] * 0.5
             reasons.append("融資增")
 
-    # 沒有任何買方證據 → 淘汰
     if not any("買" in r for r in reasons):
-        return False, reasons + ["無法人買進證據"], score
+        reasons.append("無法人買進證據")
 
     return True, reasons, round(score, 1)
 
@@ -340,6 +353,8 @@ def run(universe: list[str], code_group: dict[str, str],
     envs = run_all({
         "snapshots": lambda: b_snapshot.series_all(d, db_path),
         "bar_y": lambda: store.read_date("daily_bar", y, db_path),
+        "bar_today": lambda: store.read_date("daily_bar", d, db_path),
+        "aflow_y": lambda: store.read_date("aflow", y, db_path),
         "inst": lambda: store.read_date("inst_flow", d, db_path),
         "margin": lambda: store.read_date("margin", d, db_path),
     }, phase=Phase.POST if with_chips else Phase.INTRADAY)
@@ -347,6 +362,8 @@ def run(universe: list[str], code_group: dict[str, str],
 
     snaps = envs["snapshots"].get({}) or {}
     bar_y = envs["bar_y"].get({}) or {}
+    bar_today = envs["bar_today"].get({}) or {}
+    aflow_y = envs["aflow_y"].get({}) or {}
     inst = envs["inst"].get({}) or {}
     margin = envs["margin"].get({}) or {}
 
@@ -377,7 +394,7 @@ def run(universe: list[str], code_group: dict[str, str],
     layers.append({"layer": "L0 全集", "entered": len(universe),
                    "survived": len(pool), "reasons": {}})
 
-    # ---------- L1 減量
+    # ---------- 舊 L1/L1.5/L2/L3 僅保留診斷；不再逐層移除
     l1_keep, l1_reasons = [], {}
     for c in pool:
         ok, votes = layer1(c, snaps[c], bar_y.get(c), group_avg, code_group.get(c))
@@ -409,19 +426,18 @@ def run(universe: list[str], code_group: dict[str, str],
     layers.append({"layer": "L1.5 背離否決", "entered": len(l1_keep),
                    "survived": len(l15_keep), "reasons": l15_reasons})
 
-    # ---------- L2 核心
+    # ---------- L2 核心（特徵診斷）
     l2_keep, l2_reasons, l2_detail = [], {}, {}
     for c in l15_keep:
         ok, detail, hits = layer2(c, snaps[c], bar_y.get(c),
                                   group_avg, code_group.get(c))
         l2_detail[c] = detail
-        if ok:
-            l2_keep.append(c)
-        else:
+        l2_keep.append(c)
+        if not ok:
             k = f"僅{hits}項通過"
             l2_reasons[k] = l2_reasons.get(k, 0) + 1
         rows.append({"data_date": d.isoformat(), "layer": "L2", "code": c,
-                     "survived": int(ok), "reasons": f"{hits}/4",
+                     "survived": 1, "reasons": f"{hits}/4（特徵，不淘汰）",
                      "detail": json.dumps(detail, ensure_ascii=False),
                      "decided_at": now})
     _log_layer(d, "L2", len(l15_keep), len(l2_keep), l2_reasons, now, db_path)
@@ -436,15 +452,14 @@ def run(universe: list[str], code_group: dict[str, str],
         l3_keep, l3_reasons, l3_score = [], {}, {}
         for c in l2_keep:
             ok, why, sc = layer3(c, inst.get(c), margin.get(c))
-            if ok:
-                l3_keep.append(c)
-                l3_score[c] = sc
-            else:
+            l3_keep.append(c)
+            l3_score[c] = sc
+            if not ok:
                 for w in why:
                     key = w.split(":")[0][:12]
                     l3_reasons[key] = l3_reasons.get(key, 0) + 1
             rows.append({"data_date": d.isoformat(), "layer": "L3", "code": c,
-                         "survived": int(ok),
+                         "survived": 1,
                          "reasons": json.dumps(why, ensure_ascii=False),
                          "detail": "", "decided_at": now})
         _log_layer(d, "L3", len(l2_keep), len(l3_keep), l3_reasons, now, db_path)
@@ -453,6 +468,34 @@ def run(universe: list[str], code_group: dict[str, str],
         l3_keep.sort(key=lambda c: -l3_score.get(c, 0))
         final = l3_keep
         stage = "盤後定案"
+
+    # ---------- 中央分類器唯一去留門
+    classified = {}
+    central_final = []
+    for c in final:
+        u = _usable(snaps[c])
+        last = u[-1] if u else {}
+        current_bar = dict(bar_today.get(c) or {})
+        if not current_bar:
+            current_bar = {
+                "open": (u[0].get("price") if u else last.get("price")),
+                "high": max((x.get("price") for x in u if x.get("price") is not None), default=last.get("price")),
+                "low": min((x.get("price") for x in u if x.get("price") is not None), default=last.get("price")),
+                "close": last.get("price"),
+                "volume": (last.get("volume") or 0) * 1000,
+                "ma5": (bar_y.get(c) or {}).get("ma5"),
+                "ma20": (bar_y.get(c) or {}).get("ma20"),
+                "ma60": (bar_y.get(c) or {}).get("ma60"),
+                "vol_ma20": (bar_y.get(c) or {}).get("vol_ma20"),
+            }
+        lay = layered_score.score_layered(layered_score.build_input(
+            c, current_bar, inst.get(c), change_rate=last.get("change_rate"),
+            previous_bar=bar_y.get(c), aflow_today=_latest_flow(snaps[c]),
+            aflow_previous=(aflow_y.get(c) or {}).get("net_active")))
+        classified[c] = lay
+        if central_keep(lay):
+            central_final.append(c)
+    final = central_final
 
     store.upsert_intraday(TABLE, PLUGIN, rows, db_path)
 
@@ -472,6 +515,9 @@ def run(universe: list[str], code_group: dict[str, str],
             "price": last.get("price"), "change_rate": last.get("change_rate"),
             "net_active": last.get("net_active"),
             "l2": l2_detail.get(c, {}),
+            **{k: classified[c].get(k) for k in (
+                "classification", "potential_grade", "trend_stage", "entry_status",
+                "failure_gates", "failure_gate_count", "turn_signals")},
         }
         if with_chips:
             ok, why, sc = layer3(c, inst.get(c), margin.get(c))

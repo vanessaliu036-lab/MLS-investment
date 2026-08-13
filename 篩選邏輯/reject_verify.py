@@ -34,8 +34,8 @@ PLUGIN = "reject_verify"
 TABLE = "reject_outcome"
 
 # ── 判定門檻(可調,集中檔頭) ─────────────────────────────────────
-MISKILL_RET = 4.0   # 隔日盤中漲幅 >= 此值(%)= 誤刪
-SEVERE_RET = 7.0    # 隔日盤中漲幅 >= 此值(%)= 嚴重誤刪
+MISKILL_RET = 5.0   # FNR +5%：隔日盤中最高相對 T 收盤 >=5%
+SEVERE_RET = 9.0    # FNR +9%：隔日盤中最高相對 T 收盤 >=9%
 GAP_MAX = 3.5       # 開盤跳空 > 此值(%)= 進不去,不計
 # 一價鎖死:high==low → 開盤即鎖,買不到。
 
@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS reject_outcome (
     gap_pct REAL,                 -- 開盤跳空 %
     net_active REAL,              -- T+1 主動資金(>0=轉正)
     rel_strength REAL,            -- 個股 T+1 收盤報酬 - 全池均(大盤相對代理)
+    fnr_5 INTEGER,                -- T+1 最高相對 T 收盤 >=5%
+    fnr_9 INTEGER,                -- T+1 最高相對 T 收盤 >=9%
     tradable INTEGER,             -- 1=買得到 0=進不去
     verdict TEXT,                 -- 排對 / 誤刪 / 嚴重誤刪 / 買不到(不計) / 資料不足
     verified_at TEXT,
@@ -69,17 +71,15 @@ def _ensure_table(db_path: str = "mls.db") -> None:
         c.executescript(_DDL)
         # 舊表補欄(2026-08-12 新增 net_active / rel_strength)
         cols = {r[1] for r in c.execute("PRAGMA table_info(reject_outcome)").fetchall()}
-        for col in ("net_active", "rel_strength"):
+        for col in ("net_active", "rel_strength", "fnr_5", "fnr_9"):
             if col not in cols:
-                c.execute(f"ALTER TABLE reject_outcome ADD COLUMN {col} REAL")
+                typ = "INTEGER" if col.startswith("fnr_") else "REAL"
+                c.execute(f"ALTER TABLE reject_outcome ADD COLUMN {col} {typ}")
         c.commit()
     try:
         store.register_table(TABLE, PLUGIN)
     except store.TableOwnershipError:
         pass  # 已註冊
-
-
-_ensure_table()
 
 
 def judge_row(base_close, t1_open, t1_high, t1_low, t1_close,
@@ -96,30 +96,27 @@ def judge_row(base_close, t1_open, t1_high, t1_low, t1_close,
     gap = _pct(t1_open)
 
     out = {"t1_ret": ret, "t1_high_ret": high_ret, "gap_pct": gap,
-           "net_active": net_active, "rel_strength": rel_strength}
+           "net_active": net_active, "rel_strength": rel_strength,
+           "fnr_5": False, "fnr_9": False}
 
     if not base_close or t1_close is None:
         out.update({"tradable": None, "verdict": "資料不足"})
         return out
 
-    # 買得到:跳空過大或一價鎖死 → 進不去,不計
+    # 保留可交易性作診斷欄位，但 FNR 母體是「全部被淘汰股票」，不以此排除。
     locked = (t1_high is not None and t1_low is not None and t1_high == t1_low)
     gapped = (gap is not None and gap > GAP_MAX)
-    if locked or gapped:
-        out.update({"tradable": 0, "verdict": "買不到(不計)"})
-        return out
-
-    # 誤刪三條件(缺資料 → 該條件不成立,寧可少算)
-    flow_ok = (net_active is not None and net_active > 0)
-    rel_ok = (rel_strength is not None and rel_strength >= 0)
     intraday = high_ret
-    if intraday is not None and flow_ok and rel_ok and intraday >= SEVERE_RET:
+    fnr_5 = intraday is not None and intraday >= MISKILL_RET
+    fnr_9 = intraday is not None and intraday >= SEVERE_RET
+    if fnr_9:
         verdict = "嚴重誤刪"
-    elif intraday is not None and flow_ok and rel_ok and intraday >= MISKILL_RET:
+    elif fnr_5:
         verdict = "誤刪"
     else:
         verdict = "排對"
-    out.update({"tradable": 1, "verdict": verdict})
+    out.update({"tradable": 0 if (locked or gapped) else 1,
+                "fnr_5": fnr_5, "fnr_9": fnr_9, "verdict": verdict})
     return out
 
 
@@ -229,6 +226,7 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
             "t1_low": b1.get("low"), "t1_close": b1.get("close"),
             "t1_ret": j["t1_ret"], "t1_high_ret": j["t1_high_ret"],
             "gap_pct": j["gap_pct"], "net_active": na, "rel_strength": rel,
+            "fnr_5": int(j["fnr_5"]), "fnr_9": int(j["fnr_9"]),
             "tradable": j["tradable"], "verdict": j["verdict"], "verified_at": now,
         }
         rows.append(rec)
@@ -236,10 +234,10 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
 
     store.upsert_intraday(TABLE, PLUGIN, rows, db_path)
 
-    scored = [r for r in items if r["tradable"] == 1]
+    scored = [r for r in items if r["t1_high_ret"] is not None]
     denom = len(scored)
-    severe = sum(1 for r in scored if r["verdict"] == "嚴重誤刪")
-    miskills = sum(1 for r in scored if r["verdict"] in ("誤刪", "嚴重誤刪"))
+    severe = sum(r["fnr_9"] for r in scored)
+    miskills = sum(r["fnr_5"] for r in scored)
     order = {"嚴重誤刪": 0, "誤刪": 1, "排對": 2, "買不到(不計)": 3, "資料不足": 4}
     items.sort(key=lambda r: (order.get(r["verdict"], 9), -(r["t1_high_ret"] or -999)))
 
@@ -254,6 +252,9 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
         "miskills": miskills, "severe": severe,
         "miskill_rate": round(miskills / denom * 100, 1) if denom else None,
         "severe_rate": round(severe / denom * 100, 1) if denom else None,
+        "fnr_5_rate": round(miskills / denom * 100, 1) if denom else None,
+        "fnr_9_rate": round(severe / denom * 100, 1) if denom else None,
+        "fnr_5_target": "<15%", "fnr_9_target": "<5%",
         "items": items,
     }
 
@@ -266,18 +267,18 @@ def stats(days: int = 30, db_path: str = "mls.db") -> dict:
         by_factor = [dict(r) for r in c.execute(
             """SELECT fail_layer,
                       COUNT(*) n,
-                      SUM(CASE WHEN tradable=1 THEN 1 ELSE 0 END) tradable,
-                      SUM(CASE WHEN verdict IN ('誤刪','嚴重誤刪') THEN 1 ELSE 0 END) miskills,
-                      SUM(CASE WHEN verdict='嚴重誤刪' THEN 1 ELSE 0 END) severe,
-                      AVG(CASE WHEN tradable=1 THEN t1_high_ret END) avg_high_ret
+                      SUM(CASE WHEN t1_high_ret IS NOT NULL THEN 1 ELSE 0 END) tradable,
+                      SUM(CASE WHEN fnr_5=1 OR t1_high_ret>=5 THEN 1 ELSE 0 END) miskills,
+                      SUM(CASE WHEN fnr_9=1 OR t1_high_ret>=9 THEN 1 ELSE 0 END) severe,
+                      AVG(t1_high_ret) avg_high_ret
                FROM reject_outcome
                WHERE data_date >= ?
                GROUP BY fail_layer""", (since,))]
         daily = [dict(r) for r in c.execute(
             """SELECT data_date,
-                      SUM(CASE WHEN tradable=1 THEN 1 ELSE 0 END) tradable,
-                      SUM(CASE WHEN verdict IN ('誤刪','嚴重誤刪') THEN 1 ELSE 0 END) miskills,
-                      SUM(CASE WHEN verdict='嚴重誤刪' THEN 1 ELSE 0 END) severe
+                      SUM(CASE WHEN t1_high_ret IS NOT NULL THEN 1 ELSE 0 END) tradable,
+                      SUM(CASE WHEN fnr_5=1 OR t1_high_ret>=5 THEN 1 ELSE 0 END) miskills,
+                      SUM(CASE WHEN fnr_9=1 OR t1_high_ret>=9 THEN 1 ELSE 0 END) severe
                FROM reject_outcome WHERE data_date >= ?
                GROUP BY data_date ORDER BY data_date""", (since,))]
     for t in by_factor:
@@ -293,6 +294,9 @@ def stats(days: int = 30, db_path: str = "mls.db") -> dict:
         "window_days": days, "since": since,
         "overall_miskill_rate": round(total_miskills / total_tradable * 100, 1) if total_tradable else None,
         "severe_rate": round(total_severe / total_tradable * 100, 1) if total_tradable else None,
+        "fnr_5_rate": round(total_miskills / total_tradable * 100, 1) if total_tradable else None,
+        "fnr_9_rate": round(total_severe / total_tradable * 100, 1) if total_tradable else None,
+        "fnr_5_target": "<15%", "fnr_9_target": "<5%",
         "tradable": total_tradable, "miskills": total_miskills, "severe": total_severe,
         "by_factor": by_factor, "daily": daily,
     }

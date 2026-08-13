@@ -23,6 +23,7 @@ if str(ROOT) not in sys.path:
 
 import broker  # noqa: E402  (VPS 的既有真實行情連線)
 import config  # noqa: E402
+from tw_price_limit import is_limit_up  # noqa: E402
 try:
     import quote_health  # noqa: E402  (行程內 MIS 備援 + 資料品質判定)
 except Exception:        # 備援模組缺席時不擋主流程(維持舊行為)
@@ -232,7 +233,11 @@ def _seven_factor_score(raw, ma20, chip):
     avail = sum(v["max"] for v in factors.values() if v["points"] is not None)
     pct = (points / avail * 100) if avail else None
 
-    extreme = abs(change) >= 9.0
+    # 漲停「不再一律排除」：改照七因子正常評分（高分→可操作、低分→觀察續盯），只附追高提醒。
+    # 跌停仍排除；漲停+主動賣超(拉高出貨)歸假紅排除。
+    # （2026-08-07 依實測：上銀+8.7%/聯茂+3.46% 漲停隔日續漲，一刀切「漲停排除」會漏掉。）
+    extreme_up = is_limit_up(price, change_rate=change)
+    extreme_down = change <= -9.0
     fake_red = change > 0 and aflow < 0
     resting = change <= 0 and aflow < 0
 
@@ -241,21 +246,41 @@ def _seven_factor_score(raw, ma20, chip):
     elif change < 0:
         against.append(f"股價下跌 {change:+.2f}%")
 
-    if extreme or fake_red or resting:
-        group = "排除"
-        if extreme:
-            # 漲停是追價風險，不是「太爛」；跌停則保留相反方向標籤。
-            subgroup = "漲停" if change > 0 else "跌停"
-            why = f"{subgroup} {change:+.2f}% ，追價風險高，不宜進場"
-        elif fake_red:
-            subgroup = "假紅衝高"
-            why = f"股價漲 {change:+.2f}% 但主動賣超 {abs(aflow):,} 張——假紅、主力邊拉邊出"
-        else:
-            subgroup = "資金流出"
-            why = f"股價 {change:+.2f}% 且主動賣超 {abs(aflow):,} 張——量價同步走弱"
-        reason = why
+    # 漲停分級：法人連賣/近月賣超（拉高無承接）→ 真追高，排除；
+    # 法人買 or 無籌碼資料 → 不排除，照七因子走可操作/觀察，只附追高提醒。
+    limitup_note = ""
+    _cr = []
+    if extreme_up:
+        _stk = chip.get("inst_streak")
+        _n20 = chip.get("inst_net_20d_lots")
+        if _stk is not None and _stk < 0:
+            _cr.append(f"法人連賣 {abs(int(_stk))} 日")
+        if _n20 is not None and _n20 < 0:
+            _cr.append(f"近月賣超 {abs(int(_n20)):,} 張")
+        limitup_note = ("⚠漲停追高；" + "、".join(_cr) + " → 拉高無承接，短打不留倉") if _cr \
+            else "⚠漲停追高，留意隔日回落（有法人買/籌碼撐才可續抱）"
+
+    # 盤中資料不足以證明四重結構失效，因此單一弱勢特徵一律保留。
+    # 股票潛力與進場狀態拆開：漲停仍可是 A，但當下禁止追高。
+    if extreme_up:
+        group, subgroup = "觀察", "⏳ 強勢但不追"
+        reason = limitup_note + "｜股票維持強勢，進場狀態：禁止追高"
+    elif (aflow > 0 and change <= 0) or (fake_red and change >= 0):
+        group, subgroup = "觀察", "🔄 反轉候選"
+        reason = (f"價格 {change:+.2f}%／主動資金 {aflow:+,} 張出現背離轉折，"
+                  "保留等待價格與資金同步確認")
+    elif extreme_down or fake_red or resting:
+        group, subgroup = "觀察", "👀 保留觀察"
+        features = []
+        if extreme_down:
+            features.append(f"跌幅 {change:+.2f}%")
+        if fake_red:
+            features.append(f"價漲但主動賣超 {abs(aflow):,} 張")
+        if resting:
+            features.append(f"價弱且主動賣超 {abs(aflow):,} 張")
+        reason = "、".join(features) + "｜僅為弱勢特徵，未滿四重失效，不淘汰"
     elif not missing and pct is not None and pct >= 65:
-        group, subgroup = "可操作", "盤中因子達標"
+        group, subgroup = "可操作", "🔥 A級啟動"
         facts = []
         if change > 0:
             facts.append(f"上漲 {change:+.2f}%")
@@ -263,8 +288,10 @@ def _seven_factor_score(raw, ma20, chip):
             facts.append(f"主動買超 {aflow:,} 張")
         facts.extend(ev[:2])
         reason = f"盤中達標 {pct:.0f}%｜" + "｜".join(dict.fromkeys(facts))
+        if limitup_note:
+            reason += "｜" + limitup_note
     else:
-        group, subgroup = "觀察", "條件待確認"
+        group, subgroup = "觀察", "👀 保留觀察"
         bits = []
         if ev:
             bits.append("有利：" + "、".join(ev[:3]))
@@ -277,6 +304,8 @@ def _seven_factor_score(raw, ma20, chip):
         if missing:
             bits.append("等待：" + "、".join(missing))
         reason = "觀察｜" + "｜".join(bits)
+        if limitup_note:
+            reason = limitup_note + "（續觀察，不直接排除）｜" + reason
 
     return {
         "score": round(points, 1), "score_max": 100,
@@ -286,6 +315,10 @@ def _seven_factor_score(raw, ma20, chip):
         "factors": factors, "score_missing": missing,
         "evidence": ev, "against": against,
         "group": group, "subgroup": subgroup, "reason": reason,
+        "classification": subgroup,
+        "potential_grade": "A" if subgroup in ("🔥 A級啟動", "⏳ 強勢但不追") else "B",
+        "entry_status": "禁止追高" if subgroup == "⏳ 強勢但不追" else "等待觸發",
+        "is_limit_up": extreme_up,
     }
 
 
@@ -356,7 +389,7 @@ def _row(raw):
     classification = {
         "group": seven["group"], "subgroup": seven["subgroup"],
         "reason": seven["reason"], "all_pass": seven["group"] == "可操作",
-        "extreme": abs(change) >= 9.0,
+        "extreme": bool(seven.get("is_limit_up")) or change <= -9.0,
     }
     # 白話判語跟著實際分類 group 走：沒進「可操作」就不會被說成真攻擊/強惜售。
     explanation = ai_explain.local_explain(snap, regime=_current_regime(),
@@ -368,7 +401,12 @@ def _row(raw):
         "sector": _sec[0] if _sec else "其他",
         "track": _sec[1] if _sec and len(_sec) > 1 else "attack",
         "price": price,
+        # 盤中最高：供「今日觸發」三態燈判定「曾觸及後回落」，不影響其他欄位
+        "high": (float(raw.get("high")) or None) if raw.get("high") else None,
         "change_rate": round(change, 2),
+        "is_limit_up": bool(seven.get("is_limit_up")),
+        "potential_grade": seven.get("potential_grade"),
+        "entry_status": seven.get("entry_status"),
         "buy_volume": None if aflow_unavail else buy,
         "sell_volume": None if aflow_unavail else sell,
         "tick_type": raw.get("tick_type"),

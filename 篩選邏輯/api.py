@@ -24,6 +24,7 @@ import config
 import screen_intraday
 import screen_post
 import store
+from tw_price_limit import is_limit_up
 from phase import Phase, get_phase, describe, today_tw
 
 # B 鏈(盤中發現 → 盤後驗證 → 隔日候選)。與 A 鏈完全獨立,只在 merge_pool 交會。
@@ -81,6 +82,35 @@ def _attach_intraday_note(dropped):
         row["intraday_note"] = intraday_note.build(why, flow, chg)
 
 
+def _attach_t1_verify_flow(rows, pool_date):
+    """Attach only the next-trading-day verification flow for a dropped pool.
+
+    The pool build date is T.  T's intraday flow is never a verification
+    result for that same pool; until T+1 arrives the fields stay pending.
+    """
+    from phase import next_trading_day, today_tw
+
+    today = today_tw()
+    verify_date = next_trading_day(pool_date)
+    pending = verify_date > today
+    af = {} if pending else store.read_date("aflow", verify_date)
+    quotes = {} if pending else store.read_date("quote_snap", verify_date)
+    for row in rows:
+        code = str(row.get("stock_id") or row.get("code") or "")
+        flow = (af.get(code) or {}).get("net_active")
+        quote = quotes.get(code) or {}
+        row["verify_date"] = verify_date.isoformat()
+        row["verify_pending"] = pending
+        row["t1_aflow"] = flow
+        row["t1_price"] = quote.get("price")
+        row["t1_change"] = quote.get("change_rate")
+        row["t1_is_limit_up"] = is_limit_up(quote.get("price"), change_rate=quote.get("change_rate"))
+        row["t1_is_live"] = verify_date == today
+        why = row.get("why") or row.get("reason") or row.get("detail") or ""
+        row["t1_note"] = ("待 T+1 驗證" if pending else
+                          intraday_note.build(why, flow, quote.get("change_rate")))
+
+
 @app.get("/api/watchlist")
 def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,預設依當下時段")):
     """
@@ -118,39 +148,51 @@ def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,
         else:
             data = screen_post.load_last_post()
 
-    # 淘汰名單附加「今日盤中說明」(後台算、前台印;唯讀,壞了不影響名單)
+    # 淘汰列只附加 T+1 驗證流；絕不把砍當天流掛上去。
     if isinstance(data, dict) and data.get("dropped"):
         try:
-            _attach_intraday_note(data["dropped"])
+            import datetime as _dt
+            _attach_t1_verify_flow(data["dropped"], _dt.date.fromisoformat(data["data_date"]))
         except Exception as _e:
-            print(f"[watchlist] intraday_note skip: {_e}")
+            print(f"[watchlist] T+1 verify flow skip: {_e}")
     return JSONResponse(data)
 
 
 @app.get("/api/dropped")
 def dropped_review(pool_date: Optional[str] = Query(None, description="池日(=淘汰資料日);直接指定則優先"),
-                   applies_date: Optional[str] = Query(None, description="檢視日(正在盯盤中的那天);回該日的前一交易日池=驗證組")):
-    """複盤用:某池日的被篩掉名單 + 今日盤中資金流/說明。
+                   applies_date: Optional[str] = Query(None, description="與觀察清單同一個 build 的 data_date")):
+    """Return the dropped rows from the same build as the watchlist.
 
-    淘汰名單＝驗證組,永遠 = 檢視日的『前一交易日』那個 build:
-      看 8/11 → 淘汰 8/10;看 8/10 → 淘汰 8/7(8/8、8/9 週末)。
-    這批才有『檢視日當天表現』可回頭驗證當初淘汰對不對 → 優化未來篩選,
-    故意落後主表一個 build,不跟著主表跳到收盤剛滾出、還沒有今天表現的新池。
-    參數優先序:pool_date(直接指定資料日) > applies_date(檢視日→前一交易日) > 預設(今天→前一交易日)。"""
-    from phase import prev_trading_day, today_tw
+    ``pool_date`` and ``applies_date`` both identify the build date directly;
+    there is intentionally no previous-trading-day fallback.  A pool built on
+    T is verified only with T+1 flow, and remains pending before T+1 arrives.
+    """
+    from phase import next_trading_day, today_tw
     import datetime as _dt
     if pool_date:
         pd = _dt.date.fromisoformat(pool_date)
     elif applies_date:
-        pd = prev_trading_day(_dt.date.fromisoformat(applies_date))
+        pd = _dt.date.fromisoformat(applies_date)
     else:
-        pd = prev_trading_day(today_tw())
+        # Same build as the currently served post-market watchlist.  Before
+        # today's close this is normally the previous trading day's build.
+        current = screen_post.load_last_post()
+        raw_date = current.get("data_date") if isinstance(current, dict) else None
+        pd = _dt.date.fromisoformat(raw_date) if raw_date else today_tw()
     rows = screen_post.load_dropped(pd)
-    try:
-        _attach_intraday_note(rows)
-    except Exception as _e:
-        print(f"[dropped] intraday_note skip: {_e}")
-    return JSONResponse({"data_date": pd.isoformat(), "dropped": rows})
+    today = today_tw()
+    verify_date = next_trading_day(pd)
+    pending = verify_date > today
+    _attach_t1_verify_flow(rows, pd)
+    return JSONResponse({
+        "data_date": pd.isoformat(),
+        "verify_date": verify_date.isoformat(),
+        "verify_pending": pending,
+        "today": today.isoformat(),
+        "note": (f"淘汰={pd.isoformat()} 收盤篩掉;用 T+1={verify_date.isoformat()} 盤中資金流驗證"
+                 + ("(尚未到,待驗證)" if pending else "(驗證中/已驗)")),
+        "dropped": rows,
+    })
 
 
 @app.get("/api/funnel")
@@ -273,7 +315,8 @@ def verify_stats(days: int = Query(30, description="滾動交易日窗")):
 def verify_reject(date: str = Query("", description="判定日 data_date;預設最近已驗證日"),
                   days: int = Query(30, description="滾動誤刪率窗")):
     """淘汰名單誤刪率(唯讀):被淘汰那批的隔日表現。
-    誤刪=買得到且隔日盤中漲幅≥4%+主動資金轉正+相對強度合格;≥7%=嚴重誤刪。
+    FNR +5%=被淘汰股票中 T+1 盤中最高漲幅≥5%;FNR +9%=同口徑≥9%。
+    不以資金流、相對強度或是否跳空過濾母體。
     stats=滾動各淘汰因子誤刪率(最該放寬門檻的排前面);rows=某判定日逐檔明細。"""
     import sqlite3
     import reject_verify
