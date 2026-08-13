@@ -376,6 +376,35 @@ def _relative_strength(universe: list[str], derivs: dict) -> dict:
     return out
 
 
+def _strict_previous_bar(rows: list[dict], d: _dt.date) -> dict | None:
+    """Pick the newest bar strictly before d, even when today's bar is absent."""
+    day = d.isoformat()
+    return next((row for row in rows if str(row.get("data_date") or "") < day), None)
+
+
+def _bar_with_live_quote(bar: dict | None, quote: dict | None,
+                         previous: dict | None) -> dict:
+    """Fill an incomplete post-close daily bar from same-day quote facts."""
+    out = dict(bar or {})
+    q = quote or {}
+    prior = previous or {}
+    price = q.get("price")
+    if price is not None:
+        out["close"] = price
+        if out.get("open") is None:
+            out["open"] = q.get("open") or price
+        if out.get("high") is None:
+            out["high"] = q.get("high") or q.get("intraday_high") or price
+        if out.get("low") is None:
+            out["low"] = q.get("low") or q.get("intraday_low") or price
+        if out.get("volume") is None and q.get("volume") is not None:
+            out["volume"] = q.get("volume")
+    for key in ("ma5", "ma20", "ma60", "vol_ma20"):
+        if out.get(key) is None and prior.get(key) is not None:
+            out[key] = prior.get(key)
+    return out
+
+
 # ============================================================ 主流程
 
 def build(universe: list[str], db_path: str = "mls.db",
@@ -384,6 +413,7 @@ def build(universe: list[str], db_path: str = "mls.db",
 
     envs = run_all({
         "bar": lambda: store.read_date("daily_bar", d, db_path),
+        "quote": lambda: store.read_date("quote_snap", d, db_path),
         "inst": lambda: store.read_date("inst_flow", d, db_path),
         "margin": lambda: store.read_date("margin", d, db_path),
         "health": lambda: store.read_date("money_health", d, db_path),
@@ -394,6 +424,7 @@ def build(universe: list[str], db_path: str = "mls.db",
     persist_status(envs, db_path)
 
     b = envs["bar"].get({}) or {}
+    q = envs["quote"].get({}) or {}
     i = envs["inst"].get({}) or {}
     m = envs["margin"].get({}) or {}
     h = envs["health"].get({}) or {}
@@ -403,6 +434,9 @@ def build(universe: list[str], db_path: str = "mls.db",
 
     # 多日衍生 + 族群/大盤相對強度(前置一次算好,迴圈裡引用)
     derivs = {c: _derive_multiday(c, d, db_path) for c in universe}
+    for c in universe:
+        if (q.get(c) or {}).get("change_rate") is not None:
+            derivs[c]["change_rate"] = (q.get(c) or {}).get("change_rate")
     rels = _relative_strength(universe, derivs)
     flow_now = {c: (af_t.get(c) or {}).get("net_active") for c in universe}
     flow_prev = {c: (af_y.get(c) or {}).get("net_active") for c in universe}
@@ -413,9 +447,9 @@ def build(universe: list[str], db_path: str = "mls.db",
     for c in universe:
         # 雙分數分層接管淘汰：只有四道結構失效全中才移出主名單；
         # 強勢禁追/核心/候補全部保留。舊 hard_drop 仍算,但只當「量測對照」記錄,不再當閘。
-        prev_rows = store.read_recent("daily_bar", c, d, 2, db_path)
-        previous_bar = prev_rows[1] if len(prev_rows) > 1 else None
-        bar = b.get(c) or {}
+        prev_rows = store.read_recent("daily_bar", c, d, 3, db_path)
+        previous_bar = _strict_previous_bar(prev_rows, d)
+        bar = _bar_with_live_quote(b.get(c), q.get(c), previous_bar)
         change = derivs[c].get("change_rate")
         lay = layered_score.score_layered(layered_score.build_input(
             c, bar, i.get(c), previous_bar=previous_bar,
@@ -425,7 +459,7 @@ def build(universe: list[str], db_path: str = "mls.db",
                                     reference_price=(previous_bar or {}).get("close"),
                                     change_rate=change),
             **derivs[c], **rels[c]))
-        old_drop, old_hits = hard_drop(b.get(c), i.get(c))   # 舊制對照,供誤刪率量測
+        old_drop, old_hits = hard_drop(bar, i.get(c))   # 舊制對照,供誤刪率量測
         lay_fields = {
             "tier": lay["tier"], "classification": lay["classification"],
             "potential_grade": lay["potential_grade"], "trend_stage": lay["trend_stage"],
@@ -455,8 +489,8 @@ def build(universe: list[str], db_path: str = "mls.db",
                             "rejected_ma5": bar.get("ma5"),
                             **lay_fields})
             continue
-        it = score_one(c, b.get(c), i.get(c), m.get(c), h.get(c), ab.get(c))
-        it = assign_track(b.get(c), it, health=h.get(c), inst=i.get(c))
+        it = score_one(c, bar, i.get(c), m.get(c), h.get(c), ab.get(c))
+        it = assign_track(bar, it, health=h.get(c), inst=i.get(c))
         it.update(lay_fields)
         it["layered_reasons"] = lay["reasons"]
         it["layered_risks"] = lay["risks"]

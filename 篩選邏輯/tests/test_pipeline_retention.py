@@ -9,9 +9,22 @@ sys.path.insert(0, str(SCREEN_DIR))
 import funnel
 import layered_score as ls
 import screen_post
+import datetime as dt
 
 
 class FunnelRetentionTests(unittest.TestCase):
+    def test_post_fallback_keeps_date_alignment_when_today_bar_is_missing(self):
+        rows = [
+            {"data_date": "2026-08-12", "close": 933, "high": 933, "ma20": 1003.05},
+            {"data_date": "2026-08-11", "close": 849, "high": 883, "ma20": 1008},
+        ]
+        previous = screen_post._strict_previous_bar(rows, dt.date(2026, 8, 13))
+        current = screen_post._bar_with_live_quote(None, {
+            "price": 1025, "change_rate": 9.86}, previous)
+        self.assertEqual(previous["high"], 933)
+        self.assertEqual(current["close"], 1025)
+        self.assertEqual(current["ma20"], 1003.05)
+
     def test_final_decision_uses_central_classifier_only(self):
         full = {"failure_gate_count": 4, "classification": ls.TIER_REJECTED}
         partial = {"failure_gate_count": 3, "classification": ls.TIER_CANDIDATE}
