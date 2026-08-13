@@ -10,6 +10,8 @@ class IntradayClassifierSourceTests(unittest.TestCase):
         cls.path = base / "vps_intraday_test.py"
         if not cls.path.exists():
             cls.path = base.parent / "vps_intraday_test.py"
+        if not cls.path.exists():
+            raise unittest.SkipTest("8000 main-site module is not installed in the AB engine tree")
         cls.source = cls.path.read_text(encoding="utf-8")
         cls.tree = ast.parse(cls.source)
 
@@ -32,6 +34,10 @@ class IntradayClassifierSourceTests(unittest.TestCase):
         keys = {k.value for node in seven_returns for k in node.value.keys
                 if isinstance(k, ast.Constant) and isinstance(k.value, str)}
         self.assertIn("is_limit_up", keys)
+
+    def test_negative_institution_streak_is_labeled_as_selling(self):
+        self.assertIn('streak_detail = f"法人連賣 {abs(int(streak))} 日"', self.source)
+        self.assertNotIn('"detail": f"法人連買 {streak} 日"', self.source)
 
 
 if __name__ == "__main__":

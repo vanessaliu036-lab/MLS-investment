@@ -304,9 +304,9 @@ def chase_risk_score(f: dict, g: dict) -> dict:
 
 
 # ══════════════════════════════════════════════════════════
-# 3. 結構失效(只有 >=2 項才真淘汰;Pending 不算一項)
+# 3. 結構失效（四道閘門全中才真淘汰；Pending 不算成立）
 # ══════════════════════════════════════════════════════════
-# 四類結構失效(V2 2026-08-12):淘汰需 >=2「不同類」失效。同類多訊號只算一次。
+# 四類結構失效（V3 2026-08-13）：淘汰需四類同時成立。
 # 治「單根黑 K 被算成兩項結構失效」的重複計分(跌破月線 vs 法人賣超且收黑,兩者都含價格弱勢)。
 _FAIL_CATEGORY = {
     "跌破月線": "價格結構",
@@ -474,7 +474,7 @@ def score_layered(f: dict) -> dict:
     tier = classify(cont["score"], chase["score"], fails,
                     chase_block=chase_block, turns=turns, lifecycle=lifecycle)
     potential = "A" if lifecycle in ("🔥 Day 1 首次突破", "🔥 Day 2 主升確認") or cont["score"] >= CONT_CORE_MIN else "B"
-    entry_status = "禁止追高" if chase_block else "等待觸發"
+    entry_status = "禁止追高" if (chase_block or chase["score"] >= CHASE_RISK_MAX) else "等待觸發"
     return {
         "code": f["code"],
         "continuation": cont["score"],

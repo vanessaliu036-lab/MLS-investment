@@ -98,6 +98,19 @@ class FourGateTests(unittest.TestCase):
         for data in [feature_input(), feature_input(aflow_previous=None), feature_input(bar={"close": 102.0})]:
             self.assertIn(ls.score_layered(data)["classification"], allowed)
 
+    def test_high_chase_risk_sets_entry_status_to_no_chase(self):
+        result = ls.score_layered(feature_input(
+            bar={"open": 100.0, "high": 111.0, "low": 99.0, "close": 109.0,
+                 "ma5": 103.0, "ma20": 99.0, "volume": 400_000, "vol_ma20": 100_000},
+            change_rate=8.0,
+            prior_changes=[6.0, 5.5],
+            aflow_today=10_000,
+            aflow_previous=5_000,
+        ))
+        self.assertGreaterEqual(result["chase_risk"], ls.CHASE_RISK_MAX)
+        self.assertEqual(result["classification"], ls.TIER_NO_CHASE)
+        self.assertEqual(result["entry_status"], "禁止追高")
+
 
 if __name__ == "__main__":
     unittest.main()

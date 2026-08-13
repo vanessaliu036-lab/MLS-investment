@@ -217,9 +217,19 @@ def _seven_factor_score(raw, ma20, chip):
     if streak is not None:
         p_st = FACTOR_WEIGHTS["inst_streak"] * _norm(streak, 0, 5)
         points += p_st
+        if streak >= 2:
+            streak_detail = f"法人連買 {int(streak)} 日"
+        elif streak <= -2:
+            streak_detail = f"法人連賣 {abs(int(streak))} 日"
+        elif streak > 0:
+            streak_detail = "法人今日買超"
+        elif streak < 0:
+            streak_detail = "法人今日賣超"
+        else:
+            streak_detail = "法人中性"
         factors["inst_streak"] = {
             "points": round(p_st, 1), "max": 10, "status": "已接入",
-            "detail": f"法人連買 {streak} 日",
+            "detail": streak_detail,
         }
         if streak >= 3:
             ev.append(f"法人連買 {streak} 日")

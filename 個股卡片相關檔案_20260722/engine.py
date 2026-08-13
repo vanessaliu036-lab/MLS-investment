@@ -186,6 +186,7 @@ def analyze_leader(leader):
 
     # 籌碼(FinMind 盤後,日快取)
     ch = chips.get_chips(code)
+    ch = ch if isinstance(ch, dict) else {}
 
     # AI 建議(規則模板,盤中不呼叫 LLM — 依 MLS 定案)
     advice, stance = _ai_advice(leader, ma_bias, high_space, ch)
@@ -201,10 +202,10 @@ def analyze_leader(leader):
         f"ma{C.MA_SPACE_MA}": ma_val,
         "ma_bias_pct": ma_bias,          # 均線上方空間(乖離,+為在均線上方)
         "high_space_pct": high_space,    # 距60日前高空間(壓力上方空間)
-        "inst_net_20d_lots": ch["inst_net_20d_lots"],
-        "inst_streak": ch["inst_streak"],
-        "big_holder_pct": ch["big_holder_pct"],
-        "big_holder_trend": ch["big_holder_trend"],
+        "inst_net_20d_lots": ch.get("inst_net_20d_lots"),
+        "inst_streak": ch.get("inst_streak"),
+        "big_holder_pct": ch.get("big_holder_pct"),
+        "big_holder_trend": ch.get("big_holder_trend"),
         "ai_stance": stance,             # bullish / neutral / caution
         "ai_advice": advice,
     }
@@ -217,25 +218,28 @@ def _ai_advice(leader, ma_bias, high_space, ch):
     s = leader["snap"]
     pts, score = [], 0
 
-    inst = ch["inst_net_20d_lots"]
+    ch = ch if isinstance(ch, dict) else {}
+    inst = ch.get("inst_net_20d_lots")
     if inst is not None:
         if inst > 0:
             pts.append(f"法人近月買超 {inst:,} 張"); score += 2
         else:
             pts.append(f"法人近月賣超 {abs(inst):,} 張"); score -= 2
-    if ch["inst_streak"] and ch["inst_streak"] >= 3:
-        pts.append(f"外資連買 {ch['inst_streak']} 日"); score += 1
-    if ch["inst_streak"] and ch["inst_streak"] <= -3:
-        pts.append(f"外資連賣 {abs(ch['inst_streak'])} 日"); score -= 1
+    streak = ch.get("inst_streak")
+    if streak and streak >= 3:
+        pts.append(f"外資連買 {streak} 日"); score += 1
+    if streak and streak <= -3:
+        pts.append(f"外資連賣 {abs(streak)} 日"); score -= 1
 
-    if ch["big_holder_pct"] is not None:
-        t = ch["big_holder_trend"]
+    big_holder_pct = ch.get("big_holder_pct")
+    if big_holder_pct is not None:
+        t = ch.get("big_holder_trend")
         if t is not None and t > 0.3:
-            pts.append(f"千張大戶 {ch['big_holder_pct']}% 且近月增 {t}pp"); score += 1
+            pts.append(f"千張大戶 {big_holder_pct}% 且近月增 {t}pp"); score += 1
         elif t is not None and t < -0.3:
-            pts.append(f"千張大戶 {ch['big_holder_pct']}% 但近月減 {abs(t)}pp"); score -= 1
+            pts.append(f"千張大戶 {big_holder_pct}% 但近月減 {abs(t)}pp"); score -= 1
         else:
-            pts.append(f"千張大戶持股 {ch['big_holder_pct']}%")
+            pts.append(f"千張大戶持股 {big_holder_pct}%")
 
     if ma_bias is not None:
         if 0 <= ma_bias <= 8:

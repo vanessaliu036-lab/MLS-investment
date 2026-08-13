@@ -9,6 +9,8 @@ class FrontendLimitRowTests(unittest.TestCase):
         path = base / "intraday_decision_dataflow.html"
         if not path.exists():
             path = base.parent / "intraday_decision_dataflow.html"
+        if not path.exists():
+            raise unittest.SkipTest("8000 main-site HTML is not installed in the AB engine tree")
         cls.html = path.read_text(encoding="utf-8")
 
     def test_shared_exact_limit_predicate_exists(self):
@@ -24,6 +26,10 @@ class FrontendLimitRowTests(unittest.TestCase):
 
     def test_percentage_only_guess_is_removed(self):
         self.assertNotIn(">=9.8", self.html)
+
+    def test_rejected_table_shows_recovery_fields(self):
+        for label in ("淘汰原因", "救援訊號", "Recovery Score", "隔日觸發條件"):
+            self.assertIn(label, self.html)
 
 
 if __name__ == "__main__":
