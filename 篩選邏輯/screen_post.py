@@ -26,6 +26,7 @@ import json
 import store
 import config
 import layered_score
+import recovery_scan
 from tw_price_limit import is_limit_up
 from envelope import run_all, persist_status, missing_labels
 from phase import Phase, prev_trading_day, next_trading_day, today_tw
@@ -404,10 +405,14 @@ def build(universe: list[str], db_path: str = "mls.db",
     # 多日衍生 + 族群/大盤相對強度(前置一次算好,迴圈裡引用)
     derivs = {c: _derive_multiday(c, d, db_path) for c in universe}
     rels = _relative_strength(universe, derivs)
+    flow_now = {c: (af_t.get(c) or {}).get("net_active") for c in universe}
+    flow_prev = {c: (af_y.get(c) or {}).get("net_active") for c in universe}
+    sector_turn = recovery_scan.sector_flow_turns(
+        universe, _code_group(), flow_now, flow_prev)
 
     kept, dropped = [], []
     for c in universe:
-        # 雙分數分層接管淘汰(治誤刪):只有 tier==淘汰(≥2結構失效)才移出主名單;
+        # 雙分數分層接管淘汰：只有四道結構失效全中才移出主名單；
         # 強勢禁追/核心/候補全部保留。舊 hard_drop 仍算,但只當「量測對照」記錄,不再當閘。
         prev_rows = store.read_recent("daily_bar", c, d, 2, db_path)
         previous_bar = prev_rows[1] if len(prev_rows) > 1 else None
@@ -436,7 +441,19 @@ def build(universe: list[str], db_path: str = "mls.db",
         }
         if lay["classification"] == layered_score.TIER_REJECTED:
             # 真淘汰:帶結構失效原因(不是「分數低」),供淘汰名單顯示與 T+1 錯殺量測
+            recovery = recovery_scan.scan(lay, {
+                **bar,
+                "change_rate": change,
+                "total_net": (i.get(c) or {}).get("total_net"),
+                "aflow_today": flow_now.get(c),
+                "aflow_previous": flow_prev.get(c),
+                "previous_low": (previous_bar or {}).get("low"),
+                "sector_flow_turn": sector_turn.get(c),
+            })
             dropped.append({"code": c, "why": lay["structural_failures"] or old_hits,
+                            "recovery": recovery,
+                            "rejected_high": bar.get("high"),
+                            "rejected_ma5": bar.get("ma5"),
                             **lay_fields})
             continue
         it = score_one(c, b.get(c), i.get(c), m.get(c), h.get(c), ab.get(c))
@@ -553,7 +570,15 @@ def _shape_dropped_row(code, p, name_map, cg):
         "failure_gates": p.get("failure_gates") or {},
         "failure_gate_count": p.get("failure_gate_count"),
         "explain": (f"{detail} → 結構失效,移出主名單。" if detail
-                    else "結構失效(2 項以上),移出主名單。"),
+                    else "結構失效（四道閘門全中），移出主名單。"),
+        "recovery_status": (p.get("recovery") or {}).get("status"),
+        "recovery_score": (p.get("recovery") or {}).get("score"),
+        "recovery_signals": (p.get("recovery") or {}).get("signals") or [],
+        "recovery_pending": (p.get("recovery") or {}).get("pending") or [],
+        "recovery_pool": bool((p.get("recovery") or {}).get("in_recovery_pool")),
+        "recovery_trigger": (p.get("recovery") or {}).get("t1_trigger"),
+        "rejected_high": p.get("rejected_high"),
+        "rejected_ma5": p.get("rejected_ma5"),
         "tags": [],
         "continuation": p.get("continuation"), "chase_risk": p.get("chase_risk"),
     }

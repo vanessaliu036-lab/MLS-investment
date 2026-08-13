@@ -40,6 +40,17 @@ class RejectKpiTests(unittest.TestCase):
         self.assertFalse(row["fnr_9"])
         self.assertEqual(row["verdict"], "資料不足")
 
+    def test_recovery_pool_kpis_use_only_predeclared_recovery_members(self):
+        stats = reject_verify.recovery_kpis([
+            {"recovery_pool": 1, "t1_high_ret": 6.0},
+            {"recovery_pool": 1, "t1_high_ret": 10.0},
+            {"recovery_pool": 0, "t1_high_ret": 12.0},
+            {"recovery_pool": 1, "t1_high_ret": None},
+        ])
+        self.assertEqual(stats["denom"], 2)
+        self.assertEqual(stats["hit_5_rate"], 100.0)
+        self.assertEqual(stats["hit_9_rate"], 50.0)
+
 
 if __name__ == "__main__":
     unittest.main()

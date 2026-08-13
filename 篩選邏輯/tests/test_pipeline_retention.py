@@ -22,6 +22,13 @@ class FunnelRetentionTests(unittest.TestCase):
         rows = [{"code": str(i)} for i in range(25)]
         self.assertEqual(len(screen_post.select_pool(rows)), 25)
 
+    def test_both_pipelines_use_the_shared_recovery_scanner(self):
+        screen_source = Path(screen_post.__file__).read_text(encoding="utf-8")
+        funnel_source = Path(funnel.__file__).read_text(encoding="utf-8")
+        self.assertIn("recovery_scan.scan", screen_source)
+        self.assertIn("recovery_scan.scan", funnel_source)
+        self.assertIn('if rec["in_recovery_pool"]:', funnel_source)
+
     def test_below_monthly_average_is_feature_not_drop(self):
         series = [{"slot": "1320", "price": 95.0, "change_rate": -2.5,
                    "volume": 80, "net_active": -500}]

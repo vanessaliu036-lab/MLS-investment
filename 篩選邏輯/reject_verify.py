@@ -58,6 +58,9 @@ CREATE TABLE IF NOT EXISTS reject_outcome (
     rel_strength REAL,            -- 個股 T+1 收盤報酬 - 全池均(大盤相對代理)
     fnr_5 INTEGER,                -- T+1 最高相對 T 收盤 >=5%
     fnr_9 INTEGER,                -- T+1 最高相對 T 收盤 >=9%
+    recovery_score REAL,          -- T 日獨立救援分數
+    recovery_status TEXT,         -- 高優先救援 / 淘汰觀察 / 維持失效
+    recovery_pool INTEGER,        -- T 日是否已納入救援池（不得 T+1 後補標）
     tradable INTEGER,             -- 1=買得到 0=進不去
     verdict TEXT,                 -- 排對 / 誤刪 / 嚴重誤刪 / 買不到(不計) / 資料不足
     verified_at TEXT,
@@ -71,9 +74,11 @@ def _ensure_table(db_path: str = "mls.db") -> None:
         c.executescript(_DDL)
         # 舊表補欄(2026-08-12 新增 net_active / rel_strength)
         cols = {r[1] for r in c.execute("PRAGMA table_info(reject_outcome)").fetchall()}
-        for col in ("net_active", "rel_strength", "fnr_5", "fnr_9"):
+        for col in ("net_active", "rel_strength", "fnr_5", "fnr_9",
+                    "recovery_score", "recovery_status", "recovery_pool"):
             if col not in cols:
-                typ = "INTEGER" if col.startswith("fnr_") else "REAL"
+                typ = ("INTEGER" if col.startswith("fnr_") or col == "recovery_pool"
+                       else "TEXT" if col == "recovery_status" else "REAL")
                 c.execute(f"ALTER TABLE reject_outcome ADD COLUMN {col} {typ}")
         c.commit()
     try:
@@ -120,6 +125,19 @@ def judge_row(base_close, t1_open, t1_high, t1_low, t1_close,
     return out
 
 
+def recovery_kpis(rows: list[dict]) -> dict:
+    """T+1 hit rates for stocks declared in the recovery pool on T."""
+    scored = [r for r in rows if r.get("recovery_pool") and r.get("t1_high_ret") is not None]
+    denom = len(scored)
+    hit5 = sum(r["t1_high_ret"] >= MISKILL_RET for r in scored)
+    hit9 = sum(r["t1_high_ret"] >= SEVERE_RET for r in scored)
+    return {
+        "denom": denom, "hit_5": hit5, "hit_9": hit9,
+        "hit_5_rate": round(hit5 / denom * 100, 1) if denom else None,
+        "hit_9_rate": round(hit9 / denom * 100, 1) if denom else None,
+    }
+
+
 class StaleSourceError(RuntimeError):
     """讀當日型表時,來源最新日落後預期交易日 → 大聲爆掉,不靜默沿用舊列。
     (根治『接錯表/接到停更表』反覆發生:停更表與活表讀取當下長得一樣,
@@ -159,8 +177,12 @@ def _rejects_on(pool_date: _dt.date, db_path: str) -> dict[str, dict]:
         except Exception:
             pl = {}
         sf = pl.get("structural_failures") or pl.get("why") or []
+        recovery = pl.get("recovery") or {}
         out[code] = {"layer": "＋".join(sf) if sf else (pl.get("tier") or "淘汰"),
-                     "reason": json.dumps(pl.get("why") or sf, ensure_ascii=False)}
+                     "reason": json.dumps(pl.get("why") or sf, ensure_ascii=False),
+                     "recovery_score": recovery.get("score"),
+                     "recovery_status": recovery.get("status"),
+                     "recovery_pool": int(bool(recovery.get("in_recovery_pool")))}
     # 護欄:仍在候補池的檔不是「被淘汰」
     try:
         pool = store.read_date("candidate_pool", pool_date, db_path)
@@ -227,6 +249,9 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
             "t1_ret": j["t1_ret"], "t1_high_ret": j["t1_high_ret"],
             "gap_pct": j["gap_pct"], "net_active": na, "rel_strength": rel,
             "fnr_5": int(j["fnr_5"]), "fnr_9": int(j["fnr_9"]),
+            "recovery_score": info.get("recovery_score"),
+            "recovery_status": info.get("recovery_status"),
+            "recovery_pool": info.get("recovery_pool", 0),
             "tradable": j["tradable"], "verdict": j["verdict"], "verified_at": now,
         }
         rows.append(rec)
@@ -238,6 +263,7 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
     denom = len(scored)
     severe = sum(r["fnr_9"] for r in scored)
     miskills = sum(r["fnr_5"] for r in scored)
+    recovery = recovery_kpis(items)
     order = {"嚴重誤刪": 0, "誤刪": 1, "排對": 2, "買不到(不計)": 3, "資料不足": 4}
     items.sort(key=lambda r: (order.get(r["verdict"], 9), -(r["t1_high_ret"] or -999)))
 
@@ -255,6 +281,7 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
         "fnr_5_rate": round(miskills / denom * 100, 1) if denom else None,
         "fnr_9_rate": round(severe / denom * 100, 1) if denom else None,
         "fnr_5_target": "<15%", "fnr_9_target": "<5%",
+        "recovery_kpis": recovery,
         "items": items,
     }
 
@@ -281,6 +308,9 @@ def stats(days: int = 30, db_path: str = "mls.db") -> dict:
                       SUM(CASE WHEN fnr_9=1 OR t1_high_ret>=9 THEN 1 ELSE 0 END) severe
                FROM reject_outcome WHERE data_date >= ?
                GROUP BY data_date ORDER BY data_date""", (since,))]
+        recovery_rows = [dict(r) for r in c.execute(
+            "SELECT recovery_pool,t1_high_ret FROM reject_outcome WHERE data_date>=?",
+            (since,))]
     for t in by_factor:
         t["miskill_rate"] = round(t["miskills"] / t["tradable"] * 100, 1) if t["tradable"] else None
         t["avg_high_ret"] = round(t["avg_high_ret"], 2) if t["avg_high_ret"] is not None else None
@@ -298,6 +328,7 @@ def stats(days: int = 30, db_path: str = "mls.db") -> dict:
         "fnr_9_rate": round(total_severe / total_tradable * 100, 1) if total_tradable else None,
         "fnr_5_target": "<15%", "fnr_9_target": "<5%",
         "tradable": total_tradable, "miskills": total_miskills, "severe": total_severe,
+        "recovery_kpis": recovery_kpis(recovery_rows),
         "by_factor": by_factor, "daily": daily,
     }
 

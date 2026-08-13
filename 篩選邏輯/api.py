@@ -31,6 +31,7 @@ from phase import Phase, get_phase, describe, today_tw
 import b_snapshot
 import b_discover
 import b_verify
+import recovery_scan
 import merge_pool
 # 當日收盤復盤(命中率/勝率分析層)。衡量模型準度,與名單產生脫鉤。
 import screen_verify
@@ -106,6 +107,14 @@ def _attach_t1_verify_flow(rows, pool_date):
         row["t1_change"] = quote.get("change_rate")
         row["t1_is_limit_up"] = is_limit_up(quote.get("price"), change_rate=quote.get("change_rate"))
         row["t1_is_live"] = verify_date == today
+        if row.get("recovery_pool"):
+            trigger = recovery_scan.evaluate_t1_trigger(
+                price=quote.get("price"), aflow=flow,
+                ma5=row.get("rejected_ma5"),
+                rejected_high=row.get("rejected_high"))
+            row["recovery_t1_checks"] = trigger["checks"]
+            row["recovery_t1_triggered"] = trigger["triggered"]
+            row["recovery_t1_classification"] = trigger["classification"]
         why = row.get("why") or row.get("reason") or row.get("detail") or ""
         row["t1_note"] = ("待 T+1 驗證" if pending else
                           intraday_note.build(why, flow, quote.get("change_rate")))
@@ -339,6 +348,7 @@ def verify_reject(date: str = Query("", description="判定日 data_date;預設�
         "data_date": dd, "dates": dates,
         "overall_miskill_rate": stats["overall_miskill_rate"],
         "severe_rate": stats["severe_rate"],
+        "recovery_kpis": stats.get("recovery_kpis"),
         "by_factor": stats["by_factor"], "daily": stats["daily"],
         "note": "誤刪率高的淘汰因子=最該放寬的門檻;族群相對強度族群index未接,暫用大盤相對代理",
         "rows": rows,

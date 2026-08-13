@@ -46,6 +46,7 @@ import json
 
 import store
 import layered_score
+import recovery_scan
 from envelope import run_all, persist_status, missing_labels
 from phase import Phase, prev_trading_day, today_tw
 
@@ -472,6 +473,11 @@ def run(universe: list[str], code_group: dict[str, str],
     # ---------- 中央分類器唯一去留門
     classified = {}
     central_final = []
+    recovery_pool = []
+    flow_now = {c: _latest_flow(snaps.get(c, [])) for c in final}
+    flow_prev = {c: (aflow_y.get(c) or {}).get("net_active") for c in final}
+    sector_turn = recovery_scan.sector_flow_turns(
+        final, code_group, flow_now, flow_prev)
     for c in final:
         u = _usable(snaps[c])
         last = u[-1] if u else {}
@@ -495,6 +501,31 @@ def run(universe: list[str], code_group: dict[str, str],
         classified[c] = lay
         if central_keep(lay):
             central_final.append(c)
+        else:
+            prev_bar = bar_y.get(c) or {}
+            rec = recovery_scan.scan(lay, {
+                **current_bar,
+                "change_rate": last.get("change_rate"),
+                "total_net": (inst.get(c) or {}).get("total_net"),
+                "aflow_today": flow_now.get(c),
+                "aflow_previous": flow_prev.get(c),
+                "previous_low": prev_bar.get("low"),
+                "sector_flow_turn": sector_turn.get(c),
+            })
+            recovery_row = {
+                "code": c, "group": code_group.get(c),
+                "classification": lay["classification"],
+                "failure_gates": lay["failure_gates"],
+                "failure_gate_count": lay["failure_gate_count"],
+                "recovery_status": rec["status"],
+                "recovery_score": rec["score"],
+                "recovery_signals": rec["signals"],
+                "recovery_pending": rec["pending"],
+                "recovery_trigger": rec["t1_trigger"],
+                "recovery_pool": rec["in_recovery_pool"],
+            }
+            if rec["in_recovery_pool"]:
+                recovery_pool.append(recovery_row)
     final = central_final
 
     store.upsert_intraday(TABLE, PLUGIN, rows, db_path)
@@ -536,6 +567,8 @@ def run(universe: list[str], code_group: dict[str, str],
         "degraded": missing_labels(envs),
         "count": len(items),
         "items": items,
+        "recovery_pool": sorted(recovery_pool,
+                                key=lambda row: (-row["recovery_score"], row["code"])),
         "empty_is_valid": True,
     }
 
