@@ -405,6 +405,36 @@ def _bar_with_live_quote(bar: dict | None, quote: dict | None,
     return out
 
 
+# ============================================================ 連買賣天數:一律即時重算
+def streak_from_flow(code: str, upto, db_path: str = "mls.db") -> Optional[int]:
+    """從 inst_flow 每日 total_net 序列即時算「三大法人連買(+)/連賣(-)天數」。
+
+    根治[法人資料晚出]:預存的 consecutive_days 常在選股當下用不完整/晚出資料算錯
+    (甚至正負號反),且 inst_flow 不可變、事後蓋不掉。每日淨額 total_net 本身是對的
+    (跟官方/FinMind 吻合),故顯示與計分一律不信任預存天數,改由此序列重算。
+    回 None = 無資料(Pending),不猜。
+    """
+    try:
+        rows = store.read_recent("inst_flow", code, upto, 25, db_path)  # 新→舊
+    except Exception:
+        return None
+    s = 0
+    for r in rows:                       # 由最近往回
+        t = r.get("total_net")
+        if t is None:
+            break
+        sign = 1 if t > 0 else (-1 if t < 0 else 0)
+        if sign == 0:
+            break
+        if s == 0:
+            s = sign
+        elif (s > 0) == (sign > 0):
+            s += sign
+        else:
+            break
+    return s if rows else None
+
+
 # ============================================================ 主流程
 
 def build(universe: list[str], db_path: str = "mls.db",
@@ -442,6 +472,13 @@ def build(universe: list[str], db_path: str = "mls.db",
     flow_prev = {c: (af_y.get(c) or {}).get("net_active") for c in universe}
     sector_turn = recovery_scan.sector_flow_turns(
         universe, _code_group(), flow_now, flow_prev)
+
+    # 連買賣天數一律即時重算覆蓋(根治晚出資料凍結成錯的天數/反號)。
+    # 覆蓋 i[c]["consecutive_days"] → reasons 與 layered_score 都吃到正確值。
+    for c in universe:
+        if c in i:
+            i[c] = dict(i[c])
+            i[c]["consecutive_days"] = streak_from_flow(c, d, db_path)
 
     kept, dropped = [], []
     for c in universe:

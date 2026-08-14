@@ -388,12 +388,23 @@ def verify_history(date: str = Query("", description="pool_date;預設最近已�
                 payload = json.loads(c.get("payload") or "{}")
             except Exception:
                 pass
+            # 連買賣天數即時重算(根治[法人資料晚出]:凍結理由常用晚出資料算錯天數/反號)。
+            # 用 inst_flow 每日淨額序列重算,替換 reasons 內的「法人連買/連賣N日」。
+            _reasons = payload.get("reasons") or []
+            try:
+                _s = screen_post.streak_from_flow(code, pd, "mls.db")
+                if _s is not None:
+                    _fx = (f"法人連{'買' if _s > 0 else '賣'}{abs(_s)}日") if _s != 0 else None
+                    _reasons = [(_fx if ("法人連買" in r or "法人連賣" in r) else r) for r in _reasons]
+                    _reasons = [r for r in _reasons if r]
+            except Exception:
+                pass
             rows.append({
                 "code": code, "name": config.NAME.get(code),
                 "track": o.get("track"), "verdict": o.get("verdict"),
                 "hit": o.get("hit"), "ret_pct": o.get("ret_pct"),
                 "base_close": o.get("base_close"), "next_close": o.get("next_close"),
-                "reasons": payload.get("reasons") or [],
+                "reasons": _reasons,
                 "chip_tags": payload.get("chip_tags") or [],
                 "next_upgrade_condition": payload.get("next_upgrade_condition"),
                 "display_pool": payload.get("display_pool"),
