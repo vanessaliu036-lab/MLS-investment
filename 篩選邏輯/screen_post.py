@@ -765,7 +765,7 @@ def load_last_post(db_path: str = "mls.db") -> dict:
     y = prev_trading_day()
     rows = store.read_date(POOL_TABLE, y, db_path)
     items = _decorate_saved_items([json.loads(r["payload"]) for r in rows.values()], y, db_path)
-    items.sort(key=lambda x: x.get("rank", 999))
+    items.sort(key=lambda x: x.get("rank") if x.get("rank") is not None else 999)
     applies = next_trading_day(y).isoformat()   # = 今天
     return {
         "phase": "POST", "data_date": y.isoformat(), "applies_date": applies,
@@ -784,7 +784,7 @@ def load_for_premarket(db_path: str = "mls.db") -> dict:
     y = prev_trading_day()
     rows = store.read_date(POOL_TABLE, y, db_path)
     items = _decorate_saved_items([json.loads(r["payload"]) for r in rows.values()], y, db_path)
-    items.sort(key=lambda x: x.get("rank", 999))
+    items.sort(key=lambda x: x.get("rank") if x.get("rank") is not None else 999)
     return {
         "phase": "PRE", "data_date": y.isoformat(), "applies_date": today_tw().isoformat(),
         "purpose": f"適用今日 {today_tw()} 盤中(資料日 {y} 盤後產出)— 開盤後只盯這些,非進場名單",
