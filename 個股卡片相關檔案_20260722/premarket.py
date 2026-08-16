@@ -168,17 +168,50 @@ def _us_indices():
     return out
 
 
+def _ab_watchlist():
+    """盤前觀察清單:走 AB 引擎(唯一正宗名單來源),不再讀 decision_v22 的 dec_watchlist。
+
+    AB 起不來時回 None,由呼叫端退回舊表 —— 過渡期防呆,盤前報告不因引擎冷啟變空。
+    """
+    import json as _json
+    import urllib.request as _urlreq
+    try:
+        # 寫死 phase=PRE:盤前報告要的永遠是「盤前那份」(昨日盤後定案池),
+        # 不該因為補跑時間落在盤中/休市而拿到別的東西或空表。
+        url = "http://127.0.0.1:8002/api/watchlist?phase=PRE"
+        with _urlreq.urlopen(url, timeout=5) as r:
+            data = _json.loads(r.read().decode("utf-8"))
+    except Exception as e:
+        print(f"[premarket] AB 名單取得失敗,退回 dec_watchlist:{e}")
+        return None
+    rows = []
+    for it in (data.get("items") or []):
+        rows.append({
+            "name": it.get("name"), "code": it.get("code"), "sector": it.get("sector"),
+            "grade": it.get("track"), "score": it.get("score"),
+            "trigger_price": it.get("trigger_price"),
+            "reason": " · ".join(it.get("reasons") or []),
+        })
+    rows.sort(key=lambda x: x.get("score") if x.get("score") is not None else -1,
+              reverse=True)
+    return rows
+
+
 def _mls_context():
     """昨日 MLS 內部資料:決策觀察清單、健康分前段、李佛摩狀態、勝率。"""
     ctx = {"watchlist": [], "health_top": [], "livermore": [], "stats": None}
+    ab_rows = _ab_watchlist()
+    if ab_rows is not None:
+        ctx["watchlist"] = ab_rows
     try:
         with db._lock, db._conn() as c:
-            r = c.execute("SELECT MAX(target_date) d FROM dec_watchlist").fetchone()
-            if r and r["d"]:
-                ctx["watchlist"] = [dict(x) for x in c.execute(
-                    """SELECT name, code, sector, grade, score, trigger_price, reason
-                       FROM dec_watchlist WHERE target_date=? ORDER BY score DESC""",
-                    (r["d"],))]
+            if ab_rows is None:
+                r = c.execute("SELECT MAX(target_date) d FROM dec_watchlist").fetchone()
+                if r and r["d"]:
+                    ctx["watchlist"] = [dict(x) for x in c.execute(
+                        """SELECT name, code, sector, grade, score, trigger_price, reason
+                           FROM dec_watchlist WHERE target_date=? ORDER BY score DESC""",
+                        (r["d"],))]
             r = c.execute("SELECT MAX(trade_date) d FROM dec_health").fetchone()
             if r and r["d"]:
                 ctx["health_top"] = [dict(x) for x in c.execute(

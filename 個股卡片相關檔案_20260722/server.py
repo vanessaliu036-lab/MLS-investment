@@ -1749,9 +1749,13 @@ def ab_dropped(pool_date: str = None, applies_date: str = None):
 
 
 @app.get("/ab/watchlist")
-def ab_watchlist(phase: str = None):
-    """A 鏈名單(盤中觀測A)：phase 驅動 — 盤中=screen_intraday 嚴判燈號,盤後=screen_post 產池。"""
-    return _ab_get("/api/watchlist", {"phase": phase}, timeout=5)  # 主表關鍵路徑:冷啟 fail-fast 退 dec/list
+def ab_watchlist(phase: str = None, date: str = None, applies_date: str = None):
+    """A 鏈名單(盤中觀測A)：phase 驅動 — 盤中=screen_intraday 嚴判燈號,盤後=screen_post 產池。
+    歷史複盤:date=資料日(池日)、applies_date=檢視日,與 /ab/dropped 同口徑,
+    兩者原樣轉發給引擎判讀 —— 反代不做日期換算,換算只能有一個地方(引擎)。"""
+    return _ab_get("/api/watchlist",
+                   {"phase": phase, "date": date, "applies_date": applies_date},
+                   timeout=5)  # 主表關鍵路徑:冷啟 fail-fast 退 dec/list
 
 
 @app.get("/ab/verify-stats")

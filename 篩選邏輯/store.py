@@ -45,6 +45,7 @@ TABLE_OWNER: dict[str, str] = {
     "watchlist_intraday": "screen_intraday",
     "watchlist_post": "screen_post",
     "candidate_pool": "screen_post",     # 隔日候選池:盤後產出,盤中只讀
+    "dropped_pool": "screen_post",       # 當日被淘汰(真結構失效)名單,留痕供顯示/複盤
     "intraday_signal": "screen_intraday", # 盤中燈號
     # ---- B 鏈專屬表。owner 全歸 B 鏈,A 鏈永遠寫不進來。 ----
     "b_snapshot": "b_snapshot",       # 盤中時序快照(每5分鐘)
@@ -56,6 +57,7 @@ TABLE_OWNER: dict[str, str] = {
     # ---- 漏斗(逐層淘汰) ----
     "funnel_result": "funnel",        # 每日各層存活名單
     "funnel_log": "funnel",           # 每層淘汰理由統計
+    "reject_outcome": "reject_verify", # 排除名單 T+1 錯殺率量測
     "fetch_log": "store",
     "plugin_status": "store",
     "post_checksum": "store",
@@ -163,6 +165,13 @@ CREATE TABLE IF NOT EXISTS candidate_pool (
     data_date TEXT NOT NULL, code TEXT NOT NULL,
     rank INTEGER, score REAL, track TEXT,
     trigger_price REAL, entry_rule TEXT,
+    payload TEXT, generated_at TEXT,
+    PRIMARY KEY (data_date, code)
+);
+
+-- 被淘汰名單(真結構失效,tier=淘汰):留痕供淘汰名單顯示與 T+1 複盤,不刪除。
+CREATE TABLE IF NOT EXISTS dropped_pool (
+    data_date TEXT NOT NULL, code TEXT NOT NULL,
     payload TEXT, generated_at TEXT,
     PRIMARY KEY (data_date, code)
 );
@@ -390,6 +399,18 @@ def read_date(table: str, data_date: _dt.date | str,
     return {r["code"]: dict(r) for r in rows}
 
 
+def read_recent(table: str, code: str, upto: _dt.date | str, n: int,
+                db_path: str = DB_PATH) -> list[dict]:
+    """讀單一 code 截至 upto(含)最近 n 個交易日,由新到舊。唯讀,供多日衍生
+    (近3/5日法人累計、連漲天數、對昨收漲跌)用。缺日自然變短,不補。"""
+    d = upto.isoformat() if isinstance(upto, _dt.date) else upto
+    with conn(db_path) as c:
+        rows = c.execute(
+            f"SELECT * FROM {table} WHERE code=? AND data_date<=? "
+            f"ORDER BY data_date DESC LIMIT ?", (code, d, n)).fetchall()
+    return [dict(r) for r in rows]
+
+
 def has_date(table: str, data_date: _dt.date | str, db_path: str = DB_PATH) -> int:
     """這一天抓過幾檔。0 = 完全沒抓過。"""
     d = data_date.isoformat() if isinstance(data_date, _dt.date) else data_date
@@ -397,6 +418,15 @@ def has_date(table: str, data_date: _dt.date | str, db_path: str = DB_PATH) -> i
         return c.execute(
             f"SELECT COUNT(*) n FROM {table} WHERE data_date=?", (d,)
         ).fetchone()["n"]
+
+
+def list_dates(table: str, limit: int = 90, db_path: str = DB_PATH) -> list[str]:
+    """這張表有留痕的資料日,新→舊。供歷史複盤的日期下拉用(唯讀)。"""
+    with conn(db_path) as c:
+        rows = c.execute(
+            f"SELECT DISTINCT data_date d FROM {table} "
+            f"ORDER BY d DESC LIMIT ?", (limit,)).fetchall()
+    return [r["d"] for r in rows]
 
 
 # ---------------------------------------------------------------- 寫(受管制)

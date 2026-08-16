@@ -25,7 +25,9 @@ import screen_intraday
 import screen_post
 import store
 from tw_price_limit import is_limit_up
-from phase import Phase, get_phase, describe, today_tw
+from phase import (Phase, get_phase, describe, today_tw,
+                   prev_trading_day, next_trading_day)
+from datetime import date as _dt_date
 
 # B 鏈(盤中發現 → 盤後驗證 → 隔日候選)。與 A 鏈完全獨立,只在 merge_pool 交會。
 import b_snapshot
@@ -120,17 +122,55 @@ def _attach_t1_verify_flow(rows, pool_date):
                           intraday_note.build(why, flow, quote.get("change_rate")))
 
 
+def _attach_verdict(rows, pool_date):
+    """附加 reject_outcome 已驗證的誤刪判定(排對/誤刪/嚴重誤刪)。
+    這是拿 T+1 盤中資金流打臉淘汰理由後的結果,唯讀併欄,不影響淘汰本身。"""
+    import reject_verify
+    v = reject_verify.verdicts_for(pool_date)
+    for row in rows:
+        code = str(row.get("stock_id") or row.get("code") or "")
+        d = v.get(code)
+        row["verdict"] = d.get("verdict") if d else None
+        row["fnr_5"] = d.get("fnr_5") if d else None
+        row["fnr_9"] = d.get("fnr_9") if d else None
+        row["t1_high_ret"] = d.get("t1_high_ret") if d else None
+
+
 @app.get("/api/watchlist")
-def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,預設依當下時段")):
+def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,預設依當下時段"),
+              date: Optional[str] = Query(None, description="資料日(池日) YYYY-MM-DD;指定=歷史複盤"),
+              applies_date: Optional[str] = Query(None, description="檢視日(該池適用日);與 /api/dropped 同口徑")):
     """
     全系統唯一的名單端點。每檔已經算完 score / rank / reasons / missing。
 
     固定回傳 config.UNIVERSE 全集,不預先剔除。
     沒回報的檔標 has_data=false,灰掉但不消失 —— 消失比顯示更誤導。
+
+    歷史複盤:攤該日已定案的盤後池留痕,不看時段、不重算。兩種日期口徑,
+    與 /api/dropped 一致 —— date=資料日(池日),applies_date=檢視日(池適用日,
+    = 資料日的下一交易日)。兩者同時給時 date 優先。混用這兩個口徑會整體差
+    一個交易日,所以端點收哪一種必須寫死,不靠呼叫端猜。
+
+    dates 一律回「檢視日」清單(新→舊),與前端日期下拉同口徑;pool_dates 是
+    對應的資料日。日期下拉只能吃 dates,不准再從別的端點湊。
     """
     ph = Phase(phase) if phase else get_phase()
 
-    if ph in (Phase.PRE, Phase.CLOSED):
+    pool_dates = screen_post.available_dates()
+
+    if date or applies_date:
+        # 歷史複盤優先於時段判斷。看 8/11 就是看 8/11,不因為現在是盤中而改讀別的。
+        try:
+            if date:
+                data = screen_post.load_for_date(date)
+            else:
+                d = _dt_date.fromisoformat(applies_date)
+                data = screen_post.load_for_date(prev_trading_day(d))
+        except ValueError:
+            bad = date or applies_date
+            return JSONResponse({"error": f"日期格式須為 YYYY-MM-DD,收到 {bad!r}"},
+                                status_code=400)
+    elif ph in (Phase.PRE, Phase.CLOSED):
         # 盤前/休市 = 直接讀上一交易日盤後名單,不重算、不重抓、零 API,秒開。
         # 休市(週末/國定假日)絕不因為時鐘到 09:00 就跑盤中。
         data = screen_post.load_for_premarket()
@@ -161,9 +201,21 @@ def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,
     if isinstance(data, dict) and data.get("dropped"):
         try:
             import datetime as _dt
-            _attach_t1_verify_flow(data["dropped"], _dt.date.fromisoformat(data["data_date"]))
+            pd = _dt.date.fromisoformat(data["data_date"])
+            _attach_t1_verify_flow(data["dropped"], pd)
+            _attach_verdict(data["dropped"], pd)
         except Exception as _e:
             print(f"[watchlist] T+1 verify flow skip: {_e}")
+
+    # 日期下拉的唯一來源。前端不准再從別的端點湊日期清單。
+    if isinstance(data, dict):
+        try:
+            data["pool_dates"] = pool_dates
+            data["dates"] = sorted(
+                {next_trading_day(_dt_date.fromisoformat(p)).isoformat()
+                 for p in pool_dates}, reverse=True)
+        except Exception as _e:
+            print(f"[watchlist] dates skip: {_e}")
     return JSONResponse(data)
 
 
@@ -193,6 +245,7 @@ def dropped_review(pool_date: Optional[str] = Query(None, description="池日(=�
     verify_date = next_trading_day(pd)
     pending = verify_date > today
     _attach_t1_verify_flow(rows, pd)
+    _attach_verdict(rows, pd)
     return JSONResponse({
         "data_date": pd.isoformat(),
         "verify_date": verify_date.isoformat(),

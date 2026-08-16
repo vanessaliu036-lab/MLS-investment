@@ -26,6 +26,8 @@ import json
 import store
 import config
 import layered_score
+import chip_price_divergence
+import six_state
 import recovery_scan
 import decision_view
 from tw_price_limit import is_limit_up
@@ -497,6 +499,12 @@ def build(universe: list[str], db_path: str = "mls.db",
                                     change_rate=change),
             **derivs[c], **rels[c]))
         old_drop, old_hits = hard_drop(bar, i.get(c))   # 舊制對照,供誤刪率量測
+        # 籌碼×價格背離(分類/升降級,不淘汰):抗賣壓/洗盤/反轉 → 保護不刪(治誤刪)
+        _dv = chip_price_divergence.scan(
+            store.read_recent("inst_flow", c, d, 25, db_path),
+            store.read_recent("daily_bar", c, d, 25, db_path),
+            store.read_recent("aflow", c, d, 25, db_path))
+        _protect = _dv.get("divergence_type") in ("chip_reversal", "sell_absorption", "accumulation", "washout")
         lay_fields = {
             "tier": lay["tier"], "classification": lay["classification"],
             "potential_grade": lay["potential_grade"], "trend_stage": lay["trend_stage"],
@@ -508,8 +516,15 @@ def build(universe: list[str], db_path: str = "mls.db",
             "chip_status": lay["chip_status"],
             "structural_failures": lay["structural_failures"],
             "old_would_drop": old_drop, "old_drop_hits": old_hits,
+            "divergence": _dv, "divergence_label": _dv.get("divergence_label"),
+            "divergence_type": _dv.get("divergence_type"),
         }
-        if lay["classification"] == layered_score.TIER_REJECTED:
+        if lay["classification"] == layered_score.TIER_REJECTED and _protect:
+            # 結構失效但籌碼×價格背離為抗賣壓/洗盤/反轉 → 救回候補,不淘汰
+            lay_fields["tier"] = layered_score.TIER_CANDIDATE
+            lay_fields["classification"] = layered_score.TIER_CANDIDATE
+            lay_fields["divergence_rescued"] = True
+        if lay["classification"] == layered_score.TIER_REJECTED and not _protect:
             # 真淘汰:帶結構失效原因(不是「分數低」),供淘汰名單顯示與 T+1 錯殺量測
             recovery = recovery_scan.scan(lay, {
                 **bar,
@@ -587,6 +602,14 @@ def build(universe: list[str], db_path: str = "mls.db",
         it["chip_label"] = _chip_label(it.get("chip_status"), _streak)  # 含背離並顯的籌碼標籤
         it["explain"] = _item_explain(it)     # 觀察軌白話說明(語意層),取代 reasons 原文
 
+    # 六態分類(規格:51檔全分類、零消失)。kept + dropped 都標 state/state_label。
+    for _it in kept:
+        six_state.annotate(_it)
+    for _it in dropped:
+        _it.setdefault("name", name_map.get(_it["code"]))
+        _it.setdefault("sector", cg.get(_it["code"]))
+        six_state.annotate(_it)
+
     # Layer 0 閘(鐵律6):Risk Off → 禁新倉,全數降觀察、清進場軌與觸發價
     regime = _read_regime()
     if regime.get("risk_off"):
@@ -646,7 +669,10 @@ def build(universe: list[str], db_path: str = "mls.db",
         "pool_size": len(pool),
         "track_breakdown": tracks,
         "items": pool,
-        "dropped": [_shape_dropped_row(x["code"], x, _name_map(), _code_group())
+        "classification": six_state.completeness(kept + dropped, len(universe)),
+        "dropped": [{**_shape_dropped_row(x["code"], x, _name_map(), _code_group()),
+                     "state": x.get("state"), "state_label": x.get("state_label"),
+                     "is_core": x.get("is_core")}
                     for x in dropped],
     }
 
@@ -776,6 +802,38 @@ def load_last_post(db_path: str = "mls.db") -> dict:
         "degraded": [] if items else ["昨日盤後候選池尚未產生"],
         "items": items,
         "dropped": load_dropped(y, db_path),
+    }
+
+
+def available_dates(limit: int = 90, db_path: str = "mls.db") -> list[str]:
+    """有盤後池留痕的資料日,新→舊。歷史複盤日期下拉的唯一來源。"""
+    return store.list_dates(POOL_TABLE, limit, db_path)
+
+
+def load_for_date(data_date: _dt.date | str, db_path: str = "mls.db") -> dict:
+    """攤出指定資料日『已定案』的盤後池 —— 歷史複盤用,不重算。
+
+    與 load_last_post 同一套讀法與同一個回傳形狀,差別只在日期由呼叫端指定。
+    複盤看的是「那天篩了什麼、隔天走成怎樣」,所以 applies_date 一律是該日的
+    下一個交易日,不是今天。查無留痕就回空 items(degraded 說明),絕不退格到
+    別的日期偷換 —— 靜默換日正是接錯表的起點。
+    """
+    d = (_dt.date.fromisoformat(data_date)
+         if isinstance(data_date, str) else data_date)
+    rows = store.read_date(POOL_TABLE, d, db_path)
+    items = _decorate_saved_items([json.loads(r["payload"]) for r in rows.values()], d, db_path)
+    items.sort(key=lambda x: x.get("rank") if x.get("rank") is not None else 999)
+    applies = next_trading_day(d).isoformat()
+    return {
+        "phase": "POST", "data_date": d.isoformat(), "applies_date": applies,
+        "purpose": (f"歷史複盤:資料日 {d} 盤後定案 {len(items)} 檔候選,"
+                    f"適用 {applies} 盤中 —— 攤已存結果,非重算"),
+        "actionable": False,
+        "historical": True,
+        "generated_at": next(iter(rows.values()))["generated_at"] if rows else None,
+        "degraded": [] if items else [f"{d} 無盤後候選池留痕"],
+        "items": items,
+        "dropped": load_dropped(d, db_path),
     }
 
 
