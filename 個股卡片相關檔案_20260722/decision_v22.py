@@ -51,6 +51,10 @@ try:
 except Exception:
     broker = None
 try:
+    import signal_pattern
+except Exception:
+    signal_pattern = None
+try:
     import db
 except Exception:
     db = None
@@ -73,6 +77,16 @@ TRIGGER_MODE = "high"    # 觸發價=觀察日最高價(突破前高才算觸發
 MAX_HOLD_DAYS = 5        # 模擬持有上限(天)
 EXIT_RULE = "break_entry_low"   # 出場:收盤跌破進場日低點,或滿5日
 TOP_N_WATCH = 12         # 隔日觀察清單上限
+
+# ── 名單產出已移交 AB 引擎(2026-08-16)───────────────────
+# 本檔的「分類/選股」邏輯早被 AB 雙鏈取代,但 dec_watchlist 一直還在每天長新列,
+# 只因主表歷史複盤還 fall back 到 /api/dec/list。該條路徑已改走 /ab/watchlist,
+# 故此處停止產出隔日觀察清單 —— 讓 dec_watchlist/dec_verify 凍結,才具備退場條件。
+#
+# ⚠ 只切「③ 隔日觀察清單」這一步。run_report 的第 ② 步寫的是 dec_health
+#   (每日一列,mls-v4 db.load_dec_health 讀去當法人連買天數底本餵盤中 filter),
+#   整支停掉會連盤中還在用的東西一起砍掉。要退場舊邏輯,切步驟不切整支。
+PRODUCE_WATCHLIST = False
 READY_MIN = 65           # Ready 門檻(健康分)
 WATCH_MIN = 50           # Watch 門檻
 STATS_DAYS = 30          # 勝率統計滾動窗
@@ -412,6 +426,19 @@ def build_watchlist(rows, obs_date=None):
     for r in cand:
         is_eng = r["stock_type"] == "engine"
         trig = r["close"] if is_eng else (r["high"] or r["close"])
+        # 選股當下用日K判六型態(W底/均線黃金交叉/放量長紅/突破前高/量縮止跌/回測月線)，
+        # 供主表「入選訊號型態」顯示真型態而非軌道回退；任一檔失敗不影響名單產出。
+        stype = None
+        if signal_pattern is not None and broker is not None:
+            try:
+                bars = broker.daily_kbars(str(r["code"]), days=70)
+                cr = signal_pattern.classify(bars)
+                if cr.get("signal_type"):
+                    stype = cr["signal_type"]
+                    if cr.get("trigger_price") is not None:
+                        trig = cr["trigger_price"]
+            except Exception:
+                pass
         reason = ((f"引擎軌(波段):站上月線進場,月線停損 · " if is_eng else "")
                   + f"{QUAD_NAME[r['quadrant']]} · 趨勢{r['trend']}"
                   f" · 資金連續{r['flow_streak']}日"
@@ -423,16 +450,17 @@ def build_watchlist(rows, obs_date=None):
                    "grade": r["grade"], "score": r["score"],
                    "quadrant": r["quadrant"], "trend": r["trend"],
                    "base_close": r["close"], "trigger_price": trig,
-                   "reason": reason})
+                   "reason": reason, "signal_type": stype})
     with db._lock, db._conn() as c:
         for w in wl:
             c.execute("""INSERT OR REPLACE INTO dec_watchlist
               (obs_date,target_date,code,name,sector,track,grade,score,
-               quadrant,trend,base_close,trigger_price,reason)
-              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+               quadrant,trend,base_close,trigger_price,reason,signal_type)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
               (w["obs_date"], w["target_date"], w["code"], w["name"],
                w["sector"], w["track"], w["grade"], w["score"], w["quadrant"],
-               w["trend"], w["base_close"], w["trigger_price"], w["reason"]))
+               w["trend"], w["base_close"], w["trigger_price"], w["reason"],
+               w.get("signal_type")))
     return wl, target
 
 
@@ -701,9 +729,12 @@ def run_report(state=None, injected_snaps=None, injected_bars=None,
     rows = record_today(snaps, src, trade_date=tdate,
                         engine_bars=injected_bars) if snaps else []
 
-    # ③ 隔日觀察清單
-    wl, target = (build_watchlist(rows, obs_date=tdate)
-                  if rows else ([], _next_trade_date(tdate)))
+    # ③ 隔日觀察清單(已移交 AB;PRODUCE_WATCHLIST=False 時不再寫 dec_watchlist)
+    if PRODUCE_WATCHLIST:
+        wl, target = (build_watchlist(rows, obs_date=tdate)
+                      if rows else ([], _next_trade_date(tdate)))
+    else:
+        wl, target = [], _next_trade_date(tdate)
 
     # ④ 勝率統計
     st = stats()
@@ -717,6 +748,10 @@ def run_report(state=None, injected_snaps=None, injected_bars=None,
         for w in wl:
             L.append(f"- **{w['name']}({w['code']})** {w['sector']}｜"
                      f"{w['grade']} {w['score']}分｜觸發>{w['trigger_price']}｜{w['reason']}")
+    elif not PRODUCE_WATCHLIST:
+        L.append("(名單產出已移交 AB 引擎,本報告不再產生隔日觀察清單。"
+                 "正宗名單見 /ab/watchlist,勝率見 /ab/verify-stats;"
+                 "下方第 2、3 節為舊清單的殘餘驗證,驗完即停止更新。)")
     else:
         L.append("(今日無符合條件之觀察標的;休息也是部位。)")
     L.append("\n## 2. 昨日清單驗證(觀察→驗證閉環)")
@@ -770,10 +805,15 @@ def run_report(state=None, injected_snaps=None, injected_bars=None,
     ready = [g for g in st["grades"] if g["grade"] == "Ready"]
     hr = ready[0]["hit_rate"] if ready and ready[0]["total"] else None
     eng_n = sum(1 for w in wl if w.get("track") == "engine")
-    summary = (f"🎯 決策v3.0｜觀察 {len(wl)} 檔(引擎軌{eng_n}/攻擊軌{len(wl)-eng_n},→{target})"
-               f"｜驗證回填 {len(verified)} 檔"
-               f"｜30日Ready命中率 {hr if hr is not None else '累積中'}"
-               f"{'%' if hr is not None else ''}")
+    if PRODUCE_WATCHLIST:
+        summary = (f"🎯 決策v3.0｜觀察 {len(wl)} 檔(引擎軌{eng_n}/攻擊軌{len(wl)-eng_n},→{target})"
+                   f"｜驗證回填 {len(verified)} 檔"
+                   f"｜30日Ready命中率 {hr if hr is not None else '累積中'}"
+                   f"{'%' if hr is not None else ''}")
+    else:
+        # 名單已移交 AB:別再報「觀察 0 檔」,那會被讀成「今天沒標的」。
+        summary = (f"🎯 決策v3.0｜名單已移交 AB(見 /ab/watchlist)"
+                   f"｜dec_health 已落地｜舊清單殘餘驗證回填 {len(verified)} 檔")
     return {"path": path, "summary": summary, "report": report_md,
             "watchlist": wl, "verified": verified, "stats": st}
 
