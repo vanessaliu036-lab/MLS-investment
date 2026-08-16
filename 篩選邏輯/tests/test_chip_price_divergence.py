@@ -33,22 +33,41 @@ def bars(closes, *, lows=None, highs=None, volumes=None, ma20=90):
 
 class ChipPriceDivergenceTests(unittest.TestCase):
     def test_a_sell_absorption(self):
+        # 5日淨賣需過 SIG_SELL_LOTS 顯著門檻(2026-08-12 校準),否則只是小賣不算抗賣壓。
         result = cpd.scan(
-            inst([-800, -1000, -700, 200, -300], streak=-3),
+            inst([-1200, -1500, -1000, 200, -500], streak=-3),
             bars([100, 100.5, 100.2, 99.8, 99.5],
                  lows=[99, 98.5, 98.0, 97.5, 97.0]), [])
         self.assertEqual(result["divergence_type"], "sell_absorption")
         self.assertEqual(result["divergence_label"], "🟢 抗賣壓")
         self.assertEqual(result["divergence_action"], "prioritize")
 
+    def test_a_small_sell_is_not_absorption(self):
+        """連賣+沒跌但賣量不顯著 → 不得標抗賣壓(門檻存在的理由,別再退回)。"""
+        result = cpd.scan(
+            inst([-800, -1000, -700, 200, -300], streak=-3),
+            bars([100, 100.5, 100.2, 99.8, 99.5],
+                 lows=[99, 98.5, 98.0, 97.5, 97.0]), [])
+        self.assertNotEqual(result["divergence_type"], "sell_absorption")
+
     def test_b_washout_with_ownership_pending(self):
+        # 洗盤=先推得動(5日有漲幅)、回檔當日量縮。兩者皆為 2026-08-12 校準後的必要條件。
         result = cpd.scan(
             inst([300, 600, 700, 800, 900], streak=5),
-            bars([97, 100, 99, 98, 97.5], lows=[96, 95, 94, 93, 92], ma20=95), [])
+            bars([97, 100, 99, 98, 93], lows=[96, 95, 94, 93, 92], ma20=95,
+                 volumes=[500_000, 1_000_000, 1_000_000, 1_000_000, 1_000_000]), [])
         self.assertEqual(result["divergence_type"], "washout")
         self.assertEqual(result["divergence_label"], "🟢 洗盤換手")
         self.assertIn("法人持股比例", result["divergence_pending"])
         self.assertEqual(result["divergence_action"], "pullback_watch")
+
+    def test_b_pullback_without_volume_contraction_is_not_washout(self):
+        """回檔當日量沒縮 = 有人倒貨,不是洗盤(治南亞科型誤標,別再退回)。"""
+        result = cpd.scan(
+            inst([300, 600, 700, 800, 900], streak=5),
+            bars([97, 100, 99, 98, 93], lows=[96, 95, 94, 93, 92], ma20=95,
+                 volumes=[1_000_000] * 5), [])
+        self.assertNotEqual(result["divergence_type"], "washout")
 
     def test_c_chip_reversal_is_highest_priority(self):
         result = cpd.scan(

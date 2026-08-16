@@ -1,0 +1,8 @@
+[Unit]
+Description=MLS intraday aflow stream watchdog
+After=mls-intraday.service network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/mls-intraday/ops/mls_aflow_watchdog.py
+TimeoutStartSec=45
