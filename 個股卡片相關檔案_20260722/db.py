@@ -131,6 +131,8 @@ def init():
         _add_column(c, "watchlist", "trigger_price", "REAL")
         # watch_outcome：今日觸發判定 + 未觸發的【明確原因】（T+1 蓋章當下算，
         # 取代前端「原定進場條件未成立」廣泛語）。
+        # dec_watchlist：主表(dec/list)也帶六型態，讓「入選訊號型態」顯示真型態而非軌道回退
+        _add_column(c, "dec_watchlist", "signal_type", "TEXT")
         _add_column(c, "watch_outcome", "signal_type", "TEXT")
         _add_column(c, "watch_outcome", "trigger_status", "TEXT")
         _add_column(c, "watch_outcome", "trigger_price", "REAL")
@@ -298,10 +300,19 @@ def save_watch_rejects(trade_date, rows):
 
 
 def load_watch_rejects(trade_date):
+    """被篩掉(真淘汰)名單。護欄:排除同日仍在觀察清單(watchlist)的檔——
+    radar 發現、仍在續觀察的標的(例:盟立 2464)會同時留在 watch_reject 留痕,
+    但它是入選觀察、不是淘汰,顯示端必須扣掉,否則同一檔同時出現在觀察清單與
+    被篩掉名單,自相矛盾(續觀察 ≠ 淘汰)。只濾雙重列名,不在觀察清單的 radar
+    留痕照常顯示,不會濾成空白。"""
     with _lock, _conn() as c:
         return [dict(r) for r in c.execute(
-            "SELECT * FROM watch_reject WHERE trade_date=? ORDER BY source, stock_id",
-            (trade_date,))]
+            """SELECT * FROM watch_reject
+               WHERE trade_date=?
+                 AND stock_id NOT IN (
+                     SELECT stock_id FROM watchlist WHERE trade_date=?)
+               ORDER BY source, stock_id""",
+            (trade_date, trade_date))]
 
 
 def save_watch_outcome(trade_date, rows):

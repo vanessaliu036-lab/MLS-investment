@@ -1,0 +1,5 @@
+[Unit]
+Description=Quote Gateway 切換後 09:10 自動健檢;明顯壞掉自動回退(未切換則跳過)
+[Service]
+Type=oneshot
+ExecStart=/opt/mls-intraday/gateway_ops/autorevert_check.sh

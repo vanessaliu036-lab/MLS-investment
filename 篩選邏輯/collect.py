@@ -94,10 +94,29 @@ def _today_inst(code: str, upto: str) -> dict | None:
         official = {}
     rec = official.get(str(code))
     if rec:
+        # Official same-day data has the correct net values but no streak.
+        # Build each streak from the persisted, date-ordered history plus
+        # today's official row; never default these fields to zero.
+        prior = []
+        try:
+            import store
+            prior = store.read_recent("inst_flow", str(code), _dt.date.fromisoformat(upto), 25)
+            prior = [r for r in prior if r.get("data_date") < upto]
+            prior.sort(key=lambda r: r["data_date"])
+            f_series = [r.get("foreign_net") or 0 for r in prior] + [rec.get("foreign_lots") or 0]
+            t_series = [r.get("trust_net") or 0 for r in prior] + [rec.get("invest_lots") or 0]
+            d_series = [r.get("dealer_net") or 0 for r in prior] + [rec.get("dealer_lots") or 0]
+            f_days, t_days, d_days = (_signed_streak(f_series),
+                                     _signed_streak(t_series),
+                                     _signed_streak(d_series))
+        except Exception:
+            f_days = t_days = d_days = 0
+        total_series = [r.get("total_net") or 0 for r in prior] + [rec.get("total_lots") or 0]
         return {"date": upto, "foreign_net": rec.get("foreign_lots"),
                 "trust_net": rec.get("invest_lots"), "dealer_net": rec.get("dealer_lots"),
-                "total_net": rec.get("total_lots"), "foreign_days": 0,
-                "trust_days": 0, "dealer_days": 0}
+                "total_net": rec.get("total_lots"),
+                "consecutive_days": _signed_streak(total_series),
+                "foreign_days": f_days, "trust_days": t_days, "dealer_days": d_days}
 
     # 最後備援：官方端點暫時無回應時才使用 FinMind。
     rows = dc.fetch_finmind_inst(code, days=25)
@@ -231,7 +250,7 @@ def collect_one(code: str, d: _dt.date) -> dict:
             "code": code, "data_date": dd,
             "foreign_net": tinst["foreign_net"], "trust_net": tinst["trust_net"],
             "dealer_net": tinst["dealer_net"], "total_net": tinst["total_net"],
-            "consecutive_days": inst["streak"],
+            "consecutive_days": tinst.get("consecutive_days", inst["streak"]),
             # 三法人各自帶號連續天數(正連買/負連賣) — L3 才真正吃到。inst_flow 有
             # immutable trigger,收盤後補不了,故一定要在寫入當下就算好(2026-08-04)。
             "foreign_days": tinst["foreign_days"], "trust_days": tinst["trust_days"],

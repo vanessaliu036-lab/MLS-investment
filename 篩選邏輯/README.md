@@ -1,64 +1,70 @@
-# MLS v4.0 — 七條規範與實作對照
+# 部署與排程
 
-## 部署
-```
-pip install fastapi uvicorn
-python preflight.py          # 先跑自檢,不過就不要啟動
-uvicorn api:app --host 0.0.0.0 --port 8000
-```
+三支排程 + 一支常駐 API。**時間觸發只是粗篩(週一~五),真正的交易日/假日判斷在 app 層**
+(`phase.py` 讀 `holidays.json`),所以國定假日就算 timer 照響,`collect.py` / `intraday_feed.py`
+也會自己偵測並退出,不會亂打 API、不會亂連 Shioaji。
 
-## 七條規範 → 哪支檔案擋住
+## 元件
 
-| # | 規範 | 實作 |
+| 單元 | 何時 | 做什麼 |
 |---|---|---|
-| 1 | 時段隔離,盤中不打 FinMind | `phase.py` |
-| 2 | 同一天只抓一次,寫進 DB 永不重抓 | `store.fetch_once()` |
-| 3 | 不做交叉驗證,誰先回誰算數 | `store.fetch_once()` sources fallback |
-| 4 | 盤中一套、盤後一套,各出一份名單,前端不准 filter | `screen_intraday.py` / `screen_post.py` / `index.html` |
-| 5 | 一表一 owner,插件包信封,壞掉不互相影響 | `store.TABLE_OWNER` / `envelope.py` |
-| 6 | 每份名單標明用途 | `phase.describe()` → `purpose` 欄位 |
-| 7 | 每個插件有自己的取數通道 | `envelope.run_all()` 各自獨立讀取 |
+| `mls-screen-api.service` | 常駐 | uvicorn 提供 `/api/watchlist` 唯一名單端點 |
+| `mls-screen-collect.timer` | 週一~五 14:40 | 盤後採集 51 檔 + A 鏈收盤復盤 + B 鏈驗證/匯流 |
+| `mls-screen-feed.timer` | 週一~五 08:55 | 拉起盤中 Shioaji 訂閱,寫 `quote_snap`/`aflow`,收盤自停 |
+| `mls-screen-calendar.timer` | 週一 06:00 | 更新 TWSE 官方假日 → `holidays.json`(跨年自動補) |
 
-## 三個時段
+## 安裝(VPS,root)
 
-| | 資料來源 | 回答 | 動作 |
-|---|---|---|---|
-| PRE 00:00–08:59 | 直接讀昨日盤後名單,零 API | 今天盯誰 | 只觀察 |
-| INTRADAY 09:00–13:30 | Shioaji 訂閱 + DB 昨日死值 | 現在誰在被吸籌 | 只記錄,不下單 |
-| POST 13:31–23:59 | 今日法人/融資 + 今日盤中累積 | 明天進誰 | 依此執行 |
+1. 放程式(假設放 `/opt/mls-screen`,與 unit 檔內路徑一致;不同就改 unit 的 `WorkingDirectory` 與 `ExecStart`):
+   ```bash
+   rsync -a 篩選邏輯/ root@VPS:/opt/mls-screen/
+   ```
+2. 憑證:把 `SHIOAJI_API_KEY` / `SHIOAJI_SECRET_KEY` / `FINMIND_TOKEN` 放進 `/opt/mls-screen/.env`
+   (run 腳本會自動 source;**不要**寫進 unit 檔或 git)。
+3. 裝套件:
+   ```bash
+   pip install fastapi uvicorn shioaji
+   ```
+4. 先補一次假日表 + 一次歷史採集(否則盤前名單是空的):
+   ```bash
+   cd /opt/mls-screen && python3 calendar_sync.py && python3 collect.py --date <上一交易日>
+   ```
+5. 裝 systemd:
+   ```bash
+   cp /opt/mls-screen/deploy/mls-screen-*.service /etc/systemd/system/
+   cp /opt/mls-screen/deploy/mls-screen-*.timer   /etc/systemd/system/
+   systemctl daemon-reload
+   systemctl enable --now mls-screen-api.service
+   systemctl enable --now mls-screen-collect.timer
+   systemctl enable --now mls-screen-feed.timer
+   systemctl enable --now mls-screen-calendar.timer
+   ```
 
-盤前不重算 —— 盤前就是昨天盤後的結果。
+## 檢查
 
-## 四層防護
+```bash
+systemctl list-timers 'mls-screen-*'      # 看下次觸發時間
+journalctl -u mls-screen-collect -n 50    # 看盤後採集日誌
+journalctl -u mls-screen-feed -f          # 盤中即時看行情 flush
+curl -s localhost:8000/api/phase          # 看當下時段(休市會回 CLOSED)
+```
 
-1. **寫入權限鎖** — 一張表一個 owner,非 owner 寫入直接 raise
-2. **歷史不可變** — SQLite trigger 層面擋,繞過 Python 也擋得住
-3. **信封隔離** — 插件壞掉只影響自己那格,名單照出
-4. **啟動自檢** — 六項檢查,任一不過服務不啟動
+## 手動補跑
 
-## 驗收條件(已通過)
+```bash
+python3 collect.py --date 2026-07-24      # 補特定交易日盤後名單
+python3 intraday_feed.py --selftest       # 不連 Shioaji,驗證 quote/aflow 落地路徑
+```
 
-- 清空 FinMind API key → 盤中名單照出,API 呼叫 0 次
-- `screen_post.py` 整支 rename 掉 → 盤中照跑
-- 新插件寫 `inst_flow` → 被擋,已驗證盤後值不變
-- 重開服務 → API 新增呼叫 0 次
-- 任兩個分頁前 10 檔代號與順序完全一致
-- 注入前端 `.filter()` → preflight 擋下
+## 本機(macOS)開發
 
-## API 用量
-
-| 情境 | 呼叫次數 |
-|---|---|
-| 盤前開機 | 0 |
-| 盤中整場 | 0 |
-| 盤後跑一次 | 51 |
-| 重開服務 | 0 |
-
-一天 51 次。TWSE/TPEx 官方免費無上限,FinMind 僅作備援。
-
-## 新增插件的規矩
-
-1. 建自己的新表,呼叫 `store.register_table("my_table", "my_plugin")`
-2. 讀別人的表隨便讀,寫別人的表一律被擋
-3. 插件函式透過 `envelope.run_plugin()` 呼叫,爆掉不會傳染
-4. 取數一律走 `store.fetch_once()`,不准自己直接打 API
+不需要 systemd。開一個 API 看畫面即可:
+```bash
+cd 篩選邏輯 && python3 -m uvicorn api:app --port 8011
+```
+排程用 `crontab -e` 加(等同上面三個 timer):
+```
+40 14 * * 1-5  cd /path/篩選邏輯 && ./deploy/run_collect.sh
+55 8  * * 1-5  cd /path/篩選邏輯 && ./deploy/run_feed.sh
+0  6  * * 1    cd /path/篩選邏輯 && ./deploy/run_calendar.sh
+```

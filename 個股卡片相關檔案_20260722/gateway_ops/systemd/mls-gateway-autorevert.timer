@@ -1,0 +1,8 @@
+[Unit]
+Description=每交易日 09:10 觸發 Quote Gateway 切換健檢
+[Timer]
+OnCalendar=Mon..Fri 09:10:00 Asia/Taipei
+Persistent=false
+Unit=mls-gateway-autorevert.service
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,16 @@
+[Unit]
+Description=MLS Quote Gateway — 唯一 Shioaji 擁有者 daemon(8005 + /dev/shm 快照)。收盤不碰 Shioaji。
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/mls-intraday/個股卡片相關檔案_20260722
+EnvironmentFile=-/opt/mls-intraday/個股卡片相關檔案_20260722/.env
+EnvironmentFile=-/opt/mls-intraday/.env
+ExecStart=/usr/bin/python3 quote_gateway.py
+Restart=on-failure
+RestartSec=5
+SyslogIdentifier=mls-quote-gateway
+
+[Install]
+WantedBy=multi-user.target

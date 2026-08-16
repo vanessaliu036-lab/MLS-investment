@@ -209,6 +209,9 @@ def record(breadth, now=None):
     hm = (now.hour, now.minute)
     if not (SESSION[0] <= hm <= SESSION[1]):
         return False
+    # 非交易日護欄:週末絕不落地(否則上一交易日值被 carry-forward 到六/日,污染多日序列)。
+    if now.weekday() >= 5:
+        return False
     day = now.date().isoformat()
     bucket = f"{now.hour:02d}:{now.minute // TICK_BUCKET_MIN * TICK_BUCKET_MIN:02d}"
     with _conn() as conn:

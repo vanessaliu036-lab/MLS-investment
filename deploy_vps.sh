@@ -48,6 +48,8 @@ rsync -avz --delete \
   --exclude='.git' \
   --exclude='.env' \
   --exclude='*.db' \
+  --exclude='*.db-shm' \
+  --exclude='*.db-wal' \
   --exclude='*.bak' \
   --exclude='*.log' \
   --exclude='.DS_Store' \
@@ -58,6 +60,7 @@ rsync -avz --delete \
   --exclude='chips_cache.json' \
   --exclude='card_cache/' \
   --exclude='reports/' \
+  --exclude='篩選邏輯/' \
   "${LOCAL_SRC}/" \
   "${VPS_USER}@${VPS_HOST}:${VPS_DEPLOY_DIR}/"
 

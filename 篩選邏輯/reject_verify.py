@@ -333,6 +333,17 @@ def stats(days: int = 30, db_path: str = "mls.db") -> dict:
     }
 
 
+def verdicts_for(pool_date: _dt.date, db_path: str = "mls.db") -> dict[str, dict]:
+    """某淘汰日(pool_date)已驗證的誤刪判定,供淘汰名單顯示併欄用(唯讀)。
+    T+1 尚未收盤時該日沒有列,呼叫端維持 None,不得誤標「排對」。"""
+    _ensure_table(db_path)
+    with store.conn(db_path) as c:
+        rows = c.execute(
+            "SELECT code, verdict, fnr_5, fnr_9, t1_high_ret FROM reject_outcome "
+            "WHERE pool_date=?", (pool_date.isoformat(),)).fetchall()
+    return {r["code"]: dict(r) for r in rows}
+
+
 if __name__ == "__main__":
     import sys
     fn = sys.argv[1] if len(sys.argv) > 1 else "verify"

@@ -46,7 +46,12 @@ def run_stage2(db_path: str = "mls.db") -> dict:
     vdate = _dt2.date.fromisoformat(_row[0]) if _row and _row[0] else d
     sv = screen_verify.verify(db_path, vdate)
     print(f"[stage2] 回測驗證（驗證日 {vdate}）：{sv.get('purpose')}")
-    return {"b_verify": bv, "merge": mg, "screen_verify": sv}
+    # 排除名單 T+1 錯殺率量測：讀 funnel_result 被排除那批，回填當日收盤判錯殺。
+    # 與 screen_verify 同驗證日、同一趟落庫，兩週後看各因子錯殺率決定放寬哪一層。
+    import reject_verify
+    rv = reject_verify.verify(db_path, vdate)
+    print(f"[stage2] 排除錯殺率量測（驗證日 {vdate}）：{rv.get('purpose')}")
+    return {"b_verify": bv, "merge": mg, "screen_verify": sv, "reject_verify": rv}
 
 
 if __name__ == "__main__":

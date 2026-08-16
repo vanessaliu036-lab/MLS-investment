@@ -36,3 +36,9 @@ chips_cache.json
 # SQLite WAL sidecars
 *.db-shm
 *.db-wal
+
+# 修好的 bug 留下的殘骸:就地備份快照。VPS 上另有 .bak-<timestamp> 可退，
+# 本機不需要留，留了只會讓工作區長年髒著看不出真正的未提交變更。
+*.bak-*
+*.bak.*
+個股卡片相關檔案_20260722/reports/

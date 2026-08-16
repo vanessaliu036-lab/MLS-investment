@@ -57,12 +57,17 @@ def once():
         })
         buy = r0.get("buy_volume") or 0
         sell = r0.get("sell_volume") or 0
-        aflows.append({
-            "code": code, "data_date": dd,
-            "active_buy": buy, "active_sell": sell,
-            "net_active": r0.get("aflow") if r0.get("aflow") is not None else buy - sell,
-            "method": "bridge_8000", "updated_at": now,
-        })
+        # aflow 只信 Shioaji 真流:aflow_status==LIVE 且 aflow 有值才寫。
+        # UNAVAILABLE(Shioaji 死/過期,quote_health 已判定並疊 MIS 價量)一律不寫此列
+        # aflow、絕不用 buy-sell 回填假值 —— 保留 AB 上一輪好值,不讓假資金流污染
+        # 盤中嚴判/B鏈(對齊 quote_health §1:行情死只損 aflow,不拿五檔/量差偽裝)。
+        if r0.get("aflow_status") == "LIVE" and r0.get("aflow") is not None:
+            aflows.append({
+                "code": code, "data_date": dd,
+                "active_buy": buy, "active_sell": sell,
+                "net_active": r0.get("aflow"),
+                "method": "bridge_8000", "updated_at": now,
+            })
     if quotes:
         store.upsert_intraday("quote_snap", PLUGIN, quotes, DB)
     if aflows:

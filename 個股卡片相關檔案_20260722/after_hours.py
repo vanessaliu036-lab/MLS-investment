@@ -594,7 +594,8 @@ def run(last_state):
                   "source": "resilient", "fail_factor": "名額不足(radar優先)",
                   "detail": w.get("reason")}
                  for w in resilient_pool if w["code"] not in picked]
-    all_rejects = radar_rejects + resilient_rejects + slot_lost
+    # 只留「真淘汰」：具名卡關因子(resilient) + 名額不足；不再落地 radar 整池排除雜訊(每天≈41 檔千篇一律)
+    all_rejects = resilient_rejects + slot_lost
     db.save_watch_rejects(tomorrow, [r for r in all_rejects if r["code"] not in picked])
 
     # ③ Airtable

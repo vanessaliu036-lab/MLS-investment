@@ -12,11 +12,16 @@ from statistics import median
 TYPE_META = {
     "chip_reversal": ("🔥 籌碼反轉", "S", "highest", "upgrade_a"),
     "sell_absorption": ("🟢 抗賣壓", "A", "high", "prioritize"),
+    "accumulation": ("🟢 蓄勢吸籌", "B", "high", "prioritize"),   # 連買+價未動,低基期=吸籌(旺宏型)
     "washout": ("🟢 洗盤換手", "B", "high", "pullback_watch"),
-    "buying_stall": ("🟡 買盤鈍化", "D", "low", "no_chase"),
+    "buying_stall": ("🟡 買盤鈍化", "D", "low", "no_chase"),      # 連買+推不動,高基期=派發(南亞科型)
     "double_weak": ("🔴 籌碼價格雙殺", "E", "low", "downgrade"),
     "none": ("", "none", "normal", "none"),
 }
+
+# 抗賣壓門檻:5日法人淨流出需「顯著」才算有意義的賣壓失效,否則只是小賣、不算抗賣壓。
+# 用張數(單位無關;daily_bar 量單位不一致會讓占量%失真,故不用占量當門檻)。
+SIG_SELL_LOTS = 3000
 
 
 def _num(value):
@@ -121,6 +126,22 @@ def scan(inst_rows: list[dict] | None, bar_rows: list[dict] | None,
     prior_abs = [abs(value) for value in prior5 if value is not None]
     prior_high = highs[1] if len(highs) > 1 else None
     breakout = close is not None and prior_high is not None and close > prior_high
+
+    # 共用判別訊號(2026-08-12 校準:治「南亞科被誤標洗盤」)
+    #   買盤效率 buy_eff = 5日價幅 / (5日三大淨買/萬張) = 每萬張淨買帶動幾%。
+    #     晶豪科~6.4(推得動=洗盤) vs 南亞科~1.5(買4倍卻推不動=鈍化/派發)。
+    #   跌日量縮 vol_contract:洗盤下跌通常量縮;派發下跌量不縮(有人倒貨)。
+    buy_eff = (price5 / (inst5_sum / 10000.0)) if (inst5_sum and inst5_sum > 0 and price5 is not None) else None
+    vol_contract = vol_ratio is not None and vol_ratio < 0.6
+    near_high20 = (close is not None and any(v is not None for v in highs) and
+                   close >= max(v for v in highs if v is not None) * 0.97)
+    failed_new_high = high is not None and any(v is not None for v in highs[1:]) and high <= max(
+        v for v in highs[1:] if v is not None)
+    high_risk = near_high20 and vol_ratio is not None and vol_ratio >= 1.5 and failed_new_high
+    previous_lows = [v for v in lows[1:6] if v is not None]
+    low_holds = low is not None and previous_lows and low >= min(previous_lows)
+
+    # C 資金反轉:前5日流出 → 今日大轉買 + 價格確認 + 放量收高
     c_hit = (len(prior5) == 5 and prior_negative_sum < 0 and prior_negative_days >= 3 and
              today_inst is not None and today_inst > 0 and prior_abs and
              today_inst >= median(prior_abs) * 1.5 and
@@ -128,41 +149,57 @@ def scan(inst_rows: list[dict] | None, bar_rows: list[dict] | None,
              vol_ratio is not None and vol_ratio >= 1.2 and
              close_position is not None and close_position >= 0.7)
 
-    previous_lows = [value for value in lows[1:6] if value is not None]
-    low_holds = low is not None and previous_lows and low >= min(previous_lows)
-    a_hit = (streak <= -2 and inst5_sum < 0 and change is not None and change >= -1.5 and
-             low_holds and _low_trend_not_falling(lows))
+    # A 抗賣壓:連賣≥2、5日「顯著」淨流出(占量≥門檻),卻跌不下去。核心訊號=抗跌力本身。
+    #   低點守住(low_holds)是加強;但若幾乎沒跌(≥-1%,如中美晶只-0.59%),
+    #   即使低點仍在探底也算強抗賣壓(賣這麼多只跌這麼點=承接強),不強求 low_holds。
+    #   顯著門檻(SIG_SELL_SHARE)治「任何連賣+沒跌」被誤標抗賣壓。
+    sig_sell = inst5_sum is not None and inst5_sum <= -SIG_SELL_LOTS
+    a_resilient = change is not None and change >= -1.0
+    a_hit = (streak <= -2 and inst5_sum < 0 and sig_sell and change is not None and change >= -1.5 and
+             _low_trend_not_falling(lows) and (low_holds or a_resilient))
 
-    positive_average = (_sum([value for value in inst5[1:] if value and value > 0]) /
-                        max(1, sum(value is not None and value > 0 for value in inst5[1:])))
+    positive_average = (_sum([v for v in inst5[1:] if v and v > 0]) /
+                        max(1, sum(v is not None and v > 0 for v in inst5[1:])))
     no_large_sell = today_inst is not None and today_inst >= -positive_average * 0.5
+
+    extended = inst20_sum is not None and inst20_sum > 0   # 20日仍淨買=已吸一段/高基期
+    # 蓄勢吸籌:連買+價幾乎沒動(-3~+1.5%),但 20日仍淨賣=低基期(從洗盤區吸籌,旺宏/聯電型)→ 好
+    accum_hit = (streak >= 3 and inst5_sum > 0 and change is not None and -3.0 <= change <= 1.5 and
+                 inst20_sum is not None and inst20_sum <= 0)
+    # D 買盤鈍化/派發:連買+推不動 且「高基期(20日淨買=已吸一段)」+ 買盤效率低 / 高檔量沒縮 / 創高失敗。
+    #   南亞科就落這類(高檔+推不動),與低基期吸籌區分。
+    d_hit = (streak >= 3 and inst5_sum > 0 and change is not None and change < 1.0 and extended and
+             ((buy_eff is not None and buy_eff < 2.0) or (near_high20 and not vol_contract) or high_risk))
+    # B 洗盤換手:連買≥3+單日回檔(-5~-1)+ 趨勢未破 + 跌日量縮 + 買盤效率在(晶豪科型)
     b_hit = (streak >= 3 and inst5_sum > 0 and change is not None and -5.0 <= change <= -1.0 and
-             no_large_sell and close is not None and ma20 is not None and close >= ma20 and low_holds)
+             no_large_sell and close is not None and ma20 is not None and close >= ma20 and
+             low_holds and vol_contract and (buy_eff is None or buy_eff >= 2.0))
 
-    near_high20 = (close is not None and any(value is not None for value in highs) and
-                   close >= max(value for value in highs if value is not None) * 0.97)
-    failed_new_high = high is not None and any(value is not None for value in highs[1:]) and high <= max(
-        value for value in highs[1:] if value is not None)
-    high_risk = near_high20 and vol_ratio is not None and vol_ratio >= 1.5 and failed_new_high
-    d_hit = (streak >= 3 and inst5_sum > 0 and inst_share5 is not None and inst_share5 >= 2.0 and
-             price5 is not None and (price5 <= 1.0 or (change is not None and change < 0)))
-
-    prior_closes = [value for value in closes[1:6] if value is not None]
+    prior_closes = [v for v in closes[1:6] if v is not None]
     e_hit = (streak <= -2 and inst5_sum < 0 and close is not None and prior_closes and
              close < min(prior_closes) and change is not None and change <= -1.5)
 
+    # 判定順序:C 反轉 → A 抗賣壓 → B 洗盤(量縮跌) → 蓄勢吸籌(低基期連買) → D 派發/鈍化(高基期推不動) → E 雙殺。
     if c_hit:
         type_name = "chip_reversal"
         reasons = ["前5日法人流出", "今日法人轉買", "突破放量"]
     elif a_hit:
         type_name = "sell_absorption"
-        reasons = [f"法人連賣{abs(streak)}日", "5日淨流出", "低點未破"]
+        # 金居型:抗賣壓但已在高檔 → 標「需盯量」,非低檔埋伏
+        reasons = [f"法人連賣{abs(streak)}日", "賣不下去(跌<1.5%)",
+                   "高檔抗賣壓·需盯量" if near_high20 else "低點未破"]
     elif b_hit:
         type_name = "washout"
-        reasons = [f"法人連買{streak}日", "單日回檔", "趨勢未破"]
+        reasons = [f"法人連買{streak}日", "單日回檔·量縮", "趨勢未破·推得動"]
+    elif accum_hit:
+        type_name = "accumulation"
+        # 旺宏/聯電型:連買但價未動,20日仍低基期=吸籌,等價格確認(不是鈍化)
+        reasons = [f"法人連買{streak}日", "價未反應", "20日低基期·吸籌待補漲"]
     elif d_hit:
         type_name = "buying_stall"
-        reasons = ["5日法人買超", "價格未動", "高檔風險" if high_risk else "買盤效率低"]
+        _why = ("高檔創高失敗" if high_risk else
+                ("買盤效率低·推不動" if (buy_eff is not None and buy_eff < 2.0) else "高檔量沒縮"))
+        reasons = [f"法人連買{streak}日", "高基期買超卻推不動", _why]
     elif e_hit:
         type_name = "double_weak"
         reasons = [f"法人連賣{abs(streak)}日", "跌破5日低", "籌碼價格同弱"]
