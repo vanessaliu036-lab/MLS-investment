@@ -136,6 +136,35 @@ def _attach_verdict(rows, pool_date):
         row["t1_high_ret"] = d.get("t1_high_ret") if d else None
 
 
+def _attach_pool_outcome(items, pool_date):
+    """歷史複盤:把該池的 T+1 實際結果(pool_outcome)併回每一檔。
+
+    沒有這步的話,複盤只剩「當時選了誰」,看不到「後來走成怎樣」—— 而後者才是
+    複盤的目的。欄位名沿用顯示端既有契約(triggered/success/t1_close_pct),
+    讓前端不必為歷史另寫一套讀法。
+    未驗證的池(T+1 還沒到)留 None,不填 0 —— 0 會被讀成「觸發了但沒漲」。
+    """
+    import sqlite3
+    with sqlite3.connect("mls.db", timeout=30) as conn:
+        conn.row_factory = sqlite3.Row
+        oc = {r["code"]: dict(r) for r in conn.execute(
+            "SELECT * FROM pool_outcome WHERE pool_date=?", (pool_date.isoformat(),))}
+    for it in items:
+        o = oc.get(str(it.get("code") or ""))
+        if not o:
+            it["verified"] = False
+            continue
+        it["verified"] = True
+        it["base_close"] = o.get("base_close")
+        it["triggered"] = o.get("triggered")
+        it["success"] = o.get("hit")
+        it["t1_close_pct"] = o.get("ret_pct")
+        it["t1_high"] = o.get("next_high")
+        it["t1_close"] = o.get("next_close")
+        it["verdict"] = o.get("verdict")
+    return sum(1 for it in items if it.get("verified"))
+
+
 @app.get("/api/watchlist")
 def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,預設依當下時段"),
               date: Optional[str] = Query(None, description="資料日(池日) YYYY-MM-DD;指定=歷史複盤"),
@@ -170,6 +199,12 @@ def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,
             bad = date or applies_date
             return JSONResponse({"error": f"日期格式須為 YYYY-MM-DD,收到 {bad!r}"},
                                 status_code=400)
+        try:
+            n = _attach_pool_outcome(
+                data.get("items") or [], _dt_date.fromisoformat(data["data_date"]))
+            data["verified_count"] = n
+        except Exception as _e:
+            print(f"[watchlist] pool_outcome attach skip: {_e}")
     elif ph in (Phase.PRE, Phase.CLOSED):
         # 盤前/休市 = 直接讀上一交易日盤後名單,不重算、不重抓、零 API,秒開。
         # 休市(週末/國定假日)絕不因為時鐘到 09:00 就跑盤中。

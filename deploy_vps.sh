@@ -76,6 +76,9 @@ rsync -avz --delete \
   --exclude='*.log' \
   --exclude='.DS_Store' \
   --exclude='__pycache__' \
+  --exclude='.pytest_cache/' \
+  --exclude='.claude/' \
+  --exclude='ops/__pycache__' \
   --exclude='live_state.json' \
   --exclude='intraday_live_snapshot.json' \
   --exclude='ma20_cache.json' \
@@ -106,6 +109,8 @@ rsync -avz --delete \
   --exclude='*.log' \
   --exclude='.DS_Store' \
   --exclude='__pycache__' \
+  --exclude='.pytest_cache/' \
+  --exclude='tests/' \
   --exclude='stage2-status.json' \
   --exclude='backup_*.json' \
   --exclude='deploy/source.manifest.sha256' \

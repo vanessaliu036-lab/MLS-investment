@@ -766,12 +766,17 @@ document.addEventListener('click',e=>{
       score:x.score,reason:(x.reasons||[]).join(' · '),reasons:x.reasons,explain:x.explain,chip_label:x.chip_label,
       entry_ref:x.trigger_price??x.close,trigger_price:x.trigger_price,base_close:x.close,
       entry_rule:x.entry_rule,missing:x.missing,
-      price:null,change_rate:null,aflow:null,triggered:null,success:null,verified:false});
+      // 歷史複盤:帶 T+1 實際結果(引擎併的 pool_outcome)。非歷史時這些欄位不存在，
+      // 維持原本的 null＝「明日名單，尚未驗證」，不要把未驗證顯示成 0。
+      price:null,change_rate:null,aflow:null,
+      triggered:x.triggered??null,success:x.success??null,verified:!!x.verified,
+      t1_close_pct:x.t1_close_pct??null,t1_high:x.t1_high??null,verdict:x.verdict});
     const all=(w.items||[]).map(map);
     const picks=all.filter(x=>x.track==='attack'||x.track==='engine');
     const observe=all.filter(x=>x.track==='observe');
     return {target_date:w.applies_date,build_date:w.data_date,is_today:false,rows:picks,observe_rows:observe,
-      universe_size:w.universe_size,pool_size:w.pool_size,_apiOk:true,_ab:true};
+      universe_size:w.universe_size,pool_size:w.pool_size,historical:!!w.historical,
+      verified_count:w.verified_count,_apiOk:true,_ab:true};
   }
   // 收盤後把 radar 當日快照（可操作/觀察/排除）帶入主表：三組剛好=51、同源、加總正確。
   // 明日起每天收盤 radar 快照凍結 → 自動帶入，不需人工。
