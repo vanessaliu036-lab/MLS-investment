@@ -1004,8 +1004,24 @@ document.addEventListener('click',e=>{
     const notTraded=!!date&&date>new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei'}).format(new Date());
     const groups=Object.fromEntries(DECISION_POOLS.map(p=>[p.key,items.filter(x=>displayPoolOf(x)===p.key).sort(poolSort)]));
     const first=DECISION_POOLS.find(p=>groups[p.key].length)?.key||'watch';
-    const s=items.reduce((a,x)=>{a.tot++;const tr=(x.triggered===1||x.triggered===true);if(tr)a.trig++;if(x.verified){if(isHit(x))a.hit++;else if(tr)a.fail++;else a.no++;}return a;},{tot:0,trig:0,hit:0,fail:0,no:0}),pct=(n,d)=>d?Math.round(n/d*100):0,cell=(k,v,cls)=>`<div class="dr-stat ${cls||''}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
-    const stats=`<div class="dr-stats">${cell('篩選檔數',s.tot)}${cell('已觸發',`${s.trig} <small>(${pct(s.trig,s.tot)}%)</small>`,'b')}${cell('命中',`${s.hit} <small>(${pct(s.hit,s.tot)}%)</small>`,'g')}${cell('觸發後失敗',`${s.fail} <small>(${pct(s.fail,s.tot)}%)</small>`,'o')}${cell('未觸發',`${s.no} <small>(${pct(s.no,s.tot)}%)</small>`,'r')}${cell('總名單命中率',`${pct(s.hit,s.tot)}%`,'g')}${cell('觸發命中率',`${pct(s.hit,s.trig)}%`,'g')}</div>`;
+    // liveTriggered:x.triggered 有明確真值(歷史複盤,_attach_pool_outcome 蓋章過)就直接信任,
+    // 不動原邏輯;今日即時資料這個欄位天生不存在(AB 引擎的盤中資料本來就沒有「收盤驗證」概念),
+    // 落回跟每張卡片同一套判斷:價位有沒有站上關鍵價。與 mainCards 的 trigHtml 判斷一致,不重複發明。
+    // ⚠ 即時比價分支只能在「非歷史複盤」時啟用 —— 歷史池子裡 triggered 若是 null(後端當時
+    // 就沒算出值),代表那是有意的未知,不能拿「今天」的即時價去回填「當年」那個池子的觸發
+    // 狀態,那是拿現在的時間軸污染歷史,曾經因此把一筆歷史未觸發誤判成已觸發(2026-08-17 踩過)。
+    const liveTriggered=x=>{
+      if(x.triggered===1||x.triggered===true)return true;
+      if(x.triggered===0||x.triggered===false)return false;
+      if(data.historical)return false;   // 歷史複盤:null 就是未知/未觸發,不猜
+      const t=finite(x.entry_ref??x.base_close??x.trigger_price),p=finite(x.price??x.close??x.close_price??x.base_close);
+      return t!=null&&p!=null&&p>=t;
+    };
+    const s=items.reduce((a,x)=>{a.tot++;const tr=liveTriggered(x);if(tr)a.trig++;else a.untrig++;if(x.verified){if(isHit(x))a.hit++;else if(tr)a.fail++;}return a;},{tot:0,trig:0,untrig:0,hit:0,fail:0}),pct=(n,d)=>d?Math.round(n/d*100):0,cell=(k,v,cls)=>`<div class="dr-stat ${cls||''}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+    // 未觸發 = 總檔數 - 已觸發(互補,恆自洽,不再依賴 x.verified —— 那個欄位今日即時資料
+    // 永遠是 false,曾經造成「50 檔但已觸發 0/未觸發 0」自相矛盾的畫面)。
+    // 命中/觸發後失敗仍只看 x.verified:今日盤中尚未收盤,不可能有蓋章結果,顯示 0 是語意正確,不是 bug。
+    const stats=`<div class="dr-stats">${cell('篩選檔數',s.tot)}${cell('已觸發',`${s.trig} <small>(${pct(s.trig,s.tot)}%)</small>`,'b')}${cell('命中',`${s.hit} <small>(${pct(s.hit,s.tot)}%)</small>`,'g')}${cell('觸發後失敗',`${s.fail} <small>(${pct(s.fail,s.tot)}%)</small>`,'o')}${cell('未觸發',`${s.untrig} <small>(${pct(s.untrig,s.tot)}%)</small>`,'r')}${cell('總名單命中率',`${pct(s.hit,s.tot)}%`,'g')}${cell('觸發命中率',`${pct(s.hit,s.trig)}%`,'g')}</div>`;
     const summaries=DECISION_POOLS.map(p=>{const rows=groups[p.key];return `<details class="decision-pool" data-decision-pool="${p.key}"${p.key===first?' open':''}><summary class="decision-pool-summary"><span>${p.label}<small>${esc2(p.desc||'')}</small></span><b>${rows.length}</b></summary><div class="decision-pool-body">${rows.length?validationTable(rows,phase,notTraded,date,data.historical):`<div class="decision-empty">${p.empty}</div>`}</div></details>`}).join('');
     return `<article class="dr-single decision-view"><div class="dr-single-toolbar"><div><b>盤後驗證主表</b><small>保留原欄位、盤中資金流與累積歷史；四分組只改呈現</small></div><div><span class="dr-single-date">${esc2(status)}</span><span class="dr-single-date">資料日 <select onchange="window._pickMainDate&&window._pickMainDate(this.value)" style="border:0;background:transparent;font:inherit;font-weight:850;color:inherit;cursor:pointer">${dateOpts}</select></span></div></div>${stats}<nav class="decision-pool-nav">${DECISION_POOLS.map(p=>`<span>${p.label} ${groups[p.key].length}<small>${esc2(p.desc||'')}</small></span>`).join('')}</nav>${summaries}<div class="dr-single-note">明日觀察與今日淘汰繼續使用原本驗證流程；新增四欄只顯示語意，不重算、不刪除、不改寫歷史。</div>${decRejects(rejectRows)}</article>`;
   };
