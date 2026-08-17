@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>MLS Live Decision Engine — Full Stock Card UI</title>
+<style>
+  :root{
+    --bg:#f4f7fb;
+    --card:#ffffff;
+    --line:#e3e9f2;
+    --text:#162033;
+    --muted:#7d8aa2;
+    --navy:#11254b;
+    --navy2:#1e3a6d;
+    --red:#e63e38;
+    --red-soft:#fff0ef;
+    --green:#0c9b67;
+    --green-soft:#e9f8f1;
+    --amber:#c98a00;
+    --amber-soft:#fff7df;
+    --blue:#3478f6;
+    --blue-soft:#edf4ff;
+    --purple:#7257d8;
+    --purple-soft:#f2efff;
+    --shadow:0 8px 24px rgba(31,55,90,.08);
+    --radius:18px;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",Arial,sans-serif}
+  button{font:inherit}
+
+  .app{
+    max-width:980px;
+    margin:0 auto;
+    padding:12px 12px 32px;
+  }
+
+  .header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:12px;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:16px;
+    padding:12px 14px;
+    box-shadow:var(--shadow);
+    position:sticky;
+    top:8px;
+    z-index:20;
+  }
+
+  .brand{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    min-width:0;
+  }
+
+  .logo{
+    width:42px;
+    height:42px;
+    border-radius:12px;
+    background:var(--navy);
+    color:#fff;
+    display:grid;
+    place-items:center;
+    font-weight:900;
+    letter-spacing:.5px;
+    flex:0 0 auto;
+  }
+
+  .brand-title{
+    font-size:15px;
+    font-weight:900;
+    line-height:1.15;
+  }
+
+  .brand-sub{
+    margin-top:3px;
+    font-size:11px;
+    color:var(--muted);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    max-width:380px;
+  }
+
+  .live{
+    color:var(--green);
+    font-weight:800;
+  }
+
+  .refresh{
+    border:0;
+    background:var(--navy);
+    color:#fff;
+    padding:10px 12px;
+    border-radius:10px;
+    font-weight:800;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+
+  .summary-tabs{
+    margin-top:12px;
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:8px;
+  }
+
+  .summary-tab{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:10px 8px;
+    text-align:center;
+    font-size:13px;
+    font-weight:850;
+    color:#65748e;
+  }
+
+  .summary-tab.active{
+    color:var(--navy);
+    border-color:#c9d7ed;
+    box-shadow:inset 0 -3px 0 var(--navy);
+  }
+
+  .section-title{
+    margin:16px 2px 8px;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    gap:10px;
+  }
+
+  .section-title h2{
+    margin:0;
+    font-size:15px;
+    font-weight:900;
+  }
+
+  .section-title small{
+    color:var(--muted);
+    font-size:11px;
+  }
+
+  .stock-card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    overflow:hidden;
+    margin-bottom:14px;
+  }
+
+  .stock-main{
+    padding:14px;
+  }
+
+  .stock-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:12px;
+  }
+
+  .stock-id{
+    min-width:0;
+  }
+
+  .stock-name-line{
+    display:flex;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:7px;
+  }
+
+  .stock-name{
+    font-size:20px;
+    font-weight:950;
+  }
+
+  .stock-code{
+    color:var(--muted);
+    font-size:12px;
+    font-weight:800;
+  }
+
+  .sector{
+    margin-top:5px;
+    display:inline-flex;
+    border-radius:999px;
+    padding:4px 8px;
+    background:#eef3f8;
+    color:#5c7393;
+    font-size:11px;
+    font-weight:800;
+  }
+
+  .state{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    border-radius:999px;
+    padding:6px 10px;
+    font-size:12px;
+    font-weight:900;
+    white-space:nowrap;
+  }
+
+  .state.green{background:var(--green-soft);color:var(--green)}
+  .state.amber{background:var(--amber-soft);color:var(--amber)}
+  .state.purple{background:var(--purple-soft);color:var(--purple)}
+  .dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+
+  .price-row{
+    margin-top:10px;
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+
+  .price{
+    font-size:30px;
+    font-weight:950;
+    color:var(--red);
+    letter-spacing:-.4px;
+  }
+
+  .change{
+    font-size:18px;
+    font-weight:900;
+    color:var(--red);
+  }
+
+  .limit-badge{
+    font-size:11px;
+    font-weight:900;
+    padding:4px 7px;
+    border-radius:999px;
+    background:var(--red-soft);
+    color:var(--red);
+  }
+
+  .facts{
+    margin-top:12px;
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    border:1px solid var(--line);
+    border-radius:12px;
+    overflow:hidden;
+  }
+
+  .fact{
+    min-width:0;
+    padding:10px 11px;
+    border-right:1px solid var(--line);
+  }
+  .fact:last-child{border-right:0}
+
+  .fact-label{
+    color:var(--muted);
+    font-size:10px;
+    font-weight:800;
+    margin-bottom:4px;
+  }
+
+  .fact-value{
+    font-size:14px;
+    font-weight:900;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  .up{color:var(--red)}
+  .good{color:var(--green)}
+  .warn{color:var(--amber)}
+
+  .signal-strip{
+    margin-top:10px;
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:8px;
+  }
+
+  .metric{
+    border:1px solid var(--line);
+    border-radius:11px;
+    padding:8px 9px;
+    background:#fbfcfe;
+  }
+
+  .metric-top{
+    display:flex;
+    justify-content:space-between;
+    gap:8px;
+    font-size:10px;
+    color:var(--muted);
+    font-weight:800;
+  }
+
+  .metric strong{
+    color:var(--text);
+    font-size:12px;
+  }
+
+  .bar{
+    margin-top:6px;
+    display:grid;
+    grid-template-columns:repeat(5,1fr);
+    gap:3px;
+  }
+
+  .bar i{
+    height:5px;
+    border-radius:999px;
+    background:#dfe6ef;
+  }
+
+  .bar.green i.on{background:var(--green)}
+  .bar.amber i.on{background:#e3aa18}
+  .bar.red i.on{background:var(--red)}
+
+  .decision{
+    margin-top:10px;
+    display:grid;
+    gap:8px;
+  }
+
+  .decision-row{
+    display:grid;
+    grid-template-columns:auto 1fr;
+    gap:9px;
+    align-items:start;
+    border-radius:12px;
+    padding:10px 11px;
+  }
+
+  .decision-row.ai{
+    background:var(--blue-soft);
+    color:#244e91;
+  }
+
+  .decision-row.next{
+    background:var(--green-soft);
+    color:#176849;
+  }
+
+  .decision-icon{
+    width:28px;
+    height:28px;
+    display:grid;
+    place-items:center;
+    border-radius:50%;
+    background:rgba(255,255,255,.75);
+    font-weight:950;
+    flex:0 0 auto;
+  }
+
+  .decision-title{
+    font-size:11px;
+    font-weight:950;
+    margin-bottom:3px;
+  }
+
+  .decision-text{
+    font-size:13px;
+    font-weight:750;
+    line-height:1.5;
+  }
+
+  .details{
+    border-top:1px solid var(--line);
+    background:#fbfcfe;
+  }
+
+  .details summary{
+    list-style:none;
+    cursor:pointer;
+    padding:12px 14px;
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    font-size:12px;
+    font-weight:900;
+    color:#46556d;
+  }
+
+  .details summary::-webkit-details-marker{display:none}
+
+  .detail-grid{
+    padding:0 14px 14px;
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:8px;
+  }
+
+  .detail-item{
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:#fff;
+    padding:9px 10px;
+    min-width:0;
+  }
+
+  .detail-label{
+    font-size:10px;
+    color:var(--muted);
+    font-weight:800;
+    margin-bottom:4px;
+  }
+
+  .detail-value{
+    font-size:12px;
+    font-weight:900;
+    line-height:1.4;
+  }
+
+  .strategy-box{
+    grid-column:1/-1;
+    border:1px dashed #cdd7e6;
+    border-radius:10px;
+    background:#fff;
+    padding:10px 11px;
+  }
+
+  .strategy-label{
+    font-size:10px;
+    color:var(--muted);
+    font-weight:800;
+    margin-bottom:4px;
+  }
+
+  .strategy-text{
+    font-size:12px;
+    font-weight:800;
+    line-height:1.55;
+  }
+
+  .phase-grid{
+    margin-top:12px;
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:8px;
+  }
+
+  .phase{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:10px;
+  }
+
+  .phase strong{
+    display:block;
+    font-size:12px;
+    margin-bottom:4px;
+  }
+
+  .phase span{
+    font-size:10px;
+    color:var(--muted);
+    line-height:1.4;
+  }
+
+  @media(max-width:760px){
+    .app{padding:8px 8px 28px}
+    .header{top:6px;padding:10px}
+    .logo{width:38px;height:38px}
+    .brand-sub{max-width:210px}
+    .summary-tabs{
+      grid-template-columns:repeat(4,minmax(92px,1fr));
+      overflow-x:auto;
+      scrollbar-width:none;
+    }
+    .summary-tabs::-webkit-scrollbar{display:none}
+    .facts{grid-template-columns:repeat(2,1fr)}
+    .fact:nth-child(2){border-right:0}
+    .fact:nth-child(-n+2){border-bottom:1px solid var(--line)}
+    .signal-strip{grid-template-columns:repeat(3,1fr)}
+    .detail-grid{grid-template-columns:repeat(2,1fr)}
+    .phase-grid{grid-template-columns:1fr}
+  }
+
+  @media(max-width:430px){
+    .refresh{padding:9px 10px;font-size:12px}
+    .brand-title{font-size:13px}
+    .brand-sub{max-width:165px}
+    .stock-main{padding:12px}
+    .stock-name{font-size:18px}
+    .price{font-size:27px}
+    .change{font-size:16px}
+    .facts{grid-template-columns:repeat(2,1fr)}
+    .fact{padding:9px}
+    .fact-value{font-size:13px}
+    .signal-strip{grid-template-columns:1fr 1fr 1fr}
+    .metric{padding:7px}
+    .metric strong{font-size:11px}
+    .decision-text{font-size:12px}
+    .detail-grid{grid-template-columns:1fr 1fr}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="header">
+    <div class="brand">
+      <div class="logo">M</div>
+      <div>
+        <div class="brand-title">MLS LIVE DECISION ENGINE</div>
+        <div class="brand-sub"><span class="live">● Shioaji 即時連線</span> · 2026-08-17 09:27</div>
+      </div>
+    </div>
+    <button class="refresh" onclick="window.location.reload()">更新資料</button>
+  </header>
+
+  <div class="summary-tabs">
+    <div class="summary-tab active">🔥 A級 1</div>
+    <div class="summary-tab">🔄 反轉 1</div>
+    <div class="summary-tab">⏳ 待確認 4</div>
+    <div class="summary-tab">👀 觀察 12</div>
+  </div>
+
+  <div class="phase-grid">
+    <div class="phase">
+      <strong>A｜盤中資料</strong>
+      <span>2026-08-17 當日盤中即時，收盤後存檔。</span>
+    </div>
+    <div class="phase">
+      <strong>B｜盤後分析</strong>
+      <span>保留原本篩選依據與籌碼語意，只讀顯示，不改原名單。</span>
+    </div>
+    <div class="phase">
+      <strong>C｜策略驗證</strong>
+      <span>明日觀察／今日淘汰延續驗證。</span>
+    </div>
+  </div>
+
+  <div class="section-title">
+    <div>
+      <h2>今日盤中觀察</h2>
+      <small>主畫面只看：數據 → 判讀 → 行動</small>
+    </div>
+  </div>
+
+  <!-- 南電 -->
+  <article class="stock-card">
+    <div class="stock-main">
+      <div class="stock-head">
+        <div class="stock-id">
+          <div class="stock-name-line">
+            <span class="stock-name">南電</span>
+            <span class="stock-code">8046</span>
+          </div>
+          <span class="sector">其他</span>
+        </div>
+        <span class="state purple"><span class="dot"></span>🔥 反轉確認</span>
+      </div>
+
+      <div class="price-row">
+        <span class="price">—</span>
+        <span class="change">—</span>
+      </div>
+
+      <div class="facts">
+        <div class="fact">
+          <div class="fact-label">盤中資金流</div>
+          <div class="fact-value up">↑ +56 流入</div>
+        </div>
+        <div class="fact">
+          <div class="fact-label">盤中觸發條件</div>
+          <div class="fact-value">回測月線 1,335</div>
+        </div>
+        <div class="fact">
+          <div class="fact-label">進場狀態</div>
+          <div class="fact-value warn">待進場日盤中</div>
+        </div>
+        <div class="fact">
+          <div class="fact-label">關鍵價</div>
+          <div class="fact-value good">1,335</div>
+        </div>
+      </div>
+
+      <div class="signal-strip">
+        <div class="metric">
+          <div class="metric-top"><span>股票潛力</span><strong>A</strong></div>
+          <div class="bar green"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><span>趨勢</span><strong>反轉</strong></div>
+          <div class="bar green"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><span>買點品質</span><strong>A</strong></div>
+          <div class="bar green"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+        </div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-row ai">
+          <div class="decision-icon">AI</div>
+          <div>
+            <div class="decision-title">AI 盤中判讀</div>
+            <div class="decision-text">價格與主動資金同步轉強，關鍵價開始得到確認，目前屬於明確反轉啟動型態。</div>
+          </div>
+        </div>
+
+        <div class="decision-row next">
+          <div class="decision-icon">→</div>
+          <div>
+            <div class="decision-title">下一步</div>
+            <div class="decision-text"><b>守住 1,335</b> → 維持強勢；<b>跌回 1,335 下方</b> → 突破失敗，降級觀察。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <details class="details">
+      <summary>
+        <span>盤後分析與策略驗證</span>
+        <span>展開 ▾</span>
+      </summary>
+
+      <div class="detail-grid">
+        <div class="detail-item">
+          <div class="detail-label">盤後法人籌碼</div>
+          <div class="detail-value">待法人資料</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">篩選訊號型態</div>
+          <div class="detail-value">突破前高 1,335</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">股票潛力</div>
+          <div class="detail-value">A</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">趨勢</div>
+          <div class="detail-value">🔥 反轉確認</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">買點品質</div>
+          <div class="detail-value">A</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">進場分析</div>
+          <div class="detail-value">已觸發</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">驗證結果</div>
+          <div class="detail-value">待進場日收盤</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">策略驗證</div>
+          <div class="detail-value">明日延續驗證</div>
+        </div>
+
+        <div class="strategy-box">
+          <div class="strategy-label">原本篩選依據與籌碼語意</div>
+          <div class="strategy-text">
+            突破前高 1,335｜等待站上 1,335｜篩選依據：回測 MA5 1,213 不破 → 可進 ↗
+          </div>
+        </div>
+      </div>
+    </details>
+  </article>
+
+  <!-- 所羅門 -->
+  <article class="stock-card">
+    <div class="stock-main">
+      <div class="stock-head">
+        <div class="stock-id">
+          <div class="stock-name-line">
+            <span class="stock-name">所羅門</span>
+            <span class="stock-code">2359</span>
+          </div>
+          <span class="sector">無人機</span>
+        </div>
+        <span class="state green"><span class="dot"></span>已站上 169</span>
+      </div>
+
+      <div class="price-row">
+        <span class="price">175</span>
+        <span class="change">+9.71%</span>
+        <span class="limit-badge">漲停</span>
+      </div>
+
+      <div class="facts">
+        <div class="fact">
+          <div class="fact-label">盤中資金流</div>
+          <div class="fact-value up">↑ +8,083</div>
+        </div>
+        <div class="fact">
+          <div class="fact-label">盤中觸發條件</div>
+          <div class="fact-value">突破昨高 169</div>
+        </div>
+        <div class="fact">
+          <div class="fact-label">法人籌碼</div>
+          <div class="fact-value up">連買 3 日</div>
+        </div>
+        <div class="fact">
+          <div class="fact-label">關鍵價</div>
+          <div class="fact-value good">169 已站上</div>
+        </div>
+      </div>
+
+      <div class="signal-strip">
+        <div class="metric">
+          <div class="metric-top"><span>結構</span><strong>強勢</strong></div>
+          <div class="bar green"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><span>資金</span><strong>強勢</strong></div>
+          <div class="bar green"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+        </div>
+        <div class="metric">
+          <div class="metric-top"><span>追價風險</span><strong>中高</strong></div>
+          <div class="bar amber"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i></div>
+        </div>
+      </div>
+
+      <div class="decision">
+        <div class="decision-row ai">
+          <div class="decision-icon">AI</div>
+          <div>
+            <div class="decision-title">AI 盤中判讀</div>
+            <div class="decision-text">價格與主動資金同步轉強，昨日高點已突破，目前屬於明確啟動型態；但漲幅已大，追價風險升高。</div>
+          </div>
+        </div>
+
+        <div class="decision-row next">
+          <div class="decision-icon">→</div>
+          <div>
+            <div class="decision-title">下一步</div>
+            <div class="decision-text"><b>守住 169</b> → 維持強勢；<b>跌回 169 下方</b> → 突破失敗，降級觀察。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <details class="details">
+      <summary>
+        <span>盤後分析與策略驗證</span>
+        <span>展開 ▾</span>
+      </summary>
+
+      <div class="detail-grid">
+        <div class="detail-item">
+          <div class="detail-label">盤後法人籌碼</div>
+          <div class="detail-value">法人連買 3 日</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">篩選訊號型態</div>
+          <div class="detail-value">突破前高 169</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">股票潛力</div>
+          <div class="detail-value">Ready</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">趨勢</div>
+          <div class="detail-value">待補</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">買點品質</div>
+          <div class="detail-value">待補</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">進場分析</div>
+          <div class="detail-value">盤中驗證中</div>
+        </div>
+        <div class="detail-item">
+          <div class="detail-label">驗證結果</div>
+          <div class="detail-value">待收盤驗證</div>
+        </div>
+
+        <div class="strategy-box">
+          <div class="strategy-label">策略說明</div>
+          <div class="strategy-text">
+            原始盤中資料與盤後籌碼只讀保留；AI 判讀不重複原始數字，只解釋狀態與下一步。
+          </div>
+        </div>
+      </div>
+    </details>
+  </article>
+
+</div>
+</body>
+</html>
