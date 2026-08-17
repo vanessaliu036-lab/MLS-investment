@@ -39,6 +39,8 @@ import merge_pool
 import screen_verify
 # 淘汰名單「今日盤中說明」:後台算事實(今日資金流 vs 淘汰理由背離/確認),前台只印。
 import intraday_note
+# AI 盤中判讀:後台算結論(判讀+下一步),前台只印。不參與篩選。
+import intraday_verdict
 
 app = FastAPI(title="MLS v4.0")
 
@@ -241,6 +243,14 @@ def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,
             _attach_verdict(data["dropped"], pd)
         except Exception as _e:
             print(f"[watchlist] T+1 verify flow skip: {_e}")
+
+    # AI 盤中判讀:每一檔都附「這代表什麼 / 為何歸這類 / 什麼變化會升降級」。
+    # 顯示端不再自己把欄位串成句子(那只是把數字念第二遍)。
+    if isinstance(data, dict) and data.get("items"):
+        try:
+            intraday_verdict.attach(data["items"])
+        except Exception as _e:
+            print(f"[watchlist] verdict skip: {_e}")
 
     # 日期下拉的唯一來源。前端不准再從別的端點湊日期清單。
     if isinstance(data, dict):
