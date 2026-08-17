@@ -857,7 +857,11 @@ document.addEventListener('click',e=>{
       entry_rule:x.entry_rule,missing:x.missing,
       // 歷史複盤:帶 T+1 實際結果(引擎併的 pool_outcome)。非歷史時這些欄位不存在，
       // 維持原本的 null＝「明日名單，尚未驗證」，不要把未驗證顯示成 0。
-      price:null,change_rate:null,aflow:null,
+      // 這三個曾寫死 null,造成盤中「現價/漲跌」永遠是「—」、觸發條件掉進
+      // 「待進場日盤中」占位;資金流看似正常只是因為它 fallback 到 net_active。
+      // AB 盤中回應本來就帶 price/change_rate/aflow(實測 50/50 有值),直接用。
+      price:x.price??null,change_rate:x.change_rate??null,
+      aflow:x.aflow??x.net_active??null,intraday_high:x.intraday_high??null,
       triggered:x.triggered??null,success:x.success??null,verified:!!x.verified,
       t1_close_pct:x.t1_close_pct??null,t1_high:x.t1_high??null,verdict:x.verdict});
     const all=(w.items||[]).map(map);
