@@ -244,6 +244,12 @@ def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,
         except Exception as _e:
             print(f"[watchlist] T+1 verify flow skip: {_e}")
 
+    # 盤中回應補上 applies_date(=今天)。少了它,顯示端的 useAB 判定會失敗而
+    # 整個退回 /api/dec/list —— 那條路是過渡防呆、沒有判讀欄,而且 dec_watchlist
+    # 已停寫,再過一個交易日就會空表。盤中名單的正宗來源必須是 AB。
+    if isinstance(data, dict) and not data.get("applies_date"):
+        data["applies_date"] = data.get("data_date") or today_tw().isoformat()
+
     # AI 盤中判讀:每一檔都附「這代表什麼 / 為何歸這類 / 什麼變化會升降級」。
     # 顯示端不再自己把欄位串成句子(那只是把數字念第二遍)。
     if isinstance(data, dict) and data.get("items"):
