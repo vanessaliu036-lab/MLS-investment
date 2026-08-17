@@ -678,12 +678,17 @@ document.addEventListener('click',e=>{
   const stateCell=(label,cls='')=>`<span class="badge ${cls}">${esc2(label)}</span>`;
   const semanticEntryCopy={not_triggered:'尚未觸發',near_trigger:'接近觸發',triggered:'已觸發',trigger_failed:'觸發後失敗',no_chase:'禁止追價',wait_pullback:'等待回測'};
   // 這四格只顯示後端已經蓋章的語意；舊歷史沒有新欄位時顯示「待補」，不在前端重算、不改原名單。
+  // 拆成 semanticVals(原始值) + 兩種輸出殼(表格 td / 卡片 detail)，兩邊共用同一份計算，不重複邏輯。
+  const semanticVals=x=>({
+    potential: x.potential_grade||x.grade||'待補',
+    trend: x.trend_stage||'待補',
+    quality: x.entry_quality||'待補',
+    entry: x.entry_state_label||semanticEntryCopy[x.entry_state]||x.entry_status||x.verdict||'待驗證',
+    summary: x.decision_summary||''
+  });
   const semanticCells=x=>{
-    const potential=x.potential_grade||x.grade||'待補';
-    const trend=x.trend_stage||'待補';
-    const quality=x.entry_quality||'待補';
-    const entry=x.entry_state_label||semanticEntryCopy[x.entry_state]||x.entry_status||x.verdict||'待驗證';
-    return `<td class="semantic-cell"><b>${esc2(potential)}</b></td><td class="semantic-cell"><b>${esc2(trend)}</b></td><td class="semantic-cell"><b>${esc2(quality)}</b></td><td class="semantic-cell semantic-entry"><b>${esc2(entry)}</b>${x.decision_summary?`<small>${esc2(x.decision_summary)}</small>`:''}</td>`;
+    const v=semanticVals(x);
+    return `<td class="semantic-cell"><b>${esc2(v.potential)}</b></td><td class="semantic-cell"><b>${esc2(v.trend)}</b></td><td class="semantic-cell"><b>${esc2(v.quality)}</b></td><td class="semantic-cell semantic-entry"><b>${esc2(v.entry)}</b>${v.summary?`<small>${esc2(v.summary)}</small>`:''}</td>`;
   };
   function mainRows(items,phase,notTraded){
     const isLimitUp=x=>exactLimitUp(x);
@@ -758,6 +763,107 @@ document.addEventListener('click',e=>{
       } else verHtml=stateCell(isToday?'待收盤驗證':'待進場日收盤','verify-pending');
       return `<tr class="${limitUp?'mr-limit':''}"><td class="stock"><small class="sector-tag">${esc2(x.sector||'其他')}</small><b>${esc2(rowName(x))}</b><small>${esc2(rowCode(x))}</small></td><td class="price ${color(ch)}">${esc2(price==null?'—':Number(price).toLocaleString('en-US'))}${limitUp?'<small class="mr-lu">收盤漲停</small>':''}</td><td class="${color(ch)}">${esc2(pctText(ch))}</td><td class="flow ${fN>0?'flow-in':fN<0?'flow-out':''}">${esc2(flow==null?'—':numberText(flow))}<small>${flow==null?'無資料':fN>0?'流入':fN<0?'流出':'中性'}</small></td><td class="cond"><b>${esc2(condMain)}</b>${condSub?`<small>${esc2(condSub)}</small>`:''}</td><td class="explain">${reasonHtml}</td><td>${chipHtml}</td><td class="mr-sig"><b>${esc2(signal)}${eref!=null?' '+erefT:''}</b><small>${esc2(signalNote)}</small><span class="mr-arrow">↗</span></td>${semanticCells(x)}<td>${trigHtml}</td><td>${verHtml}</td></tr>`;
     }).join('')||'<tr><td colspan="14" class="dr-single-empty">目前沒有可顯示的正式名單</td></tr>';
+  }
+  // ══ 卡片版主表(取代寬表格)══════════════════════════════════════════
+  // 與 mainRows 共用 100% 的資料邏輯(排序/isLimitUp/price/flow/condMain/
+  // reasonHtml/chipHtml/signal/semanticVals/trigHtml/verHtml)，只換輸出殼。
+  // 不重複原則:上半部(price-row/facts)出現過的數字，decision 區塊不再念一次
+  // ——這正是 reasonHtml 內的 AI 判讀(intraday_verdict)已經在做的事，卡片只是
+  // 把它擺進不需要橫向捲動、手機不會把中文切成直排的容器。
+  function mainCards(items,phase,notTraded){
+    const isLimitUp=x=>exactLimitUp(x);
+    const lampRank=x=>{
+      const isEng=x.track==='engine'||/回測|月線|引擎/.test(String(x.reason||''));
+      if(isEng)return 0;
+      const trigN=Number(x.entry_ref??x.base_close??x.trigger_price),curN=Number(x.price??x.close??x.close_price??x.base_close),hiN=Number(x.intraday_high);
+      if(x.triggered===1||x.triggered===true)return 2;
+      if(Number.isFinite(trigN)&&Number.isFinite(curN)&&curN>=trigN)return 2;
+      if(Number.isFinite(trigN)&&Number.isFinite(hiN)&&hiN>=trigN)return 1;
+      return 0;
+    };
+    const sorted=[...items].sort((a,b)=>Number(isLimitUp(b))-Number(isLimitUp(a))||lampRank(b)-lampRank(a)||Number(b.change_rate??b.today_change??-999)-Number(a.change_rate??a.today_change??-999));
+    return sorted.map(x=>{
+      const code=rowCode(x),name=rowName(x),sector=x.sector||'其他';
+      if(notTraded){
+        const cond0=triggerCondition(x),reason0=(String(x.reason||'').trim()?pickReason(x):'待進場日盤中資料'),chip0=chips(x),chipCls0=/連賣|賣超/.test(chip0)?'down':/連買|買超|同步/.test(chip0)?'up':'',signal0=signalType(x),base0=x.base_close??x.close??x.close_price??x.price,v0=semanticVals(x);
+        return `<article class="stock-card mr-card" data-code="${esc2(code)}">
+          <div class="mr-card-head"><div class="mr-card-id"><span class="sector-tag">${esc2(sector)}</span><span class="mr-card-name">${esc2(name)}</span><span class="mr-card-code">${esc2(code)}</span></div><span class="mr-card-state pending">待進場日盤中</span></div>
+          <div class="mr-card-price"><span class="mr-card-p">${base0==null?'—':Number(base0).toLocaleString('en-US')}</span><span class="mr-card-p-note">今日收盤</span></div>
+          <div class="mr-card-facts">
+            <div class="mr-fact"><label>盤中觸發條件</label><b>${esc2(cond0)}</b></div>
+            <div class="mr-fact"><label>法人籌碼</label><b>${chip0==='待法人資料'?'待法人資料':esc2(chip0)}</b></div>
+            <div class="mr-fact"><label>訊號型態</label><b>${signal0==='待更新'?'18:00 後更新':esc2(signal0)}</b></div>
+            <div class="mr-fact"><label>股票潛力</label><b>${esc2(v0.potential)}</b></div>
+          </div>
+          <div class="mr-card-decision"><div class="mr-radar-reason">${reason0}</div></div>
+        </article>`;
+      }
+      const price=x.price??x.close??x.close_price??x.base_close, ch=x.change_rate??x.today_change, flow=flowValue(x), fN=finite(flow);
+      const isToday=x.state==='live'||/驗證中/.test(String(x.verdict||''));
+      const limitUp=exactLimitUp(x,price,ch);
+      const eref=x.entry_ref??x.base_close??x.trigger_price, erefT=eref==null?'—':Number(eref).toLocaleString('en-US');
+      const isEng=x.track==='engine'||/回測|月線|引擎/.test(String(x.reason||''));
+      const condMain=triggerCondition(x);
+      const verdictHtml=v=>{
+        const ico=t=>t==='strong'?'🟢':t==='caution'?'⚠️':t==='weak'?'🔻':'·';
+        const lines=(v.lines||[]).map(l=>`<li class="mr-read ${esc2(l.tone||'')}"><span>${ico(l.tone)}</span><small>${esc2(l.text)}</small></li>`).join('');
+        const steps=(v.next_steps||[]).map(s=>`<li class="mr-step"><b>${esc2(s.cond)}</b><i>→</i><small>${esc2(s.then)}</small></li>`).join('');
+        return `<ul class="mr-bul mr-verdict">${lines}</ul>`+(steps?`<div class="mr-next"><label>下一步</label><ul>${steps}</ul></div>`:'');
+      };
+      const reasonHtml=x._radar
+        ?`<div class="mr-radar-reason">${esc2(x.reason||'—')}</div>`
+        :(x.intraday_verdict&&(x.intraday_verdict.lines||[]).length
+          ?verdictHtml(x.intraday_verdict)
+          :`<ul class="mr-bul">${intradayReason(x).map(b=>`<li><b>${esc2(b.label)}</b><small>${esc2(b.detail)}</small></li>`).join('')}</ul>`);
+      const chipLbl=x.chip_label||chips(x), streak=(String(chipLbl).match(/連[買賣]\s*\d+\s*日/)||[])[0], chipCls=/連賣/.test(chipLbl)?'down':/連買|買超|同步/.test(chipLbl)?'up':'';
+      const chipText=(chipLbl==='待法人資料'||chipLbl==='法人待補')?'待法人資料':(x.chip_label?chipLbl:(streak?`法人${streak}`:chipLbl));
+      const signal=signalType(x),signalNote=signalDetail(x);
+      let trigHtml,trigShort;
+      if(x.triggered==null){
+        const trigN=finite(eref),curN=finite(price),hiN=finite(x.intraday_high);
+        if(isToday&&!isEng&&trigN!=null&&curN!=null){
+          if(curN>=trigN){trigHtml=`<span class="mr-badge hit">🟢 已站上 ${erefT}</span><small>現 ${curN.toLocaleString('en-US')} ≥ ${erefT}</small>`;trigShort=`🟢 已站上 ${erefT}`;}
+          else if(hiN!=null&&hiN>=trigN){trigHtml=`<span class="mr-badge warn">🟡 曾觸及·已回落</span><small>高 ${hiN.toLocaleString('en-US')} ≥ ${erefT}｜現 ${curN.toLocaleString('en-US')}</small>`;trigShort='🟡 曾觸及·已回落';}
+          else {trigHtml=`<span class="badge verify-pending">⬜ 未達 ${erefT}</span><small>盤中最高 ${hiN==null?'—':hiN.toLocaleString('en-US')}</small>`;trigShort=`⬜ 未達 ${erefT}`;}
+        } else {trigHtml=stateCell(isToday?'待收盤蓋章':'待進場日盤中','verify-pending');trigShort=isToday?'待收盤蓋章':'待進場日盤中';}
+      }
+      else if(x.triggered){trigHtml=`<b class="mr-hit">✅ 已${isEng?'回測':'突破'} ${erefT}</b>${limitUp?'<small class="mr-lu">盤中曾漲停</small>':''}`;trigShort=`✅ 已${isEng?'回測':'突破'} ${erefT}`;}
+      else {trigHtml=`<b class="mr-miss">❌ 未${isEng?'回測':'突破'} ${erefT}</b>`;trigShort=`❌ 未${isEng?'回測':'突破'} ${erefT}`;}
+      let verHtml;
+      if(x.verified){
+        const closeN=finite(price), closeOk=closeConfirm(x), closeT=closeN==null?'—':Number(closeN).toLocaleString('en-US');
+        if(x.triggered&&closeOk===false)verHtml=`<span class="mr-badge warn">⚠️ 盤中${isEng?'回測':'突破'}・收盤${isEng?'跌破':'失守'}</span><small>收盤 ${closeT} &lt; ${erefT}</small>`;
+        else if(isHit(x))verHtml=`<span class="mr-badge hit">✅ 命中</span><small>收盤 ${closeT} ≥ ${erefT}</small>`;
+        else if(x.triggered&&!x.success)verHtml=`<span class="mr-badge warn">⚠️ 觸發後失敗</span><small>收盤 &lt; ${erefT}</small>`;
+        else verHtml=`<span class="mr-badge miss">❌ 未觸發</span><small>未到達條件</small>`;
+      } else verHtml=stateCell(isToday?'待收盤驗證':'待進場日收盤','verify-pending');
+      const v=semanticVals(x);
+      const stateBadge=limitUp?'<span class="mr-card-state limitup">漲停</span>':`<span class="mr-card-state">${trigShort}</span>`;
+      return `<article class="stock-card mr-card ${limitUp?'limit-up':''}" data-code="${esc2(code)}">
+        <div class="mr-card-head"><div class="mr-card-id"><span class="sector-tag">${esc2(sector)}</span><span class="mr-card-name">${esc2(name)}</span><span class="mr-card-code">${esc2(code)}</span></div>${stateBadge}</div>
+        <div class="mr-card-price"><span class="mr-card-p ${color(ch)}">${esc2(price==null?'—':Number(price).toLocaleString('en-US'))}</span><span class="mr-card-chg ${color(ch)}">${esc2(pctText(ch))}</span>${limitUp?'<span class="mr-card-limit">漲停</span>':''}</div>
+        <div class="mr-card-facts">
+          <div class="mr-fact"><label>盤中資金流</label><b class="${fN>0?'up':fN<0?'down':''}">${flow==null?'—':(fN>0?'↑ ':fN<0?'↓ ':'')+numberText(flow)}</b></div>
+          <div class="mr-fact"><label>盤中觸發條件</label><b>${esc2(condMain)}</b></div>
+          <div class="mr-fact"><label>今日觸發</label><b>${esc2(trigShort)}</b></div>
+          <div class="mr-fact"><label>關鍵價</label><b>${erefT}</b></div>
+        </div>
+        <div class="mr-card-decision">${reasonHtml}</div>
+        <details class="mr-card-more">
+          <summary><span>盤後分析與策略驗證</span><span class="mr-more-arrow">展開 ▾</span></summary>
+          <div class="mr-detail-grid">
+            <div class="mr-detail"><label>盤後法人籌碼</label><b class="${chipCls}">${esc2(chipText)}</b></div>
+            <div class="mr-detail"><label>篩選訊號型態</label><b>${esc2(signal)}${eref!=null?' '+erefT:''}</b></div>
+            <div class="mr-detail"><label>股票潛力</label><b>${esc2(v.potential)}</b></div>
+            <div class="mr-detail"><label>趨勢</label><b>${esc2(v.trend)}</b></div>
+            <div class="mr-detail"><label>買點品質</label><b>${esc2(v.quality)}</b></div>
+            <div class="mr-detail"><label>進場分析</label><b>${esc2(v.entry)}</b>${v.summary?`<small>${esc2(v.summary)}</small>`:''}</div>
+            <div class="mr-detail"><label>驗證結果</label><b>${verHtml}</b></div>
+          </div>
+          <div class="mr-strategy"><label>原本篩選依據與籌碼語意</label><div>${signalNote}</div></div>
+        </details>
+      </article>`;
+    }).join('')||'<div class="dr-single-empty">目前沒有可顯示的正式名單</div>';
   }
   function rejects(items){if(!items.length)return '';return `<details class="dr-single-reject"><summary>查看盤後淘汰名單（${items.length} 檔）</summary><table><thead><tr><th>股票</th><th>盤中資料</th><th>盤中資金流</th><th>AI 盤中判讀</th><th>淘汰理由</th></tr></thead><tbody>${items.map(x=>`<tr><td>${esc2(x.name||x.stock_name||x.code)}<br>${esc2(x.code||x.stock_id)}</td><td>${esc2(x.close??x.price??'—')}／${esc2(x.change_rate==null?'—':pctText(x.change_rate))}</td><td>${esc2(flowValue(x)==null?'—':numberText(flowValue(x)))}</td><td>${textReason(x)}</td><td>${esc2(x.why||x.reason||x.detail||'盤後條件未達標')}</td></tr>`).join('')}</tbody></table></details>`}
   // 「卡在因子」太籠統(排除)時，改抓 detail 開頭的具體因子(漲停/假紅衝高/資金流出/量比…)
@@ -884,7 +990,10 @@ document.addEventListener('click',e=>{
     if(/等回測|回測/.test(label))return 'pullback';
     return 'watch';
   };
-  const validationTable=(rows,phase,notTraded,date)=>`<div class="dr-single-table-wrap"><table class="dr-single-table" data-semantic-table="original-validation"><thead><tr><th rowspan="2" class="basic">股票</th><th rowspan="2" class="basic">收盤／現價</th><th rowspan="2" class="basic">漲跌</th><th colspan="2" class="ga"><span class="group-label">A｜盤中資料</span><small>${esc2(date)} 當日盤中即時（收盤後存檔）</small></th><th colspan="3" class="gb"><span class="group-label">B｜盤後分析</span><small>原本篩選依據與籌碼</small></th><th colspan="4" class="gd"><span class="group-label">語意呈現</span><small>只讀顯示，不改原名單</small></th><th colspan="2" class="gc"><span class="group-label">C｜策略驗證</span><small>明日觀察／今日淘汰延續驗證</small></th></tr><tr><th class="sub ga">盤中資金流</th><th class="sub ga">盤中觸發條件</th><th class="sub gb">AI 盤中判讀</th><th class="sub gb">盤後法人籌碼</th><th class="sub gb">篩選訊號型態</th><th class="sub gd">股票潛力</th><th class="sub gd">趨勢</th><th class="sub gd">買點品質</th><th class="sub gd">進場分析</th><th class="sub gc">今日觸發</th><th class="sub gc">驗證結果</th></tr></thead><tbody>${mainRows(rows,phase,notTraded)}</tbody></table></div>`;
+  // 卡片版取代寬表格(45 層 CSS 疊加、選擇器優先度互打，列高壓不下去、手機會把中文切成直排)。
+  // 一檔一卡：上半部原始數據(現價/漲跌/資金流/觸發條件)，AI 判讀不重複這些數字，
+  // 盤後八項語意/籌碼收進可展開區塊，預設收合維持掃描密度。
+  const validationTable=(rows,phase,notTraded,date)=>`<div class="mr-card-list-wrap"><div class="mr-card-date">${esc2(date)} 當日盤中即時（收盤後存檔）</div><div class="mr-card-list">${mainCards(rows,phase,notTraded)}</div></div>`;
   singleCard=(data,phase,rejectRows)=>{
     const _tm=(()=>{const f=n=>Number(new Intl.DateTimeFormat('en-US',Object.assign({hour12:false,timeZone:'Asia/Taipei'},{[n]:'2-digit'})).format(new Date()));return f('hour')*60+f('minute')})();
     const items=canonicalItems(data),isToday=data.is_today!==false,status=data._apiOk===false?'API 讀取失敗':(isToday?(_tm<540?'今日盤前 · 等待 09:00 開盤':_tm<=810?'今日盤中 · 即時驗證中（13:30 收盤）':'今日已收盤 · 等待盤後籌碼與驗證蓋章'):'已收盤 · T+1 蓋章');
@@ -1927,46 +2036,52 @@ async function loadBreadth(embedded){
 </script>
 <style>.pos{color:var(--red)}.neg{color:var(--green)}</style>
 <style>
-/* 台股盤面慣例：真正漲停整列紅底。精確狀態由後端 is_limit_up 蓋章；舊列才由 tick 制反推。 */
+/* 台股盤面慣例：漲停用淺紅底＋深字＋左側紅線標示，不用飽和紅底白字
+   （2026-08-17 改：整塊飽和紅在盤中讀不清楚，也蓋掉其他資訊的可掃描性）。
+   精確狀態由後端 is_limit_up 蓋章；舊列才由 tick 制反推。 */
 .limit-up-row td,
 .dr-single-table tr.mr-limit td,
 .dr-single-reject tr.limit-up-row td,
 .dr-ref-table tr.limit-up td{
-  background:#e53935!important;
-  color:#fff!important;
-  border-color:rgba(255,255,255,.28)!important;
+  background:#fdecec!important;
+  color:#1f2937!important;
+  border-color:#f3c3c3!important;
 }
 .limit-up-row:hover td,
 .dr-single-table tr.mr-limit:hover td,
 .dr-single-reject tr.limit-up-row:hover td,
-.dr-ref-table tr.limit-up:hover td{background:#cf2f2f!important}
+.dr-ref-table tr.limit-up:hover td{background:#fbdede!important}
 .limit-up-row td *,
 .dr-single-table tr.mr-limit td *,
 .dr-single-reject tr.limit-up-row td *,
-.dr-ref-table tr.limit-up td *{color:#fff!important}
+.dr-ref-table tr.limit-up td *{color:#1f2937!important}
+.limit-up-row td:first-child,
+.dr-single-table tr.mr-limit td:first-child,
+.dr-single-reject tr.limit-up-row td:first-child,
+.dr-ref-table tr.limit-up td:first-child{box-shadow:inset 4px 0 0 #d92d20!important}
 .limit-up-row .pill,
 .dr-single-table tr.mr-limit .pill,
 .dr-single-table tr.mr-limit .badge,
 .dr-ref-table tr.limit-up .dr-ref-badge{
-  background:rgba(255,255,255,.2)!important;
-  color:#fff!important;
-  border-color:rgba(255,255,255,.42)!important;
+  background:#fff!important;
+  color:#d92d20!important;
+  border-color:#f0a9a9!important;
 }
 .stock-card.limit-up,
 .dr-row.dr-limit{
-  background:#e53935!important;
-  border-color:#c62828!important;
-  color:#fff!important;
-  box-shadow:inset 4px 0 0 #8e0000!important;
+  background:#fdecec!important;
+  border-color:#f3c3c3!important;
+  color:#1f2937!important;
+  box-shadow:inset 4px 0 0 #d92d20!important;
 }
 .stock-card.limit-up *,
-.dr-row.dr-limit *{color:#fff!important}
+.dr-row.dr-limit *{color:#1f2937!important}
 .stock-card.limit-up .tag,
 .dr-row.dr-limit .dr-badge,
 .dr-row.dr-limit .dr-inst{
-  background:rgba(255,255,255,.2)!important;
-  border-color:rgba(255,255,255,.4)!important;
-  color:#fff!important;
+  background:#fff!important;
+  border-color:#f0a9a9!important;
+  color:#d92d20!important;
 }
 </style>
 <style>
@@ -2261,64 +2376,68 @@ if(window.__singleMainTableRender){
 .dr-single-table{margin:0!important}
 .dr-single-table td:first-child,.dr-single-table th:first-child{padding-left:6px!important}
 .dr-single-table td:last-child,.dr-single-table th:last-child{padding-right:6px!important}
-/* 漲停:飽和紅底 + 白字在盤中幾乎讀不到,而且整塊紅會蓋掉其他資訊的可掃描性。
-   改成淺紅底 + 深色本文 + 左側紅線 + 紅色數字,一眼仍能找到漲停股,但字看得清楚。 */
-.limit-up,.limit-up-row,
-.dr-single-table tbody tr.limit-up td,
-.dr-single-table tbody tr.limit-up-row td{
-  background:#fdecec!important;color:#1f2937!important;border-color:#f3c3c3!important}
-.limit-up *,.limit-up-row *{color:inherit!important;text-shadow:none!important}
-.limit-up{box-shadow:inset 4px 0 0 #d92d20!important}
-.dr-single-table tbody tr.limit-up td:first-child,
-.dr-single-table tbody tr.limit-up-row td:first-child{box-shadow:inset 4px 0 0 #d92d20!important}
-/* 價格與漲跌用紅字承擔「漲停」的視覺重量,不靠整塊底色 */
-.limit-up .price,.limit-up-row .price,
-.limit-up .chg,.limit-up-row .chg{color:#d92d20!important;font-weight:700!important}
-/* 漲停 Badge:白底紅字紅框,不再是紅底白字 */
-.limit-up .badge,.limit-up-row .badge{
-  background:#fff!important;color:#d92d20!important;border:1px solid #f0a9a9!important}
-/* 卡片內的說明區塊維持白底深字(原本白底白字完全看不見) */
-.limit-up .mr-verdict,.limit-up-row .mr-verdict,
-.limit-up .mr-next,.limit-up-row .mr-next{color:#1f2937!important}
-
-/* ══ Compact Trading Grid ══════════════════════════════════════════════
-   問題不是欄位太多,是列高/欄寬/文字排法過度放大:一個數字擺在格子正中央,
-   實際資訊佔不到高度的三成。目標把單列 ~230px 壓到 ~100px,同畫面看到近兩倍標的。
-   純覆蓋層,不動 markup —— 出問題單獨移除這一段即可回退。 */
-.dr-single-table td{padding:8px 8px!important;line-height:1.35!important;vertical-align:top!important}
-.dr-single-table th{padding:6px 8px!important}
-.dr-single-table tbody tr{height:auto!important}
-
-/* 標的:族群/名稱/代號三行大字 → 名稱+代號一行、族群縮成小 Tag */
-.dr-single-table .stock{text-align:left!important;vertical-align:top!important;line-height:1.25!important}
-.dr-single-table .stock b{font-size:15px!important;display:inline!important;margin-right:4px}
-.dr-single-table .stock small{font-size:11px!important;color:#6b7280}
-.dr-single-table .stock .sector-tag{display:inline-block!important;font-size:10px!important;
-  padding:0 5px;border-radius:8px;background:#eef2f7;color:#5b6472;margin:2px 0 0}
-
-/* 判讀:段落之間不需要大留白;下一步的分隔線與標籤都壓扁 */
-.mr-verdict li.mr-read{margin:0 0 2px!important;gap:5px!important}
-.mr-verdict li.mr-read small{line-height:1.4!important;font-size:12px!important}
-.mr-next{margin-top:4px!important;padding-top:4px!important}
-.mr-next>label{font-size:10px!important;margin-bottom:1px!important;text-align:left}
-.mr-next li.mr-step{margin:0!important}
-.mr-next li.mr-step b{font-size:12px!important}
-.mr-next li.mr-step small{font-size:11px!important}
-.mr-next ul{text-align:left}
-td .mr-verdict{max-width:none!important}
-
-/* 漲停:整列紅底會蓋掉其他資訊的可掃描性 → 白底 + 左側 4px 紅線 + 紅字 Badge */
-.dr-single-table tbody tr.limit-up td,
-.dr-single-table tbody tr.is-limit-up td,
-.dr-single-table tbody tr[data-limit-up="1"] td{background:#fff!important;color:inherit!important}
-.dr-single-table tbody tr.limit-up td:first-child,
-.dr-single-table tbody tr.is-limit-up td:first-child,
-.dr-single-table tbody tr[data-limit-up="1"] td:first-child{box-shadow:inset 4px 0 0 #d92d20}
-.dr-single-table tbody tr.limit-up .price,
-.dr-single-table tbody tr.is-limit-up .price,
-.dr-single-table tbody tr[data-limit-up="1"] .price{color:#d92d20!important;font-weight:700}
-
-/* 數值欄:等寬數字、靠上,不再置中撐高 */
-.dr-single-table .price,.dr-single-table .chg{font-variant-numeric:tabular-nums;vertical-align:top!important}
-
+/* ══ 卡片版主表(mr-card 系列)══════════════════════════════════════════
+   取代寬表格。放在檔案最後一個 </style> 前 —— 這份檔案有 45 個 <style> 區塊，
+   等優先度規則以「源碼順序」決勝負，放最後才不會被更早的規則蓋掉
+   (今天在漲停色調上踩過這個坑：規則位置對了但優先度selector更低還是會輸，
+   這裡用全新 class 名(mr-card-*)避免任何既有規則命中，不靠位置賭優先度)。
+   複用既有 .stock-card 基底(padding/radius/shadow/watch·risk·limit-up 左側色條)。 */
+.mr-card-list-wrap{margin-top:6px}
+.mr-card-date{font-size:12px;color:var(--muted);margin:0 0 10px;padding:0 2px}
+.mr-card-list{display:grid;grid-template-columns:1fr;gap:12px}
+@media(min-width:900px){.mr-card-list{grid-template-columns:repeat(2,1fr)}}
+.mr-card{cursor:default}
+.mr-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.mr-card-id{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;min-width:0}
+.mr-card-name{font-size:16px;font-weight:900;color:var(--text)}
+.mr-card-code{font-size:12px;color:var(--muted);font-weight:700}
+.mr-card-id .sector-tag{font-size:10px;padding:2px 7px;border-radius:99px;background:#eef1f7;color:#5c7393;font-weight:700}
+.mr-card-state{font-size:11px;font-weight:800;padding:4px 9px;border-radius:99px;background:#f1f4f9;color:var(--muted);white-space:nowrap}
+.mr-card-state.limitup{background:#fdecec;color:#d92d20}
+.mr-card-price{display:flex;align-items:baseline;gap:8px;margin-top:8px}
+.mr-card-p{font-size:24px;font-weight:900;font-variant-numeric:tabular-nums}
+.mr-card-p-note{font-size:11px;color:var(--muted)}
+.mr-card-chg{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
+.mr-card-limit{font-size:11px;font-weight:800;color:#d92d20;background:#fdecec;border:1px solid #f0a9a9;padding:2px 7px;border-radius:8px}
+.mr-card-facts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 0}
+.mr-fact{background:#f8f9fc;border-radius:10px;padding:8px 10px;min-width:0}
+.mr-fact label{display:block;font-size:10.5px;color:var(--muted);margin-bottom:2px}
+.mr-fact b{font-size:13px;font-weight:800;overflow-wrap:anywhere}
+.mr-card-decision{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.mr-card-decision .mr-verdict,.mr-card-decision .mr-bul{list-style:none;margin:0;padding:0}
+.mr-card-decision .mr-read{display:flex;gap:6px;align-items:flex-start;margin:0 0 4px}
+.mr-card-decision .mr-read small{font-size:12.5px;line-height:1.5;color:var(--text)}
+.mr-card-decision .mr-next{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
+.mr-card-decision .mr-next label{display:block;font-size:10.5px;font-weight:800;color:var(--muted);margin-bottom:3px}
+.mr-card-decision .mr-next ul{list-style:none;margin:0;padding:0}
+.mr-card-decision .mr-step{display:flex;gap:5px;align-items:baseline;margin:0 0 2px;font-size:12.5px}
+.mr-card-decision .mr-step b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.mr-card-decision .mr-step i{font-style:normal;color:#9aa4b8}
+.mr-card-decision .mr-radar-reason{font-size:12.5px;line-height:1.5;color:var(--text)}
+.mr-card-more{margin-top:10px}
+.mr-card-more summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:800;color:var(--muted);padding:6px 2px}
+.mr-card-more summary::-webkit-details-marker{display:none}
+.mr-more-arrow{font-weight:700}
+.mr-card-more[open] .mr-more-arrow{transform:rotate(180deg);display:inline-block}
+.mr-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.mr-detail{background:#f8f9fc;border-radius:10px;padding:8px 10px;min-width:0}
+.mr-detail label{display:block;font-size:10.5px;color:var(--muted);margin-bottom:2px}
+.mr-detail b{font-size:12.5px;font-weight:800;overflow-wrap:anywhere}
+.mr-detail small{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+.mr-strategy{margin-top:8px;padding:9px 10px;background:#f8f9fc;border-radius:10px}
+.mr-strategy label{display:block;font-size:10.5px;color:var(--muted);margin-bottom:3px;font-weight:800}
+.mr-strategy div{font-size:12px;line-height:1.5;color:var(--text)}
+.mr-card .up,.mr-fact .up,.mr-detail .up{color:var(--red)}
+.mr-card .down,.mr-fact .down,.mr-detail .down{color:var(--green)}
+.mr-badge{font-size:11px;font-weight:800;padding:3px 8px;border-radius:8px;white-space:nowrap}
+.mr-badge.hit{background:var(--green-soft);color:var(--green)}
+.mr-badge.warn{background:var(--amber-soft);color:var(--amber)}
+.mr-badge.miss{background:#f1f4f9;color:var(--muted)}
+.mr-hit{color:var(--green)}
+.mr-miss{color:var(--muted)}
+@media(max-width:640px){
+  .mr-card-list{grid-template-columns:1fr}
+  .mr-card-facts,.mr-detail-grid{grid-template-columns:1fr 1fr}
+  .mr-card-p{font-size:21px}
+}
 </style>
