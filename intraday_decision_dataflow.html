@@ -69,6 +69,26 @@ td .mr-verdict{max-width:none!important}
 
 /* 數值欄:等寬數字、靠上,不再置中撐高 */
 .dr-single-table .price,.dr-single-table .chg{font-variant-numeric:tabular-nums;vertical-align:top!important}
+
+/* 漲停:飽和紅底 + 白字在盤中幾乎讀不到,而且整塊紅會蓋掉其他資訊的可掃描性。
+   改成淺紅底 + 深色本文 + 左側紅線 + 紅色數字,一眼仍能找到漲停股,但字看得清楚。 */
+.limit-up,.limit-up-row,
+.dr-single-table tbody tr.limit-up td,
+.dr-single-table tbody tr.limit-up-row td{
+  background:#fdecec!important;color:#1f2937!important;border-color:#f3c3c3!important}
+.limit-up *,.limit-up-row *{color:inherit!important;text-shadow:none!important}
+.limit-up{box-shadow:inset 4px 0 0 #d92d20!important}
+.dr-single-table tbody tr.limit-up td:first-child,
+.dr-single-table tbody tr.limit-up-row td:first-child{box-shadow:inset 4px 0 0 #d92d20!important}
+/* 價格與漲跌用紅字承擔「漲停」的視覺重量,不靠整塊底色 */
+.limit-up .price,.limit-up-row .price,
+.limit-up .chg,.limit-up-row .chg{color:#d92d20!important;font-weight:700!important}
+/* 漲停 Badge:白底紅字紅框,不再是紅底白字 */
+.limit-up .badge,.limit-up-row .badge{
+  background:#fff!important;color:#d92d20!important;border:1px solid #f0a9a9!important}
+/* 卡片內的說明區塊維持白底深字(原本白底白字完全看不見) */
+.limit-up .mr-verdict,.limit-up-row .mr-verdict,
+.limit-up .mr-next,.limit-up-row .mr-next{color:#1f2937!important}
 </style></head><body>
 <header class="topbar"><div class="brand"><div class="mark">M</div><div>MLS<small>LIVE DECISION ENGINE</small></div></div><div class="top-actions"><span class="dot"></span><span id="conn" class="muted">Shioaji 即時連線</span><button class="btn" id="pause">暫停監控</button><button class="btn primary" onclick="load()">更新資料</button></div></header>
 <div class="layout"><aside class="sidebar"><div class="nav-label">盤中決策</div><div class="nav-item active" onclick="closeHome()">決策首頁 <span class="count">LIVE</span></div><div class="nav-item" onclick="openPanel('radar')">機會雷達 <span id="navCount" class="count">—</span></div><div class="nav-item" onclick="openPanel('watch')">觀察池 51 檔 <span id="watchCount" class="count">—</span></div><div class="nav-item" onclick="openPanel('timeline')">訊號時間軸</div><div class="nav-label">研究與驗證</div><div class="nav-item" onclick="openPanel('report')">每日報告</div><div class="nav-item" onclick="openFeature('review')">盤後驗證</div><div class="nav-item" onclick="openFeature('models')">模型紀錄</div><div class="nav-label">系統</div><div class="nav-item" onclick="openPanel('quality')">資料品質</div><div class="nav-item" onclick="openPanel('shioaji')">Shioaji 狀態</div></aside>
