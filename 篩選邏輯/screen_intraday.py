@@ -260,6 +260,7 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
     # 不得可進（9:10 後的 VWAP/量/大盤重確認＝使用者定暫緩，先落地禁新倉時窗）。
     open_blind = _dt.time(9, 0) <= now.time() < _dt.time(9, OPEN_BUY_BLIND_MIN)
 
+    cg = screen_post._code_group()
     items = []
     for code, row in pool.items():
         pr = dict(row)
@@ -270,6 +271,7 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
                 pass
         it = judge_one(code, pr, q.get(code), a.get(code), b.get(code), at)
         it["name"] = config.NAME.get(code)   # 名稱注入(事實,不參與判斷)
+        it["sector"] = cg.get(code)          # 族群注入(事實對照,同 screen_post 手法);缺了顯示端全灰「其他」
         quote = q.get(code) or {}
         aflow = (a.get(code) or {}).get("net_active")
         prior_market = b.get(code) or {}
