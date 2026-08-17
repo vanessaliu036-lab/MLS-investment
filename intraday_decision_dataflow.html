@@ -770,7 +770,7 @@ document.addEventListener('click',e=>{
   // 不重複原則:上半部(price-row/facts)出現過的數字，decision 區塊不再念一次
   // ——這正是 reasonHtml 內的 AI 判讀(intraday_verdict)已經在做的事，卡片只是
   // 把它擺進不需要橫向捲動、手機不會把中文切成直排的容器。
-  function mainCards(items,phase,notTraded,isHistorical){
+  function mainCards(items,phase,notTraded,isHistorical,verifyDate){
     const isLimitUp=x=>exactLimitUp(x);
     const lampRank=x=>{
       const isEng=x.track==='engine'||/回測|月線|引擎/.test(String(x.reason||''));
@@ -845,6 +845,7 @@ document.addEventListener('click',e=>{
       return `<article class="stock-card mr-card ${limitUp?'limit-up':''}" data-code="${esc2(code)}">
         <div class="mr-card-head"><div class="mr-card-id"><span class="sector-tag">${esc2(sector)}</span><span class="mr-card-name">${esc2(name)}</span><span class="mr-card-code">${esc2(code)}</span></div>${stateBadge}</div>
         <div class="mr-card-price"><span class="mr-card-p ${color(ch)}">${esc2(price==null?'—':Number(price).toLocaleString('en-US'))}</span><span class="mr-card-chg ${color(ch)}">${esc2(pctText(ch))}</span>${limitUp?'<span class="mr-card-limit">漲停</span>':''}</div>
+        <div class="mr-stage-label mr-stage-a">A｜盤中即時<small>${esc2(verifyDate||'今日')} 當日盤中,收盤後存檔</small></div>
         <div class="mr-card-facts">
           <div class="mr-fact"><label>盤中資金流</label><b class="${fN>0?'up':fN<0?'down':''}">${flow==null?'—':(fN>0?'↑ ':fN<0?'↓ ':'')+numberText(flow)}</b></div>
           <div class="mr-fact"><label>盤中觸發條件</label><b>${esc2(condMain)}</b></div>
@@ -853,17 +854,24 @@ document.addEventListener('click',e=>{
         </div>
         <div class="mr-card-decision">${reasonHtml}</div>
         <details class="mr-card-more" onclick="event.stopPropagation()">
-          <summary><span>盤後分析與策略驗證</span><span class="mr-more-arrow">展開 ▾</span></summary>
+          <summary><span>盤後分析與策略驗證</span><span class="mr-more-label"><span class="mr-lbl-closed">展開</span><span class="mr-lbl-open">收合</span> <i class="mr-more-arrow">▾</i></span></summary>
+          <div class="mr-stage-label mr-stage-b">B｜盤後分析<small>唯讀,只翻譯既有事實,不改動名單</small></div>
           <div class="mr-detail-grid">
             <div class="mr-detail"><label>盤後法人籌碼</label><b class="${chipCls}">${esc2(chipText)}</b></div>
             <div class="mr-detail"><label>篩選訊號型態</label><b>${esc2(signal)}${eref!=null?' '+erefT:''}</b></div>
             <div class="mr-detail"><label>股票潛力</label><b>${esc2(v.potential)}</b></div>
             <div class="mr-detail"><label>趨勢</label><b>${esc2(v.trend)}</b></div>
             <div class="mr-detail"><label>買點品質</label><b>${esc2(v.quality)}</b></div>
-            <div class="mr-detail"><label>進場分析</label><b>${esc2(v.entry)}</b>${v.summary?`<small>${esc2(v.summary)}</small>`:''}</div>
+            <div class="mr-detail"><label>進場狀態</label><b>${esc2(v.entry)}</b>${v.summary?`<small>${esc2(v.summary)}</small>`:''}</div>
+          </div>
+          <div class="mr-strategy"><label>原始篩選條件與籌碼語意<small>判斷當下的條件,不隨盤中價格更新;今日實際狀態見上方 A 區「今日觸發」</small></label><div>${signalNote}</div></div>
+          <div class="mr-stage-label mr-stage-c">C｜策略驗證<small>T+1 蓋章結果,唯讀,不影響名單去留</small></div>
+          <div class="mr-detail-grid">
+            <div class="mr-detail"><label>原預測</label><b>${esc2(x.classification||x.tier||'—')}</b></div>
+            <div class="mr-detail"><label>T+1 身份</label><b>${esc2(T1_IDENTITY[x.display_pool]||x.display_pool||'—')}</b></div>
+            <div class="mr-detail"><label>驗證日期</label><b>${esc2(verifyDate||'—')}</b></div>
             <div class="mr-detail"><label>驗證結果</label><b>${verHtml}</b></div>
           </div>
-          <div class="mr-strategy"><label>原本篩選依據與籌碼語意</label><div>${signalNote}</div></div>
         </details>
       </article>`;
     }).join('')||'<div class="dr-single-empty">目前沒有可顯示的正式名單</div>';
@@ -996,7 +1004,10 @@ document.addEventListener('click',e=>{
   // 卡片版取代寬表格(45 層 CSS 疊加、選擇器優先度互打，列高壓不下去、手機會把中文切成直排)。
   // 一檔一卡：上半部原始數據(現價/漲跌/資金流/觸發條件)，AI 判讀不重複這些數字，
   // 盤後八項語意/籌碼收進可展開區塊，預設收合維持掃描密度。
-  const validationTable=(rows,phase,notTraded,date,isHistorical)=>`<div class="mr-card-list-wrap"><div class="mr-card-date">${esc2(date)} 當日盤中即時（收盤後存檔）</div><div class="mr-card-list">${mainCards(rows,phase,notTraded,isHistorical)}</div></div>`;
+  const validationTable=(rows,phase,notTraded,date,isHistorical)=>`<div class="mr-card-list-wrap"><div class="mr-card-date">${esc2(date)} 當日盤中即時（收盤後存檔）</div><div class="mr-card-list">${mainCards(rows,phase,notTraded,isHistorical,date)}</div></div>`;
+  // display_pool(後端英文代碼)→ T+1 身份白話文。與 DECISION_POOLS 同一組分類,純翻譯,
+  // 不判斷、不改動後端結果 —— 分類邏輯永遠只在後端算一次。
+  const T1_IDENTITY={core:'核心觀察',reversal:'反轉觀察',pullback:'強勢觀察·暫不追',watch:'一般觀察',rejected:'移出候選池'};
   singleCard=(data,phase,rejectRows)=>{
     const _tm=(()=>{const f=n=>Number(new Intl.DateTimeFormat('en-US',Object.assign({hour12:false,timeZone:'Asia/Taipei'},{[n]:'2-digit'})).format(new Date()));return f('hour')*60+f('minute')})();
     const items=canonicalItems(data),isToday=data.is_today!==false,status=data._apiOk===false?'API 讀取失敗':(isToday?(_tm<540?'今日盤前 · 等待 09:00 開盤':_tm<=810?'今日盤中 · 即時驗證中（13:30 收盤）':'今日已收盤 · 等待盤後籌碼與驗證蓋章'):'已收盤 · T+1 蓋章');
@@ -2418,7 +2429,18 @@ if(window.__singleMainTableRender){
 .mr-card-p-note{font-size:11px;color:var(--muted)}
 .mr-card-chg{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
 .mr-card-limit{font-size:11px;font-weight:800;color:#d92d20;background:#fdecec;border:1px solid #f0a9a9;padding:2px 7px;border-radius:8px}
-.mr-card-facts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 0}
+/* A/B/C 階段標籤:輕量文字條,不做滿版色塊 —— 卡片版靠密度取勝,不能讓分區標題
+   比內容本身還佔空間。三色只用左側細條區分語意:藍=盤中即時、橘=盤後唯讀分析、
+   紫=T+1驗證,呼應舊表格版三種底色但不用整條上色。 */
+.mr-stage-label{display:flex;align-items:baseline;gap:8px;font-size:11px;font-weight:800;
+  color:#4b5568;letter-spacing:.02em;margin:14px 0 6px;padding-left:8px;border-left:3px solid #c7d2e0}
+.mr-stage-label small{font-size:10.5px;font-weight:500;color:#9aa3b2}
+.mr-stage-a{border-left-color:#3478f6;color:#1f4fb0}
+.mr-stage-b{border-left-color:#c98a00;color:#8a6100}
+.mr-stage-c{border-left-color:#7257d8;color:#5638b5}
+.mr-card-facts+.mr-card-decision{margin-top:10px}
+.mr-card-more .mr-stage-label:first-of-type{margin-top:2px}
+.mr-card-facts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 0}
 .mr-fact{background:#f8f9fc;border-radius:10px;padding:8px 10px;min-width:0}
 .mr-fact label{display:block;font-size:10.5px;color:var(--muted);margin-bottom:2px}
 .mr-fact b{font-size:13px;font-weight:800;overflow-wrap:anywhere}
@@ -2436,8 +2458,16 @@ if(window.__singleMainTableRender){
 .mr-card-more{margin-top:10px}
 .mr-card-more summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;font-size:12.5px;font-weight:800;color:var(--muted);padding:6px 2px}
 .mr-card-more summary::-webkit-details-marker{display:none}
-.mr-more-arrow{font-weight:700}
-.mr-card-more[open] .mr-more-arrow{transform:rotate(180deg);display:inline-block}
+/* 展開/收合文字與箭頭符號分開兩個元素:曾經整個 span(含中文字)一起
+   transform:rotate(180deg),中文字被轉成上下顛倒難以辨識,被誤讀成別的字
+   (2026-08-17 使用者截圖回報)。現在只轉箭頭符號本身,文字永遠正向可讀,
+   文字內容改用兩個 span + display 切換來反映開/合狀態,不靠旋轉表達語意。 */
+.mr-more-label{font-weight:700;display:inline-flex;align-items:center;gap:4px}
+.mr-lbl-open{display:none}
+.mr-card-more[open] .mr-lbl-closed{display:none}
+.mr-card-more[open] .mr-lbl-open{display:inline}
+.mr-more-arrow{font-style:normal;display:inline-block;transition:transform .15s}
+.mr-card-more[open] .mr-more-arrow{transform:rotate(180deg)}
 .mr-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
 .mr-detail{background:#f8f9fc;border-radius:10px;padding:8px 10px;min-width:0}
 .mr-detail label{display:block;font-size:10.5px;color:var(--muted);margin-bottom:2px}
