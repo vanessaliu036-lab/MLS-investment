@@ -381,7 +381,7 @@ function renderVolHistory(d){
 }
 // ?view=watch|card|report 自動開對應分頁
 window.addEventListener('load',()=>{const m=location.search.match(/[?&]view=(watch|card|report)/);if(m){setTimeout(()=>openPanel(m[1]),100);}});
-function card(x){let c=exactLimitUp(x)?'limit-up':x.group==='排除'?'risk':x.group==='觀察'?'watch':'';return `<article class="panel stock-card ${c}" data-group="${esc(x.group)}"><div class="stock-top"><div><div class="stock-code">${esc(x.code)} · ${esc(x.subgroup)}</div><div class="stock-name">${esc(x.name)} <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span></div></div></div><div class="signal"><b>${esc(x.classification_reason||x.subgroup||x.group)}</b><span class="tag">${esc(x.group)}</span></div><div class="price-row"><div class="price-box"><label>漲跌</label><strong class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</strong></div><div class="price-box"><label>成交量</label><strong>${fmt(x.total_volume)}</strong></div><div class="price-box"><label>aflow</label><strong>${fmt(x.aflow)}</strong></div></div><div class="stock-foot"><span><span class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</span> · <span class="${cls(x.aflow)}">aflow ${fmt(x.aflow)}</span></span><span class="muted">查看解讀 →</span></div></article>`}
+function card(x){let c=exactLimitUp(x)?'limit-up':x.group==='排除'?'risk':x.group==='觀察'?'watch':'';return `<article class="panel stock-card ${c}" data-group="${esc(x.group)}"><div class="stock-top"><div><div class="stock-code">${esc(x.code)} · ${esc(x.subgroup)}</div><div class="stock-name">${esc(x.name)} <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span></div></div></div><div class="signal"><b>${esc(x.classification_reason||x.subgroup||x.group)}</b><span class="tag">${esc(x.group)}</span></div><div class="price-row"><div class="price-box"><label>漲跌</label><strong class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</strong></div><div class="price-box"><label>成交量</label><strong>${fmt(x.total_volume)}</strong></div><div class="price-box"><label>aflow</label><strong class="${cls(x.aflow)}">${fmt(x.aflow)}</strong></div></div><div class="stock-foot"><span><span class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</span> · <span class="${cls(x.aflow)}">aflow ${fmt(x.aflow)}</span></span><span class="muted">查看解讀 →</span></div></article>`}
 function render(){let q=(document.querySelector('#search').value||'').toLowerCase();let rs=data.filter(x=>(filter==='全部'||x.group===filter)&&(`${x.code}${x.name}`.toLowerCase().includes(q)));const cardRows=rs.slice(0,6);document.querySelector('#cards').innerHTML=cardRows.map(card).join('')||'<div class="panel" style="padding:20px">目前沒有符合條件的標的</div>';document.querySelector('#rows').innerHTML=rs.map(x=>`<tr class="${exactLimitUp(x)?'limit-up-row':x.group==='可操作'?'actionable-row':x.group==='觀察'?'watch-row':'risk-row'}"><td><b>${esc(x.code)} ${esc(x.name)}</b> <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span></td><td class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</td><td class="${cls(x.aflow)}">${fmt(x.aflow)}</td><td><span class="pill">${esc(x.group)}</span></td><td class="muted">${esc(x.subgroup)}</td><td class="muted">${esc(x.ai)}</td></tr>`).join('');document.querySelectorAll('#cards .stock-card').forEach((el,i)=>el.dataset.code=String(cardRows[i].code));document.querySelectorAll('#rows tr').forEach((el,i)=>el.dataset.code=String(rs[i].code));document.querySelector('#valid').textContent=rs.filter(x=>x.filter_no_data===false).length}
 async function load(){if(paused)return;try{let r=await fetch(API_BASE+'/api/intraday-test',{cache:'no-store'}),d=await r.json();if(!d.ok)throw Error(d.error||'API 回報失敗');data=d.rows||[];document.querySelector('#conn').textContent=`Shioaji 即時連線 · ${d.updated_at}`;document.querySelector('#time').textContent=`${d.updated_at||'—'} · 台股盤中`;document.querySelector('#latency').textContent=`${d.latency_ms} ms`;document.querySelector('#subscribed').textContent=d.quota?.subscribed??'—';let n=data.length,a=data.filter(x=>x.group==='可操作').length;document.querySelector('#actionable').textContent=a;document.querySelector('#risk').textContent=data.filter(x=>x.group==='排除').length;document.querySelector('#sectors').textContent='—';document.querySelector('#mode').textContent=d.regime||'盤中判定';document.querySelector('#score').textContent=n?Math.round(a/n*100):'—';if(typeof loadBreadth==='function')loadBreadth(d.breadth);document.querySelector('#advice').textContent=a?`目前 ${a} 檔可操作，依漲幅由高到低排列；正紅色、負綠色。`:'目前沒有符合全部條件的可操作標的。';document.querySelector('#quality').textContent=`資料完整度 ${n?Math.round(data.filter(x=>x.price!=null).length/n*100):0}%`;document.querySelector('#progress').style.width=(n?Math.round(data.filter(x=>x.price!=null).length/n*100):0)+'%';document.querySelector('#notes').textContent=(d.notes||[]).join(' · ');document.querySelector('#watchCount').textContent='51';const radarCount=document.querySelector('#navCount');if(radarCount){radarCount.textContent=n?String(n):'';radarCount.hidden=!n}render();updateFilterCounts();document.body.style.visibility='visible';
   }catch(e){console.error('load() err:',e);document.body.style.visibility='visible';document.querySelector('#conn').textContent='固定資料讀取失敗：'+e.message;document.querySelector('#mode').textContent='讀取失敗';}}
@@ -410,7 +410,7 @@ function openStock(code){
   if(code)window.location.href=`${API_BASE}/api/card_page?code=${encodeURIComponent(code)}`;
 }
 function closeStockDetail(){document.querySelector('#stockDetail').hidden=true}
-document.addEventListener('click',e=>{const cardEl=e.target.closest('.stock-card');if(cardEl){openStock(cardEl.dataset.code||cardEl.querySelector('.stock-code')?.textContent.trim().split(/\s+/)[0]);return}const rowEl=e.target.closest('#rows tr');if(rowEl){openStock(rowEl.dataset.code||rowEl.querySelector('td')?.textContent.trim().split(/\s+/)[0]);}});
+document.addEventListener('click',e=>{const cardEl=e.target.closest('.stock-card');if(cardEl&&!cardEl.classList.contains('mr-card')){openStock(cardEl.dataset.code||cardEl.querySelector('.stock-code')?.textContent.trim().split(/\s+/)[0]);return}const rowEl=e.target.closest('#rows tr');if(rowEl){openStock(rowEl.dataset.code||rowEl.querySelector('td')?.textContent.trim().split(/\s+/)[0]);}});
 async function applyModel(){if(!confirm('確認套用最近一次模型角色建議？'))return;const r=await fetch(API_BASE+'/api/roles/apply',{method:'POST'}),d=await r.json();alert(d.note||d.error||'已完成');openFeature('models')}
 
 function dataStamp(v){return v||new Date().toLocaleString('zh-TW',{hour12:false});}
@@ -591,7 +591,7 @@ if(_renderWithSelection){
 }
 document.addEventListener('click',e=>{
   const el=e.target.closest('.stock-card, #rows tr');
-  if(!el)return;
+  if(!el||el.classList.contains('mr-card'))return;
   selectedCode=selectedValue(el);
   document.querySelectorAll('.stock-card').forEach(x=>x.classList.toggle('selected',selectedValue(x)===selectedCode));
   document.querySelectorAll('#rows tr').forEach(x=>x.classList.toggle('selected-row',selectedValue(x)===selectedCode));
@@ -770,7 +770,7 @@ document.addEventListener('click',e=>{
   // 不重複原則:上半部(price-row/facts)出現過的數字，decision 區塊不再念一次
   // ——這正是 reasonHtml 內的 AI 判讀(intraday_verdict)已經在做的事，卡片只是
   // 把它擺進不需要橫向捲動、手機不會把中文切成直排的容器。
-  function mainCards(items,phase,notTraded){
+  function mainCards(items,phase,notTraded,isHistorical){
     const isLimitUp=x=>exactLimitUp(x);
     const lampRank=x=>{
       const isEng=x.track==='engine'||/回測|月線|引擎/.test(String(x.reason||''));
@@ -799,7 +799,10 @@ document.addEventListener('click',e=>{
         </article>`;
       }
       const price=x.price??x.close??x.close_price??x.base_close, ch=x.change_rate??x.today_change, flow=flowValue(x), fN=finite(flow);
-      const isToday=x.state==='live'||/驗證中/.test(String(x.verdict||''));
+      // isToday 舊判法看 x.state/x.verdict，AB 引擎的列從不填這兩個欄位 → 永遠 false，
+      // 於是已經明顯站上關鍵價的今日盤中資料被錯標「待進場日盤中」。能到達這行時
+      // notTraded 分支已排除未來單，是否為「今天」只取決於這份資料是不是歷史複盤。
+      const isToday=!isHistorical;
       const limitUp=exactLimitUp(x,price,ch);
       const eref=x.entry_ref??x.base_close??x.trigger_price, erefT=eref==null?'—':Number(eref).toLocaleString('en-US');
       const isEng=x.track==='engine'||/回測|月線|引擎/.test(String(x.reason||''));
@@ -849,7 +852,7 @@ document.addEventListener('click',e=>{
           <div class="mr-fact"><label>關鍵價</label><b>${erefT}</b></div>
         </div>
         <div class="mr-card-decision">${reasonHtml}</div>
-        <details class="mr-card-more">
+        <details class="mr-card-more" onclick="event.stopPropagation()">
           <summary><span>盤後分析與策略驗證</span><span class="mr-more-arrow">展開 ▾</span></summary>
           <div class="mr-detail-grid">
             <div class="mr-detail"><label>盤後法人籌碼</label><b class="${chipCls}">${esc2(chipText)}</b></div>
@@ -993,7 +996,7 @@ document.addEventListener('click',e=>{
   // 卡片版取代寬表格(45 層 CSS 疊加、選擇器優先度互打，列高壓不下去、手機會把中文切成直排)。
   // 一檔一卡：上半部原始數據(現價/漲跌/資金流/觸發條件)，AI 判讀不重複這些數字，
   // 盤後八項語意/籌碼收進可展開區塊，預設收合維持掃描密度。
-  const validationTable=(rows,phase,notTraded,date)=>`<div class="mr-card-list-wrap"><div class="mr-card-date">${esc2(date)} 當日盤中即時（收盤後存檔）</div><div class="mr-card-list">${mainCards(rows,phase,notTraded)}</div></div>`;
+  const validationTable=(rows,phase,notTraded,date,isHistorical)=>`<div class="mr-card-list-wrap"><div class="mr-card-date">${esc2(date)} 當日盤中即時（收盤後存檔）</div><div class="mr-card-list">${mainCards(rows,phase,notTraded,isHistorical)}</div></div>`;
   singleCard=(data,phase,rejectRows)=>{
     const _tm=(()=>{const f=n=>Number(new Intl.DateTimeFormat('en-US',Object.assign({hour12:false,timeZone:'Asia/Taipei'},{[n]:'2-digit'})).format(new Date()));return f('hour')*60+f('minute')})();
     const items=canonicalItems(data),isToday=data.is_today!==false,status=data._apiOk===false?'API 讀取失敗':(isToday?(_tm<540?'今日盤前 · 等待 09:00 開盤':_tm<=810?'今日盤中 · 即時驗證中（13:30 收盤）':'今日已收盤 · 等待盤後籌碼與驗證蓋章'):'已收盤 · T+1 蓋章');
@@ -1003,7 +1006,7 @@ document.addEventListener('click',e=>{
     const first=DECISION_POOLS.find(p=>groups[p.key].length)?.key||'watch';
     const s=items.reduce((a,x)=>{a.tot++;const tr=(x.triggered===1||x.triggered===true);if(tr)a.trig++;if(x.verified){if(isHit(x))a.hit++;else if(tr)a.fail++;else a.no++;}return a;},{tot:0,trig:0,hit:0,fail:0,no:0}),pct=(n,d)=>d?Math.round(n/d*100):0,cell=(k,v,cls)=>`<div class="dr-stat ${cls||''}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
     const stats=`<div class="dr-stats">${cell('篩選檔數',s.tot)}${cell('已觸發',`${s.trig} <small>(${pct(s.trig,s.tot)}%)</small>`,'b')}${cell('命中',`${s.hit} <small>(${pct(s.hit,s.tot)}%)</small>`,'g')}${cell('觸發後失敗',`${s.fail} <small>(${pct(s.fail,s.tot)}%)</small>`,'o')}${cell('未觸發',`${s.no} <small>(${pct(s.no,s.tot)}%)</small>`,'r')}${cell('總名單命中率',`${pct(s.hit,s.tot)}%`,'g')}${cell('觸發命中率',`${pct(s.hit,s.trig)}%`,'g')}</div>`;
-    const summaries=DECISION_POOLS.map(p=>{const rows=groups[p.key];return `<details class="decision-pool" data-decision-pool="${p.key}"${p.key===first?' open':''}><summary class="decision-pool-summary"><span>${p.label}<small>${esc2(p.desc||'')}</small></span><b>${rows.length}</b></summary><div class="decision-pool-body">${rows.length?validationTable(rows,phase,notTraded,date):`<div class="decision-empty">${p.empty}</div>`}</div></details>`}).join('');
+    const summaries=DECISION_POOLS.map(p=>{const rows=groups[p.key];return `<details class="decision-pool" data-decision-pool="${p.key}"${p.key===first?' open':''}><summary class="decision-pool-summary"><span>${p.label}<small>${esc2(p.desc||'')}</small></span><b>${rows.length}</b></summary><div class="decision-pool-body">${rows.length?validationTable(rows,phase,notTraded,date,data.historical):`<div class="decision-empty">${p.empty}</div>`}</div></details>`}).join('');
     return `<article class="dr-single decision-view"><div class="dr-single-toolbar"><div><b>盤後驗證主表</b><small>保留原欄位、盤中資金流與累積歷史；四分組只改呈現</small></div><div><span class="dr-single-date">${esc2(status)}</span><span class="dr-single-date">資料日 <select onchange="window._pickMainDate&&window._pickMainDate(this.value)" style="border:0;background:transparent;font:inherit;font-weight:850;color:inherit;cursor:pointer">${dateOpts}</select></span></div></div>${stats}<nav class="decision-pool-nav">${DECISION_POOLS.map(p=>`<span>${p.label} ${groups[p.key].length}<small>${esc2(p.desc||'')}</small></span>`).join('')}</nav>${summaries}<div class="dr-single-note">明日觀察與今日淘汰繼續使用原本驗證流程；新增四欄只顯示語意，不重算、不刪除、不改寫歷史。</div>${decRejects(rejectRows)}</article>`;
   };
   observeSection=()=>'';
@@ -2440,4 +2443,23 @@ if(window.__singleMainTableRender){
   .mr-card-facts,.mr-detail-grid{grid-template-columns:1fr 1fr}
   .mr-card-p{font-size:21px}
 }
+/* ══ 全站規則:漲紅跌綠不受任何容器的強制文字色蓋掉 ══════════════════════
+   根因:.stock-card.limit-up *{color:...!important} 這類「容器內全部子元素
+   統一上色」規則，用 universal selector(*)但配合父層兩個 class，優先度
+   (0,2,0)比 .positive/.up 單一 class(0,1,0)高，即使都加 !important 也贏
+   ——今天在漲停卡片上親眼看到:成交量/aflow/連漲跌%全被壓成同一種深色。
+   這條放最後(源碼順序最後+同優先度用選擇器覆蓋每個已知的強制上色容器)，
+   讓方向色類別在任何容器裡都保證顯示。 */
+.limit-up .up,.limit-up .positive,.limit-up .dr-positive,
+.limit-up-row .up,.limit-up-row .positive,.limit-up-row .dr-positive,
+.mr-limit .up,.mr-limit .positive,.mr-limit .dr-positive,
+.dr-row.dr-limit .up,.dr-row.dr-limit .positive,.dr-row.dr-limit .dr-positive,
+.stock-card.limit-up .up,.stock-card.limit-up .positive,.stock-card.limit-up .dr-positive
+{color:#d92d20!important}
+.limit-up .down,.limit-up .negative,.limit-up .dr-negative,
+.limit-up-row .down,.limit-up-row .negative,.limit-up-row .dr-negative,
+.mr-limit .down,.mr-limit .negative,.mr-limit .dr-negative,
+.dr-row.dr-limit .down,.dr-row.dr-limit .negative,.dr-row.dr-limit .dr-negative,
+.stock-card.limit-up .down,.stock-card.limit-up .negative,.stock-card.limit-up .dr-negative
+{color:#0b9a6f!important}
 </style>
