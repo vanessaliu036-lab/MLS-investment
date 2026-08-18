@@ -113,6 +113,10 @@ def init():
           created_at  TEXT DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY(trade_date, stock_id, source)
         );
+        CREATE TABLE IF NOT EXISTS market_turnover_snapshot(
+          trade_date TEXT, hhmm TEXT, amount_100m REAL,
+          PRIMARY KEY(trade_date, hhmm)
+        );
         CREATE INDEX IF NOT EXISTS idx_sig_date ON signals(trade_date, stock_id);
         """)
         # ── 遷移:一律走 PRAGMA 檢查後再 ADD COLUMN ────────────────
@@ -255,6 +259,33 @@ def insert_sector_snapshot(sectors):
               (now_iso(), today(), s["name"], s["type"], s["pct"],
                s["flow_score"], s["amount_share"],
                1 if s["locked"] else 0, s["rank"]))
+
+
+# ── 大盤成交金額分鐘快照(供「盤中量比」同時段比較，見 turnover_pace_at) ──
+def insert_turnover_snapshot(amount_100m):
+    """每分鐘留一筆當日累積成交金額，同分鐘內以最新值覆蓋。"""
+    hm = datetime.now(TW_TZ).strftime("%H:%M")
+    with _lock, _conn() as c:
+        c.execute("""INSERT OR REPLACE INTO market_turnover_snapshot
+          VALUES(?,?,?)""", (today(), hm, amount_100m))
+
+
+def turnover_pace_at(trade_date, hhmm):
+    """指定交易日在 hhmm(含)之前最後一筆累積成交金額快照，供同時段量比對照。"""
+    with _lock, _conn() as c:
+        r = c.execute("""SELECT amount_100m FROM market_turnover_snapshot
+          WHERE trade_date=? AND hhmm<=? ORDER BY hhmm DESC LIMIT 1""",
+          (trade_date, hhmm)).fetchone()
+        return r["amount_100m"] if r else None
+
+
+def latest_turnover_trade_date(before_date):
+    """before_date 之前最近一個有成交金額快照的交易日(自動跳過假日/無資料日)。"""
+    with _lock, _conn() as c:
+        r = c.execute("""SELECT trade_date FROM market_turnover_snapshot
+          WHERE trade_date<? ORDER BY trade_date DESC LIMIT 1""",
+          (before_date,)).fetchone()
+        return r["trade_date"] if r else None
 
 
 # ── 觀察清單 ──────────────────────────────────────────

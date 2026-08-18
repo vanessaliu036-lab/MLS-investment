@@ -576,6 +576,12 @@ def scheduler_loop():
                     LIVE_STATE = dict(state)
                     LIVE_STATE_UPDATE = time.time()
                     _persist_intraday_snapshot(state, today)
+                    try:
+                        _amt = (state.get("market") or {}).get("amount_100m")
+                        if _amt is not None:
+                            db.insert_turnover_snapshot(_amt)
+                    except Exception as exc:
+                        print(f"[turnover] pace 快照失敗:{exc}")
                     print(f"[scheduler] ✅ 寫入 live state: stocks={stocks_count}, raw={raw_count}")
                 elif LIVE_STATE and (time.time() - LIVE_STATE_UPDATE) < 300:
                     state = dict(LIVE_STATE)
@@ -1132,6 +1138,24 @@ def api_market_turnover_history(days: int = 10):
         return JSONResponse(payload)
     except Exception as e:
         return JSONResponse({"rows": [], "days": 0, "error": f"成交金額歷史讀取失敗:{e}"})
+
+
+@app.get("/api/market/turnover-pace")
+def api_market_turnover_pace(hhmm: str = None):
+    """前一個有紀錄的交易日在同一盤中時刻(hhmm)的累積成交金額。
+
+    盤中「量增/量縮」不能拿今日部分累積金額比昨日全天總額(必然量縮)；
+    要跟昨日同一時刻的累積金額比才有意義。這裡只回歷史同時段基準，
+    今日累積金額前端已經有(即時 live-index)，不重複計算比值。"""
+    try:
+        hm = hhmm or datetime.now(TW_TZ).strftime("%H:%M")
+        today = db.today()
+        prev_date = db.latest_turnover_trade_date(today)
+        prev_amt = db.turnover_pace_at(prev_date, hm) if prev_date else None
+        return JSONResponse({"ok": prev_amt is not None, "hhmm": hm,
+                              "prev_date": prev_date, "prev_amount_100m": prev_amt})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": f"量比基準讀取失敗:{e}"})
 
 
 @app.get("/api/market/index-history")
