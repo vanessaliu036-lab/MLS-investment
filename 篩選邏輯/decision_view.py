@@ -245,7 +245,8 @@ def build(classified: dict, market: dict | None, trigger: dict | None) -> dict:
     flow_status_label = ("資金 —" if flow is None else
                          (f"資金 {flow:+,.0f} · 轉弱待翻正" if flow < 0 else flow_label))
     volume, vol_ma20 = _num(market.get("volume")), _num(market.get("vol_ma20"))
-    volume_label = f"量能 {volume / vol_ma20:.1f}x" if volume is not None and vol_ma20 else "量能 —"
+    volume_ratio = (volume / vol_ma20) if volume is not None and vol_ma20 else None
+    volume_label = f"量能 {volume_ratio:.1f}x" if volume_ratio is not None else "量能 —"
     low_priority = (classification == layered_score.TIER_CANDIDATE and flow is not None and
                     flow < 0 and canonical_price is not None and
                     (close is None or close <= canonical_price))
@@ -273,6 +274,7 @@ def build(classified: dict, market: dict | None, trigger: dict | None) -> dict:
         "flow_status_label": flow_status_label,
         "margin_label": margin_label,
         "volume_label": volume_label,
+        "volume_ratio": round(volume_ratio, 2) if volume_ratio is not None else None,
     }
     result.update(factors)
     return result

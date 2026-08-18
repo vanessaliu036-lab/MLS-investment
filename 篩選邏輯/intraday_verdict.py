@@ -41,12 +41,20 @@ def _n(x) -> str:
 # 這是追價風險的分界,不是進出場訊號,也不影響任何篩選。
 HOT_CHANGE_PCT = 5.0
 
+# 量能倍率分界(2026-08-18 修「同模板不同數字」bug 加入)。同樣是「價格站上關鍵價
+# ＋資金流入」,量能 0.2x 和 1.2x 是完全不同等級的啟動品質,不能套同一句判讀。
+# < LOW：量能沒跟上,價格是先行指標,不是完整啟動,容易是誘多。
+# LOW~HIGH：量能達到基準,算初步確認。
+# > HIGH：量能明顯放大,價量資金三者共振,啟動品質最高。
+VOL_CONFIRM_LOW = 0.8
+VOL_CONFIRM_HIGH = 1.2
+
 
 def build(*, price=None, trigger=None, change_rate=None, aflow=None,
-          intraday_high=None, track=None) -> dict:
+          intraday_high=None, track=None, vol_ratio=None) -> dict:
     """把一檔的盤中事實翻成判讀 + 下一步。所有欄位皆可為 None。"""
     p, t = _f(price), _f(trigger)
-    ch, fl, hi = _f(change_rate), _f(aflow), _f(intraday_high)
+    ch, fl, hi, vr = _f(change_rate), _f(aflow), _f(intraday_high), _f(vol_ratio)
     is_engine = track in ("engine", "引擎軌")
     key_word = "關鍵價" if is_engine else "昨日高點"
     lines: list[dict] = []
@@ -85,10 +93,29 @@ def build(*, price=None, trigger=None, change_rate=None, aflow=None,
             return {"tone": "caution", "lines": lines,
                     "next_steps": [hold,
                                    {"cond": "資金流持續為負", "then": "視為假突破,降級觀察"}]}
+        vol_weak = vr is not None and vr < VOL_CONFIRM_LOW
+        vol_confirmed = vr is not None and vr > VOL_CONFIRM_HIGH
         if flow_in:
-            lines.append({"tone": "strong",
-                          "text": f"價格與主動資金同步轉強,{key_word}已突破,"
-                                  "目前屬於明確啟動型態。"})
+            if vr is None:
+                lines.append({"tone": "strong",
+                              "text": f"價格與主動資金同步轉強,{key_word}已突破,"
+                                      "目前屬於明確啟動型態。"})
+            elif vol_weak:
+                lines.append({"tone": "caution",
+                              "text": f"價格與主動資金同步轉強,{key_word}已突破,"
+                                      "但量能明顯不足,突破缺乏成交量確認 —— "
+                                      "目前偏向價格先行,不是完整啟動。"})
+                lines.append({"tone": "caution",
+                              "text": "若後續量能仍無法放大,即使守住關鍵價,"
+                                      "也應視為高位整理而非追價訊號。"})
+            elif vol_confirmed:
+                lines.append({"tone": "strong",
+                              "text": f"價格、資金與量能同步轉強,{key_word}已突破,"
+                                      "量能確認充分,屬量價資金共振的明確啟動型態。"})
+            else:
+                lines.append({"tone": "strong",
+                              "text": f"價格、資金與量能同步轉強,{key_word}已突破,"
+                                      "量能已達基本確認水準,屬初步啟動。"})
         else:
             lines.append({"tone": "neutral",
                           "text": f"{key_word}已突破,結構成立;但主動資金尚未同步放大,"
@@ -97,8 +124,12 @@ def build(*, price=None, trigger=None, change_rate=None, aflow=None,
             lines.append({"tone": "caution",
                           "text": "但日內漲幅已大,現在重點不是「是否突破」,"
                                   "而是突破後能否守住關鍵價,避免高位追價。"})
-        return {"tone": "caution" if hot else ("strong" if flow_in else "neutral"),
-                "lines": lines, "next_steps": [hold, lose]}
+        overall_caution = hot or (flow_in and vol_weak)
+        return {"tone": "caution" if overall_caution else ("strong" if flow_in else "neutral"),
+                "lines": lines,
+                "next_steps": ([hold, lose] if not (flow_in and vol_weak) else
+                                [{"cond": "量能放大至可確認水準", "then": "升級為完整啟動,可依 ATR 紀律進場"},
+                                 hold, lose])}
 
     if touched:
         lines.append({"tone": "caution",
@@ -131,7 +162,8 @@ def attach(items) -> int:
                 change_rate=it.get("change_rate"),
                 aflow=it.get("aflow") or it.get("net_active"),
                 intraday_high=it.get("intraday_high"),
-                track=it.get("track"))
+                track=it.get("track"),
+                vol_ratio=it.get("volume_ratio"))
             n += 1
         except Exception:
             it["intraday_verdict"] = None

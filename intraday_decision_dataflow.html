@@ -682,6 +682,13 @@ document.addEventListener('click',e=>{
   const triggerCondition=x=>{const p=x.trigger_price??x.entry_ref??x.base_close??x.prev_high??x.previous_high??x.ma20??x.ma_20??x.month_line;const n=p==null?'—':Number(p).toLocaleString('en-US');const raw=String(x.entry_rule||x.track||x.action||x.classification_reason||x.reason||'');if(x.track==='engine'||/回測|月線|MA20|引擎/.test(raw))return `回測月線 ${n}`;if(x.track==='attack'||/突破|昨高|攻擊/.test(raw))return `突破昨高 ${n}`;return p==null?'待盤後產生':`關鍵價 ${n}`};
   const signalType=x=>{if(x.signal_type)return String(x.signal_type);if(x.track==='attack')return '突破前高';if(x.track==='engine')return '回測月線';const raw=[x.signal_type,x.signal,x.entry_rule,x.source,x.reasons].flatMap(v=>Array.isArray(v)?v:[v]).filter(Boolean).join('、');if(/突破|昨高/.test(raw))return '突破前高';if(/回測|月線|MA20/.test(raw))return '回測月線';if(/放量|長紅|爆量/.test(raw))return '放量長紅';if(/均線交叉|黃金交叉/.test(raw))return '均線黃金交叉';return '待更新'};
   const signalDetail=x=>{const raw=[x.signal_type,x.signal,x.track,x.entry_rule,x.source,x.reasons].flatMap(v=>Array.isArray(v)?v:[v]).filter(Boolean).join('、'),ref=x.prev_high??x.previous_high??x.yesterday_high??x.trigger_price??x.entry_ref??x.base_close,price=ref==null?'API 未提供價位':Number(ref).toLocaleString('en-US'),post=String(x.entry_rule||x.classification_reason||x.action||'').trim();if(x.track==='attack'||/突破|昨高/.test(raw))return `${x.triggered?'已突破前高':'突破前高訊號'}｜${x.triggered?'站上':'等待站上'} ${price}${post?`｜篩選依據：${post}`:''}`;if(x.track==='engine'||/回測|月線|MA20/.test(raw))return `${x.triggered?'已回測月線':'回測月線訊號'}｜${x.triggered?'回到':'等待回到'} ${price}${post?`｜篩選依據：${post}`:''}`;if(/放量|長紅|爆量/.test(raw))return `放量長紅｜量能爆發類${post?`｜篩選依據：${post}`:''}`;if(/均線交叉|黃金交叉/.test(raw))return `均線黃金交叉｜均線交叉類${post?`｜篩選依據：${post}`:''}`;return post?`待更新｜篩選依據：${post}`:'API 未提供訊號細節'};
+  // B區「策略摘要」：買點/防守數字已在同卡的原始計畫格顯示過，這裡只講「怎麼用」，不重複數字。
+  const strategySummary=x=>{const cat=signalType(x);return ({
+    '突破前高':'突破買點後觀察是否站穩；回測防守不破，可視為健康承接。',
+    '回測月線':'股價拉回測試防守；若能守住不破，視為健康拉回。',
+    '放量長紅':'放量長紅後觀察量能是否延續；防守不破前維持觀察。',
+    '均線黃金交叉':'均線交叉初期，觀察趨勢是否站穩；防守不破繼續留意。'
+  })[cat]||String(x.entry_rule||x.classification_reason||x.action||'篩選依據待補齊').trim()};
   const chips=x=>{const direct=x.chip_label||x.institution_status||x.inst_status||x.institution||x.inst_note||x.chip_note||x.inst_streak||x.chip_reasons||({pending:'法人待補',positive:'法人今日買超',negative:'法人今日賣超',neutral:'法人中性'}[x.chip_status]||x.chip_status);if(direct)return direct;const r=String(x.reason||'');const streak=r.match(/連[買賣]\s*\d+\s*日/);const net=r.match(/法人近月\s*([+\-−][\d,\.]+)\s*張/);if(streak)return (net?'法人'+net[1].replace('−','-')+'張,':'法人')+streak[0];if(net)return '法人近月'+net[1].replace('−','-')+'張';return '待法人資料';};
   const rowCode=x=>String(x.code??x.stock_id??'');
   const rowName=x=>x.name??x.stock_name??rowCode(x);
@@ -824,10 +831,12 @@ document.addEventListener('click',e=>{
       const isEng=x.track==='engine'||/回測|月線|引擎/.test(String(x.reason||''));
       const condMain=triggerCondition(x);
       const verdictHtml=v=>{
-        const ico=t=>t==='strong'?'🟢':t==='caution'?'⚠️':t==='weak'?'🔻':'·';
-        const lines=(v.lines||[]).map(l=>`<li class="mr-read ${esc2(l.tone||'')}"><span>${ico(l.tone)}</span><small>${esc2(l.text)}</small></li>`).join('');
-        const steps=(v.next_steps||[]).map(s=>`<li class="mr-step"><b>${esc2(s.cond)}</b><i>→</i><small>${esc2(s.then)}</small></li>`).join('');
-        return `<ul class="mr-bul mr-verdict">${lines}</ul>`+(steps?`<div class="mr-next"><label>下一步</label><ul>${steps}</ul></div>`:'');
+        // AI 判讀/下一步改成 bubble 卡片(藍/綠底+圓形icon),取代原本的清單樣式。
+        const aiText=(v.lines||[]).map(l=>esc2(l.text)).join(' ');
+        const stepText=(v.next_steps||[]).map(s=>`<b>${esc2(s.cond)}</b> → ${esc2(s.then)}`).join('；');
+        const ai=aiText?`<div class="mr-decision-row ai"><div class="mr-decision-icon">🔎</div><div><div class="mr-decision-title">AI 判讀</div><div class="mr-decision-text">${aiText}</div></div></div>`:'';
+        const next=stepText?`<div class="mr-decision-row next"><div class="mr-decision-icon">🎯</div><div><div class="mr-decision-title">下一步</div><div class="mr-decision-text">${stepText}</div></div></div>`:'';
+        return `<div class="mr-decision-stack">${ai}${next}</div>`;
       };
       const reasonHtml=x._radar
         ?`<div class="mr-radar-reason">${esc2(x.reason||'—')}</div>`
@@ -836,7 +845,7 @@ document.addEventListener('click',e=>{
           :`<ul class="mr-bul">${intradayReason(x).map(b=>`<li><b>${esc2(b.label)}</b><small>${esc2(b.detail)}</small></li>`).join('')}</ul>`);
       const chipLbl=x.chip_label||chips(x), streak=(String(chipLbl).match(/連[買賣]\s*\d+\s*日/)||[])[0], chipCls=/連賣/.test(chipLbl)?'down':/連買|買超|同步/.test(chipLbl)?'up':'';
       const chipText=(chipLbl==='待法人資料'||chipLbl==='法人待補')?'待法人資料':(x.chip_label?chipLbl:(streak?`法人${streak}`:chipLbl));
-      const signal=signalType(x),signalNote=signalDetail(x);
+      const signal=signalType(x);
       let trigHtml,trigShort;
       if(x.triggered==null){
         const trigN=finite(eref),curN=finite(price),hiN=finite(x.intraday_high);
@@ -867,6 +876,29 @@ document.addEventListener('click',e=>{
       // 已在上面大字呈現,不重複塞進小格)。
       const stateNow=x.entry_state_label||semanticEntryCopy[x.entry_state]||'—';
       const volLabel=String(x.volume_label||'—').replace(/^量能\s*/,'');   // 欄位標籤已經寫「量能」,原始值前綴重複要去掉
+      // 法人動向:精簡版(連買/連賣N日),跟 B 區的完整「籌碼背景」文字不衝突 ——
+      // 這裡只給盤中一眼掃過的天數,B 區才是完整脈絡。
+      const instShort=(String(x.chip_label||chips(x)||'').match(/連[買賣]\s*\d+\s*日/)||[])[0]||'—';
+      // 三條分段量表(結構/資金/追價風險,5 格)。誠實聲明資料依據,不是每一格都有
+      // 後端算好的 0-5 分:
+      //   結構   = potential_grade(A/B/C/D,後端既有評級)直接映射,可信度等同該評級本身。
+      //   資金   = chip_status + aflow 方向的前端簡化映射(後端沒有 0-5 標準分),
+      //            只能當「大致強弱」參考,不是精確分數。
+      //   追價風險 = change_rate 對照 intraday_verdict.py 既有的 5% HOT_CHANGE_PCT 門檻
+      //            (跟 AI 判讀「日內漲幅已大」用同一個門檻,不是另外發明的標準)。
+      const gradeBar=g=>({A:5,B:4,C:2,D:1}[g]||0);
+      const fundBar=(()=>{
+        const cs=x.chip_status,af=finite(x.aflow??x.net_active);
+        if(cs==='positive'&&af!=null&&af>0)return 5;
+        if(cs==='positive'||(af!=null&&af>0))return 4;
+        if(cs==='negative'&&af!=null&&af<0)return 1;
+        if(cs==='negative'||(af!=null&&af<0))return 2;
+        return 3;
+      })();
+      const chaseBar=(()=>{const c=finite(ch);if(c==null)return 0;if(c>=5)return 5;if(c>=3)return 3;if(c>0)return 1;return 0;})();
+      const chaseLabel=chaseBar>=5?'偏高':chaseBar>=3?'中等':chaseBar>0?'偏低':'—';
+      const barHtml=(n,cls)=>`<div class="mr-bar ${cls}">${[1,2,3,4,5].map(i=>`<i class="${i<=n?'on':''}"></i>`).join('')}</div>`;
+      const gradeLabel=g=>({A:'強勢',B:'穩健',C:'偏弱',D:'弱勢'}[g]||'—');
       // C 區「今日實際」只用後端真的算出來的三項(觸發/收盤確認/命中) —— 不編造
       // 「資金轉正」「量能確認」這種沒有對應欄位的勾叉項,寧可少一項也不猜。
       const closeOk=closeConfirm(x);
@@ -881,12 +913,18 @@ document.addEventListener('click',e=>{
         <div class="mr-card-head"><div class="mr-card-id"><span class="sector-tag">${esc2(sector)}</span><span class="mr-card-name">${esc2(name)}</span><span class="mr-card-code">${esc2(code)}</span></div>${stateBadge}</div>
         <div class="mr-card-price"><span class="mr-card-p ${color(ch)}">${esc2(price==null?'—':Number(price).toLocaleString('en-US'))}</span><span class="mr-card-chg ${color(ch)}">${esc2(pctText(ch))}</span>${limitUp?'<span class="mr-card-limit">漲停</span>':''}</div>
         <div class="mr-stage-label mr-stage-a">A｜盤中決策<small>現在發生什麼</small></div>
-        <div class="mr-card-facts">
-          <div class="mr-fact"><label>盤中資金流</label><b class="${fN>0?'up':fN<0?'down':''}">${flow==null?'—':(fN>0?'↑ ':fN<0?'↓ ':'')+numberText(flow)}</b></div>
-          <div class="mr-fact"><label>量能</label><b>${esc2(volLabel)}</b></div>
-          <div class="mr-fact mr-fact-wide"><label>關鍵觸發</label><b>${erefT} <span class="mr-trig-state">${esc2(trigShort)}</span></b></div>
+        <div class="mr-facts4">
+          <div class="mr-f4"><label>盤中資金流入</label><b class="${fN>0?'up':fN<0?'down':''}">${flow==null?'—':(fN>0?'↑ ':fN<0?'↓ ':'')+numberText(flow)}</b></div>
+          <div class="mr-f4"><label>關鍵價位</label><b>${esc2(condMain)}</b></div>
+          <div class="mr-f4"><label>法人動向</label><b class="${/連賣/.test(instShort)?'down':/連買/.test(instShort)?'up':''}">${esc2(instShort)}</b></div>
+          <div class="mr-f4"><label>量能狀態</label><b>${esc2(volLabel)}</b></div>
         </div>
-        <div class="mr-card-now"><label>目前狀態</label><b>${esc2(stateNow)}</b></div>
+        <div class="mr-signal-strip">
+          <div class="mr-metric"><div class="mr-metric-top"><span>結構</span><b>${esc2(gradeLabel(x.potential_grade))}</b></div>${barHtml(gradeBar(x.potential_grade),'green')}</div>
+          <div class="mr-metric"><div class="mr-metric-top"><span>資金</span><b>${fundBar>=4?'強勢':fundBar<=2?'偏弱':'中性'}</b></div>${barHtml(fundBar,'green')}</div>
+          <div class="mr-metric"><div class="mr-metric-top"><span>追價風險</span><b>${esc2(chaseLabel)}</b></div>${barHtml(chaseBar,'amber')}</div>
+        </div>
+        <div class="mr-card-now"><label>目前狀態</label><b>${esc2(stateNow)}</b>${erefT!=='—'?`<small>關鍵觸發 ${erefT} ${esc2(trigShort)}</small>`:''}</div>
         <div class="mr-card-decision">${reasonHtml}</div>
         <div class="mr-stage-label mr-stage-c">C｜T+1 驗證<small>昨天的預測今天準不準,唯讀,不影響名單去留</small></div>
         <div class="mr-c-block">
@@ -897,20 +935,19 @@ document.addEventListener('click',e=>{
         </div>
         <details class="mr-card-more" onclick="event.stopPropagation()">
           <summary><span>B｜原始策略(參考,展開查看)</span><span class="mr-more-label"><span class="mr-lbl-closed">展開</span><span class="mr-lbl-open">收合</span> <i class="mr-more-arrow">▾</i></span></summary>
-          <div class="mr-stage-label mr-stage-b">B｜原始策略<small>${esc2(poolDate||'—')} 收盤建立｜只讀,不隨盤中行情改寫</small></div>
-          <div class="mr-detail-grid">
-            <div class="mr-detail"><label>入選原因</label><b>${esc2(x.classification||'—')}</b></div>
-            <div class="mr-detail"><label>籌碼背景</label><b class="${chipCls}">${esc2(chipText)}</b></div>
-            <div class="mr-detail"><label>結構(防守基準)</label><b>${esc2(maDefense||'—')}</b></div>
-            <div class="mr-detail"><label>訊號型態</label><b>${esc2(signal)}</b></div>
+          <div class="mr-stage-label mr-stage-b">B｜原始策略<small>${esc2(poolDate||'—')} 收盤建立｜只讀</small></div>
+          <div class="mr-b-badges">
+            <span class="mr-b-badge">${esc2(x.classification||'—')}</span>
+            <span class="mr-b-badge">${esc2(signal)}</span>
+            <span class="mr-b-badge ${chipCls}">${esc2(chipText)}</span>
           </div>
-          <div class="mr-strategy"><label>原始策略<small>預期買點／防守基準／股票潛力／買點品質</small></label><div class="mr-detail-grid" style="margin-top:6px">
-            <div class="mr-detail"><label>預期買點</label><b>${erefT}</b></div>
-            <div class="mr-detail"><label>防守基準</label><b>${esc2(maDefense||'—')}</b></div>
-            <div class="mr-detail"><label>股票潛力</label><b>${esc2(v.potential)}</b></div>
-            <div class="mr-detail"><label>買點品質</label><b>${esc2(v.quality)}</b></div>
-          </div></div>
-          <div class="mr-strategy"><label>原始篩選依據原文</label><div>${signalNote}</div></div>
+          <div class="mr-detail-grid mr-detail-grid4">
+            <div class="mr-detail"><label>買點</label><b>${erefT}</b></div>
+            <div class="mr-detail"><label>防守</label><b>${esc2(maDefense||'—')}</b></div>
+            <div class="mr-detail"><label>潛力</label><b>${esc2(v.potential)}</b></div>
+            <div class="mr-detail"><label>品質</label><b>${esc2(v.quality)}</b></div>
+          </div>
+          <div class="mr-strategy"><label>策略摘要</label><div>${esc2(strategySummary(x))}</div></div>
         </details>
       </article>`;
     }).join('')||'<div class="dr-single-empty">目前沒有可顯示的正式名單</div>';
@@ -2519,8 +2556,9 @@ if(window.__singleMainTableRender){
 .mr-fact-wide{grid-column:1/-1}
 .mr-trig-state{display:block;font-size:12px;font-weight:600;color:#6b7280;margin-top:2px}
 /* 目前狀態:A 區的單一狀態詞,不是清單,獨立一行,視覺重量介於價格列與判讀之間 */
-.mr-card-now{display:flex;align-items:baseline;gap:8px;margin:10px 0 0;padding:8px 10px;
+.mr-card-now{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin:10px 0 0;padding:8px 10px;
   background:#f8f9fc;border-radius:10px}
+.mr-card-now small{flex-basis:100%}
 .mr-card-now label{font-size:11px;color:#9aa3b2;font-weight:700}
 .mr-card-now b{font-size:14px;font-weight:800}
 /* C 區:常駐顯示(不藏在 details 裡),四行 label+內容,checklist 用三色點標示 */
@@ -2535,6 +2573,37 @@ if(window.__singleMainTableRender){
 .mr-check.ok{color:#0b9a6f}
 .mr-check.no{color:#d92d20}
 .mr-check.pending{color:#9aa3b2}
+/* 手機 mockup 對照實作(2026-08-18):四宮格改直線分隔無底色、三條分段量表、
+   AI判讀/下一步改 bubble 卡片。 */
+.mr-facts4{display:grid;grid-template-columns:repeat(2,1fr);border:1px solid #e5e9f2;
+  border-radius:12px;overflow:hidden;margin:12px 0 0}
+.mr-f4{padding:10px 11px;border-right:1px solid #e5e9f2;border-bottom:1px solid #e5e9f2;min-width:0}
+.mr-f4:nth-child(2n){border-right:0}
+.mr-f4:nth-last-child(-n+2){border-bottom:0}
+.mr-f4 label{display:block;font-size:10px;color:#9aa3b2;font-weight:800;margin-bottom:4px}
+.mr-f4 b{font-size:14px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.mr-f4 b.up{color:#d92d20}
+.mr-f4 b.down{color:#0b9a6f}
+@media(min-width:520px){.mr-facts4{grid-template-columns:repeat(4,1fr)}.mr-f4{border-bottom:0}.mr-f4:nth-child(2n){border-right:1px solid #e5e9f2}.mr-f4:last-child{border-right:0}}
+.mr-signal-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 0}
+.mr-metric{border:1px solid #e5e9f2;border-radius:11px;padding:8px 9px;background:#fbfcfe}
+.mr-metric-top{display:flex;justify-content:space-between;gap:6px;font-size:10px;color:#9aa3b2;font-weight:800}
+.mr-metric-top b{color:#182033;font-size:12px}
+.mr-bar{margin-top:6px;display:grid;grid-template-columns:repeat(5,1fr);gap:3px}
+.mr-bar i{height:5px;border-radius:999px;background:#dfe6ef;display:block}
+.mr-bar.green i.on{background:#0b9a6f}
+.mr-bar.amber i.on{background:#c98a00}
+/* AI判讀/下一步:bubble卡片,取代原本清單樣式 */
+.mr-decision-stack{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.mr-decision-row{display:grid;grid-template-columns:auto 1fr;gap:9px;align-items:start;
+  border-radius:12px;padding:10px 11px}
+.mr-decision-row.ai{background:#edf4ff;color:#244e91}
+.mr-decision-row.next{background:#e9f8f1;color:#176849}
+.mr-decision-icon{width:26px;height:26px;display:grid;place-items:center;border-radius:50%;
+  background:rgba(255,255,255,.75);flex:0 0 auto;font-size:13px}
+.mr-decision-title{font-size:11px;font-weight:900;margin-bottom:3px}
+.mr-decision-text{font-size:12.5px;font-weight:600;line-height:1.5}
+.mr-card-now small{display:block;font-size:11px;font-weight:600;color:#9aa3b2;margin-top:2px}
 .mr-fact{background:#f8f9fc;border-radius:10px;padding:8px 10px;min-width:0}
 .mr-fact label{display:block;font-size:10.5px;color:var(--muted);margin-bottom:2px}
 .mr-fact b{font-size:13px;font-weight:800;overflow-wrap:anywhere}
@@ -2562,7 +2631,12 @@ if(window.__singleMainTableRender){
 .mr-card-more[open] .mr-lbl-open{display:inline}
 .mr-more-arrow{font-style:normal;display:inline-block;transition:transform .15s}
 .mr-card-more[open] .mr-more-arrow{transform:rotate(180deg)}
+.mr-b-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.mr-b-badge{display:inline-block;background:#f8f9fc;border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:700;color:var(--text)}
+.mr-b-badge.up{color:var(--red)}
+.mr-b-badge.down{color:var(--green)}
 .mr-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.mr-detail-grid4{grid-template-columns:repeat(4,1fr)}
 .mr-detail{background:#f8f9fc;border-radius:10px;padding:8px 10px;min-width:0}
 .mr-detail label{display:block;font-size:10.5px;color:var(--muted);margin-bottom:2px}
 .mr-detail b{font-size:12.5px;font-weight:800;overflow-wrap:anywhere}
@@ -2581,6 +2655,7 @@ if(window.__singleMainTableRender){
 @media(max-width:640px){
   .mr-card-list{grid-template-columns:1fr}
   .mr-card-facts,.mr-detail-grid{grid-template-columns:1fr 1fr}
+  .mr-detail-grid4{grid-template-columns:1fr 1fr}
   .mr-card-p{font-size:21px}
 }
 /* ══ 全站規則:漲紅跌綠不受任何容器的強制文字色蓋掉 ══════════════════════
