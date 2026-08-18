@@ -717,6 +717,17 @@ document.addEventListener('click',e=>{
   // 命中＝觸發 + 收盤站穩門檻。後端 success 可能只看盤中觸發、漏了收盤確認（如 6173 收 165<門檻 169.5 卻標命中），前端再守一道：收盤<門檻一律不算命中。
   const closeConfirm=x=>{const c=finite(x.price??x.close??x.close_price??x.base_close),e=finite(x.entry_ref??x.base_close??x.trigger_price);return (c!=null&&e!=null)?c>=e:null};
   const isHit=x=>!!x.verified&&(x.triggered===1||x.triggered===true)&&!!x.success&&closeConfirm(x)!==false;
+  // 核心命中(2026-08-18)：命中與否只看核心因子(價格方向/是否觸發/有無結構失效)，
+  // 不再讓量能/法人/籌碼等確認因子單獨否決核心方向——跟C區逐因子表、跟🔴結構風險
+  // shadow tier「弱訊號降級不淘汰、真正結構失效才判失敗」用同一套原則，避免總表命中率
+  // 被x.success這個不可靠欄位錯殺(4/5甚至5/5全過仍被記成失敗的舊bug)。
+  const coreHit=x=>{
+    if(!x.verified)return null;
+    const priceOk=closeConfirm(x);
+    if(priceOk==null)return null;
+    const structFail=(x.structural_failures||[]).length>0;
+    return (x.triggered===1||x.triggered===true)&&priceOk===true&&!structFail;
+  };
   const intradayReason=x=>{const flow=flowValue(x),ch=x.change_rate??x.today_change??x.chg??x.pct,parts=[];parts.push({label:'即時資金流',detail:flow!=null?`${numberText(flow)}｜${Number(flow)>0?'主動買盤流入':Number(flow)<0?'主動賣盤流出':'方向不明'}`:'API 未提供即時資金流'});parts.push({label:'當日漲跌',detail:ch!=null?`${pctText(ch)}｜${Number(ch)>0?'當日上漲':Number(ch)<0?'當日下跌':'持平'}`:'API 未提供當日漲跌'});parts.push({label:'即時觸發條件',detail:triggerCondition(x)});return parts};
   const phaseLabel=phase=>phase==='POST'?'18:00 後｜盤後正式名單':'盤中｜初篩資料逐步補齊';
   const stateCell=(label,cls='')=>`<span class="badge ${cls}">${esc2(label)}</span>`;
@@ -1040,7 +1051,7 @@ document.addEventListener('click',e=>{
           <div class="mr-f4"><label>防守價</label><b>${esc2(maDefense||'—')}</b></div>
           <div class="mr-f4"><label>收盤價</label><b>${esc2(_numOrDash(x.base_close))}</b></div>
           <div class="mr-f4"><label>量比(相對)</label><b>${esc2(volLabel)}</b></div>
-          <div class="mr-f4"><label>漲跌幅</label><b>${esc2(_numOrDash(x.base_change_rate))}</b></div>
+          <div class="mr-f4"><label>漲跌幅</label><b class="${color(x.base_change_rate)}">${esc2(pctText(x.base_change_rate))}</b></div>
           <div class="mr-f4"><label>型態</label><b>${esc2(signal)}</b></div>
         </div>
         <div class="mr-facts-grid mr-facts-grid5">
@@ -1090,15 +1101,14 @@ document.addEventListener('click',e=>{
           return `<div class="mr-c-table-wrap">
             <table class="mr-c-table"><thead><tr><th>驗證因子</th><th>入選依據(${esc2(poolDate||'—')})</th><th>今日實際結果(${esc2(verifyDate||'—')})</th><th>判定</th></tr></thead><tbody>${rowsHtml}</tbody></table>
             <div class="mr-c-score">
-              <div class="mr-c-score-row"><label>綜合驗證</label><b class="${verdictCls}">${total===0?'—':`${hits}/${total}`}</b></div>
-              <div class="mr-c-score-row"><label>模型評等</label><b class="${verdictCls}">${grade}</b></div>
+              <div class="mr-c-score-row"><label>綜合驗證評分</label><b class="${verdictCls}">${total===0?'—':`${hits}/${total}`}</b></div>
+              <div class="mr-c-score-row"><label>模型評級</label><b class="${verdictCls}">${grade}</b></div>
               <div class="mr-c-score-row"><label>驗證結論</label><b class="${verdictCls}">${verdictLabel}</b></div>
-              <div class="mr-c-score-row"><label>命中品質</label><b class="${verdictCls}">${conf}</b></div>
-              ${confirmMissed.length?`<div class="mr-c-score-row"><label>缺失確認</label><b>${esc2(confirmMissed.join('、'))}</b></div>`:''}
+              <div class="mr-c-score-row"><label>信心度</label><b class="${verdictCls}">${conf}</b></div>
             </div>
           </div>
           <div class="mr-c-block">
-            <div class="mr-c-row"><label>明日處理</label><span>${esc2(T1_IDENTITY[x.display_pool]||x.display_pool||'—')}</span></div>
+            <div class="mr-c-row mr-c-tomorrow"><label>明日處理</label><span>${esc2(T1_IDENTITY[x.display_pool]||x.display_pool||'—')}</span></div>
             ${verdict.headline||(verdict.lines||[]).length?`<div class="mr-c-row"><label>AI 評語</label><span>${esc2(verdict.headline||'')}${(verdict.lines||[]).length?'｜'+(verdict.lines||[]).map(l=>esc2(l.text)).join(' '):''}${confirmMissed.length&&coreOk?`｜${confirmMissed.join('、')}未達標，但不影響核心方向判定`:''}</span></div>`:''}
           </div>`;
         })()}
@@ -1270,7 +1280,7 @@ document.addEventListener('click',e=>{
       const t=finite(x.entry_ref??x.base_close??x.trigger_price),p=finite(x.price??x.close??x.close_price??x.base_close);
       return t!=null&&p!=null&&p>=t;
     };
-    const s=items.reduce((a,x)=>{a.tot++;const tr=liveTriggered(x);if(tr)a.trig++;else a.untrig++;if(x.verified){if(isHit(x))a.hit++;else if(tr)a.fail++;}return a;},{tot:0,trig:0,untrig:0,hit:0,fail:0}),pct=(n,d)=>d?Math.round(n/d*100):0,cell=(k,v,cls)=>`<div class="dr-stat ${cls||''}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+    const s=items.reduce((a,x)=>{a.tot++;const tr=liveTriggered(x);if(tr)a.trig++;else a.untrig++;if(x.verified){const ch=coreHit(x);if(ch===true)a.hit++;else if(tr)a.fail++;}return a;},{tot:0,trig:0,untrig:0,hit:0,fail:0}),pct=(n,d)=>d?Math.round(n/d*100):0,cell=(k,v,cls)=>`<div class="dr-stat ${cls||''}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
     // 未觸發 = 總檔數 - 已觸發(互補,恆自洽,不再依賴 x.verified —— 那個欄位今日即時資料
     // 永遠是 false,曾經造成「50 檔但已觸發 0/未觸發 0」自相矛盾的畫面)。
     // 命中/觸發後失敗仍只看 x.verified:今日盤中尚未收盤,不可能有蓋章結果,顯示 0 是語意正確,不是 bug。
@@ -2736,10 +2746,11 @@ if(window.__singleMainTableRender){
 .mr-card-now b{font-size:14px;font-weight:800}
 /* C 區:常駐顯示(不藏在 details 裡),四行 label+內容,checklist 用三色點標示 */
 .mr-c-block{margin:10px 0 0;padding:10px 12px;background:#f8f9fc;border-radius:10px;
-  display:flex;flex-direction:column;gap:6px}
-.mr-c-row{display:flex;align-items:baseline;gap:8px;font-size:12.5px}
+  display:flex;flex-direction:column;gap:7px}
+.mr-c-row{display:flex;align-items:baseline;gap:8px;font-size:13.5px}
 .mr-c-row label{flex:0 0 64px;color:#73809a;font-weight:800;font-size:11px}
-.mr-c-row>span{color:#182033}
+.mr-c-row>span{color:#182033;font-weight:700}
+.mr-c-row.mr-c-tomorrow>span{color:#1f4fb0;font-weight:900;font-size:14px}
 .mr-checks{display:flex;flex-wrap:wrap;gap:4px 10px}
 .mr-check{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600}
 .mr-check span{font-weight:900}
@@ -2780,7 +2791,7 @@ if(window.__singleMainTableRender){
    AI判讀/下一步改 bubble 卡片。 */
 .mr-facts4{display:grid;grid-template-columns:repeat(2,1fr);border:1px solid #e5e9f2;
   border-radius:12px;overflow:hidden;margin:12px 0 0}
-.mr-f4{padding:10px 11px;border-right:1px solid #e5e9f2;border-bottom:1px solid #e5e9f2;min-width:0}
+.mr-f4{padding:8px 10px;border-right:1px solid #e5e9f2;border-bottom:1px solid #e5e9f2;min-width:0}
 .mr-f4:nth-child(2n){border-right:0}
 .mr-f4:nth-last-child(-n+2){border-bottom:0}
 .mr-f4 label{display:block;font-size:10px;color:#9aa3b2;font-weight:800;margin-bottom:4px}
@@ -2802,15 +2813,20 @@ if(window.__singleMainTableRender){
 @media(min-width:640px){
   .mr-facts-grid8{grid-template-columns:repeat(4,1fr)}
   .mr-facts-grid7{grid-template-columns:repeat(4,1fr)}
+  .mr-facts-grid5{grid-template-columns:repeat(3,1fr)}
   .mr-facts-grid .mr-f4{border-bottom:0}
   .mr-facts-grid8 .mr-f4:nth-child(4n){border-right:0}
   .mr-facts-grid7 .mr-f4:nth-child(4n){border-right:0}
+  .mr-facts-grid5 .mr-f4:nth-child(3n){border-right:0}
 }
 @media(min-width:920px){
   .mr-facts-grid8{grid-template-columns:repeat(7,1fr)}
   .mr-facts-grid7{grid-template-columns:repeat(7,1fr)}
+  .mr-facts-grid5{grid-template-columns:repeat(5,1fr)}
   .mr-facts-grid8 .mr-f4:nth-child(4n){border-right:1px solid #e5e9f2}
   .mr-facts-grid7 .mr-f4:nth-child(4n){border-right:1px solid #e5e9f2}
+  .mr-facts-grid5 .mr-f4:nth-child(3n){border-right:1px solid #e5e9f2}
+  .mr-facts-grid5 .mr-f4:last-child{border-right:0}
   .mr-facts-grid .mr-f4:last-child{border-right:0}
 }
 .mr-a-note{margin:8px 0 0;font-size:11px;line-height:1.5;color:#9aa3b2}
