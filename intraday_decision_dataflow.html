@@ -381,8 +381,12 @@ function renderVolHistory(d){
 }
 // ?view=watch|card|report 自動開對應分頁
 window.addEventListener('load',()=>{const m=location.search.match(/[?&]view=(watch|card|report)/);if(m){setTimeout(()=>openPanel(m[1]),100);}});
-function card(x){let c=exactLimitUp(x)?'limit-up':x.group==='排除'?'risk':x.group==='觀察'?'watch':'';return `<article class="panel stock-card ${c}" data-group="${esc(x.group)}"><div class="stock-top"><div><div class="stock-code">${esc(x.code)} · ${esc(x.subgroup)}</div><div class="stock-name">${esc(x.name)} <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span></div></div></div><div class="signal"><b>${esc(x.classification_reason||x.subgroup||x.group)}</b><span class="tag">${esc(x.group)}</span></div><div class="price-row"><div class="price-box"><label>漲跌</label><strong class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</strong></div><div class="price-box"><label>成交量</label><strong>${fmt(x.total_volume)}</strong></div><div class="price-box"><label>aflow</label><strong class="${cls(x.aflow)}">${fmt(x.aflow)}</strong></div></div><div class="stock-foot"><span><span class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</span> · <span class="${cls(x.aflow)}">aflow ${fmt(x.aflow)}</span></span><span class="muted">查看解讀 →</span></div></article>`}
-function render(){let q=(document.querySelector('#search').value||'').toLowerCase();let rs=data.filter(x=>(filter==='全部'||x.group===filter)&&(`${x.code}${x.name}`.toLowerCase().includes(q)));const cardRows=rs.slice(0,6);document.querySelector('#cards').innerHTML=cardRows.map(card).join('')||'<div class="panel" style="padding:20px">目前沒有符合條件的標的</div>';document.querySelector('#rows').innerHTML=rs.map(x=>`<tr class="${exactLimitUp(x)?'limit-up-row':x.group==='可操作'?'actionable-row':x.group==='觀察'?'watch-row':'risk-row'}"><td><b>${esc(x.code)} ${esc(x.name)}</b> <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span></td><td class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</td><td class="${cls(x.aflow)}">${fmt(x.aflow)}</td><td><span class="pill">${esc(x.group)}</span></td><td class="muted">${esc(x.subgroup)}</td><td class="muted">${esc(x.ai)}</td></tr>`).join('');document.querySelectorAll('#cards .stock-card').forEach((el,i)=>el.dataset.code=String(cardRows[i].code));document.querySelectorAll('#rows tr').forEach((el,i)=>el.dataset.code=String(rs[i].code));document.querySelector('#valid').textContent=rs.filter(x=>x.filter_no_data===false).length}
+// 底色代表「分類」,漲停只是疊加的狀態標記 —— 兩者是不同維度,不能互相取代。
+// 舊寫法 exactLimitUp?'limit-up':group... 讓漲停股直接失去自己的分類 class,結果
+// 「觀察」的漲停股塗成淺紅底、旁邊同樣「觀察」的卻是白底,上下分類一樣視覺卻不同
+// (2026-08-17 使用者提問「漲停也算可操作?為何上下不一樣」的根因)。
+function card(x){let c=[x.group==='排除'?'risk':x.group==='觀察'?'watch':'',exactLimitUp(x)?'limit-up':''].filter(Boolean).join(' ');return `<article class="panel stock-card ${c}" data-group="${esc(x.group)}"><div class="stock-top"><div><div class="stock-code">${esc(x.code)} · ${esc(x.subgroup)}</div><div class="stock-name">${esc(x.name)} <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span>${exactLimitUp(x)?'<span class="mr-card-limit" style="margin-left:6px">漲停</span>':''}</div></div></div><div class="signal"><b>${esc(x.classification_reason||x.subgroup||x.group)}</b><span class="tag">${esc(x.group)}</span></div><div class="price-row"><div class="price-box"><label>漲跌</label><strong class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</strong></div><div class="price-box"><label>成交量</label><strong>${fmt(x.total_volume)}</strong></div><div class="price-box"><label>aflow</label><strong class="${cls(x.aflow)}">${fmt(x.aflow)}</strong></div></div><div class="stock-foot"><span><span class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</span> · <span class="${cls(x.aflow)}">aflow ${fmt(x.aflow)}</span></span><span class="muted">查看解讀 →</span></div></article>`}
+function render(){let q=(document.querySelector('#search').value||'').toLowerCase();let rs=data.filter(x=>(filter==='全部'||x.group===filter)&&(`${x.code}${x.name}`.toLowerCase().includes(q)));const cardRows=rs.slice(0,6);document.querySelector('#cards').innerHTML=cardRows.map(card).join('')||'<div class="panel" style="padding:20px">目前沒有符合條件的標的</div>';document.querySelector('#rows').innerHTML=rs.map(x=>`<tr class="${[x.group==='可操作'?'actionable-row':x.group==='觀察'?'watch-row':'risk-row',exactLimitUp(x)?'limit-up-row':''].filter(Boolean).join(' ')}"><td><b>${esc(x.code)} ${esc(x.name)}</b> <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span></td><td class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</td><td class="${cls(x.aflow)}">${fmt(x.aflow)}</td><td><span class="pill">${esc(x.group)}</span></td><td class="muted">${esc(x.subgroup)}</td><td class="muted">${esc(x.ai)}</td></tr>`).join('');document.querySelectorAll('#cards .stock-card').forEach((el,i)=>el.dataset.code=String(cardRows[i].code));document.querySelectorAll('#rows tr').forEach((el,i)=>el.dataset.code=String(rs[i].code));document.querySelector('#valid').textContent=rs.filter(x=>x.filter_no_data===false).length}
 async function load(){if(paused)return;try{let r=await fetch(API_BASE+'/api/intraday-test',{cache:'no-store'}),d=await r.json();if(!d.ok)throw Error(d.error||'API 回報失敗');data=d.rows||[];
   // 首頁資金流(aflow)只讀 intraday-test:tick 斷線(如收盤後)這個端點的 aflow 全部變 null,
   // 表格直接顯示「—」,即使盤中最後一刻其實有真實資金流可以參考。機會雷達走
@@ -1037,6 +1041,11 @@ document.addEventListener('click',e=>{
       if(x.triggered===1||x.triggered===true)return true;
       if(x.triggered===0||x.triggered===false)return false;
       if(data.historical)return false;   // 歷史複盤:null 就是未知/未觸發,不猜
+      // 未來名單(檢視日還沒到,例如收盤後看明日清單)同樣不能猜:這裡的 price 是「今天收盤」,
+      // trigger 是「明天的觸發價」,拿今天的價去比明天的條件並判成「已觸發」毫無意義。
+      // 卡片在 notTraded 分支根本不顯示「今日觸發」,統計若還報已觸發就是上下打架
+      // (2026-08-17 20:26 收盤後全站稽核實測踩到:卡片全空、統計卻說已觸發 36/50)。
+      if(notTraded)return false;
       const t=finite(x.entry_ref??x.base_close??x.trigger_price),p=finite(x.price??x.close??x.close_price??x.base_close);
       return t!=null&&p!=null&&p>=t;
     };
@@ -1044,7 +1053,10 @@ document.addEventListener('click',e=>{
     // 未觸發 = 總檔數 - 已觸發(互補,恆自洽,不再依賴 x.verified —— 那個欄位今日即時資料
     // 永遠是 false,曾經造成「50 檔但已觸發 0/未觸發 0」自相矛盾的畫面)。
     // 命中/觸發後失敗仍只看 x.verified:今日盤中尚未收盤,不可能有蓋章結果,顯示 0 是語意正確,不是 bug。
-    const stats=`<div class="dr-stats">${cell('篩選檔數',s.tot)}${cell('已觸發',`${s.trig} <small>(${pct(s.trig,s.tot)}%)</small>`,'b')}${cell('命中',`${s.hit} <small>(${pct(s.hit,s.tot)}%)</small>`,'g')}${cell('觸發後失敗',`${s.fail} <small>(${pct(s.fail,s.tot)}%)</small>`,'o')}${cell('未觸發',`${s.untrig} <small>(${pct(s.untrig,s.tot)}%)</small>`,'r')}${cell('總名單命中率',`${pct(s.hit,s.tot)}%`,'g')}${cell('觸發命中率',`${pct(s.hit,s.trig)}%`,'g')}</div>`;
+    // 未來名單(檢視日未到)一律不報觸發/命中數字。那天根本還沒開盤,報「未觸發 50(100%)」
+    // 會被讀成「全部失敗」,和「還沒輪到」是完全相反的意思 —— 寧可留白說明,不給假數字。
+    const pend=v=>notTraded?'<span class="dr-pending">待進場日</span>':v;
+    const stats=`<div class="dr-stats">${cell('篩選檔數',s.tot)}${cell('已觸發',pend(`${s.trig} <small>(${pct(s.trig,s.tot)}%)</small>`),'b')}${cell('命中',pend(`${s.hit} <small>(${pct(s.hit,s.tot)}%)</small>`),'g')}${cell('觸發後失敗',pend(`${s.fail} <small>(${pct(s.fail,s.tot)}%)</small>`),'o')}${cell('未觸發',pend(`${s.untrig} <small>(${pct(s.untrig,s.tot)}%)</small>`),'r')}${cell('總名單命中率',pend(`${pct(s.hit,s.tot)}%`),'g')}${cell('觸發命中率',pend(`${pct(s.hit,s.trig)}%`),'g')}</div>`;
     const summaries=DECISION_POOLS.map(p=>{const rows=groups[p.key];return `<details class="decision-pool" data-decision-pool="${p.key}"${p.key===first?' open':''}><summary class="decision-pool-summary"><span>${p.label}<small>${esc2(p.desc||'')}</small></span><b>${rows.length}</b></summary><div class="decision-pool-body">${rows.length?validationTable(rows,phase,notTraded,date,data.historical):`<div class="decision-empty">${p.empty}</div>`}</div></details>`}).join('');
     return `<article class="dr-single decision-view"><div class="dr-single-toolbar"><div><b>盤後驗證主表</b><small>保留原欄位、盤中資金流與累積歷史；四分組只改呈現</small></div><div><span class="dr-single-date">${esc2(status)}</span><span class="dr-single-date">資料日 <select onchange="window._pickMainDate&&window._pickMainDate(this.value)" style="border:0;background:transparent;font:inherit;font-weight:850;color:inherit;cursor:pointer">${dateOpts}</select></span></div></div>${stats}<nav class="decision-pool-nav">${DECISION_POOLS.map(p=>`<span onclick="window._jumpToPool&&window._jumpToPool('${p.key}')">${p.label} ${groups[p.key].length}<small>${esc2(p.desc||'')}</small></span>`).join('')}</nav>${summaries}<div class="dr-single-note">明日觀察與今日淘汰繼續使用原本驗證流程；新增四欄只顯示語意，不重算、不刪除、不改寫歷史。</div>${decRejects(rejectRows)}</article>`;
   };
@@ -1460,9 +1472,12 @@ tr.risk-row:hover td{background:#ffe3e8}
 .stock-card.risk{background:#fff;border-color:var(--line)}
 .stock-card.risk:before{background:var(--amber)}
 .stock-card.risk .tag{background:var(--amber-soft);color:var(--amber)}
-.stock-card.limit-up{background:var(--red-soft);border-color:#f0c6cf}
+/* 漲停只是「疊加的即時狀態」,不是分類 —— 底色/tag 顏色必須留給 group(risk/watch/可操作)
+   決定,不能被漲停蓋過。之前 background 整卡變紅、tag 搶成紅色,讓「觀察」分類的漲停股
+   跟同樣「觀察」但沒漲停的卡片長得完全不同(2026-08-17 使用者質疑「上下不一樣」的根因)。
+   只留左側色條轉紅 + 現價數字轉紅粗體當提示,底色與 tag 一律維持該卡真正所屬的分類。 */
 .stock-card.limit-up:before{background:var(--red)}
-.stock-card.limit-up .tag{background:#ffd9df;color:var(--red)}
+.stock-card.limit-up .current-price{color:var(--red)!important;font-weight:800}
 /* 現價依漲跌上色（台股：漲紅跌綠）；不再寫死紅色 */
 .current-price{display:inline-block;margin-left:7px;color:var(--muted);font-size:.72em;font-weight:900;white-space:nowrap}
 .current-price.positive{color:var(--red)}
@@ -2123,16 +2138,19 @@ async function loadBreadth(embedded){
   color:#d92d20!important;
   border-color:#f0a9a9!important;
 }
-.stock-card.limit-up,
+/* .stock-card.limit-up 的 background/.tag 兩條(舊版)已移除:那時是為了解決「紅底配白字
+   看不清」,順手把整卡塗紅、tag 也搶成紅色 —— 跟後來(1479行)「漲停不該蓋過分類底色」
+   的修法互相打架,兩條疊在一起導致 !important 優先度贏,底色改了卻沒生效。
+   底色/tag 顏色現在完全交給 watch/risk/actionable 這些分類 class 決定,漲停只留左側
+   色條(下面 box-shadow)當狀態提示。*/
 .dr-row.dr-limit{
   background:#fdecec!important;
   border-color:#f3c3c3!important;
   color:#1f2937!important;
   box-shadow:inset 4px 0 0 #d92d20!important;
 }
-.stock-card.limit-up *,
+.stock-card.limit-up{box-shadow:inset 4px 0 0 #d92d20!important}
 .dr-row.dr-limit *{color:#1f2937!important}
-.stock-card.limit-up .tag,
 .dr-row.dr-limit .dr-badge,
 .dr-row.dr-limit .dr-inst{
   background:#fff!important;
@@ -2351,6 +2369,8 @@ if(window.__singleMainTableRender){
 .dr-stat{padding:6px 8px!important}
 .dr-stat .k{font-size:10.5px!important}
 .dr-stat .v{font-size:16px!important}
+/* 未來名單的統計格:留白說明取代假數字(見 liveTriggered 的 notTraded 分支) */
+.dr-pending{font-size:12px;font-weight:700;color:#9aa3b2}
 .dr-single-toolbar{padding:8px 12px!important}
 .dr-single-note{padding:7px 12px!important;font-size:11px!important}
 .dr-single-reject table{font-size:11px!important}
