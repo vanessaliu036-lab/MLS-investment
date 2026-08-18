@@ -99,6 +99,8 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
     day_low = (quote or {}).get("low")
     vwap = (quote or {}).get("avg_price")
     na = (aflow or {}).get("net_active")
+    active_buy = (aflow or {}).get("active_buy")
+    active_sell = (aflow or {}).get("active_sell")
     y_high = (bar_y or {}).get("high")
     ma20 = (bar_y or {}).get("ma20")
     y_vol = (bar_y or {}).get("volume")
@@ -208,6 +210,7 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
         # net_active = Shioaji 盤中主動買賣差(資金流)。前端(cardA/aRows/決策清單)
         # 一律讀 `aflow`,故同值加別名,否則「盤中資金流」欄恆顯示「—」(2026-08-05)。
         "price": price, "change_rate": cr, "net_active": na, "aflow": na,
+        "volume": vol, "active_buy": active_buy, "active_sell": active_sell,
         # 「現在這個價格能不能買」四件事(2026-08-18 補,A 卡原本只判「有沒有突破」,
         # 沒判「突破後現在追不追得下去」):
         "intraday_high": day_high, "intraday_low": day_low, "vwap": vwap,

@@ -525,7 +525,11 @@ def build(universe: list[str], db_path: str = "mls.db",
             lay_fields["classification"] = layered_score.TIER_CANDIDATE
             lay_fields["divergence_rescued"] = True
         if lay["classification"] == layered_score.TIER_REJECTED and not _protect:
-            # 真淘汰:帶結構失效原因(不是「分數低」),供淘汰名單顯示與 T+1 錯殺量測
+            # 真結構失效:2026-08-18 起不再 continue 移出主名單(51 檔永遠 51 檔)。
+            # dropped_pool 稽核留痕維持不變(shadow,量測/T+1複盤照舊);同時讓它繼續走完
+            # 下方 pipeline,一樣進 kept/pool → candidate_pool,靠 decision_view 既有的
+            # POOL_MAP[TIER_REJECTED]="rejected" 自然標成 display_pool=rejected,
+            # 前端 DECISION_POOLS 新增 rejected 桶顯示,不必新增 track 列舉值。
             recovery = recovery_scan.scan(lay, {
                 **bar,
                 "change_rate": change,
@@ -540,7 +544,6 @@ def build(universe: list[str], db_path: str = "mls.db",
                             "rejected_high": bar.get("high"),
                             "rejected_ma5": bar.get("ma5"),
                             **lay_fields})
-            continue
         it = score_one(c, bar, i.get(c), m.get(c), h.get(c), ab.get(c))
         it = assign_track(bar, it, health=h.get(c), inst=i.get(c))
         it.update(lay_fields)
