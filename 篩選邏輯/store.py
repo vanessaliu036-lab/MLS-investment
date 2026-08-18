@@ -130,7 +130,8 @@ CREATE TABLE IF NOT EXISTS aflow (
 CREATE TABLE IF NOT EXISTS quote_snap (
     code TEXT NOT NULL, data_date TEXT NOT NULL,
     price REAL, change_rate REAL, volume INTEGER,
-    bid_vol INTEGER, ask_vol INTEGER, updated_at TEXT,
+    bid_vol INTEGER, ask_vol INTEGER,
+    high REAL, low REAL, avg_price REAL, updated_at TEXT,
     PRIMARY KEY (code, data_date)
 );
 
@@ -313,6 +314,8 @@ BEGIN SELECT RAISE(ABORT, 'IMMUTABLE: quote_snap 過往交易日已凍結,不可
 _COLUMN_MIGRATIONS = {
     "inst_flow": [("foreign_days", "INTEGER"), ("trust_days", "INTEGER"),
                   ("dealer_days", "INTEGER")],
+    # 2026-08-18:A 卡補「距買點/日內位置/VWAP乖離」判讀,quote_snap 舊表要補欄位。
+    "quote_snap": [("high", "REAL"), ("low", "REAL"), ("avg_price", "REAL")],
 }
 
 

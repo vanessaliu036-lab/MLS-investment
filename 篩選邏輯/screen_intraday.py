@@ -95,10 +95,27 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
     vol = (quote or {}).get("volume")
     bid = (quote or {}).get("bid_vol")
     ask = (quote or {}).get("ask_vol")
+    day_high = (quote or {}).get("high")
+    day_low = (quote or {}).get("low")
+    vwap = (quote or {}).get("avg_price")
     na = (aflow or {}).get("net_active")
     y_high = (bar_y or {}).get("high")
     ma20 = (bar_y or {}).get("ma20")
     y_vol = (bar_y or {}).get("volume")
+
+    # 距買點:現價相對觸發價的乖離%。>0 = 已站上、追多少;<0 = 還沒到。
+    # 日內位置:現價落在今日高低區間的百分位,0=最低、100=最高。
+    # VWAP乖離:現價相對今日均價(交易所口徑,非估算)的%,判斷是不是站在多數成交成本之上。
+    trigger_price = pool_row.get("trigger_price")
+    chase_distance_pct = (round((price / trigger_price - 1) * 100, 2)
+                          if price is not None and trigger_price else None)
+    day_position_pct = (round((price - day_low) / (day_high - day_low) * 100, 1)
+                        if price is not None and day_high is not None and day_low is not None
+                        and day_high > day_low else
+                        (100.0 if price is not None and day_high is not None
+                         and day_high == day_low else None))
+    vwap_diff_pct = (round((price / vwap - 1) * 100, 2)
+                     if price is not None and vwap else None)
 
     conds: dict[str, bool | None] = {}
     notes: list[str] = []
@@ -191,6 +208,12 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
         # net_active = Shioaji 盤中主動買賣差(資金流)。前端(cardA/aRows/決策清單)
         # 一律讀 `aflow`,故同值加別名,否則「盤中資金流」欄恆顯示「—」(2026-08-05)。
         "price": price, "change_rate": cr, "net_active": na, "aflow": na,
+        # 「現在這個價格能不能買」四件事(2026-08-18 補,A 卡原本只判「有沒有突破」,
+        # 沒判「突破後現在追不追得下去」):
+        "intraday_high": day_high, "intraday_low": day_low, "vwap": vwap,
+        "chase_distance_pct": chase_distance_pct,
+        "day_position_pct": day_position_pct,
+        "vwap_diff_pct": vwap_diff_pct,
         "conditions": conds, "hit": hit,
         "action": action, "notes": notes, "missing": missing,
         "has_data": quote is not None,
@@ -295,13 +318,26 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
         it["reasons"] = view["reason_tags"]
 
         # step 3a 延遲確認:讀前次 first_green_at,綠燈須持穩 CONFIRM_MINUTES 才可進
-        pf = None
+        # 順便讀前一輪的資金流(na),跟這輪比出「資金趨勢」——不新開表,沿用同一筆
+        # A 鏈自己的 intraday_signal.note,B 鏈的 b_snapshot 不可讀(見檔頭鐵律)。
+        pf, prev_na = None, None
         if prev.get(code):
             try:
                 pn = json.loads(prev[code].get("note") or "{}")
-                pf = pn.get("cf_first_green") if isinstance(pn, dict) else None
+                if isinstance(pn, dict):
+                    pf = pn.get("cf_first_green")
+                    prev_na = pn.get("na")
             except Exception:
                 pf = None
+        cur_na = it.get("net_active")
+        if cur_na is None or prev_na is None:
+            it["money_trend"] = None
+        elif cur_na > prev_na:
+            it["money_trend"] = "up"
+        elif cur_na < prev_na:
+            it["money_trend"] = "down"
+        else:
+            it["money_trend"] = "flat"
         state, fg, cnote = confirm_signal(it["light"], pf, now,
                                           it.get("price"), it.get("trigger_price"))
         it["confirm_state"] = state
@@ -337,7 +373,8 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
         "light": it["light"],
         "conditions": json.dumps(it["conditions"], ensure_ascii=False),
         "note": json.dumps({"notes": it["notes"], "cf_first_green": it.get("first_green_at"),
-                            "cf_state": it.get("confirm_state")}, ensure_ascii=False),
+                            "cf_state": it.get("confirm_state"), "na": it.get("net_active")},
+                           ensure_ascii=False),
         "updated_at": gen,
     } for it in items], db_path)
 

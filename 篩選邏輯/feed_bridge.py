@@ -53,6 +53,11 @@ def once():
             "volume": r0.get("total_volume") or 0,
             "bid_vol": r0.get("raw_bid_side_total_vol") or 0,
             "ask_vol": r0.get("raw_ask_side_total_vol") or 0,
+            # 盤中最高/最低/均價(VWAP):8000 buffer 的 Shioaji 原生欄位,只是搬過來,
+            # 不是這支自己算的 —— 供 A 卡「距買點/日內位置/VWAP乖離」判讀用。
+            "high": r0.get("high"),
+            "low": r0.get("low"),
+            "avg_price": r0.get("avg_price"),
             "updated_at": now,
         })
         buy = r0.get("buy_volume") or 0

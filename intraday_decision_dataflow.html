@@ -832,9 +832,12 @@ document.addEventListener('click',e=>{
       const condMain=triggerCondition(x);
       const verdictHtml=v=>{
         // AI 判讀/下一步改成 bubble 卡片(藍/綠底+圓形icon),取代原本的清單樣式。
+        // 2026-08-18:標題改印後端 headline(單一異常訊號,如「量價資金共振」「爆量不漲」),
+        // 不再是死板的「AI 判讀」四字 —— 掃卡時看標題就夠,不用每張都讀內文。
         const aiText=(v.lines||[]).map(l=>esc2(l.text)).join(' ');
         const stepText=(v.next_steps||[]).map(s=>`<b>${esc2(s.cond)}</b> → ${esc2(s.then)}`).join('；');
-        const ai=aiText?`<div class="mr-decision-row ai"><div class="mr-decision-icon">🔎</div><div><div class="mr-decision-title">AI 判讀</div><div class="mr-decision-text">${aiText}</div></div></div>`:'';
+        const title=v.headline?`AI 判讀｜${esc2(v.headline)}`:'AI 判讀';
+        const ai=aiText?`<div class="mr-decision-row ai"><div class="mr-decision-icon">🔎</div><div><div class="mr-decision-title">${title}</div><div class="mr-decision-text">${aiText}</div></div></div>`:'';
         const next=stepText?`<div class="mr-decision-row next"><div class="mr-decision-icon">🎯</div><div><div class="mr-decision-title">下一步</div><div class="mr-decision-text">${stepText}</div></div></div>`:'';
         return `<div class="mr-decision-stack">${ai}${next}</div>`;
       };
@@ -884,8 +887,9 @@ document.addEventListener('click',e=>{
       //   結構   = potential_grade(A/B/C/D,後端既有評級)直接映射,可信度等同該評級本身。
       //   資金   = chip_status + aflow 方向的前端簡化映射(後端沒有 0-5 標準分),
       //            只能當「大致強弱」參考,不是精確分數。
-      //   追價風險 = change_rate 對照 intraday_verdict.py 既有的 5% HOT_CHANGE_PCT 門檻
-      //            (跟 AI 判讀「日內漲幅已大」用同一個門檻,不是另外發明的標準)。
+      //   追價風險(2026-08-18 改後端算,不再只看漲跌幅):intraday_verdict.py 的
+      //            chase_risk,吃距買點乖離＋VWAP乖離＋日內位置＋量能＋資金趨勢五項,
+      //            同樣「站上關鍵價+資金流入」不會再因為量能/位置不同給出一樣的風險。
       const gradeBar=g=>({A:5,B:4,C:2,D:1}[g]||0);
       const fundBar=(()=>{
         const cs=x.chip_status,af=finite(x.aflow??x.net_active);
@@ -895,9 +899,20 @@ document.addEventListener('click',e=>{
         if(cs==='negative'||(af!=null&&af<0))return 2;
         return 3;
       })();
-      const chaseBar=(()=>{const c=finite(ch);if(c==null)return 0;if(c>=5)return 5;if(c>=3)return 3;if(c>0)return 1;return 0;})();
-      const chaseLabel=chaseBar>=5?'偏高':chaseBar>=3?'中等':chaseBar>0?'偏低':'—';
+      const verdict=x.intraday_verdict||{};
+      const chaseRisk=verdict.chase_risk;
+      const chaseBar=chaseRisk?[2,3,4,5][chaseRisk.tier]||0:0;
+      const chaseLabel=chaseRisk?chaseRisk.label:'未達買點';
+      const tradeStatus=verdict.trade_status;
       const barHtml=(n,cls)=>`<div class="mr-bar ${cls}">${[1,2,3,4,5].map(i=>`<i class="${i<=n?'on':''}"></i>`).join('')}</div>`;
+      const distPct=finite(x.chase_distance_pct);
+      const distText=distPct==null?'':`｜現價 ${pctText(distPct)}`;
+      const vwapDiff=finite(x.vwap_diff_pct);
+      const vwapText=(x.vwap==null||vwapDiff==null)?'—':`${vwapDiff>=0?'上方':'下方'} ${pctText(vwapDiff)}`;
+      const dayPos=finite(x.day_position_pct);
+      const dayPosText=dayPos==null?'—':(dayPos>=70?`高檔(${dayPos}%)`:dayPos>=30?`中段(${dayPos}%)`:`回落(${dayPos}%)`);
+      const trendText={up:'↑ 持續增強',down:'↓ 流入收斂',flat:'→ 持平'}[x.money_trend]||'—';
+      const trendCls=x.money_trend==='up'?'up':x.money_trend==='down'?'down':'';
       const gradeLabel=g=>({A:'強勢',B:'穩健',C:'偏弱',D:'弱勢'}[g]||'—');
       // C 區「今日實際」只用後端真的算出來的三項(觸發/收盤確認/命中) —— 不編造
       // 「資金轉正」「量能確認」這種沒有對應欄位的勾叉項,寧可少一項也不猜。
@@ -915,15 +930,21 @@ document.addEventListener('click',e=>{
         <div class="mr-stage-label mr-stage-a">A｜盤中決策<small>現在發生什麼</small></div>
         <div class="mr-facts4">
           <div class="mr-f4"><label>盤中資金流入</label><b class="${fN>0?'up':fN<0?'down':''}">${flow==null?'—':(fN>0?'↑ ':fN<0?'↓ ':'')+numberText(flow)}</b></div>
-          <div class="mr-f4"><label>關鍵價位</label><b>${esc2(condMain)}</b></div>
+          <div class="mr-f4"><label>關鍵價位</label><b>${esc2(condMain)}</b>${distText?`<small>${esc2(distText.replace(/^｜/,''))}</small>`:''}</div>
           <div class="mr-f4"><label>法人動向</label><b class="${/連賣/.test(instShort)?'down':/連買/.test(instShort)?'up':''}">${esc2(instShort)}</b></div>
           <div class="mr-f4"><label>量能狀態</label><b>${esc2(volLabel)}</b></div>
+        </div>
+        <div class="mr-facts3">
+          <div class="mr-f4"><label>日內位置</label><b>${esc2(dayPosText)}</b></div>
+          <div class="mr-f4"><label>VWAP</label><b>${esc2(vwapText)}</b></div>
+          <div class="mr-f4"><label>資金趨勢</label><b class="${trendCls}">${esc2(trendText)}</b></div>
         </div>
         <div class="mr-signal-strip">
           <div class="mr-metric"><div class="mr-metric-top"><span>結構</span><b>${esc2(gradeLabel(x.potential_grade))}</b></div>${barHtml(gradeBar(x.potential_grade),'green')}</div>
           <div class="mr-metric"><div class="mr-metric-top"><span>資金</span><b>${fundBar>=4?'強勢':fundBar<=2?'偏弱':'中性'}</b></div>${barHtml(fundBar,'green')}</div>
           <div class="mr-metric"><div class="mr-metric-top"><span>追價風險</span><b>${esc2(chaseLabel)}</b></div>${barHtml(chaseBar,'amber')}</div>
         </div>
+        ${tradeStatus?`<div class="mr-trade-status ts-${esc2({'🔥':'hot','🟢':'go','🟡':'wait','🔴':'no','⚪':'idle'}[tradeStatus.code]||'idle')}"><label>交易狀態</label><b>${esc2(tradeStatus.code)} ${esc2(tradeStatus.label)}</b></div>`:''}
         <div class="mr-card-now"><label>目前狀態</label><b>${esc2(stateNow)}</b>${erefT!=='—'?`<small>關鍵觸發 ${erefT} ${esc2(trigShort)}</small>`:''}</div>
         <div class="mr-card-decision">${reasonHtml}</div>
         <div class="mr-stage-label mr-stage-c">C｜T+1 驗證<small>昨天的預測今天準不準,唯讀,不影響名單去留</small></div>
@@ -1041,7 +1062,8 @@ document.addEventListener('click',e=>{
     {key:'core',label:'🔥 A級',desc:'已啟動或續航達標',empty:'目前沒有 A級啟動標的'},
     {key:'reversal',label:'🔄 反轉',desc:'有反轉訊號、尚未啟動',empty:'目前沒有反轉待確認標的'},
     {key:'pullback',label:'⏳ 等回測',desc:'夠強但追價風險高',empty:'目前沒有強勢等待回測標的'},
-    {key:'watch',label:'👀 觀察',desc:'無訊號，僅未被淘汰',empty:'目前沒有一般觀察標的'}
+    {key:'watch',label:'👀 觀察',desc:'無訊號，僅未被淘汰',empty:'目前沒有一般觀察標的'},
+    {key:'rejected',label:'🔴 結構風險',desc:'四道結構失效，暫停新倉僅追蹤',empty:'目前沒有結構風險標的'}
   ];
   const canonicalItems=data=>[...(data.rows||[]),...(data.observe_rows||[])].filter((x,i,a)=>a.findIndex(y=>rowCode(y)===rowCode(x))===i);
   const poolSort=(a,b)=>{
@@ -1086,7 +1108,7 @@ document.addEventListener('click',e=>{
   const validationTable=(rows,phase,notTraded,date,isHistorical,poolDate)=>`<div class="mr-card-list-wrap"><div class="mr-card-date">${esc2(date)} 當日盤中即時（收盤後存檔）</div><div class="mr-card-list">${mainCards(rows,phase,notTraded,isHistorical,date,poolDate)}</div></div>`;
   // display_pool(後端英文代碼)→ T+1 身份白話文。與 DECISION_POOLS 同一組分類,純翻譯,
   // 不判斷、不改動後端結果 —— 分類邏輯永遠只在後端算一次。
-  const T1_IDENTITY={core:'核心觀察',reversal:'反轉觀察',pullback:'強勢觀察·暫不追',watch:'一般觀察',rejected:'移出候選池'};
+  const T1_IDENTITY={core:'核心觀察',reversal:'反轉觀察',pullback:'強勢觀察·暫不追',watch:'一般觀察',rejected:'結構風險·暫停新倉'};
   singleCard=(data,phase,rejectRows)=>{
     const _tm=(()=>{const f=n=>Number(new Intl.DateTimeFormat('en-US',Object.assign({hour12:false,timeZone:'Asia/Taipei'},{[n]:'2-digit'})).format(new Date()));return f('hour')*60+f('minute')})();
     const items=canonicalItems(data),isToday=data.is_today!==false,status=data._apiOk===false?'API 讀取失敗':(isToday?(_tm<540?'今日盤前 · 等待 09:00 開盤':_tm<=810?'今日盤中 · 即時驗證中（13:30 收盤）':'今日已收盤 · 等待盤後籌碼與驗證蓋章'):'已收盤 · T+1 蓋章');
@@ -2584,7 +2606,20 @@ if(window.__singleMainTableRender){
 .mr-f4 b{font-size:14px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .mr-f4 b.up{color:#d92d20}
 .mr-f4 b.down{color:#0b9a6f}
+.mr-f4 small{display:block;font-size:10px;color:#9aa3b2;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media(min-width:520px){.mr-facts4{grid-template-columns:repeat(4,1fr)}.mr-f4{border-bottom:0}.mr-f4:nth-child(2n){border-right:1px solid #e5e9f2}.mr-f4:last-child{border-right:0}}
+.mr-facts3{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid #e5e9f2;
+  border-radius:12px;overflow:hidden;margin:8px 0 0}
+.mr-facts3 .mr-f4{border-bottom:0}
+.mr-facts3 .mr-f4:not(:last-child){border-right:1px solid #e5e9f2}
+.mr-trade-status{display:flex;align-items:center;gap:8px;margin:8px 0 0;padding:8px 11px;
+  border-radius:10px;background:#f8f9fc}
+.mr-trade-status label{font-size:10px;color:#9aa3b2;font-weight:800}
+.mr-trade-status b{font-size:13.5px;font-weight:900}
+.mr-trade-status.ts-hot{background:#fff1e6}
+.mr-trade-status.ts-go{background:#e9f9f1}
+.mr-trade-status.ts-wait{background:#fff8e1}
+.mr-trade-status.ts-no{background:#fdeeee}
 .mr-signal-strip{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0 0}
 .mr-metric{border:1px solid #e5e9f2;border-radius:11px;padding:8px 9px;background:#fbfcfe}
 .mr-metric-top{display:flex;justify-content:space-between;gap:6px;font-size:10px;color:#9aa3b2;font-weight:800}

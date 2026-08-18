@@ -413,6 +413,11 @@ def _row(raw):
         "price": price,
         # 盤中最高：供「今日觸發」三態燈判定「曾觸及後回落」，不影響其他欄位
         "high": (float(raw.get("high")) or None) if raw.get("high") else None,
+        # 盤中最低＋均價(VWAP)：Shioaji tick/snapshot 原生欄位(avg_price/average_price),
+        # 是交易所口徑的真實成交量加權均價,不是前端算出來的近似值 —— 供「距買點」
+        # 「日內位置」「VWAP乖離」判讀用,不得省略成 None 硬編。
+        "low": (float(raw.get("low")) or None) if raw.get("low") else None,
+        "avg_price": (float(raw.get("avg_price")) or None) if raw.get("avg_price") else None,
         "change_rate": round(change, 2),
         "is_limit_up": bool(seven.get("is_limit_up")),
         "potential_grade": seven.get("potential_grade"),
