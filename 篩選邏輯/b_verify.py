@@ -1,21 +1,25 @@
 """
-b_verify.py — B 鏈:盤後法人驗證
+b_verify.py — B 鏈:盤後收盤驗證(2026-08-19 改版,取消淘汰權)
 
 ⚠ B 鏈,與 A 鏈完全獨立。這支只讀 b_discovery 和 inst_flow,
    只寫 b_verified。不碰 A 鏈的 candidate_pool。
    這支爆掉,A 鏈的盤後寬篩照常產出候選池。
 
-任務:把 13:20 標記的股票,用今日法人數字驗一次。
+任務:把 13:20 標記的股票,用今日法人數字驗一次「盤中訊號有沒有被收盤確認」。
 
-為什麼要驗:
-  盤中發現的東西沒有法人蓋章,你不能當天就追。
-  盤中的 aflow 是主動買賣推估,不是法人買賣超(鐵律3)。
-  正確流程是:盤中標記 → 收盤後驗證是不是真的有人買 → 明天才進候選池。
+鐵律(2026-08-19 定案,取代舊 PASS/FAIL 淘汰制):
+  B 鏈只能改 verification_status,不能改 eligibility_status。
+  confidence 是「收盤確認程度」,不是「股票該不該活」的判準。
+  舊版 confidence<50 直接 FAIL 淘汰,曾把「今天沒被驗證確認」錯當成「明天不會漲」,
+  是複盤查到的反指標來源之一(2026-08-19)——盤中訊號沒被今天的法人數字驗到,
+  常常只是資金明天才進場,不是訊號是假的。改版後這批股照樣進明日候選池,
+  只是帶著 verification_status=UNCONFIRMED 讓下游知道「還沒驗到」,不是「已判死」。
 
-三態判定:
-  PASS     法人今日買超 → 進明日候選池
-  FAIL     法人今日賣超 → 淘汰。盤中那個異動是散戶或當沖,不是資金進駐
-  NO_DATA  法人資料沒到 → 留著,明天再驗。NO_DATA 絕不等於 FAIL
+四態判定(confidence 分數只分驗證程度,不分生死):
+  CONFIRMED    confidence >= 70          → ✅ 收盤確認
+  PARTIAL      50 <= confidence < 70     → 🟡 部分確認
+  UNCONFIRMED  confidence < 50           → ⚪ 未確認(不淘汰,照樣進池)
+  NO_DATA      法人資料沒到              → 法人資料未到,留待補驗
 
 執行時間:13:31 之後,官方法人資料到位即可跑。
 """
@@ -40,7 +44,22 @@ CRIT_WEIGHT = {"持續性": 20, "下殺承接": 25, "相對族群強度": 20, "�
 INST_FULL_NET = 500      # 法人淨買超達此張數 → 給滿額加分
 INST_MAX_BONUS = 20      # 法人買超最高加分(confidence 的一項,非觸發)
 INST_SELL_PENALTY = 10   # 法人賣超扣分上限(不歸零行為分)
-PASS_SCORE = 50          # confidence ≥ 此值 → 進明日候選池
+
+# ── 驗證程度門檻(只分 verification_status,不分 eligibility) ──
+CONFIRM_SCORE = 70       # confidence >= 此值 → 收盤確認
+PARTIAL_SCORE = 50       # confidence >= 此值(< CONFIRM_SCORE) → 部分確認
+
+VERDICT_CONFIRMED = "CONFIRMED"
+VERDICT_PARTIAL = "PARTIAL"
+VERDICT_UNCONFIRMED = "UNCONFIRMED"
+VERDICT_NO_DATA = "NO_DATA"
+
+VERDICT_LABEL = {
+    VERDICT_CONFIRMED: "✅ 收盤確認",
+    VERDICT_PARTIAL: "🟡 部分確認",
+    VERDICT_UNCONFIRMED: "⚪ 未確認",
+    VERDICT_NO_DATA: "⚪ 法人資料未到",
+}
 
 
 def _inst_bonus(net) -> float:
@@ -76,10 +95,11 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
             "chain": "B", "data_date": d.isoformat(),
             "purpose": "B鏈驗證 — 今日無標記標的",
             "degraded": missing_labels(envs),
-            "passed": [], "failed": [], "pending": [],
+            "verified": [], "confirmed": [], "partial": [], "unconfirmed": [], "no_data": [],
         }
 
-    passed, failed, pending = [], [], []
+    verified: list[dict] = []
+    confirmed, partial, unconfirmed, no_data = [], [], [], []
     rows = []
     now = _dt.datetime.now().isoformat(timespec="seconds")
 
@@ -97,26 +117,36 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
         score, behavior, ib = confidence(passed_crit, net)
 
         if net is None:
-            verdict = "PENDING"
+            verdict = VERDICT_NO_DATA
             reason = (f"法人資料未到 → 留驗;盤中行為分 {behavior}"
                       f"(判準 {'、'.join(passed_crit) or '—'}),明日補驗法人")
-            pending.append({"code": code, "hits": row.get("hits"),
-                            "confidence": score, "behavior": behavior, "reason": reason})
-        elif score >= PASS_SCORE:
-            verdict = "PASS"
-            reason = (f"confidence {score} ≥ {PASS_SCORE} = 行為 {behavior} + 法人 {ib:+g}"
+            bucket = no_data
+        elif score >= CONFIRM_SCORE:
+            verdict = VERDICT_CONFIRMED
+            reason = (f"confidence {score} ≥ {CONFIRM_SCORE} = 行為 {behavior} + 法人 {ib:+g}"
                       f"(淨 {net:+g} 張);判準 {'、'.join(passed_crit) or '—'}")
-            passed.append({
-                "code": code, "hits": row.get("hits"), "inst_net": net,
-                "confidence": score, "behavior": behavior, "inst_bonus": ib,
-                "passed_criteria": passed_crit, "source": "B鏈發現", "reason": reason,
-            })
+            bucket = confirmed
+        elif score >= PARTIAL_SCORE:
+            verdict = VERDICT_PARTIAL
+            reason = (f"confidence {score} 介於 {PARTIAL_SCORE}~{CONFIRM_SCORE} = 行為 {behavior}"
+                      f" + 法人 {ib:+g}(淨 {net:+g} 張);部分確認,非淘汰判準")
+            bucket = partial
         else:
-            verdict = "FAIL"
-            reason = (f"confidence {score} < {PASS_SCORE} = 行為 {behavior} + 法人 {ib:+g}"
-                      f"(淨 {net:+g} 張);行為不足以撐過門檻")
-            failed.append({"code": code, "hits": row.get("hits"), "inst_net": net,
-                           "confidence": score, "behavior": behavior, "reason": reason})
+            verdict = VERDICT_UNCONFIRMED
+            reason = (f"confidence {score} < {PARTIAL_SCORE} = 行為 {behavior} + 法人 {ib:+g}"
+                      f"(淨 {net:+g} 張);今天沒被收盤驗證確認 ≠ 明天不會漲,不淘汰、照樣進池")
+            bucket = unconfirmed
+
+        item = {
+            "code": code, "hits": row.get("hits"), "inst_net": net,
+            "confidence": score, "behavior": behavior, "inst_bonus": ib,
+            "passed_criteria": passed_crit, "source": "B鏈發現",
+            "verification_status": verdict,
+            "verification_label": VERDICT_LABEL[verdict],
+            "reason": reason,
+        }
+        bucket.append(item)
+        verified.append(item)
 
         rows.append({
             "data_date": d.isoformat(), "code": code,
@@ -128,20 +158,25 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
 
     return {
         "chain": "B", "data_date": d.isoformat(), "verified_at": now,
-        "purpose": (f"B鏈加分制驗證:標記 {len(disc)} 檔 → confidence≥{PASS_SCORE} 通過 {len(passed)} 檔"
-                    f"、留驗 {len(pending)} 檔、淘汰 {len(failed)} 檔;法人為加分非觸發"),
+        "purpose": (f"B鏈收盤驗證(不淘汰):標記 {len(disc)} 檔 → "
+                    f"✅確認 {len(confirmed)}、🟡部分確認 {len(partial)}、"
+                    f"⚪未確認 {len(unconfirmed)}、待補資料 {len(no_data)};"
+                    f"全部照樣進明日候選池"),
         "degraded": missing_labels(envs),
         "marked": len(disc),
-        "passed": passed, "failed": failed, "pending": pending,
+        "verified": verified,
+        "confirmed": confirmed, "partial": partial,
+        "unconfirmed": unconfirmed, "no_data": no_data,
     }
 
 
-def load_passed(data_date: _dt.date | None = None,
-                db_path: str = "mls.db") -> list[str]:
-    """給匯流用:今日通過驗證的代號。這是 B 鏈唯一對外的出口。"""
+def load_verified(data_date: _dt.date | None = None,
+                  db_path: str = "mls.db") -> list[str]:
+    """給匯流用:今日所有被 B 鏈標記並驗過的代號(不論 verification_status)。
+    B 鏈不再過濾淘汰,誰進 candidate_pool 由 merge_pool 決定,這支只回全量。"""
     d = (data_date or today_tw()).isoformat()
     with store.conn(db_path) as c:
         rows = c.execute(
-            "SELECT code FROM b_verified WHERE data_date=? AND verdict='PASS'", (d,)
+            "SELECT code FROM b_verified WHERE data_date=?", (d,)
         ).fetchall()
     return [r["code"] for r in rows]

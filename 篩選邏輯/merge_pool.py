@@ -6,8 +6,12 @@ merge_pool.py — A 鏈 / B 鏈 盤後匯流
   - A 鏈不讀 B 鏈的任何表
   - 各自有專屬的表、專屬的 owner、專屬的插件
 
-匯流公式:
-    明日候選池 = A鏈寬篩結果 ∪ B鏈驗證通過的
+匯流公式(2026-08-19 改版):
+    明日候選池 = A鏈寬篩結果 ∪ B鏈今日標記的全部(不論 verification_status)
+
+B 鏈不再用 confidence 過濾淘汰(鐵律:B 鏈只能標 verification_status,
+不能決定 eligibility_status)。CONFIRMED/PARTIAL/UNCONFIRMED 全部併入,
+差別只在 payload 帶哪個 verification_status 讓下游顯示,不影響進不進池。
 
 同一檔兩邊都有 → 標「雙鏈確認」。
 這種通常最強:既有昨日的結構優勢,今天盤中又實際啟動了。
@@ -37,13 +41,13 @@ def merge(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
                        lambda: store.read_date(POOL_TABLE, d, db_path))
     a_pool = a_env.get({}) or {}
 
-    # B 鏈:驗證通過的新血
+    # B 鏈:今日標記並驗過的全部(不再用 confidence 過濾,只帶 verification_status)
     def _b():
         import b_verify
         return b_verify.verify(db_path, d)
     b_env = run_plugin("B鏈驗證", _b)
     b_res = b_env.get({}) or {}
-    b_passed = {x["code"]: x for x in (b_res.get("passed") or [])}
+    b_marked = {x["code"]: x for x in (b_res.get("verified") or [])}
 
     both, a_only, b_only = [], [], []
     rows = []
@@ -56,10 +60,12 @@ def merge(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
                 payload = json.loads(row["payload"])
             except Exception:
                 pass
-        if code in b_passed:
+        if code in b_marked:
             payload["source"] = "雙鏈確認"
-            payload["b_criteria"] = b_passed[code].get("passed_criteria")
-            payload["b_inst_net"] = b_passed[code].get("inst_net")
+            payload["b_criteria"] = b_marked[code].get("passed_criteria")
+            payload["b_inst_net"] = b_marked[code].get("inst_net")
+            payload["verification_status"] = b_marked[code].get("verification_status")
+            payload["verification_label"] = b_marked[code].get("verification_label")
             both.append(code)
         else:
             payload["source"] = "A鏈"
@@ -73,17 +79,20 @@ def merge(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
             "generated_at": now,
         })
 
-    # B 鏈獨有的新血
-    for code, x in b_passed.items():
+    # B 鏈獨有的新血:不論 verification_status 一律進池,只是帶著標籤讓下游知道
+    # 今天有沒有被收盤驗證確認,不能因為 UNCONFIRMED 就從名單消失(2026-08-19 鐵律)。
+    for code, x in b_marked.items():
         if code in a_pool:
             continue
         b_only.append(code)
         payload = {
             "code": code, "source": "B鏈新血",
             "score": None, "track": "觀察",
-            "entry_rule": "盤中發現且法人確認,明日等盤中訊號再進",
+            "entry_rule": "盤中發現,明日等盤中訊號再進",
             "b_criteria": x.get("passed_criteria"),
             "b_inst_net": x.get("inst_net"),
+            "verification_status": x.get("verification_status"),
+            "verification_label": x.get("verification_label"),
             "reasons": [f"B鏈{x.get('hits')}項判準通過", x.get("reason", "")],
             "missing": [],
         }

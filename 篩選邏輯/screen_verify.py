@@ -16,6 +16,11 @@ screen_verify.py — 當日收盤復盤(命中率 / 勝率分析層)
 
 門檻集中在檔頭常數,要調靈敏度只改這裡。命中率 = 命中數 / (攻擊+引擎 且有資料)。
 
+2026-08-19 加規則歸因欄(tier / chase_risk / verification_status):
+  不只算「入選那批對不對」,還要記「當時是被哪條規則降級/標記」,才能查
+  「confidence<50 平均 T+1 還是漲」這種第三次反指標的根因,而不是猜門檻改多少。
+  跟 reject_verify(結構失效淘汰那批)合起來,才是完整的「規則 → T+1」歸因表。
+
 owner 規範:本支自建 pool_outcome 表,只寫這張;讀 candidate_pool / daily_bar。
 與 A/B 兩鏈的名單產生完全脫鉤,這支爆掉不影響任何名單。
 """
@@ -60,6 +65,10 @@ CREATE TABLE IF NOT EXISTS pool_outcome (
     hit INTEGER,                  -- 是否命中(觀察軌為 NULL,不計)
     ret_pct REAL,                 -- (T+1收 - 進場基準)/進場基準
     verdict TEXT,                 -- 命中 / 觸發未站穩 / 未觸發 / 觀察(不計)
+    tier TEXT,                    -- layered_score 分層(🔥A級啟動/🔄反轉候選/⏳強勢但不追/👀保留觀察)
+    chase_risk REAL,              -- T 日追價風險分數(禁追判準,診斷用,不影響 hit)
+    verification_status TEXT,     -- B 鏈收盤驗證狀態(CONFIRMED/PARTIAL/UNCONFIRMED/NO_DATA/None=非B鏈)
+    entry_status TEXT,            -- 禁止追高 / 等待觸發
     verified_at TEXT,
     PRIMARY KEY (data_date, code)
 );
@@ -69,6 +78,13 @@ CREATE TABLE IF NOT EXISTS pool_outcome (
 def _ensure_table(db_path: str = "mls.db") -> None:
     with store.conn(db_path) as c:
         c.executescript(_DDL)
+        # 舊表補欄(2026-08-19 新增規則歸因欄位)
+        cols = {r[1] for r in c.execute("PRAGMA table_info(pool_outcome)").fetchall()}
+        for col in ("tier", "verification_status", "entry_status"):
+            if col not in cols:
+                c.execute(f"ALTER TABLE pool_outcome ADD COLUMN {col} TEXT")
+        if "chase_risk" not in cols:
+            c.execute("ALTER TABLE pool_outcome ADD COLUMN chase_risk REAL")
         c.commit()
     try:
         store.register_table(TABLE, PLUGIN)
@@ -157,7 +173,12 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
             "track": track, "trigger_price": trig, "base_close": base_close,
             "next_high": nh, "next_close": nc, "ma20": ma20,
             "triggered": triggered, "hit": hit, "ret_pct": ret,
-            "verdict": verdict, "verified_at": now,
+            "verdict": verdict,
+            "tier": payload.get("tier"),
+            "chase_risk": payload.get("chase_risk"),
+            "verification_status": payload.get("verification_status"),
+            "entry_status": payload.get("entry_status"),
+            "verified_at": now,
         }
         rows.append(rec)
         items.append(rec)
@@ -237,9 +258,43 @@ def stats(days: int = 30, db_path: str = "mls.db") -> dict:
         row["hit_rate"] = round(row["hits"] / row["scored"] * 100, 1) if row["scored"] else None
     total_scored = sum(t["scored"] for t in by_track)
     total_hits = sum(t["hits"] for t in by_track)
+
+    # 規則歸因(2026-08-19):不篩 hit,吃全部有 T+1 收盤的列——因為 tier/chase_risk/
+    # verification_status 影響的是「該不該追」,不是「會不會漲」,要看的是原始 ret_pct,
+    # 不能用 hit(已經被進場軌邏輯過濾過)當母體,否則看不出規則本身的方向對不對。
+    with store.conn(db_path) as c:
+        by_tier = [dict(r) for r in c.execute(
+            """SELECT tier,
+                      COUNT(*) n,
+                      AVG(ret_pct) avg_ret,
+                      SUM(CASE WHEN ret_pct >= 5 THEN 1 ELSE 0 END) up5,
+                      SUM(CASE WHEN ret_pct < 0 THEN 1 ELSE 0 END) down
+               FROM pool_outcome
+               WHERE data_date >= ? AND ret_pct IS NOT NULL AND tier IS NOT NULL
+               GROUP BY tier""", (since,))]
+        by_verification = [dict(r) for r in c.execute(
+            """SELECT verification_status,
+                      COUNT(*) n,
+                      AVG(ret_pct) avg_ret,
+                      SUM(CASE WHEN ret_pct >= 5 THEN 1 ELSE 0 END) up5,
+                      SUM(CASE WHEN ret_pct < 0 THEN 1 ELSE 0 END) down
+               FROM pool_outcome
+               WHERE data_date >= ? AND ret_pct IS NOT NULL AND verification_status IS NOT NULL
+               GROUP BY verification_status""", (since,))]
+    for t in (by_tier + by_verification):
+        t["avg_ret"] = round(t["avg_ret"], 2) if t["avg_ret"] is not None else None
+        t["up5_rate"] = round(t["up5"] / t["n"] * 100, 1) if t["n"] else None
+        t["down_rate"] = round(t["down"] / t["n"] * 100, 1) if t["n"] else None
+    by_tier.sort(key=lambda t: -(t["avg_ret"] if t["avg_ret"] is not None else -999))
+    by_verification.sort(key=lambda t: -(t["avg_ret"] if t["avg_ret"] is not None else -999))
+
     return {
         "window_days": days, "since": since,
         "overall_hit_rate": round(total_hits / total_scored * 100, 1) if total_scored else None,
         "scored": total_scored, "hits": total_hits,
         "by_track": by_track, "daily": daily,
+        "by_tier": by_tier, "by_verification": by_verification,
+        "note": ("by_tier/by_verification 是規則歸因(rule attribution):某 tier/驗證狀態的股票,"
+                 "T+1 實際平均報酬多少。avg_ret 若對 ⏳強勢但不追 或 UNCONFIRMED 這種'降級但未淘汰'"
+                 "的分類反而是正的高值,代表該條規則正在製造反指標,不是門檻要微調,是方向錯了。"),
     }

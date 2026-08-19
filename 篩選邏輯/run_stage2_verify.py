@@ -32,8 +32,10 @@ def run_stage2(db_path: str = "mls.db") -> dict:
     dsc = b_discover.scan(config.UNIVERSE, config.CODE_GROUP)
     print(f"[stage2] b_discover 盤中發現={len(dsc.get('items', []))} 檔")
     bv = b_verify.verify(db_path, d)
-    print(f"[stage2] b_verify passed={len(bv.get('passed', []))} "
-          f"failed={len(bv.get('failed', []))} pending={len(bv.get('pending', []))}")
+    print(f"[stage2] b_verify confirmed={len(bv.get('confirmed', []))} "
+          f"partial={len(bv.get('partial', []))} "
+          f"unconfirmed={len(bv.get('unconfirmed', []))} "
+          f"no_data={len(bv.get('no_data', []))}(不淘汰,全數進池)")
     mg = merge_pool.merge(db_path, d)
     print(f"[stage2] 匯流定案：{mg.get('purpose')}")
     # T+1 回測：驗證日＝「最後一個有收盤 bar 的交易日」（不用 today_tw，避免清晨/盤前

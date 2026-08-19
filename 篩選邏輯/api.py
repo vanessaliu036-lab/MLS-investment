@@ -352,7 +352,8 @@ def b_discovery_view():
 
 @app.post("/api/b/verify")
 def b_do_verify():
-    """13:31 後:用今日法人數字驗 B 鏈標記(PASS 進池 / FAIL 淘汰 / NO_DATA 留驗)。"""
+    """13:31 後:用今日法人數字驗 B 鏈標記是否被收盤確認(不淘汰,只標
+    verification_status = CONFIRMED/PARTIAL/UNCONFIRMED/NO_DATA,全部照樣進池)。"""
     return JSONResponse(b_verify.verify())
 
 
@@ -431,6 +432,15 @@ def verify_run():
 def verify_stats(days: int = Query(30, description="滾動交易日窗")):
     """滾動勝率/報酬(分軌)。模型的真正驗證。"""
     return JSONResponse(screen_verify.stats(days))
+
+
+@app.get("/api/verify/attribution")
+def verify_attribution(days: int = Query(30, description="滾動交易日窗")):
+    """規則級歸因表(唯讀):合流「真淘汰(結構失效)」與「降級但未淘汰(tier/B鏈驗證狀態)」
+    兩層量測,每條規則配上它那批股票 T+1 實際表現。suspects=avg_ret 為正且樣本夠的
+    降級/淘汰規則——這些是方向可能反了的規則,不是門檻該微調的規則。"""
+    import rule_attribution
+    return JSONResponse(rule_attribution.attribution(days))
 
 
 @app.get("/api/verify/reject")
