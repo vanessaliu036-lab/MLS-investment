@@ -1144,7 +1144,7 @@ document.addEventListener('click',e=>{
       // 「待進場日盤中」占位;資金流看似正常只是因為它 fallback 到 net_active。
       // AB 盤中回應本來就帶 price/change_rate/aflow(實測 50/50 有值),直接用。
       price:x.price??null,change_rate:x.change_rate??null,
-      aflow:x.aflow??x.net_active??null,intraday_high:x.intraday_high??null,
+      aflow:x.aflow??x.aflow_today??x.net_active??null,intraday_high:x.intraday_high??null,
       triggered:x.triggered??null,success:x.success??null,verified:!!x.verified,
       t1_close_pct:x.t1_close_pct??null,t1_high:x.t1_high??null,verdict:x.verdict});
     const all=(w.items||[]).map(map);
@@ -1317,6 +1317,32 @@ document.addEventListener('click',e=>{
       else{if(dec._err)throw dec._err;data=dec;data._apiOk=true;data.dates=allDates;}
     }
     else{if(dec._err)throw dec._err;data=dec;data._apiOk=true;data.dates=allDates;}
+    // A區盤中 high/low/VWAP/資金流逐日落地：/api/intraday-daily 讀 intraday_stock_daily
+    // (server.py _persist_intraday_daily_extremes 每輪盤中寫入，收盤最後一輪即定案)，
+    // 不論今日或歷史複盤都補上，修「盤中數據收盤後就消失、歷史日全是—」。
+    const _viewDate=(data&&(data.target_date||data.data_date))||sel||'';
+    if(_viewDate){
+      try{
+        const daily=await getJson('/api/intraday-daily?date='+encodeURIComponent(_viewDate)).catch(()=>null);
+        const byCode=new Map((daily&&Array.isArray(daily.rows)?daily.rows:[]).map(r=>[String(r.code),r]));
+        for(const row of (data.items||data.rows||[])){
+          const d=byCode.get(String(rowCode(row)));
+          if(!d)continue;
+          if(row.intraday_high==null&&d.high!=null)row.intraday_high=d.high;
+          if(row.intraday_low==null&&d.low!=null)row.intraday_low=d.low;
+          if(row.vwap==null&&d.avg_price!=null)row.vwap=d.avg_price;
+          if(row.aflow==null&&d.aflow!=null)row.aflow=d.aflow;
+          if(row.volume==null&&d.volume!=null)row.volume=d.volume;
+          const p=Number(row.price??row.close??row.base_close);
+          if(row.vwap_diff_pct==null&&row.vwap!=null&&Number.isFinite(p)&&Number(row.vwap)!==0)
+            row.vwap_diff_pct=Math.round((p-Number(row.vwap))/Number(row.vwap)*10000)/100;
+          if(row.day_position_pct==null&&row.intraday_high!=null&&row.intraday_low!=null&&Number.isFinite(p)){
+            const hi=Number(row.intraday_high),lo=Number(row.intraday_low);
+            if(hi>lo)row.day_position_pct=Math.round((p-lo)/(hi-lo)*100);
+          }
+        }
+      }catch(e){}
+    }
     // 淘汰名單與觀察清單同一個 build。使用 build 的 data_date 直接查，絕不 prev 退格。
     const _buildDate=(data&&(data.build_date||data.data_date||data.pool_date))||sel||'';
     if(!rejectRows.length){try{const rv=await getJson('/ab/dropped'+(_buildDate?('?pool_date='+encodeURIComponent(_buildDate)):'')).catch(()=>({}));if((rv.dropped||[]).length){rejectRows=rv.dropped;rejectRows.__refDate=rv.data_date||'';}}catch(e){}}

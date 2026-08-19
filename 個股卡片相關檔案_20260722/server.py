@@ -66,6 +66,48 @@ _ma20_cache = {}
 _ma20_cache_date = ""
 _ma20_cache_status = "未建立"
 
+INTRADAY_DAILY_DB_PATH = Path(__file__).resolve().parent.parent / "intraday_eod.db"
+
+
+def _intraday_daily_conn():
+    import sqlite3
+    conn = sqlite3.connect(INTRADAY_DAILY_DB_PATH)
+    conn.execute("""CREATE TABLE IF NOT EXISTS intraday_stock_daily(
+        trade_date TEXT NOT NULL,
+        code TEXT NOT NULL,
+        high REAL, low REAL, avg_price REAL,
+        aflow REAL, volume INTEGER, volume_ratio REAL,
+        updated_at TEXT,
+        PRIMARY KEY(trade_date, code))""")
+    return conn
+
+
+def _persist_intraday_daily_extremes(rows, trade_date):
+    """逐日落地每檔盤中 high/low/VWAP(avg_price)/aflow；每輪覆寫同一天同一檔的最新值，
+    收盤最後一輪即為當日定案值，不隨 intraday_live_snapshot.json 被隔日覆寫而消失。"""
+    if not rows or not trade_date:
+        return
+    try:
+        payload = [(trade_date, r["code"], r.get("high"), r.get("low"), r.get("avg_price"),
+                    r.get("aflow"), r.get("total_volume"), r.get("volume_ratio"),
+                    datetime.now(TW_TZ).isoformat(timespec="seconds"))
+                   for r in rows if r.get("code")]
+        if not payload:
+            return
+        with _intraday_daily_conn() as conn:
+            conn.executemany(
+                """INSERT INTO intraday_stock_daily
+                   (trade_date, code, high, low, avg_price, aflow, volume, volume_ratio, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(trade_date, code) DO UPDATE SET
+                     high=excluded.high, low=excluded.low, avg_price=excluded.avg_price,
+                     aflow=excluded.aflow, volume=excluded.volume, volume_ratio=excluded.volume_ratio,
+                     updated_at=excluded.updated_at""",
+                payload)
+    except Exception as exc:
+        print(f"[intraday_daily] 落地失敗: {exc}")
+
+
 _watchlist_codes = set()
 _pushed_lock_sectors = set()       # 今日已推播過鎖定的族群
 _last_sector_snapshot = 0.0
@@ -89,6 +131,7 @@ def _persist_intraday_snapshot(state, trade_date):
         rows = [row for row in rows if row.get("code") and row.get("price") is not None]
         if not rows:
             return
+        _persist_intraday_daily_extremes(rows, trade_date)
         groups = {}
         for row in rows:
             groups[row["group"]] = groups.get(row["group"], 0) + 1
@@ -1575,6 +1618,24 @@ def api_dec_list(date: str = ""):
         "note": ("target 是今天→盤中即時跟資金跑；是過去日→T+1 收盤蓋章結果。"
                  "真實命中＝dec_verify.success（Radar A 級 / 達標）。"),
     }, default=str, ensure_ascii=False)))
+
+
+@app.get("/api/intraday-daily")
+def api_intraday_daily(date: str = ""):
+    """逐日落地的盤中 high/low/VWAP(avg_price)/aflow；供卡片 A 區在非今日也讀得到當天盤中數據。
+    來源＝_persist_intraday_daily_extremes()，每輪盤中寫入 intraday_stock_daily，收盤最後一輪即定案。"""
+    import sqlite3
+    if not date:
+        return JSONResponse({"ok": False, "error": "缺 date 參數", "trade_date": date, "rows": []})
+    try:
+        conn = _intraday_daily_conn()
+        conn.row_factory = sqlite3.Row
+        with conn:
+            rows = [dict(r) for r in conn.execute(
+                "SELECT * FROM intraday_stock_daily WHERE trade_date=?", (date,))]
+        return JSONResponse({"ok": True, "trade_date": date, "rows": rows})
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc), "trade_date": date, "rows": []})
 
 
 @app.get("/api/eod_rank")
