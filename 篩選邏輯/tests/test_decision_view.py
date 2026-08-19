@@ -35,6 +35,18 @@ class DecisionViewTests(unittest.TestCase):
         for tier, pool in expected.items():
             self.assertEqual(dv.build(classified(tier), market(), {})["display_pool"], pool)
 
+    def test_signal_type_is_never_blank_even_when_rejected(self):
+        # 前端「今日型態」只在 track=attack/engine 時繞過這欄；track=觀察(無二元
+        # 訊號)時完全靠這欄，尤其 TIER_REJECTED 的 entry_rule 是死板的「維持結構
+        # 失效」文案，關鍵字比對不到任何型態，過去因此顯示成看似資料缺失的「待更新」。
+        expected = {ls.TIER_CORE: "強勢突破", ls.TIER_REVERSAL: "反轉訊號",
+                    ls.TIER_NO_CHASE: "強勢不追", ls.TIER_CANDIDATE: "觀察訊號",
+                    ls.TIER_REJECTED: "結構轉弱"}
+        for tier, label in expected.items():
+            result = dv.build(classified(tier), market(), {})
+            self.assertEqual(result["signal_type"], label)
+            self.assertTrue(result["signal_type"])
+
     def test_confirmed_reversal_upgrades_to_a_but_can_remain_no_chase(self):
         result = dv.build(classified(ls.TIER_REVERSAL),
                           market(close=102, current_price=102, prior_high=101, ma20=99,

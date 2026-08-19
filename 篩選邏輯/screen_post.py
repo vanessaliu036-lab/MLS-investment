@@ -571,7 +571,11 @@ def build(universe: list[str], db_path: str = "mls.db",
                                               _inst.get("consecutive_days")),
             "is_limit_up": bool(lay.get("limit_up")),
         }
-        view = decision_view.build(lay, _market, it)
+        # 吃 lay_fields(非原始 lay)：TIER_REJECTED 但籌碼×價格背離判為救回(_protect)的
+        # 股票，tier/classification 已在上面(526-529行)改成 TIER_CANDIDATE——若這裡繼續
+        # 傳原始 lay，decision_view 會用未救回的 TIER_REJECTED 重算，下一行 it.update(view)
+        # 就把 552 行剛救回的 classification 蓋回結構失效，救援形同虛設(2026-08-19)。
+        view = decision_view.build(lay_fields, _market, it)
         it.update(view)
         it["tier"] = view["classification"]
         it["reasons"] = view["reason_tags"]

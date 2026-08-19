@@ -18,6 +18,20 @@ POOL_MAP = {
     layered_score.TIER_REJECTED: "rejected",
 }
 
+# 前端「今日型態」的保底字典：track=attack/engine 時前端直接吃 track、不看這欄；
+# 只有 track=觀察（無二元觸發訊號可講）時才會落到這裡。舊版靠 entry_rule/reasons
+# 文字關鍵字猜型態，TIER_REJECTED 的 next_upgrade 文案(「維持結構失效；等待
+# Recovery Scan」)、Risk Off 的 entry_rule(「市場 Risk Off·禁新倉」)都猜不中，
+# 於是顯示「待更新」——讀起來像資料缺失，其實是「這檔目前沒有型態」的正常狀態。
+# 直接给明確中文分類，不必再猜(2026-08-19)。
+_PATTERN_FALLBACK = {
+    layered_score.TIER_CORE: "強勢突破",
+    layered_score.TIER_REVERSAL: "反轉訊號",
+    layered_score.TIER_NO_CHASE: "強勢不追",
+    layered_score.TIER_CANDIDATE: "觀察訊號",
+    layered_score.TIER_REJECTED: "結構轉弱",
+}
+
 
 def _num(value):
     try:
@@ -254,6 +268,7 @@ def build(classified: dict, market: dict | None, trigger: dict | None) -> dict:
     result = {
         "classification": classification,
         "display_pool": POOL_MAP[classification],
+        "signal_type": _PATTERN_FALLBACK.get(classification, "觀察訊號"),
         "potential_grade": "A" if confirmed_reversal else classified.get("potential_grade", "B"),
         "trend_stage": ("🔥 反轉確認" if confirmed_reversal else
                         (classified.get("trend_stage") or "未啟動")),
