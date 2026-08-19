@@ -718,7 +718,12 @@ document.addEventListener('click',e=>{
   // signal_type 是選股當下算好的靜態分類，x.triggered 是盤中即時更新；股價站上/回測發生在
   // signal_type 算完之後，兩者就會吵架（已回測 267.43 vs 今日型態：待回測月線）。
   // x.signal_type 只在無 track 對應（放量長紅/均線交叉等無二元觸發狀態的型態）時才採用。
-  const signalType=x=>{const attackLabel=x.triggered?'突破前高':'待突破前高';const engineLabel=x.triggered?'回測月線':'待回測月線';if(x.track==='attack')return attackLabel;if(x.track==='engine')return engineLabel;if(x.signal_type)return String(x.signal_type);const raw=[x.signal_type,x.signal,x.entry_rule,x.source,x.reasons].flatMap(v=>Array.isArray(v)?v:[v]).filter(Boolean).join('、');if(/突破|昨高/.test(raw))return attackLabel;if(/回測|月線|MA20/.test(raw))return engineLabel;if(/放量|長紅|爆量/.test(raw))return '放量長紅';if(/均線交叉|黃金交叉/.test(raw))return '均線黃金交叉';return '待更新'};
+  // 「已觸發」再細分成兩種:收盤站穩(突破前高) vs 盤中碰到又摔回來(盤中曾突破·收盤回落)。
+  // triggered=1 只代表盤中曾達關鍵價,不代表收盤站穩——台半 5425 盤中最高 98.5 過了
+  // 觸發價 97.9,收盤卻回到 91.5,舊寫法照印「突破前高」,跟旁邊 91.5 對不起來
+  // (使用者回報 2026-08-19)。跟下方 trigHtml 的收盤回落判斷共用同一套語意。
+  const _fellBackAfterTrigger=x=>{const c=finite(x.price??x.close??x.close_price??x.base_close),t=finite(x.entry_ref??x.base_close??x.trigger_price);return !!x.triggered&&c!=null&&t!=null&&c<t};
+  const signalType=x=>{const back=_fellBackAfterTrigger(x);const attackLabel=back?'盤中曾突破·收盤回落':x.triggered?'突破前高':'待突破前高';const engineLabel=back?'盤中曾回測·收盤回落':x.triggered?'回測月線':'待回測月線';if(x.track==='attack')return attackLabel;if(x.track==='engine')return engineLabel;if(x.signal_type)return String(x.signal_type);const raw=[x.signal_type,x.signal,x.entry_rule,x.source,x.reasons].flatMap(v=>Array.isArray(v)?v:[v]).filter(Boolean).join('、');if(/突破|昨高/.test(raw))return attackLabel;if(/回測|月線|MA20/.test(raw))return engineLabel;if(/放量|長紅|爆量/.test(raw))return '放量長紅';if(/均線交叉|黃金交叉/.test(raw))return '均線黃金交叉';return '待更新'};
   const signalDetail=x=>{const raw=[x.signal_type,x.signal,x.track,x.entry_rule,x.source,x.reasons].flatMap(v=>Array.isArray(v)?v:[v]).filter(Boolean).join('、'),ref=x.prev_high??x.previous_high??x.yesterday_high??x.trigger_price??x.entry_ref??x.base_close,price=ref==null?'API 未提供價位':Number(ref).toLocaleString('en-US'),post=String(x.entry_rule||x.classification_reason||x.action||'').trim();if(x.track==='attack'||/突破|昨高/.test(raw))return `${x.triggered?'已突破前高':'突破前高訊號'}｜${x.triggered?'站上':'等待站上'} ${price}${post?`｜篩選依據：${post}`:''}`;if(x.track==='engine'||/回測|月線|MA20/.test(raw))return `${x.triggered?'已回測月線':'回測月線訊號'}｜${x.triggered?'回到':'等待回到'} ${price}${post?`｜篩選依據：${post}`:''}`;if(/放量|長紅|爆量/.test(raw))return `放量長紅｜量能爆發類${post?`｜篩選依據：${post}`:''}`;if(/均線交叉|黃金交叉/.test(raw))return `均線黃金交叉｜均線交叉類${post?`｜篩選依據：${post}`:''}`;return post?`待更新｜篩選依據：${post}`:'API 未提供訊號細節'};
   // B區「策略摘要」：買點/防守數字已在同卡的原始計畫格顯示過，這裡只講「怎麼用」，不重複數字。
   const strategySummary=x=>{const cat=signalType(x);return ({
@@ -941,7 +946,23 @@ document.addEventListener('click',e=>{
         } else {trigHtml=stateCell('待收盤蓋章','verify-pending');trigShort='待收盤蓋章';}
       }
       else if(x.triggered==null){trigHtml=stateCell('待進場日盤中','verify-pending');trigShort='待進場日盤中';}
-      else if(x.triggered){trigHtml=`<b class="mr-hit">✅ 已${isEng?'回測':'突破'} ${erefT}</b>${limitUp?'<small class="mr-lu">盤中曾漲停</small>':''}`;trigShort=`✅ 已${isEng?'回測':'突破'} ${erefT}`;}
+      else if(x.triggered){
+        // 已收盤蓋章的 triggered=1 只代表「盤中曾經達到關鍵價」，不代表收盤站穩：
+        // 台半 5425 觸發價 97.9、盤中最高 98.5(確實碰到)，但收盤 91.5 早就摔回來，
+        // 卻印「✅ 已突破 97.9」配旁邊大字 91.5，讀起來像 BUG(使用者回報 2026-08-19)。
+        // 收盤價<觸發價時改講完整事實:盤中曾突破、收盤已回落，並同時列出最高與收盤，
+        // 讓「到底突破沒」一眼有答案，不用自己對數字。
+        const closeN=finite(price),hiN=finite(x.t1_high??x.intraday_high),trigN=finite(eref);
+        const fellBack=closeN!=null&&trigN!=null&&closeN<trigN;
+        if(fellBack){
+          const hiTxt=hiN==null?'':`最高 ${hiN.toLocaleString('en-US')}｜`;
+          trigHtml=`<span class="mr-badge warn">🟡 盤中曾${isEng?'回測':'突破'} ${erefT}·收盤回落</span><small>${hiTxt}收盤 ${closeN.toLocaleString('en-US')} &lt; ${erefT}</small>${limitUp?'<small class="mr-lu">盤中曾漲停</small>':''}`;
+          trigShort=`🟡 盤中曾${isEng?'回測':'突破'} ${erefT}·收盤回落`;
+        } else {
+          trigHtml=`<b class="mr-hit">✅ 已${isEng?'回測':'突破'} ${erefT}</b>${limitUp?'<small class="mr-lu">盤中曾漲停</small>':''}`;
+          trigShort=`✅ 已${isEng?'回測':'突破'} ${erefT}`;
+        }
+      }
       else {trigHtml=`<b class="mr-miss">❌ 未${isEng?'回測':'突破'} ${erefT}</b>`;trigShort=`❌ 未${isEng?'回測':'突破'} ${erefT}`;}
       let verHtml;
       if(x.verified){
@@ -1151,7 +1172,7 @@ document.addEventListener('click',e=>{
       // 「待進場日盤中」占位;資金流看似正常只是因為它 fallback 到 net_active。
       // AB 盤中回應本來就帶 price/change_rate/aflow(實測 50/50 有值),直接用。
       price:x.price??null,change_rate:x.change_rate??null,
-      aflow:x.aflow??x.aflow_today??x.net_active??null,intraday_high:x.intraday_high??null,
+      aflow:x.aflow??x.net_active??null,intraday_high:x.intraday_high??null,
       triggered:x.triggered??null,success:x.success??null,verified:!!x.verified,
       t1_close_pct:x.t1_close_pct??null,t1_high:x.t1_high??null,verdict:x.verdict});
     const all=(w.items||[]).map(map);
@@ -1347,6 +1368,17 @@ document.addEventListener('click',e=>{
             const hi=Number(row.intraday_high),lo=Number(row.intraday_low);
             if(hi>lo)row.day_position_pct=Math.round((p-lo)/(hi-lo)*100);
           }
+        }
+      }catch(e){}
+      // aflow 不能吃 /ab/watchlist?applies_date=X（那回的是 X 前一交易日建池時的 aflow_today，
+      // 差一天）。查 date=X（該日自己收盤那組 aflow_today）才是 X 當天自己的主動買賣差。
+      try{
+        const abOwn=await getJson('/ab/watchlist?date='+encodeURIComponent(_viewDate)).catch(()=>null);
+        const byCode2=new Map((abOwn&&Array.isArray(abOwn.items)?abOwn.items:[]).map(it=>[String(it.code),it]));
+        for(const row of (data.items||data.rows||[])){
+          if(row.aflow!=null)continue;
+          const it=byCode2.get(String(rowCode(row)));
+          if(it&&it.aflow_today!=null)row.aflow=it.aflow_today;
         }
       }catch(e){}
     }
