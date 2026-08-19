@@ -680,9 +680,17 @@ document.addEventListener('click',e=>{
   const phaseNow=()=>{const h=Number(new Intl.DateTimeFormat('en-US',{hour:'2-digit',hour12:false,timeZone:'Asia/Taipei'}).format(new Date()));return h>=18?'POST':'INTRADAY'};
   // A 區卡片小工具：現在時刻(台北)、數字或缺值一律顯示 —（不編造）、主動買賣比(估)。
   const _nowHHMM=()=>new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Taipei'}).format(new Date());
+  // 盤中資料只更新到 13:30 收盤，收盤後不再抓，時間格不能繼續印當下時鐘(會出現 21:13 這種
+  // 不存在的「盤中」時間點)。過 13:30 一律鎖顯 13:30，並在標題註明「非正式收盤值」，
+  // 避免跟 B 區(官方收盤驗證)的數字混為一談。
+  const _marketMinutesNow=()=>{const f=n=>Number(new Intl.DateTimeFormat('en-US',Object.assign({hour12:false,timeZone:'Asia/Taipei'},{[n]:'2-digit'})).format(new Date()));return f('hour')*60+f('minute')};
+  const _marketClosedNow=()=>_marketMinutesNow()>810;
+  const _intradayAsOf=()=>_marketClosedNow()?'13:30':_nowHHMM();
   const _numOrDash=v=>{const n=finite(v);return (n==null||n===0)?'—':n.toLocaleString('en-US')};
   const _buyRatioText=x=>{const b=finite(x.active_buy),s=finite(x.active_sell);if(b==null||s==null||b+s<=0)return '—';return `${Math.round(b/(b+s)*100)}% : ${Math.round(s/(b+s)*100)}%`};
-  const _pointChangeText=(price,ch)=>{const p=finite(price),c=finite(ch);if(p==null||c==null)return '—';const prev=p/(1+c/100);const pt=p-prev;return `${pt>0?'+':''}${pt.toFixed(1)}`};
+  // 法人連續性:優先用後端 inst_streak 原始天數(正=連買、負=連賣)，單日買賣也要顯示，
+  // 不能因為沒有「連N日」字面才顯示，否則會出現「徽章寫今日買超，這格卻空白」。
+  const _instStreakText=x=>{const s=finite(x.inst_streak);if(s==null)return null;if(s>=2)return `連買${s}日`;if(s<=-2)return `連賣${Math.abs(s)}日`;return x.chip_status==='positive'?'今日買超':x.chip_status==='negative'?'今日賣超':'今日持平'};
   // 徹底根治「重啟冷啟/瞬慢→8秒逾時死當」：自動重試+退避。正常首發 0.2s 即回；冷啟(~10s)由第2~3次自動恢復，不再一次逾時就丟錯誤畫面。
   const getJson=async(path,{tries=3,timeout=9000}={})=>{
     let lastErr;
@@ -842,8 +850,6 @@ document.addEventListener('click',e=>{
       if(notTraded){
         const cond0=triggerCondition(x),reason0=(String(x.reason||'').trim()?pickReason(x):'待進場日盤中資料'),chip0=chips(x),chipCls0=/連賣|賣超/.test(chip0)?'down':/連買|買超|同步/.test(chip0)?'up':'',signal0=signalType(x),base0=x.base_close??x.close??x.close_price??x.price,v0=semanticVals(x);
         const maDefense0=(String(x.entry_rule||'').match(/MA5\s*[\d.]+/)||[])[0];
-        const eref0=x.entry_ref??x.base_close??x.trigger_price,erefT0=eref0==null?'—':Number(eref0).toLocaleString('en-US');
-        const instShort0=(String(x.chip_label||chips(x)||'').match(/連[買賣]\d+日/)||[])[0]||'—';
         const limitUp0=exactLimitUp(x,base0,x.base_change_rate??x.change_rate);
         return `<article class="stock-card mr-card" data-code="${esc2(code)}">
           <div class="mr-card-head"><div class="mr-card-id"><span class="sector-tag">${esc2(sector)}</span><span class="mr-card-name">${esc2(name)}</span><span class="mr-card-code">${esc2(code)}</span></div><span class="mr-card-state pending">待進場日盤中</span></div>
@@ -853,7 +859,7 @@ document.addEventListener('click',e=>{
             <div class="mr-f4"><label>量能(相對)</label><b>${esc2(x.volume_label||'—')}</b></div>
             <div class="mr-f4"><label>本日強度</label><b>${esc2(v0.potential)}</b></div>
           </div>
-          <div class="mr-stage-label mr-stage-a">A｜今日盤中紀錄<small>尚未開盤｜僅顯示盤中可取得的資料</small></div>
+          <div class="mr-stage-label mr-stage-a">A｜今日盤中快照<small>尚未開盤｜僅顯示盤中可取得的資料</small></div>
           <div class="mr-facts-grid mr-facts-grid8">
             <div class="mr-f4"><label>時間</label><b>—</b></div>
             <div class="mr-f4"><label>現價</label><b>—</b></div>
@@ -873,32 +879,9 @@ document.addEventListener('click',e=>{
             <div class="mr-f4"><label>VWAP</label><b>—</b></div>
           </div>
           <div class="mr-a-note">說明：明日尚未開盤，盤中資料需等 09:00 後才會有數值。</div>
-          <div class="mr-stage-label mr-stage-b">B｜入選時快照<small>${esc2(poolDate||'—')} 收盤建立｜🔒 入選依據已鎖定，永不變動</small><span class="mr-stage-source">資料來源：${esc2(poolDate||'—')} 收盤完整資料</span></div>
-          <div class="mr-b-badges">
-            <span class="mr-b-badge">${esc2(x.classification||'—')}</span>
-            <span class="mr-b-badge">${esc2(signal0)}</span>
-            <span class="mr-b-badge ${chipCls0}">${esc2(chip0)}</span>
-          </div>
-          <div class="mr-facts-grid mr-facts-grid7">
-            <div class="mr-f4"><label>訊號等級</label><b>${esc2(x.classification||x.tier||'—')}</b></div>
-            <div class="mr-f4"><label>預測關鍵價</label><b>${erefT0}</b></div>
-            <div class="mr-f4"><label>防守價</label><b>${esc2(maDefense0||'—')}</b></div>
-            <div class="mr-f4"><label>收盤價</label><b>${base0==null?'—':Number(base0).toLocaleString('en-US')}</b></div>
-            <div class="mr-f4"><label>量比(相對)</label><b>${esc2(x.volume_label||'—')}</b></div>
-            <div class="mr-f4"><label>漲跌幅</label><b>${esc2(pctText(x.change_rate))}</b></div>
-            <div class="mr-f4"><label>型態</label><b>${esc2(signal0)}</b></div>
-          </div>
-          <div class="mr-facts-grid mr-facts-grid5">
-            <div class="mr-f4"><label>法人近1日</label><b>${esc2(_numOrDash(x.aflow_today))}</b></div>
-            <div class="mr-f4"><label>法人連續性</label><b>${esc2(instShort0)}</b></div>
-            <div class="mr-f4"><label>法人方向</label><b>${x.chip_status==='positive'?'偏多':x.chip_status==='negative'?'偏空':'中性'}</b></div>
-            <div class="mr-f4"><label>籌碼結構</label><b>${x.chip_status==='positive'?'偏多':x.chip_status==='negative'?'偏空':'中性'}</b></div>
-            <div class="mr-f4"><label>融資狀態</label><b>${esc2(x.margin_label||'—')}</b></div>
-          </div>
-          <div class="mr-strategy"><label>入選原因(核心)</label><div>${reason0}</div></div>
-          ${(x.layered_reasons||[]).length?`<div class="mr-b-top5"><label>入選原因(Top${(x.layered_reasons||[]).length})</label><div class="mr-b-top5-list">${(x.layered_reasons||[]).map(r=>`<span>✓ ${esc2(r)}</span>`).join('')}</div></div>`:''}
-          <div class="mr-stage-label mr-stage-c">C｜今日驗證結果<small>待進場日收盤後才會產生驗證結果</small></div>
-          <div class="mr-c-block"><div class="mr-c-row"><label>狀態</label><span>待進場日盤中/收盤後才能驗證，此時尚無 T+1 對照資料</span></div></div>
+          <div class="mr-c-source-note">🔒 入選依據：${esc2(poolDate||'—')} 收盤快照｜不可回寫</div>
+          <div class="mr-stage-label mr-stage-c">B｜T+1 收盤驗證<small>待進場日收盤後才會產生驗證結果</small></div>
+          <div class="mr-c-block"><div class="mr-c-row"><span>待進場日盤中/收盤後才能驗證，此時尚無 T+1 對照資料</span></div></div>
         </article>`;
       }
       const price=x.price??x.close??x.close_price??x.base_close, ch=x.change_rate??x.today_change, flow=flowValue(x), fN=finite(flow);
@@ -1012,11 +995,11 @@ document.addEventListener('click',e=>{
           <div class="mr-f4"><label>量能(相對)</label><b>${esc2(volLabel)}${finite(x.volume_ratio)>1.2?'　放量':''}</b></div>
           <div class="mr-f4"><label>本日強度</label><b>${gradeBar(x.potential_grade)>=4?'✅ 強勢':gradeBar(x.potential_grade)>=2?'◉ 中性':'⚠️ 偏弱'}</b></div>
         </div>
-        <div class="mr-stage-label mr-stage-a">A｜今日盤中紀錄<small>盤中截至 ${esc2(_nowHHMM())}｜僅顯示盤中可取得的資料</small></div>
+        <div class="mr-stage-label mr-stage-a">A｜今日盤中快照<small>${_marketClosedNow()?`截至 13:30 收盤前最後一筆盤中資料，非正式收盤值`:`盤中即時，截至 ${esc2(_nowHHMM())}`}</small></div>
         <div class="mr-facts-grid mr-facts-grid8">
-          <div class="mr-f4"><label>時間</label><b>${esc2(_nowHHMM())}</b></div>
+          <div class="mr-f4"><label>時間</label><b>${esc2(_intradayAsOf())}</b></div>
           <div class="mr-f4"><label>現價</label><b class="${color(ch)}">${esc2(price==null?'—':Number(price).toLocaleString('en-US'))}</b><small class="${color(ch)}">${esc2(pctText(ch))}</small></div>
-          <div class="mr-f4"><label>漲跌幅</label><b class="${color(ch)}">${esc2(_pointChangeText(price,ch))}</b></div>
+          <div class="mr-f4"><label>漲跌幅</label><b class="${color(ch)}">${esc2(pctText(ch))}</b></div>
           <div class="mr-f4"><label>最高</label><b>${esc2(_numOrDash(x.intraday_high))}</b></div>
           <div class="mr-f4"><label>最低</label><b>${esc2(_numOrDash(x.intraday_low))}</b></div>
           <div class="mr-f4"><label>成交量</label><b>${esc2(_numOrDash(x.volume))}</b></div>
@@ -1039,31 +1022,8 @@ document.addEventListener('click',e=>{
           <div class="mr-a-note mr-a-note-inline">說明：盤中僅使用即時成交與可計算資料；法人與籌碼等需待盤後公布，不出現在本區。</div>
         </div>
         ${tradeStatus?`<div class="mr-trade-status ts-${esc2({'🔥':'hot','🟢':'go','🟡':'wait','🔴':'no','⚪':'idle'}[tradeStatus.code]||'idle')}"><label>交易狀態</label><b>${esc2(tradeStatus.code)} ${esc2(tradeStatus.label)}</b></div>`:''}
-        <div class="mr-stage-label mr-stage-b">B｜入選時快照<small>${esc2(poolDate||'—')} 收盤建立｜🔒 入選依據已鎖定，永不變動</small><span class="mr-stage-source">資料來源：${esc2(poolDate||'—')} 收盤完整資料</span></div>
-        <div class="mr-b-badges">
-          <span class="mr-b-badge">${esc2(x.classification||'—')}</span>
-          <span class="mr-b-badge">${esc2(signal)}</span>
-          <span class="mr-b-badge ${chipCls}">${esc2(chipText)}</span>
-        </div>
-        <div class="mr-facts-grid mr-facts-grid7">
-          <div class="mr-f4"><label>訊號等級</label><b>${esc2(x.classification||x.tier||'—')}</b></div>
-          <div class="mr-f4"><label>預測關鍵價</label><b>${erefT}</b></div>
-          <div class="mr-f4"><label>防守價</label><b>${esc2(maDefense||'—')}</b></div>
-          <div class="mr-f4"><label>收盤價</label><b>${esc2(_numOrDash(x.base_close))}</b></div>
-          <div class="mr-f4"><label>量比(相對)</label><b>${esc2(volLabel)}</b></div>
-          <div class="mr-f4"><label>漲跌幅</label><b class="${color(x.base_change_rate)}">${esc2(pctText(x.base_change_rate))}</b></div>
-          <div class="mr-f4"><label>型態</label><b>${esc2(signal)}</b></div>
-        </div>
-        <div class="mr-facts-grid mr-facts-grid5">
-          <div class="mr-f4"><label>法人近1日</label><b class="${fN>0?'up':fN<0?'down':''}">${esc2(_numOrDash(x.aflow_today))}</b></div>
-          <div class="mr-f4"><label>法人連續性</label><b class="${/連賣/.test(instShort)?'down':/連買/.test(instShort)?'up':''}">${esc2(instShort)}</b></div>
-          <div class="mr-f4"><label>法人方向</label><b>${x.chip_status==='positive'?'偏多':x.chip_status==='negative'?'偏空':'中性'}</b></div>
-          <div class="mr-f4"><label>籌碼結構</label><b>${x.chip_status==='positive'?'偏多':x.chip_status==='negative'?'偏空':'中性'}</b></div>
-          <div class="mr-f4"><label>融資狀態</label><b>${esc2(x.margin_label||'—')}</b></div>
-        </div>
-        <div class="mr-strategy"><label>入選原因(核心)</label><div>${esc2(strategySummary(x))}</div></div>
-        ${(x.layered_reasons||[]).length?`<div class="mr-b-top5"><label>入選原因(Top${(x.layered_reasons||[]).length})</label><div class="mr-b-top5-list">${(x.layered_reasons||[]).map(r=>`<span>✓ ${esc2(r)}</span>`).join('')}</div></div>`:''}
-        <div class="mr-stage-label mr-stage-c">C｜今日驗證結果<small>(${esc2(verifyDate||'—')} 收盤)　T+1 驗證對照</small><span class="mr-stage-source">資料來源：${esc2(verifyDate||'—')} 收盤完整資料（含籌碼）</span></div>
+        <div class="mr-c-source-note">🔒 入選依據：${esc2(poolDate||'—')} 收盤快照｜不可回寫</div>
+        <div class="mr-stage-label mr-stage-c">B｜T+1 收盤驗證<small>${esc2(verifyDate||'—')} 收盤結果，對照 ${esc2(poolDate||'—')} 入選依據</small></div>
         ${(()=>{
           const volR=finite(x.volume_ratio);
           const structFail=(x.structural_failures||[]).length>0;
@@ -1071,14 +1031,18 @@ document.addEventListener('click',e=>{
           // 確認因子(量能/法人/籌碼)只決定「命中品質」，單一確認因子沒過
           // 不能推翻已經成立的核心方向——呼應淘汰邏輯本身「弱勢降級、不因
           // 單一條件淘汰，真正結構失效才判失敗」的同一套原則(2026-08-18)。
+          // 法人籌碼一列改用 inst_streak 原始天數(_instStreakText)，不再靠正規表示式
+          // 從 chip_label 擷取「連N日」子字串——單日買賣也要顯示，不能因沒有「連N日」
+          // 字面就空白，跟徽章「法人今日買超」對不上。
+          const instStreakText=_instStreakText(x)??instShort;
           const core=[
-            {label:'價格表現',base:`預期測試關鍵價 ${erefT}`,now:`最高 ${esc2(_numOrDash(x.intraday_high))}、收盤 ${esc2(price==null?'—':Number(price).toLocaleString('en-US'))} (${esc2(pctText(ch))})`,ok:closeOk},
+            {label:'價格表現',base:`關鍵價 ${erefT}`,now:`收盤 ${price==null?'—':Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})`,ok:closeOk},
             {label:'型態驗證',base:esc2(signal),now:limitUp?'漲停鎖價，強勢收盤':(x.triggered?'已突破，結構延續':'未突破前高'),ok:!!x.triggered},
-            {label:'結構是否失效',base:'預期結構不失效',now:structFail?'四道結構失效':'結構維持',ok:!structFail},
+            {label:'結構是否失效',base:'結構不失效',now:structFail?'四道結構失效':'結構維持',ok:!structFail},
           ];
           const confirm=[
-            {label:'量能驗證',base:'預期放量(量比>1.2)',now:volR==null?'—':`量比 ${volR}x${volR>1.2?'，放量':''}`,ok:volR==null?null:volR>1.2},
-            {label:'法人籌碼',base:'預期法人偏多／續買',now:esc2(instShort||'—')+(x.chip_status==='positive'?'（今日買超）':x.chip_status==='negative'?'（今日賣超）':''),ok:x.chip_status==='positive'},
+            {label:'量能驗證',base:'>1.2x',now:volR==null?'—':`${volR}x${volR>1.2?'，放量':''}`,ok:volR==null?null:volR>1.2},
+            {label:'法人籌碼',base:'偏多／續買',now:esc2(instStreakText||'—'),ok:x.chip_status==='positive'},
             {label:'籌碼結構',base:'偏多',now:x.chip_status==='positive'?'偏多強化':x.chip_status==='negative'?'轉弱':'持平',ok:x.chip_status!=='negative'},
           ];
           const coreScored=core.filter(r=>r.ok!==null);
@@ -1086,31 +1050,29 @@ document.addEventListener('click',e=>{
           const confirmScored=confirm.filter(r=>r.ok!==null);
           const confirmHits=confirmScored.filter(r=>r.ok===true).length;
           const confirmMissed=confirmScored.filter(r=>r.ok===false).map(r=>r.label);
-          const hits=coreScored.filter(r=>r.ok===true).length+confirmHits;
-          const total=coreScored.length+confirmScored.length;
-          const grade=total===0?'—':hits/total>=1?'A+':hits/total>=0.8?'A':hits/total>=0.6?'B':hits/total>=0.4?'C':'D';
           let verdictLabel,verdictCls;
           if(coreScored.length===0)verdictLabel='⚫ 無法驗證',verdictCls='';
           else if(!coreOk)verdictLabel='🔴 未命中',verdictCls='bad';
           else if(confirmScored.length===0||confirmHits===confirmScored.length)verdictLabel='🟢 完整命中',verdictCls='good';
           else verdictLabel='🟢 命中',verdictCls='good';
-          const conf=total===0?'—':hits/total>=0.8?'高':hits/total>=0.5?'中':'低';
           const devianceRow=r=>r.ok===false?`<tr class="mr-c-deviance"><td colspan="4">⚠️ 偏差原因｜${r.label}：${r.base}，實際${r.now}，未達模型條件</td></tr>`:'';
           const rowsHtml=core.map(r=>`<tr class="mr-c-core"><td><span class="mr-c-tag core">CORE</span>${r.label}</td><td>${r.base}</td><td>${r.now}</td><td>${r.ok===true?'<span class="mr-check ok">✓</span>':r.ok===false?'<span class="mr-check no">✕</span>':'<span class="mr-check pending">·</span>'}</td></tr>${devianceRow(r)}`).join('')
             +confirm.map(r=>`<tr><td><span class="mr-c-tag confirm">CONFIRM</span>${r.label}</td><td>${r.base}</td><td>${r.now}</td><td>${r.ok===true?'<span class="mr-check ok">✓</span>':r.ok===false?'<span class="mr-check no">✕</span>':'<span class="mr-check pending">·</span>'}</td></tr>${devianceRow(r)}`).join('');
+          // 收尾一句改由 CORE/CONFIRM 實際結果合成，不再套用另一支模組(intraday_verdict.py)
+          // 算的即時盤中判讀——那支答的是「現在盤中資金有沒有跟上」，跟這裡「T+1 收盤
+          // 對不對」是兩個問題，放在同一格會出現「完整命中」旁邊寫「動能待確認」互打架。
+          const failedCore=core.filter(r=>r.ok===false).map(r=>r.label);
+          const coreLine=coreScored.length===0?'核心因子尚無資料':coreOk?'核心方向成立':`核心${failedCore.join('、')}未成立`;
+          const confirmLine=confirmScored.length===0?'確認因子尚無資料':confirmHits===confirmScored.length?'確認因子仍偏強':confirmHits===0?'確認因子同步走弱':`${confirmMissed.join('、')}未達標，其餘確認仍強`;
           return `<div class="mr-c-table-wrap">
-            <table class="mr-c-table"><thead><tr><th>驗證因子</th><th>入選依據(${esc2(poolDate||'—')})</th><th>今日實際結果(${esc2(verifyDate||'—')})</th><th>判定</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+            <table class="mr-c-table"><thead><tr><th>驗證因子</th><th>${esc2(poolDate||'—')} 入選依據 🔒</th><th>${esc2(verifyDate||'—')} 收盤結果</th><th>判定</th></tr></thead><tbody>${rowsHtml}</tbody></table>
             <div class="mr-c-score">
-              <div class="mr-c-score-row"><label>綜合驗證評分</label><b class="${verdictCls}">${total===0?'—':`${hits}/${total}`}</b></div>
-              <div class="mr-c-score-row"><label>模型評級</label><b class="${verdictCls}">${grade}</b></div>
-              <div class="mr-c-score-row"><label>驗證結論</label><b class="${verdictCls}">${verdictLabel}</b></div>
-              <div class="mr-c-score-row"><label>信心度</label><b class="${verdictCls}">${conf}</b></div>
+              <div class="mr-c-score-row"><label>CORE</label><b>${coreScored.length===0?'—':coreScored.filter(r=>r.ok===true).length+'/'+coreScored.length}</b></div>
+              <div class="mr-c-score-row"><label>CONFIRM</label><b>${confirmScored.length===0?'—':confirmHits+'/'+confirmScored.length}</b></div>
+              <div class="mr-c-score-row"><label>結論</label><b class="${verdictCls}">${verdictLabel}</b></div>
             </div>
           </div>
-          <div class="mr-c-block">
-            <div class="mr-c-row mr-c-tomorrow"><label>明日處理</label><span>${esc2(T1_IDENTITY[x.display_pool]||x.display_pool||'—')}</span></div>
-            ${verdict.headline||(verdict.lines||[]).length?`<div class="mr-c-row"><label>AI 評語</label><span>${esc2(verdict.headline||'')}${(verdict.lines||[]).length?'｜'+(verdict.lines||[]).map(l=>esc2(l.text)).join(' '):''}${confirmMissed.length&&coreOk?`｜${confirmMissed.join('、')}未達標，但不影響核心方向判定`:''}</span></div>`:''}
-          </div>`;
+          <div class="mr-c-block"><div class="mr-c-row"><span>${coreLine}；${confirmLine}。</span></div></div>`;
         })()}
         ${(verdict.next_steps||[]).length?`<div class="mr-next-strategy"><label>🎯 下一步策略</label><span>${(verdict.next_steps||[]).map(s=>`<b>${esc2(s.cond)}</b> → ${esc2(s.then)}`).join('；')}</span></div>`:''}
       </article>`;
@@ -2733,6 +2695,8 @@ if(window.__singleMainTableRender){
 .mr-stage-a{border-left-color:#3478f6;color:#1f4fb0}
 .mr-stage-b{border-left-color:#c98a00;color:#8a6100}
 .mr-stage-c{border-left-color:#7257d8;color:#5638b5}
+/* B 區(原 C)只留一條來源小字取代整個入選快照 Section(2026-08-18 收斂資訊架構)。 */
+.mr-c-source-note{margin:10px 0 0;padding-left:8px;font-size:10.5px;font-weight:600;color:#9aa3b2}
 .mr-card-facts+.mr-card-decision{margin-top:10px}
 .mr-card-more .mr-stage-label:first-of-type{margin-top:2px}
 .mr-card-facts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 0}
@@ -2762,11 +2726,6 @@ if(window.__singleMainTableRender){
   border-radius:12px;overflow:hidden;margin:10px 0 0}
 .mr-top-badges .mr-f4{padding:8px 10px;border-right:1px solid #e5e9f2}
 .mr-top-badges .mr-f4:last-child{border-right:0}
-/* B 區入選原因 Top5(2026-08-18 新版UI) */
-.mr-b-top5{margin:8px 0 0;font-size:12.5px}
-.mr-b-top5 label{display:block;font-size:11px;color:#9aa3b2;font-weight:800;margin-bottom:4px}
-.mr-b-top5-list{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:2px}
-.mr-b-top5-list span{color:#168447;font-weight:700;font-size:13px;white-space:nowrap}
 /* C 區驗證因子表 + 評分卡(2026-08-18 新版UI，取代條列式 label:value) */
 .mr-c-table-wrap{display:flex;gap:10px;margin:8px 0 0;flex-wrap:wrap}
 .mr-c-table{flex:1 1 300px;border-collapse:collapse;font-size:12px;background:#fff;
@@ -2891,10 +2850,6 @@ if(window.__singleMainTableRender){
 .mr-card-more[open] .mr-lbl-open{display:inline}
 .mr-more-arrow{font-style:normal;display:inline-block;transition:transform .15s}
 .mr-card-more[open] .mr-more-arrow{transform:rotate(180deg)}
-.mr-b-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-.mr-b-badge{display:inline-block;background:#f8f9fc;border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:700;color:var(--text)}
-.mr-b-badge.up{color:var(--red)}
-.mr-b-badge.down{color:var(--green)}
 .mr-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
 .mr-detail-grid4{grid-template-columns:repeat(4,1fr)}
 .mr-detail{background:#f8f9fc;border-radius:10px;padding:8px 10px;min-width:0}
