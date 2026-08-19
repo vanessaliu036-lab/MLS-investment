@@ -915,10 +915,14 @@ document.addEventListener('click',e=>{
       let trigHtml,trigShort;
       if(x.triggered==null){
         const trigN=finite(eref),curN=finite(price),hiN=finite(x.intraday_high);
-        if(isToday&&!isEng&&trigN!=null&&curN!=null){
-          if(curN>=trigN){trigHtml=`<span class="mr-badge hit">🟢 已站上 ${erefT}</span><small>現 ${curN.toLocaleString('en-US')} ≥ ${erefT}</small>`;trigShort=`🟢 已站上 ${erefT}`;}
+        // 回測月線(isEng)股票原本被 !isEng 整段排除在即時比較之外，x.triggered 判定出爐前
+        // 一整天只顯示死板的「待收盤蓋章」，即使現價/月線比較資料其實都在——跟攻擊軌
+        // 「未達1,200」這種即時進度完全不對等。改成兩軌共用同一段比較，只換措辭
+        // (回測 vs 站上)，跟下面 924/929 行既有的 isEng?'回測':'突破' 用字一致。
+        if(isToday&&trigN!=null&&curN!=null){
+          if(curN>=trigN){trigHtml=`<span class="mr-badge hit">🟢 已${isEng?'回測':'站上'} ${erefT}</span><small>現 ${curN.toLocaleString('en-US')} ≥ ${erefT}</small>`;trigShort=`🟢 已${isEng?'回測':'站上'} ${erefT}`;}
           else if(hiN!=null&&hiN>=trigN){trigHtml=`<span class="mr-badge warn">🟡 曾觸及·已回落</span><small>高 ${hiN.toLocaleString('en-US')} ≥ ${erefT}｜現 ${curN.toLocaleString('en-US')}</small>`;trigShort='🟡 曾觸及·已回落';}
-          else {trigHtml=`<span class="badge verify-pending">⬜ 未達 ${erefT}</span><small>盤中最高 ${hiN==null?'—':hiN.toLocaleString('en-US')}</small>`;trigShort=`⬜ 未達 ${erefT}`;}
+          else {trigHtml=`<span class="badge verify-pending">⬜ 未${isEng?'回測':'達'} ${erefT}</span><small>盤中最高 ${hiN==null?'—':hiN.toLocaleString('en-US')}</small>`;trigShort=`⬜ 未${isEng?'回測':'達'} ${erefT}`;}
         } else {trigHtml=stateCell(isToday?'待收盤蓋章':'待進場日盤中','verify-pending');trigShort=isToday?'待收盤蓋章':'待進場日盤中';}
       }
       else if(x.triggered){trigHtml=`<b class="mr-hit">✅ 已${isEng?'回測':'突破'} ${erefT}</b>${limitUp?'<small class="mr-lu">盤中曾漲停</small>':''}`;trigShort=`✅ 已${isEng?'回測':'突破'} ${erefT}`;}
