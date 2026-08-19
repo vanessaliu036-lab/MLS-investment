@@ -174,5 +174,58 @@ class PotentialTierTests(unittest.TestCase):
                                  result["potential_tier"] != "B")
 
 
+class FourDimensionTests(unittest.TestCase):
+    """四維度拆分(2026-08-19):structural/momentum/entry/verification 各自獨立,
+    同一檔可以 structural_status=OK 但 entry_status=禁止追高,不等於「淘汰」。"""
+
+    def test_structural_status_ok_when_zero_gates_fail(self):
+        result = ls.score_layered(feature_input(
+            bar={"open": 99.0, "high": 101.0, "low": 98.5, "close": 100.5,
+                 "ma5": 99.0, "ma20": 98.0, "volume": 90_000},
+            change_rate=1.0, aflow_today=1_000, aflow_previous=1_000,
+        ))
+        self.assertEqual(result["failure_gate_count"], 0)
+        self.assertEqual(result["structural_status"], ls.STRUCT_OK)
+
+    def test_structural_status_at_risk_when_one_to_three_gates_fail(self):
+        result = ls.score_layered(feature_input(bar={"close": 100.5}))
+        self.assertIn(result["failure_gate_count"], (1, 2, 3))
+        self.assertEqual(result["structural_status"], ls.STRUCT_AT_RISK)
+
+    def test_structural_status_failed_only_when_all_four_gates_fail(self):
+        result = ls.score_layered(feature_input())
+        self.assertEqual(result["failure_gate_count"], 4)
+        self.assertEqual(result["structural_status"], ls.STRUCT_FAILED)
+        self.assertEqual(result["classification"], ls.TIER_REJECTED)
+
+    def test_momentum_status_mirrors_trend_stage(self):
+        result = ls.score_layered(feature_input())
+        self.assertEqual(result["momentum_status"], result["trend_stage"])
+
+    def test_high_chase_risk_never_produces_structural_failed(self):
+        """Cut 6 鎖死:chase_risk 只能決定 entry_status(禁追/等待觸發),
+        不能讓 structural_status 變成 FAILED——追價風險高不是結構失效。"""
+        result = ls.score_layered(feature_input(
+            bar={"open": 100.0, "high": 111.0, "low": 99.0, "close": 109.0,
+                 "ma5": 103.0, "ma20": 99.0, "volume": 400_000, "vol_ma20": 100_000},
+            change_rate=8.0, prior_changes=[6.0, 5.5],
+            aflow_today=10_000, aflow_previous=5_000,
+        ))
+        self.assertGreaterEqual(result["chase_risk"], ls.CHASE_RISK_MAX)
+        self.assertEqual(result["entry_status"], "禁止追高")
+        self.assertNotEqual(result["structural_status"], ls.STRUCT_FAILED)
+        self.assertNotEqual(result["classification"], ls.TIER_REJECTED)
+
+    def test_classify_never_rejects_on_chase_risk_alone_across_full_range(self):
+        """classify() 的淘汰分支只吃 fails 長度;chase/chase_block 無論多極端,
+        只要 fails < STRUCT_FAIL_MIN 就不可能回傳 TIER_REJECTED。"""
+        for chase in (0, 25, 50, 70, 82, 100):
+            for chase_block in (False, True):
+                for fails in ([], ["價格結構破壞"], ["價格結構破壞", "量價轉弱", "反彈失敗"]):
+                    tier = ls.classify(50.0, chase, fails, chase_block=chase_block)
+                    with self.subTest(chase=chase, chase_block=chase_block, fails=len(fails)):
+                        self.assertNotEqual(tier, ls.TIER_REJECTED)
+
+
 if __name__ == "__main__":
     unittest.main()

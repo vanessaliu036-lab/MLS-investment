@@ -67,6 +67,30 @@ POTENTIAL_LABEL = {
 POTENTIAL_PRIORITY = {POTENTIAL_A1: 0, POTENTIAL_A2: 1, POTENTIAL_A3: 2, POTENTIAL_B: 3}
 
 
+# ── 四維度拆分(2026-08-19 新增,附加欄位)──────────────────────
+# 舊制把「結構好不好」「動能強不強」「現在能不能追」「今天有沒有被驗證」全部
+# 壓進一個 tier 字串,人讀到「淘汰/不追」很容易腦內翻譯成「這檔不要了」。
+# 四維度各自獨立回答一個問題,同一檔可以是:
+#   structural_status=OK, momentum_status=🔥Day1, entry_status=禁止追高,
+#   verification_status=UNCONFIRMED
+# 人話:「結構沒問題、動能剛啟動、但現在追價風險高、今天還沒被法人數字驗到」,
+# 不等於「淘汰」。tier/classification 是這四者的既有摘要,繼續保留給排序/顯示,
+# 這裡只是把摘要拆回四條分開可讀的軸線,不改摘要本身怎麼算。
+STRUCT_OK = "OK"
+STRUCT_AT_RISK = "AT_RISK"
+STRUCT_FAILED = "FAILED"
+
+
+def structural_status(fail_count: int) -> str:
+    """結構維度:0 項失效=OK,1~3 項=AT_RISK(有惡化跡象但未到淘汰門),
+    4 項全中=FAILED(唯一真淘汰判準,對齊 STRUCT_FAIL_MIN)。"""
+    if fail_count >= STRUCT_FAIL_MIN:
+        return STRUCT_FAILED
+    if fail_count > 0:
+        return STRUCT_AT_RISK
+    return STRUCT_OK
+
+
 def potential_tier(lifecycle: str, cont_score: float) -> str:
     """把 potential_grade 的 A 再切成 A1/A2/A3。與舊 potential_grade 公式等價聯集,
     純附加欄位:A1∪A2∪A3 = 舊公式判「A」的全部情況,不會多判也不會少判。"""
@@ -518,7 +542,9 @@ def score_layered(f: dict) -> dict:
         "potential_label": POTENTIAL_LABEL[ptier],
         "potential_priority": POTENTIAL_PRIORITY[ptier],
         "trend_stage": lifecycle,
+        "momentum_status": lifecycle,
         "entry_status": entry_status,
+        "structural_status": structural_status(len(fails)),
         "chip_status": chip_status(f),
         "failure_gates": gates,
         "failure_gate_count": sum(1 for hit in gates.values() if hit),
