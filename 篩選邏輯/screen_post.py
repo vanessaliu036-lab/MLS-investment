@@ -508,6 +508,8 @@ def build(universe: list[str], db_path: str = "mls.db",
         lay_fields = {
             "tier": lay["tier"], "classification": lay["classification"],
             "potential_grade": lay["potential_grade"], "trend_stage": lay["trend_stage"],
+            "potential_tier": lay["potential_tier"], "potential_label": lay["potential_label"],
+            "potential_priority": lay["potential_priority"],
             "entry_status": lay["entry_status"], "turn_signals": lay["turn_signals"],
             "failure_gates": lay["failure_gates"], "failure_gate_count": lay["failure_gate_count"],
             "is_limit_up": bool(lay.get("limit_up")),
@@ -585,8 +587,12 @@ def build(universe: list[str], db_path: str = "mls.db",
 
     # 排序改吃「延續機率」(明天值不值得看),而非舊單一 score;同分以追價安全高者優先。
     # 保留 score 於 payload 供相容/對照,但不再主導名單順序。
+    # potential_priority(A1首次突破=0 > A2延續確認=1 > A3延伸段=2 > B=3)插在 pool bucket
+    # 之後、原本的 decision 排序之前:同一個 pool(例如都是 core)內,新鮮突破優先於已經
+    # 連漲多日才達標的延伸段——兩者 continuation 分數可能一樣高,但 T+1 性質不同。
     _pool_rank = {"core": 0, "reversal": 1, "pullback": 2, "watch": 3}
     kept.sort(key=lambda x: (_pool_rank.get(x.get("display_pool"), 4),
+                             x.get("potential_priority", 3),
                              1 if x.get("decision_priority") == "low" else 0,
                              -(x.get("decision_rank_score") or -1),
                              -(x.get("chase_safety") or 0), x["code"]))
@@ -758,7 +764,13 @@ def _item_explain(it):
         parts.append("但" + "、".join(risks[:2]))
     body = ",".join(parts) if parts else "結構成立、細節待補"
     action = _TIER_ACTION.get(tier, "續觀察。")
-    prefix = f"{tier}:" if tier else ""
+    # A級細分(A1新鮮突破/A3已延伸)比籠統的「🔥 A級啟動」更能反映 T+1 性質不同,優先顯示。
+    ptier = it.get("potential_tier")
+    label = it.get("potential_label")
+    if tier == layered_score.TIER_CORE and label and ptier in ("A1", "A3"):
+        prefix = f"{label}:"
+    else:
+        prefix = f"{tier}:" if tier else ""
     return f"{prefix}{body} → {action}"
 
 

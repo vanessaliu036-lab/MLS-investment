@@ -48,6 +48,36 @@ CHASE_RISK_MAX = 70   # 追價風險 >= 此值 → 禁追
 STRUCT_FAIL_MIN = 4   # 四重閘門全部成立才真淘汰
 HIGH_BIAS_PCT = 7.0   # 距 5MA >= 此值 = 高乖離警戒 → 類別性禁追(規格明列 7%)
 
+# ── A 級細分(2026-08-19 新增,附加欄位,不動 potential_grade 既有 A/B 語意)──
+# 同樣 continuation=78,「昨天普通今天突然突破」跟「已經連漲四天今天仍強」是完全不同
+# 的 T+1 性質,前者才是明日核心候選該優先的。potential_grade(A/B)算法完全不變,
+# potential_tier 只是把 A 再切細,給排序用,不影響任何既有讀 potential_grade 的地方。
+POTENTIAL_A1 = "A1"  # Fresh breakout:Day1 首次突破
+POTENTIAL_A2 = "A2"  # Continuation:Day2 主升確認,或未啟動但延續分數本身夠高的穩健強勢股
+POTENTIAL_A3 = "A3"  # Extended:Day3 強勢延伸／Day4+ 高乖離,且延續分數仍夠高
+POTENTIAL_B = "B"
+
+POTENTIAL_LABEL = {
+    POTENTIAL_A1: "🔥 A1 首次突破",
+    POTENTIAL_A2: "⚡ A2 延續確認",
+    POTENTIAL_A3: "⏳ A3 延伸段(高乖離)",
+    POTENTIAL_B: "B 一般",
+}
+# 明日核心候選優先序:數字越小越優先(A1 > A2 > A3 > B)
+POTENTIAL_PRIORITY = {POTENTIAL_A1: 0, POTENTIAL_A2: 1, POTENTIAL_A3: 2, POTENTIAL_B: 3}
+
+
+def potential_tier(lifecycle: str, cont_score: float) -> str:
+    """把 potential_grade 的 A 再切成 A1/A2/A3。與舊 potential_grade 公式等價聯集,
+    純附加欄位:A1∪A2∪A3 = 舊公式判「A」的全部情況,不會多判也不會少判。"""
+    if lifecycle.startswith("🔥 Day 1"):
+        return POTENTIAL_A1
+    if lifecycle.startswith("🔥 Day 2"):
+        return POTENTIAL_A2
+    if lifecycle.startswith("⚡ Day 3") or lifecycle.startswith("⏳ Day 4+"):
+        return POTENTIAL_A3 if cont_score >= CONT_CORE_MIN else POTENTIAL_B
+    return POTENTIAL_A2 if cont_score >= CONT_CORE_MIN else POTENTIAL_B
+
 
 def _clamp(x: float, lo: float = 0.0, hi: float = 1.0) -> float:
     return max(lo, min(hi, x))
@@ -473,7 +503,8 @@ def score_layered(f: dict) -> dict:
     chase_block = high_bias or (limit is not None) or late_stage
     tier = classify(cont["score"], chase["score"], fails,
                     chase_block=chase_block, turns=turns, lifecycle=lifecycle)
-    potential = "A" if lifecycle in ("🔥 Day 1 首次突破", "🔥 Day 2 主升確認") or cont["score"] >= CONT_CORE_MIN else "B"
+    ptier = potential_tier(lifecycle, cont["score"])
+    potential = POTENTIAL_B if ptier == POTENTIAL_B else "A"
     entry_status = "禁止追高" if (chase_block or chase["score"] >= CHASE_RISK_MAX) else "等待觸發"
     return {
         "code": f["code"],
@@ -483,6 +514,9 @@ def score_layered(f: dict) -> dict:
         "tier": tier,
         "classification": tier,
         "potential_grade": potential,
+        "potential_tier": ptier,
+        "potential_label": POTENTIAL_LABEL[ptier],
+        "potential_priority": POTENTIAL_PRIORITY[ptier],
         "trend_stage": lifecycle,
         "entry_status": entry_status,
         "chip_status": chip_status(f),

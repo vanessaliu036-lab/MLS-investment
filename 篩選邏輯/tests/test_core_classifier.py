@@ -112,5 +112,67 @@ class FourGateTests(unittest.TestCase):
         self.assertEqual(result["entry_status"], "禁止追高")
 
 
+class PotentialTierTests(unittest.TestCase):
+    """A 級細分(2026-08-19):同樣 potential_grade='A',T+1 性質不同——
+    首次突破(A1)該排在延伸段(A3)前面。附加欄位,不改 potential_grade 既有語意。"""
+
+    def test_day1_breakout_is_a1_highest_priority(self):
+        result = ls.score_layered(feature_input(
+            bar={"open": 103.0, "high": 113.0, "low": 102.5, "close": 113.0,
+                 "ma5": 104.0, "ma20": 99.0, "ma60": 92.0,
+                 "volume": 260_000, "vol_ma20": 120_000},
+            inst={"foreign_net": 100, "trust_net": 20, "total_net": 120,
+                  "consecutive_days": 1},
+            change_rate=9.71,
+            previous_change_rate=1.0,
+            prior_changes=[1.0, -0.5, 0.8, 1.2, -0.3, 0.4, 0.2, -1.0, 0.6, 0.1],
+            aflow_today=16_000, aflow_previous=-1_000, sector_rel=1.5,
+        ))
+        self.assertEqual(result["potential_grade"], "A")
+        self.assertEqual(result["potential_tier"], "A1")
+        self.assertEqual(result["potential_priority"], 0)
+
+    def test_extended_day4_plus_is_a3_lower_priority_than_a1(self):
+        # 連漲多日已進 Day4+ 高乖離階段,即使 continuation 仍高,T+1 性質跟新鮮突破不同。
+        result = ls.score_layered(feature_input(
+            bar={"open": 118.0, "high": 120.0, "low": 117.0, "close": 119.0,
+                 "ma5": 108.0, "ma20": 99.0, "ma60": 92.0,
+                 "volume": 200_000, "vol_ma20": 120_000},
+            inst={"foreign_net": 800, "trust_net": 400, "total_net": 1200,
+                  "consecutive_days": 3},
+            change_rate=5.5,
+            previous_change_rate=6.0,
+            prior_changes=[6.0, 5.8, 6.2, 0.4, -0.2, 1.0, 0.3],
+            aflow_today=5_000, aflow_previous=4_000, sector_rel=2.0,
+            inst_3d=500, inst_5d=800,
+        ))
+        self.assertEqual(result["trend_stage"], "⏳ Day 4+ 高乖離／等待整理")
+        if result["continuation"] >= ls.CONT_CORE_MIN:
+            self.assertEqual(result["potential_grade"], "A")
+            self.assertEqual(result["potential_tier"], "A3")
+            self.assertGreater(result["potential_priority"], 0)
+
+    def test_not_strong_enough_is_grade_b_priority_lowest(self):
+        result = ls.score_layered(feature_input())
+        self.assertEqual(result["potential_grade"], "B")
+        self.assertEqual(result["potential_tier"], "B")
+        self.assertEqual(result["potential_priority"], 3)
+
+    def test_potential_tier_is_additive_and_equivalent_to_old_grade_formula(self):
+        """potential_tier != 'B' 必須恰好等價於 potential_grade == 'A'(聯集不多不少),
+        確保這是純附加欄位,沒有偷改既有 A/B 判定。"""
+        cases = [
+            feature_input(),
+            feature_input(aflow_previous=None),
+            feature_input(bar={"close": 102.0}),
+            feature_input(change_rate=1.0, bar={"close": 100.0, "ma5": 99.5, "ma20": 98.0}),
+        ]
+        for data in cases:
+            result = ls.score_layered(data)
+            with self.subTest(trend_stage=result["trend_stage"], cont=result["continuation"]):
+                self.assertEqual(result["potential_grade"] == "A",
+                                 result["potential_tier"] != "B")
+
+
 if __name__ == "__main__":
     unittest.main()
