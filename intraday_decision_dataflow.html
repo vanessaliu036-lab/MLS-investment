@@ -995,9 +995,9 @@ document.addEventListener('click',e=>{
           <div class="mr-f4"><label>量能(相對)</label><b>${esc2(volLabel)}${finite(x.volume_ratio)>1.2?'　放量':''}</b></div>
           <div class="mr-f4"><label>本日強度</label><b>${gradeBar(x.potential_grade)>=4?'✅ 強勢':gradeBar(x.potential_grade)>=2?'◉ 中性':'⚠️ 偏弱'}</b></div>
         </div>
-        <div class="mr-stage-label mr-stage-a">A｜今日盤中快照<small>${_marketClosedNow()?`截至 13:30 收盤前最後一筆盤中資料，非正式收盤值`:`盤中即時，截至 ${esc2(_nowHHMM())}`}</small></div>
+        <div class="mr-stage-label mr-stage-a">A｜今日盤中快照<small>${!isToday?`該日盤中最後一筆快照，13:30 收盤（非即時，已是過去交易日）`:(_marketClosedNow()?`截至 13:30 收盤前最後一筆盤中資料，非正式收盤值`:`盤中即時，截至 ${esc2(_nowHHMM())}`)}</small></div>
         <div class="mr-facts-grid mr-facts-grid8">
-          <div class="mr-f4"><label>時間</label><b>${esc2(_intradayAsOf())}</b></div>
+          <div class="mr-f4"><label>時間</label><b>${esc2(!isToday?'13:30':_intradayAsOf())}</b></div>
           <div class="mr-f4"><label>現價</label><b class="${color(ch)}">${esc2(price==null?'—':Number(price).toLocaleString('en-US'))}</b><small class="${color(ch)}">${esc2(pctText(ch))}</small></div>
           <div class="mr-f4"><label>漲跌幅</label><b class="${color(ch)}">${esc2(pctText(ch))}</b></div>
           <div class="mr-f4"><label>最高</label><b>${esc2(_numOrDash(x.intraday_high))}</b></div>
