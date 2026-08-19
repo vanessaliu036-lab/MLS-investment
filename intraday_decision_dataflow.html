@@ -1027,10 +1027,11 @@ document.addEventListener('click',e=>{
         </div>
         ${tradeStatus?`<div class="mr-trade-status ts-${esc2({'🔥':'hot','🟢':'go','🟡':'wait','🔴':'no','⚪':'idle'}[tradeStatus.code]||'idle')}"><label>交易狀態</label><b>${esc2(tradeStatus.code)} ${esc2(tradeStatus.label)}</b></div>`:''}
         <div class="mr-c-source-note">🔒 入選依據：${esc2(poolDate||'—')} 收盤快照｜不可回寫</div>
-        <div class="mr-stage-label mr-stage-c">B｜T+1 收盤驗證<small>${x.verified?`${esc2(verifyDate||'—')} 收盤結果，對照 ${esc2(poolDate||'—')} 入選依據`:`今日盤中即時，13:30 收盤蓋章後才是正式 T+1 結果`}</small></div>
-        ${!x.verified?`<div class="mr-c-block"><div class="mr-c-row"><span>今日尚未收盤，13:30 收盤蓋章後才會產生 T+1 驗證結果；目前僅供參考的盤中即時價 ${price==null?'—':Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})，非最終收盤值，不能拿來判定命中或未命中。</span></div></div>`:(()=>{
+        <div class="mr-stage-label mr-stage-c">B｜T+1 收盤驗證<small>${x.verified?`${esc2(verifyDate||'—')} 收盤結果，對照 ${esc2(poolDate||'—')} 入選依據`:`${esc2(poolDate||'—')} 入選依據已鎖定；今日盤中即時，13:30 收盤蓋章後才會補上收盤結果`}</small></div>
+        ${(()=>{
           const volR=finite(x.volume_ratio);
           const structFail=(x.structural_failures||[]).length>0;
+          const verified=!!x.verified;
           // 核心因子(價格方向/關鍵價/結構型態/有無結構失效)決定命中與否；
           // 確認因子(量能/法人/籌碼)只決定「命中品質」，單一確認因子沒過
           // 不能推翻已經成立的核心方向——呼應淘汰邏輯本身「弱勢降級、不因
@@ -1039,15 +1040,18 @@ document.addEventListener('click',e=>{
           // 從 chip_label 擷取「連N日」子字串——單日買賣也要顯示，不能因沒有「連N日」
           // 字面就空白，跟徽章「法人今日買超」對不上。
           const instStreakText=_instStreakText(x)??instShort;
+          // 「入選依據」欄(base)是昨日收盤就鎖定的資料，跟今天有沒有收盤無關，一律顯示；
+          // 只有「今日結果」欄(now)跟判定(ok)需要等13:30蓋章，未驗證前顯示空白，不能拿
+          // 盤中即時價冒充收盤結果去判命中/未命中(使用者發現的bug，2026-08-19)。
           const core=[
-            {label:'價格表現',base:`關鍵價 ${erefT}`,now:`收盤 ${price==null?'—':Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})`,ok:closeOk},
-            {label:'型態驗證',base:esc2(signal),now:limitUp?'漲停鎖價，強勢收盤':(x.triggered?'已突破，結構延續':'未突破前高'),ok:!!x.triggered},
-            {label:'結構是否失效',base:'結構不失效',now:structFail?'四道結構失效':'結構維持',ok:!structFail},
+            {label:'價格表現',base:`關鍵價 ${erefT}`,now:verified?`收盤 ${price==null?'—':Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})`:'—',ok:verified?closeOk:null},
+            {label:'型態驗證',base:esc2(signal),now:verified?(limitUp?'漲停鎖價，強勢收盤':(x.triggered?'已突破，結構延續':'未突破前高')):'—',ok:verified?!!x.triggered:null},
+            {label:'結構是否失效',base:'結構不失效',now:verified?(structFail?'四道結構失效':'結構維持'):'—',ok:verified?!structFail:null},
           ];
           const confirm=[
-            {label:'量能驗證',base:'>1.2x',now:volR==null?'—':`${volR}x${volR>1.2?'，放量':''}`,ok:volR==null?null:volR>1.2},
-            {label:'法人籌碼',base:'偏多／續買',now:esc2(instStreakText||'—'),ok:x.chip_status==='positive'},
-            {label:'籌碼結構',base:'偏多',now:x.chip_status==='positive'?'偏多強化':x.chip_status==='negative'?'轉弱':'持平',ok:x.chip_status!=='negative'},
+            {label:'量能驗證',base:'>1.2x',now:verified?(volR==null?'—':`${volR}x${volR>1.2?'，放量':''}`):'—',ok:verified?(volR==null?null:volR>1.2):null},
+            {label:'法人籌碼',base:'偏多／續買',now:verified?esc2(instStreakText||'—'):'—',ok:verified?x.chip_status==='positive':null},
+            {label:'籌碼結構',base:'偏多',now:verified?(x.chip_status==='positive'?'偏多強化':x.chip_status==='negative'?'轉弱':'持平'):'—',ok:verified?x.chip_status!=='negative':null},
           ];
           const coreScored=core.filter(r=>r.ok!==null);
           const coreOk=coreScored.length>0&&coreScored.every(r=>r.ok===true);
@@ -1055,7 +1059,8 @@ document.addEventListener('click',e=>{
           const confirmHits=confirmScored.filter(r=>r.ok===true).length;
           const confirmMissed=confirmScored.filter(r=>r.ok===false).map(r=>r.label);
           let verdictLabel,verdictCls;
-          if(coreScored.length===0)verdictLabel='⚫ 無法驗證',verdictCls='';
+          if(!verified)verdictLabel='⏳ 待收盤',verdictCls='';
+          else if(coreScored.length===0)verdictLabel='⚫ 無法驗證',verdictCls='';
           else if(!coreOk)verdictLabel='🔴 未命中',verdictCls='bad';
           else if(confirmScored.length===0||confirmHits===confirmScored.length)verdictLabel='🟢 完整命中',verdictCls='good';
           else verdictLabel='🟢 命中',verdictCls='good';
@@ -1066,17 +1071,22 @@ document.addEventListener('click',e=>{
           // 算的即時盤中判讀——那支答的是「現在盤中資金有沒有跟上」，跟這裡「T+1 收盤
           // 對不對」是兩個問題，放在同一格會出現「完整命中」旁邊寫「動能待確認」互打架。
           const failedCore=core.filter(r=>r.ok===false).map(r=>r.label);
-          const coreLine=coreScored.length===0?'核心因子尚無資料':coreOk?'核心方向成立':`核心${failedCore.join('、')}未成立`;
-          const confirmLine=confirmScored.length===0?'確認因子尚無資料':confirmHits===confirmScored.length?'確認因子仍偏強':confirmHits===0?'確認因子同步走弱':`${confirmMissed.join('、')}未達標，其餘確認仍強`;
+          const summaryLine=!verified
+            ?`今日尚未收盤，13:30 收盤蓋章後才會產生 T+1 驗證結果；目前僅供參考的盤中即時價 ${price==null?'—':Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})，非最終收盤值。`
+            :(()=>{
+              const coreLine=coreScored.length===0?'核心因子尚無資料':coreOk?'核心方向成立':`核心${failedCore.join('、')}未成立`;
+              const confirmLine=confirmScored.length===0?'確認因子尚無資料':confirmHits===confirmScored.length?'確認因子仍偏強':confirmHits===0?'確認因子同步走弱':`${confirmMissed.join('、')}未達標，其餘確認仍強`;
+              return `${coreLine}；${confirmLine}。`;
+            })();
           return `<div class="mr-c-table-wrap">
-            <table class="mr-c-table"><thead><tr><th>驗證因子</th><th>${esc2(poolDate||'—')} 入選依據 🔒</th><th>${esc2(verifyDate||'—')} 收盤結果</th><th>判定</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+            <table class="mr-c-table"><thead><tr><th>驗證因子</th><th>${esc2(poolDate||'—')} 入選依據 🔒</th><th>${verified?esc2(verifyDate||'—')+' 收盤結果':'今日收盤結果(待13:30)'}</th><th>判定</th></tr></thead><tbody>${rowsHtml}</tbody></table>
             <div class="mr-c-score">
               <div class="mr-c-score-row"><label>CORE</label><b>${coreScored.length===0?'—':coreScored.filter(r=>r.ok===true).length+'/'+coreScored.length}</b></div>
               <div class="mr-c-score-row"><label>CONFIRM</label><b>${confirmScored.length===0?'—':confirmHits+'/'+confirmScored.length}</b></div>
               <div class="mr-c-score-row"><label>結論</label><b class="${verdictCls}">${verdictLabel}</b></div>
             </div>
           </div>
-          <div class="mr-c-block"><div class="mr-c-row"><span>${coreLine}；${confirmLine}。</span></div></div>`;
+          <div class="mr-c-block"><div class="mr-c-row"><span>${summaryLine}</span></div></div>`;
         })()}
         ${(verdict.next_steps||[]).length?`<div class="mr-next-strategy"><label>🎯 下一步策略</label><span>${(verdict.next_steps||[]).map(s=>`<b>${esc2(s.cond)}</b> → ${esc2(s.then)}`).join('；')}</span></div>`:''}
       </article>`;
