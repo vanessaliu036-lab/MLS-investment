@@ -303,10 +303,11 @@ def eval_stock(s, locked_sectors, *, sector_median=0.0, market_pct=0.0,
                                  sell_volume=s.get("sell_volume"))
     chip = chips.get_chips(s["code"])
     in_locked = s.get("sector") in locked_sectors and s.get("sector_type") == "attack"
-    score, factors, penalties, div_flag, factor_notes = scoring.score_stock(
+    score, factors, penalties, div_flag = scoring.score_stock(
         s, sector_median=sector_median, market_pct=market_pct,
         locked=in_locked, abab_a_day=abab_a_day, chip=chip,
         tnvr_val=tnvr_val, aflow_val=aflow, mode=mode)
+    factor_notes = {}  # scoring.score_stock 目前只回 4 值(見其 docstring)，盤中因子說明文字待補
 
     # ── 第四道關卡:BS Ratio 主動買賣盤濾網 ──
     _bs_recent = scoring.bs_recent(s["code"], s.get("buy_volume"), s.get("sell_volume"))
