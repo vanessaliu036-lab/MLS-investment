@@ -78,12 +78,14 @@ def _chase_risk(distance_pct, vwap_diff_pct, day_position_pct, vr, money_trend):
     return {"tier": tier, "label": RISK_LABELS[tier]}
 
 
-def _trade_status(above, touched, flow_in, flow_out, chase_risk, vol_weak):
-    """交易狀態:「現在到底怎麼做」的單一結論,不是另一個分析指標。"""
+def _trade_status(above, touched, flow_in, flow_out, chase_risk, vol_weak, t):
+    """交易狀態:「現在到底怎麼做」的單一結論,不是另一個分析指標。
+    「等重新站上」「等回測」都要帶關鍵價數字,不能只講方向不給價位。"""
+    tn = _n(t)
     if above and flow_out:
         return {"code": "🔴", "label": "不進,價量背離"}
     if not above:
-        return ({"code": "🟡", "label": "曾觸及未站穩,等重新站上"} if touched else
+        return ({"code": "🟡", "label": f"曾觸及未站穩,等重新站上 {tn}"} if touched else
                 {"code": "⚪", "label": "未觸發,續觀察"})
     if chase_risk is None:
         return None
@@ -92,7 +94,7 @@ def _trade_status(above, touched, flow_in, flow_out, chase_risk, vol_weak):
         return {"code": "🔥", "label": "可進場"}
     if tier <= 1 and flow_in and not vol_weak:
         return {"code": "🟢", "label": "可小倉試單"}
-    return {"code": "🟡", "label": "已啟動,不建議追價,等回測"}
+    return {"code": "🟡", "label": f"已啟動,不建議追價,等回測 {tn} 附近"}
 
 
 BLOWOUT_VOL = 2.0     # 量能到這個倍數還推不動價格,判「爆量不漲」而非普通強勢
@@ -185,7 +187,7 @@ def build(*, price=None, trigger=None, change_rate=None, aflow=None,
     flow_out = fl is not None and fl < 0
     vol_weak = vr is not None and vr < VOL_CONFIRM_LOW
     chase_risk = _chase_risk(dist, vwd, dpos, vr, money_trend) if above else None
-    trade_status = _trade_status(above, touched, flow_in, flow_out, chase_risk, vol_weak)
+    trade_status = _trade_status(above, touched, flow_in, flow_out, chase_risk, vol_weak, t)
 
     hold = {"cond": f"守住 {_n(t)}", "then": "維持強勢"}
     lose = {"cond": f"跌回 {_n(t)} 下方", "then": "突破失敗,降級觀察"}

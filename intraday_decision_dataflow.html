@@ -714,7 +714,11 @@ document.addEventListener('click',e=>{
   // 的股票，也會在「今日型態」印出「突破前高」，跟旁邊即時算的「未達X」互相矛盾
   // (使用者發現，2026-08-19)。改成用同一顆 x.triggered 決定要不要加「待」，
   // 跟狀態徽章(trigShort，見下方 916 行)講同一件事。
-  const signalType=x=>{if(x.signal_type)return String(x.signal_type);const attackLabel=x.triggered?'突破前高':'待突破前高';const engineLabel=x.triggered?'回測月線':'待回測月線';if(x.track==='attack')return attackLabel;if(x.track==='engine')return engineLabel;const raw=[x.signal_type,x.signal,x.entry_rule,x.source,x.reasons].flatMap(v=>Array.isArray(v)?v:[v]).filter(Boolean).join('、');if(/突破|昨高/.test(raw))return attackLabel;if(/回測|月線|MA20/.test(raw))return engineLabel;if(/放量|長紅|爆量/.test(raw))return '放量長紅';if(/均線交叉|黃金交叉/.test(raw))return '均線黃金交叉';return '待更新'};
+  // track=attack/engine 時，「已/待」一律吃即時 x.triggered，不信 x.signal_type 的字面——
+  // signal_type 是選股當下算好的靜態分類，x.triggered 是盤中即時更新；股價站上/回測發生在
+  // signal_type 算完之後，兩者就會吵架（已回測 267.43 vs 今日型態：待回測月線）。
+  // x.signal_type 只在無 track 對應（放量長紅/均線交叉等無二元觸發狀態的型態）時才採用。
+  const signalType=x=>{const attackLabel=x.triggered?'突破前高':'待突破前高';const engineLabel=x.triggered?'回測月線':'待回測月線';if(x.track==='attack')return attackLabel;if(x.track==='engine')return engineLabel;if(x.signal_type)return String(x.signal_type);const raw=[x.signal_type,x.signal,x.entry_rule,x.source,x.reasons].flatMap(v=>Array.isArray(v)?v:[v]).filter(Boolean).join('、');if(/突破|昨高/.test(raw))return attackLabel;if(/回測|月線|MA20/.test(raw))return engineLabel;if(/放量|長紅|爆量/.test(raw))return '放量長紅';if(/均線交叉|黃金交叉/.test(raw))return '均線黃金交叉';return '待更新'};
   const signalDetail=x=>{const raw=[x.signal_type,x.signal,x.track,x.entry_rule,x.source,x.reasons].flatMap(v=>Array.isArray(v)?v:[v]).filter(Boolean).join('、'),ref=x.prev_high??x.previous_high??x.yesterday_high??x.trigger_price??x.entry_ref??x.base_close,price=ref==null?'API 未提供價位':Number(ref).toLocaleString('en-US'),post=String(x.entry_rule||x.classification_reason||x.action||'').trim();if(x.track==='attack'||/突破|昨高/.test(raw))return `${x.triggered?'已突破前高':'突破前高訊號'}｜${x.triggered?'站上':'等待站上'} ${price}${post?`｜篩選依據：${post}`:''}`;if(x.track==='engine'||/回測|月線|MA20/.test(raw))return `${x.triggered?'已回測月線':'回測月線訊號'}｜${x.triggered?'回到':'等待回到'} ${price}${post?`｜篩選依據：${post}`:''}`;if(/放量|長紅|爆量/.test(raw))return `放量長紅｜量能爆發類${post?`｜篩選依據：${post}`:''}`;if(/均線交叉|黃金交叉/.test(raw))return `均線黃金交叉｜均線交叉類${post?`｜篩選依據：${post}`:''}`;return post?`待更新｜篩選依據：${post}`:'API 未提供訊號細節'};
   // B區「策略摘要」：買點/防守數字已在同卡的原始計畫格顯示過，這裡只講「怎麼用」，不重複數字。
   const strategySummary=x=>{const cat=signalType(x);return ({
