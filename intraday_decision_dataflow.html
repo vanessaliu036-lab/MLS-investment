@@ -1023,8 +1023,8 @@ document.addEventListener('click',e=>{
         </div>
         ${tradeStatus?`<div class="mr-trade-status ts-${esc2({'🔥':'hot','🟢':'go','🟡':'wait','🔴':'no','⚪':'idle'}[tradeStatus.code]||'idle')}"><label>交易狀態</label><b>${esc2(tradeStatus.code)} ${esc2(tradeStatus.label)}</b></div>`:''}
         <div class="mr-c-source-note">🔒 入選依據：${esc2(poolDate||'—')} 收盤快照｜不可回寫</div>
-        <div class="mr-stage-label mr-stage-c">B｜T+1 收盤驗證<small>${esc2(verifyDate||'—')} 收盤結果，對照 ${esc2(poolDate||'—')} 入選依據</small></div>
-        ${(()=>{
+        <div class="mr-stage-label mr-stage-c">B｜T+1 收盤驗證<small>${x.verified?`${esc2(verifyDate||'—')} 收盤結果，對照 ${esc2(poolDate||'—')} 入選依據`:`今日盤中即時，13:30 收盤蓋章後才是正式 T+1 結果`}</small></div>
+        ${!x.verified?`<div class="mr-c-block"><div class="mr-c-row"><span>今日尚未收盤，13:30 收盤蓋章後才會產生 T+1 驗證結果；目前僅供參考的盤中即時價 ${price==null?'—':Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})，非最終收盤值，不能拿來判定命中或未命中。</span></div></div>`:(()=>{
           const volR=finite(x.volume_ratio);
           const structFail=(x.structural_failures||[]).length>0;
           // 核心因子(價格方向/關鍵價/結構型態/有無結構失效)決定命中與否；
