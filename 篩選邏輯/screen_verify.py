@@ -150,16 +150,20 @@ def _ensure_table(db_path: str = "mls.db") -> None:
                 c.execute(f"ALTER TABLE pool_outcome ADD COLUMN {col} TEXT")
         if "chase_risk" not in cols:
             c.execute("ALTER TABLE pool_outcome ADD COLUMN chase_risk REAL")
-        # Phase 1 量測欄補欄(同一套 ALTER 相容模式,舊列留 NULL 不回填假值)
-        for col in _MEASURE_COLS_REAL:
-            if col not in cols:
-                c.execute(f"ALTER TABLE pool_outcome ADD COLUMN {col} REAL")
-        for col in _MEASURE_COLS_INT:
-            if col not in cols:
-                c.execute(f"ALTER TABLE pool_outcome ADD COLUMN {col} INTEGER")
-        for col in _MEASURE_COLS_TEXT:
-            if col not in cols:
-                c.execute(f"ALTER TABLE pool_outcome ADD COLUMN {col} TEXT")
+        # Phase 1 量測欄補欄(同一套 ALTER 相容模式,舊列留 NULL 不回填假值)。
+        # 逐欄各自 try:本函式在 module import 時就會跑,一欄失敗若往上冒
+        # 會讓整個 screen_verify import 不進去 → 連既有命中率都一起沒了。
+        # 量測欄補不上最壞只是那欄留空,不值得賠掉整支模組。
+        for cols_group, sqltype in ((_MEASURE_COLS_REAL, "REAL"),
+                                    (_MEASURE_COLS_INT, "INTEGER"),
+                                    (_MEASURE_COLS_TEXT, "TEXT")):
+            for col in cols_group:
+                if col in cols:
+                    continue
+                try:
+                    c.execute(f"ALTER TABLE pool_outcome ADD COLUMN {col} {sqltype}")
+                except Exception as e:
+                    print(f"[screen_verify] 量測欄 {col} 補欄失敗(略過): {e}", flush=True)
         c.commit()
     try:
         store.register_table(TABLE, PLUGIN)
@@ -283,6 +287,25 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
     # 為什麼要三個:南亞科 -6.6% vs 大盤 -2% vs 族群 -4% = 三項全敗 = 真的挑錯;
     # 但 -0.5% vs 大盤 -2% vs 族群 -4% 在舊制同樣被打成 Fail,實際上它非常強。
     # 把後者當普通選股失敗會讓人往錯的方向改篩選器。
+    #
+    # ⚠ 整段包 try:量測層沒有資格弄垮 15:05 的當日復盤。掛掉最壞是新欄位留 None,
+    #   絕不能變成「今天沒有 pool_outcome」——那會讓命中率頁整天空白。
+    market_t1 = None
+    try:
+        _measure_three_way(items, pool, bar, bar_prev)
+    except Exception as _e:
+        print(f"[screen_verify] Phase1 三分命中率降級(不影響 hit): {_e}", flush=True)
+    else:
+        market_t1 = next((r.get("market_ret_t1") for r in items
+                          if r.get("market_ret_t1") is not None), None)
+
+    store.upsert_intraday(TABLE, PLUGIN, rows, db_path)
+    return _finish_verify(items, rows, pool, envs, d, pool_date, now,
+                          breadth_pct, risk_off, regime_excluded, bar, market_t1)
+
+
+def _measure_three_way(items, pool, bar, bar_prev) -> None:
+    """把三分命中率與環境快照掛到每一列(就地改)。attribution-only。"""
     _cg = _code_group()
     t1_ret = {}
     for _c, _bb in bar.items():
@@ -333,8 +356,10 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
             "sector_regime_version": pl.get("sector_regime_version"),
         })
 
-    store.upsert_intraday(TABLE, PLUGIN, rows, db_path)
 
+def _finish_verify(items, rows, pool, envs, d, pool_date, now,
+                   breadth_pct, risk_off, regime_excluded, bar, market_t1) -> dict:
+    """彙總回傳。hit / denom / hit_rate 的算法與語意完全不變。"""
     scored = [r for r in items if r["hit"] is not None]     # 攻擊+引擎(有資料;普跌日攻擊軌已剔除)
     denom = len(scored)
     hits = sum(1 for r in scored if r["hit"] == 1)

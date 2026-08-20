@@ -121,5 +121,64 @@ class ThreeWayHitTests(unittest.TestCase):
                 self.assertEqual(got.get(k), exp[k], f"{exp['code']}.{k}")
 
 
+class FailureIsolationTests(unittest.TestCase):
+    """15:05 的當日復盤不得被量測層拖垮 —— 掛掉最壞是新欄位留 None。"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.db = str(Path(self._tmp.name) / "f.db")
+        _seed_db(self.db)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_verify_survives_measurement_explosion(self):
+        """量測層整個爆掉,hit / denom / hit_rate 必須跟正常跑完全一樣。"""
+        good = sv.verify(self.db, DATA_DATE)
+        orig = sv._measure_three_way
+        sv._measure_three_way = lambda *a, **k: (_ for _ in ()).throw(
+            RuntimeError("measurement blew up"))
+        try:
+            bad = sv.verify(self.db, DATA_DATE)
+        finally:
+            sv._measure_three_way = orig
+
+        self.assertEqual(bad["denom"], good["denom"])
+        self.assertEqual(bad["hits"], good["hits"])
+        self.assertEqual(bad["hit_rate"], good["hit_rate"])
+        self.assertEqual(bad["risk_off"], good["risk_off"])
+        self.assertEqual([r["code"] for r in bad["items"]],
+                         [r["code"] for r in good["items"]])
+        for g, b in zip(good["items"], bad["items"]):
+            self.assertEqual(g["hit"], b["hit"], g["code"])
+            self.assertEqual(g["verdict"], b["verdict"], g["code"])
+        # 量測欄降級成缺值,但復盤本身照常產出
+        self.assertIsNone(bad["hit_abs_rate"])
+        self.assertGreater(bad["denom"], 0)
+
+    def test_stats_survives_missing_candidate_pool(self):
+        """RS 分桶要 JOIN candidate_pool(別人的表);沒有它 stats 仍須回得出命中率。"""
+        sv.verify(self.db, DATA_DATE)
+        with store.conn(self.db) as c:
+            c.execute("DROP TABLE candidate_pool")
+            c.commit()
+        s = sv.stats(days=3650, db_path=self.db)
+        self.assertIsNotNone(s["overall_hit_rate"])
+        self.assertEqual(s["by_relative_strength"], [])
+
+    def test_verify_tolerates_pool_payload_garbage(self):
+        """payload 壞掉/非 JSON 不得炸復盤。"""
+        with store.conn(self.db) as c:
+            c.execute("UPDATE candidate_pool SET payload='{not json'")
+            c.commit()
+        r = sv.verify(self.db, DATA_DATE)
+        self.assertGreater(len(r["items"]), 0)
+        self.assertIsNone(self._row(r, "2408")["market_regime"])
+
+    @staticmethod
+    def _row(res, code):
+        return next(x for x in res["items"] if x["code"] == code)
+
+
 if __name__ == "__main__":
     unittest.main()

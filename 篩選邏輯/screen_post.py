@@ -356,7 +356,10 @@ def _ret_3d(code: str, d: _dt.date, db_path: str) -> float | None:
     刻意獨立於 _derive_multiday:那支的回傳會被 **splat 進 layered_score.build_input,
     加 key 會直接 TypeError,而且那是 decision path。
     """
-    bars = store.read_recent("daily_bar", code, d, 4, db_path)   # 新→舊
+    try:
+        bars = store.read_recent("daily_bar", code, d, 4, db_path)   # 新→舊
+    except Exception:
+        return None          # 量測讀不到不猜、更不能讓 build 掛掉
     closes = [x.get("close") for x in bars if x.get("close") is not None]
     if len(closes) < 4 or not closes[3]:
         return None
@@ -703,7 +706,11 @@ def build(universe: list[str], db_path: str = "mls.db",
     # PHASE1 MEASUREMENT:近 3 日累計漲跌(族群相對強度用)。刻意另存,絕不併進
     # derivs —— derivs 會被 **splat 進 layered_score.build_input(具名 keyword-only),
     # 多一個 key 就是 TypeError,而且那條路是 decision path。
-    measure_ret3 = {c: _ret_3d(c, d, db_path) for c in universe}
+    try:
+        measure_ret3 = {c: _ret_3d(c, d, db_path) for c in universe}
+    except Exception as _e:      # 量測讀取失敗一律降級,不得中斷名單產出
+        measure_ret3 = {}
+        print(f"[screen_post] ret_3d 量測降級: {_e}", flush=True)
     flow_now = {c: (af_t.get(c) or {}).get("net_active") for c in universe}
     flow_prev = {c: (af_y.get(c) or {}).get("net_active") for c in universe}
     sector_turn = recovery_scan.sector_flow_turns(
@@ -871,11 +878,20 @@ def build(universe: list[str], db_path: str = "mls.db",
     # 不回頭改任何決策欄。上面那道既有 Risk Off 閘(_read_regime,舊 30% 門檻)
     # 繼續控制行為,新 market_regime 只寫欄位 —— 兩套並存是 Phase 1 的定義,
     # 一邊宣稱不改行為一邊順手換掉舊閘,就不是 measurement phase 了。
-    market_ctx = build_market_context(universe, b)
-    _daily_map = {c: {"ret": derivs[c].get("change_rate"),
-                      "ret_3d": measure_ret3.get(c)} for c in universe}
-    build_context_layers(kept, market_ctx, _daily_map, cg)      # pool 與 kept 同物件
-    build_context_layers(dropped, market_ctx, _daily_map, cg)
+    #
+    # ⚠ 整段包在 try 內,而且刻意不重拋:量測層沒有資格弄垮 18:00 的候選池產出。
+    #   這層掛掉最壞的結果是「新欄位缺值」,絕不能變成「明天沒有名單」。
+    #   兩者風險等級差三個數量級,所以這裡寧可靜靜降級也不讓例外往上冒。
+    market_ctx = {}
+    try:
+        market_ctx = build_market_context(universe, b)
+        _daily_map = {c: {"ret": (derivs.get(c) or {}).get("change_rate"),
+                          "ret_3d": measure_ret3.get(c)} for c in universe}
+        build_context_layers(kept, market_ctx, _daily_map, cg)   # pool 與 kept 同物件
+        build_context_layers(dropped, market_ctx, _daily_map, cg)
+    except Exception as _e:
+        market_ctx = {"measure_error": f"{type(_e).__name__}: {_e}"[:200]}
+        print(f"[screen_post] Phase1 量測層降級(不影響名單): {_e}", flush=True)
 
     gen = _dt.datetime.now().isoformat(timespec="seconds")
 

@@ -166,6 +166,69 @@ class TestPercentileCrossSection(unittest.TestCase):
         self.assertIsNone(b["market_rel_pctile"])
 
 
+class TestFailureIsolation(unittest.TestCase):
+    """量測層沒有資格弄垮決策管線 —— 掛掉最壞是欄位留空,不能是「明天沒名單」。"""
+
+    def test_market_context_survives_dead_network(self):
+        """TWSE/TPEx 取數失敗(斷網、逾時、改版)不得往上拋。"""
+        import market_regime as _mr
+        orig_f, orig_a = _mr.fetch_breadth, _mr.assess
+        _mr.fetch_breadth = lambda force=False: (_ for _ in ()).throw(
+            OSError("connection timed out"))
+        _mr.assess = lambda *a, **k: (_ for _ in ()).throw(OSError("boom"))
+        try:
+            ctx = sp.build_market_context(["A"], {"A": {"close": 10, "ma5": 9, "ma20": 8}})
+        finally:
+            _mr.fetch_breadth, _mr.assess = orig_f, orig_a
+        self.assertIsNone(ctx["market_regime"])
+        self.assertIn("market_regime_error", ctx)
+        # 不依賴網路的量測仍要算得出來
+        self.assertIsNotNone(ctx["pool51_below_ma5_pct"])
+
+    def test_ret_3d_survives_db_failure(self):
+        """DB 讀取失敗回 None,不炸掉整包 build。"""
+        import store
+        orig = store.read_recent
+        store.read_recent = lambda *a, **k: (_ for _ in ()).throw(
+            RuntimeError("database is locked"))
+        try:
+            self.assertIsNone(sp._ret_3d("2408", None, "x.db"))
+        finally:
+            store.read_recent = orig
+
+    def test_pct_below_handles_all_missing_ma(self):
+        """均線全缺 → None,不是 ZeroDivisionError。"""
+        self.assertIsNone(sp._pct_below({"A": {"close": 10}}, ["A"], "ma5"))
+        self.assertIsNone(sp._pct_below({}, [], "ma20"))
+
+    def test_context_layers_handles_all_null_returns(self):
+        """整池當日漲跌全缺(資料未到)不得炸,欄位留 None。"""
+        cg = {"A": "封測", "B": "封測"}
+        dm = {"A": {"ret": None, "ret_3d": None}, "B": {"ret": None, "ret_3d": None}}
+        out = sp.build_context_layers([{"code": "A"}, {"code": "B"}], {}, dm, cg)
+        self.assertIsNone(out[0]["sector_rel_peer"])
+        self.assertIsNone(out[0]["sector_regime"])
+
+    def test_context_layers_handles_unknown_sector(self):
+        """族群對照缺該檔(新標的尚未歸類)不得炸。"""
+        out = sp.build_context_layers(
+            [{"code": "9999"}], MARKET_CTX, {"9999": {"ret": 1.0, "ret_3d": 1.0}}, {})
+        self.assertIsNone(out[0]["sector_name"])
+        self.assertEqual(out[0]["sector_peer_n"], 0)
+
+    def test_context_layers_handles_single_stock_sector(self):
+        """族群只有自己一檔 → peer 0 個,median 無從算起,不得炸。"""
+        out = sp.build_context_layers(
+            [{"code": "A"}], MARKET_CTX, {"A": {"ret": 3.0, "ret_3d": 3.0}}, {"A": "獨行"})
+        self.assertEqual(out[0]["sector_peer_n"], 0)
+        self.assertIsNone(out[0]["sector_peer_ret_median"])
+        self.assertIsNone(out[0]["sector_rel_peer"])
+        self.assertFalse(out[0]["sector_breadth_reliable"])
+
+    def test_context_layers_handles_empty_items(self):
+        self.assertEqual(sp.build_context_layers([], MARKET_CTX, {}, {}), [])
+
+
 class TestMarketRegimeNormalize(unittest.TestCase):
 
     def test_mapping(self):
