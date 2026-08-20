@@ -733,12 +733,20 @@ document.addEventListener('click',e=>{
     const erefT=(x.entry_ref??x.base_close??x.trigger_price)==null?'—':Number(x.entry_ref??x.base_close??x.trigger_price).toLocaleString('en-US');
     const vr=finite(x.base_volume_ratio)??finite(x.volume_ratio);
     const volText=vr==null?'量比待補（門檻 >1.2x）':`量比 ${vr}x（門檻 >1.2x${vr>1.2?'，達標':'，未達'}）`;
-    const inst=x.institution_label||_instStreakText(x)||(x.chip_label&&x.chip_label!=='待法人資料'?x.chip_label:null);
+    // 一律優先吃 base_*(池日凍結)。入選依據回答的是「入選當天憑什麼選它」，
+    // 用盤中即時籌碼回答會變成另一個問題；而盤中即時路徑根本不帶這些欄位，
+    // 退回即時值時 51 檔會全變同一句「待補」，讀起來就像寫死的門檻文字。
+    const _bs={inst_streak:x.base_inst_streak??x.inst_streak,
+               chip_status:x.base_chip_status??x.chip_status};
+    const inst=(x.base_institution_label||x.institution_label)||_instStreakText(_bs)
+      ||((x.base_chip_label||x.chip_label)&&(x.base_chip_label||x.chip_label)!=='待法人資料'?(x.base_chip_label||x.chip_label):null);
     const instText=inst||'法人待補';
-    const flow=x.flow_label||x.flow_status_label||'';
-    const chipText=(x.chip_status==='positive'?'偏多':x.chip_status==='negative'?'轉弱':x.chip_status?'持平':'待補')+(flow?`（${flow}）`:'');
-    const fails=Array.isArray(x.structural_failures)?x.structural_failures:[];
-    const gates=finite(x.failure_gate_count);
+    const flow=x.base_flow_status_label||x.flow_label||x.flow_status_label||'';
+    const cs=_bs.chip_status;
+    const chipText=(cs==='positive'?'偏多':cs==='negative'?'轉弱':cs?'持平':'待補')+(flow?`（${flow}）`:'');
+    const _bf=x.base_structural_failures??x.structural_failures;
+    const fails=Array.isArray(_bf)?_bf:[];
+    const gates=finite(x.base_failure_gate_count)??finite(x.failure_gate_count);
     const structText=fails.length?`入選時已有 ${fails.join('、')}`:(gates===0||fails.length===0?'入選時四道結構全過':'結構不失效');
     return [
       ['core','價格表現',`關鍵價 ${erefT}`],
@@ -1419,7 +1427,16 @@ document.addEventListener('click',e=>{
           const byCode=new Map((snap&&Array.isArray(snap.items)?snap.items:[]).map(it=>[String(it.code),it]));
           for(const row of (data.items||data.rows||[])){
             const s=byCode.get(String(rowCode(row)));
-            if(s){row.base_close=s.close;row.base_change_rate=s.change_rate;row.base_volume_ratio=s.volume_ratio;}
+            // 入選依據的「法人籌碼／籌碼結構／結構是否失效」三列同樣要吃池日凍結值。
+            // 盤中即時路徑不帶 chip_status/inst_streak/structural_failures(實測 0/51)，
+            // 只靠即時欄位會讓 51 檔這三列全退成同一句「待補」，看起來就像寫死。
+            // 池日那份是有差異的(實測 chip_status 22正/29負、法人標籤 15 種、量比 43 個相異值)。
+            // 一律存成 base_*，不覆蓋 A 區既有即時欄位。
+            if(s){row.base_close=s.close;row.base_change_rate=s.change_rate;row.base_volume_ratio=s.volume_ratio;
+              row.base_chip_status=s.chip_status;row.base_institution_label=s.institution_label;
+              row.base_inst_streak=s.inst_streak;row.base_chip_label=s.chip_label;
+              row.base_flow_status_label=s.flow_status_label||s.flow_label;
+              row.base_structural_failures=s.structural_failures;row.base_failure_gate_count=s.failure_gate_count;}
           }
         }catch(e){}
       }
