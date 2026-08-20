@@ -2784,12 +2784,18 @@ async function loadBreadth(embedded){
    固定表寬+允許換行,四欄一定同框顯示,不橫向捲動也不需要左右滑。 */
 .mr-c-table{table-layout:fixed;width:100%}
 .mr-c-table th,.mr-c-table td{white-space:normal;overflow-wrap:anywhere;word-break:break-word;vertical-align:top}
-.mr-c-table th:nth-child(1),.mr-c-table td:nth-child(1){width:27%}
-.mr-c-table th:nth-child(2),.mr-c-table td:nth-child(2){width:30%}
-.mr-c-table th:nth-child(3),.mr-c-table td:nth-child(3){width:30%}
-.mr-c-table th:nth-child(4),.mr-c-table td:nth-child(4){width:13%;text-align:center}
+.mr-c-table th:nth-child(1),.mr-c-table td:nth-child(1){width:33%}
+.mr-c-table th:nth-child(2),.mr-c-table td:nth-child(2){width:27%}
+.mr-c-table th:nth-child(3),.mr-c-table td:nth-child(3){width:28%}
+.mr-c-table th:nth-child(4),.mr-c-table td:nth-child(4){width:12%;text-align:center}
 .mr-c-table .mr-c-tag{display:block;margin:0 0 2px}
-@media(max-width:640px){.mr-c-table{font-size:11px}.mr-c-table th,.mr-c-table td{padding:5px 6px}}
+@media(max-width:640px){
+  .mr-c-table{font-size:11px}
+  .mr-c-table th,.mr-c-table td{padding:5px 6px}
+  /* 評分卡在手機不再是右側窄欄(會變成半空的方塊),改成整列三格橫排 */
+  .mr-c-score{flex:1 1 100%;flex-direction:row;justify-content:space-between;gap:6px}
+  .mr-c-score-row{text-align:center;flex:1}
+}
 /* 待進場卡的「入選條件」表:只有入選依據一欄(還沒有 T+1 對照資料) */
 .mr-c-base-table th:nth-child(1),.mr-c-base-table td:nth-child(1){width:34%}
 .mr-c-base-table th:nth-child(2),.mr-c-base-table td:nth-child(2){width:66%}
