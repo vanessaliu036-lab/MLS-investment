@@ -561,9 +561,12 @@ def verify_history(date: str = Query("", description="pool_date;預設最近已�
     obs_median = obs_rets[len(obs_rets) // 2] if obs_rets else None
     obs_pos = sum(1 for x in obs_rets if x > 0)
 
+    # 一律借用 screen_verify._rate,不在這裡自己實作第二份 ——
+    # 母體規則(只算可判定那批)只能有一個定義,兩份會漂移:
+    # 這份原本用全池母體,於是 denom=0 的日子還印得出「絕對命中率 64.7%」,
+    # 跟同頁的「可判定 0 檔」自相矛盾(使用者 2026-08-20 發現)。
     def _rate(key):
-        vals = [r[key] for r in rows if r.get(key) is not None]
-        return round(sum(vals) / len(vals) * 100, 1) if vals else None
+        return screen_verify._rate(rows, key)
 
     # 環境快照:那天到底是什麼盤,擺在最上面才知道命中率低是選股還是環境。
     _first = next((r for r in rows if r.get("market_ret_t1") is not None), {})
