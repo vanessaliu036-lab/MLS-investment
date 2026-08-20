@@ -79,7 +79,25 @@ def _local_config_attr(name: str):
 
 
 def _read_regime() -> dict:
-    """Layer 0 真實寬度(TWSE 漲家數/總家數)。取數失敗回 unknown — 不假裝、不當 Risk On。"""
+    """Layer 0 真實寬度(TWSE 漲家數/總家數)。取數失敗回 unknown — 不假裝、不當 Risk On。
+
+    ⚠ 2026-08-20 修:昨日寬度不得驅動今天的 Risk Off。
+    本函式是實際掌控整包候選池的閘 —— 回 risk_off=True 時 build() 會把 51 檔全部
+    降成觀察、清掉 trigger_price。但 fetch_breadth() 拿的是官方 EOD,盤中與收盤後
+    一段時間內回的都是「前一交易日」的收盤寬度(回傳帶 data_date/is_stale 標明),
+    而 build 跑在 15:05,那時 TWSE EOD 常常還沒發布。
+
+    實際咬過一次:candidate_pool 2026-08-18 是 {攻擊軌18, 引擎軌20, 觀察13},
+    2026-08-19 卻是 {觀察: 51} 全數禁新倉 —— 但 08-19 的真實寬度是 36.4%
+    (漲858/跌1245),高於 30% 門檻,根本不該判 Risk Off。結果 08-20 整天沒有
+    任何可操作名單,隔日命中率分母也會是 0。
+
+    同一支 market_regime.py 的 assess() 早就防了這件事(breadth_live = None if stale),
+    註解寫「昨天的下跌日不能把今天定調成系統性下殺、封殺今天的個股訊號」——
+    有防護的沒被呼叫、被呼叫的沒防護,這裡對齊過來。
+    stale 時退成中性(不擋),不是退成 Risk Off:寧可讓隔日盤中那道即時寬度閘
+    (screen_intraday RISK_OFF_BREADTH_PCT)去擋,也不要用昨天的數字先把名單清光。
+    """
     try:
         import market_regime as _mr
         b = _mr.fetch_breadth()
@@ -87,9 +105,14 @@ def _read_regime() -> dict:
         if tb is None:
             return {"unknown": True, "risk_off": False}
         pct = round(tb * 100, 1)
-        return {"breadth_pct": pct, "advancing": b.get("advancing"),
+        base = {"breadth_pct": pct, "advancing": b.get("advancing"),
                 "declining": b.get("declining"), "total": b.get("total"),
-                "risk_off": pct < 30, "risk_on": pct >= 70, "unknown": False}
+                "breadth_date": b.get("data_date"), "unknown": False}
+        if b.get("is_stale"):
+            # 只當診斷顯示,不參與 Risk 判定
+            return {**base, "stale": True, "risk_off": False, "risk_on": False}
+        return {**base, "stale": False,
+                "risk_off": pct < 30, "risk_on": pct >= 70}
     except Exception as e:
         return {"unknown": True, "risk_off": False, "error": str(e)[:80]}
 
@@ -106,6 +129,11 @@ def _pool_purpose(applies, pool, regime) -> str:
                 f"— 禁新倉,{n} 檔僅追蹤觀察,非進場名單")
     if regime.get("unknown"):
         return f"適用 {applies}(次一交易日)— {n} 檔候選,非進場名單(市場寬度取數失敗,待修)"
+    if regime.get("stale"):
+        # 誠實講明:當日寬度未發布,用的是前一交易日收盤值,故不以它判 Risk Off
+        return (f"適用 {applies}(次一交易日)— {n} 檔候選,非進場名單"
+                f"(當日全市場寬度尚未發布,顯示的 {regime.get('breadth_pct')}% 為 "
+                f"{regime.get('breadth_date') or '前一交易日'} 收盤值,不以昨日寬度定調今天)")
     return f"適用 {applies}(次一交易日)— {n} 檔候選,非進場名單"
 
 PLUGIN = "screen_post"
