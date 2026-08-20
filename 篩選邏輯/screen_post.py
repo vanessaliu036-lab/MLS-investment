@@ -350,6 +350,19 @@ def _derive_multiday(code: str, d: _dt.date, db_path: str) -> dict:
             "inst_3d": inst_3d, "inst_5d": inst_5d}
 
 
+def _ret_3d(code: str, d: _dt.date, db_path: str) -> float | None:
+    """近 3 日累計漲跌%(T 收 vs T-3 收)。PHASE1 MEASUREMENT,不進 decision path。
+
+    刻意獨立於 _derive_multiday:那支的回傳會被 **splat 進 layered_score.build_input,
+    加 key 會直接 TypeError,而且那是 decision path。
+    """
+    bars = store.read_recent("daily_bar", code, d, 4, db_path)   # 新→舊
+    closes = [x.get("close") for x in bars if x.get("close") is not None]
+    if len(closes) < 4 or not closes[3]:
+        return None
+    return round((closes[0] - closes[3]) / closes[3] * 100, 2)
+
+
 def _relative_strength(universe: list[str], derivs: dict) -> dict:
     """族群強度 + 相對大盤(個股漲跌 − 基準漲跌)。
 
@@ -376,6 +389,219 @@ def _relative_strength(universe: list[str], derivs: dict) -> dict:
         mr = (round(v - market, 2) if (v is not None and market is not None) else None)
         out[c] = {"sector_rel": sr, "market_rel": mr}
     return out
+
+
+# ============================================================ Phase 1 量測層
+#
+# Layer 1 市場環境 / Layer 2 族群環境 / Layer 3 相對強度(peer-exclusive)。
+#
+# ⚠ 鐵律:本區塊所有輸出都是 attribution-only,不得進入 decision path。
+#   candidate eligibility / tier / track / order 一律不受影響,驗收條件就是
+#   影子 diff 的 decision 組 100% identical。要接進篩選是 Phase 3 的事,
+#   且必須先有 Phase 2 的回測結論,不准看到一天數字漂亮就加閘。
+#
+# ⚠ 為什麼不直接修好既有的 sector_rel:
+#   現行 _relative_strength() 的族群中位數「含自己」,而該值會流進
+#   layered_score → continuation → strong → classify() → candidate pool。
+#   ABF載板只有 3 檔,自己就佔 1/3,改成 exclude-self 會直接位移名單 ——
+#   那 Phase 1 就已經改了模型。故 legacy 值原封不動保留到 Phase 3
+#   兩個舊分數退場時,再一次做 canonical rename。
+
+MARKET_REGIME_VERSION = "phase1-assess-v1"
+SECTOR_REGIME_VERSION = "phase1-provisional-v1"
+
+# peer 數(排除自己後)< 此值 → breadth 不足以代表 sector regime,退小樣本規則。
+# 池內 ABF載板 3 檔(peer 2)、無人機 4 檔(peer 3)會落在這裡。
+SECTOR_BREADTH_MIN_PEERS = 4
+
+
+def _pct_below(bars: dict, universe: list[str], key: str) -> float | None:
+    """池內收盤跌破指定均線的比例(%)。缺值不計入分母,全缺回 None(不猜)。"""
+    total = hit = 0
+    for c in universe:
+        row = bars.get(c) or {}
+        close, ma = row.get("close"), row.get(key)
+        if close is None or not ma:
+            continue
+        total += 1
+        hit += (close < ma)
+    return round(hit / total * 100, 1) if total else None
+
+
+def build_market_context(universe: list[str], bars: dict,
+                         index_pct: float | None = None,
+                         breadth_row: dict | None = None,
+                         breadth_source: str | None = None) -> dict:
+    """Layer 1 市場環境(量測用)。
+
+    ⚠ 不動 market_regime.assess() 的演算法,也不碰 _read_regime() 那條既有的
+      Risk Off 閘 —— 舊 RISK_OFF_BREADTH_PCT 繼續控制現有行為,新 regime 只寫欄位。
+
+    breadth_row/breadth_source 供 Phase 2 歷史回填傳入 51 池代理寬度(標 pool51);
+    線上 build 不傳 → 走全市場真實寬度(標 market)。兩種口徑絕不共用同一個名字。
+
+    跌破短均線比例只是「另外算並掛上」,沒有塞進 assess() 的判定 ——
+    哪個指標對 T+1 真有鑑別力是 Phase 2 要測的,現在硬塞等於拍腦袋設權重。
+    """
+    ctx = {
+        "market_regime_raw": None,
+        "market_regime": None,
+        "market_regime_source": None,
+        "market_regime_version": MARKET_REGIME_VERSION,
+        "market_breadth_pct": None,
+        "market_index_pct": index_pct,
+        "pool51_below_ma5_pct": _pct_below(bars, universe, "ma5"),
+        "pool51_below_ma20_pct": _pct_below(bars, universe, "ma20"),
+    }
+    try:
+        import market_regime as _mr
+        row = breadth_row if breadth_row is not None else _mr.fetch_breadth()
+        if row and row.get("true_breadth") is not None:
+            ctx["market_breadth_pct"] = round(row["true_breadth"] * 100, 1)
+            ctx["market_regime_source"] = breadth_source or "market"
+        res = _mr.assess(row, index_pct) or {}
+        ctx["market_regime_raw"] = res.get("regime")
+        ctx["market_regime"] = _mr.normalize_regime(res.get("regime"))
+    except Exception as e:
+        ctx["market_regime_error"] = f"{type(e).__name__}: {e}"[:120]
+    return ctx
+
+
+def _pctile_map(vals: dict) -> dict:
+    """當日橫截面百分位(0~100,高=強)。缺值回 None,不參與排名。
+
+    ⚠ 必須每日重排:要回答的是「當天這檔在市場裡多強」,不是「它跟三週前
+      另一檔比多強」。跨日混在一起算百分位會讓這個問題失去意義。
+    """
+    valid = {c: v for c, v in vals.items() if v is not None}
+    n = len(valid)
+    if n < 2:
+        return {c: None for c in vals}
+    out = {}
+    for c in vals:
+        v = valid.get(c)
+        if v is None:
+            out[c] = None
+            continue
+        below = sum(1 for x in valid.values() if x < v)
+        equal = sum(1 for x in valid.values() if x == v)
+        out[c] = round((below + 0.5 * equal) / n * 100, 1)
+    return out
+
+
+def _sector_regime(ret_median, breadth, rel_3d, reliable, market_regime) -> str:
+    """Layer 2 族群環境 v1 — 刻意透明、刻意簡單。
+
+    Phase 1 是收資料不是追求完美分類,門檻 Phase 2 很可能全部重校,
+    所以標 SECTOR_REGIME_VERSION 讓日後看得出這批是哪版規則產生的。
+    """
+    import market_regime as _mr
+    if ret_median is None or rel_3d is None:
+        return None
+    if reliable and breadth is not None:
+        if ret_median < 0 and breadth < 40 and rel_3d < 0:
+            return _mr.RISK_OFF
+        if ret_median > 0 and breadth >= 60 and rel_3d > 0:
+            return _mr.RISK_ON
+        return _mr.NEUTRAL
+    # 小樣本:不使用 breadth(2~3 個 peer 的漲跌家數不足以代表族群),改靠大盤定調
+    if ret_median < 0 and rel_3d < 0 and market_regime == _mr.RISK_OFF:
+        return _mr.RISK_OFF
+    if ret_median > 0 and rel_3d > 0 and market_regime != _mr.RISK_OFF:
+        return _mr.RISK_ON
+    return _mr.NEUTRAL
+
+
+def build_context_layers(items: list[dict], market_ctx: dict,
+                         daily_map: dict, code_group: dict) -> list[dict]:
+    """Phase 1 measurement only.
+
+    Must not alter candidate eligibility / tier / track / order.
+
+    daily_map: {code: {"ret": 當日漲跌%, "ret_3d": 近3日累計漲跌%}}
+    每檔掛上市場/族群環境與 peer-exclusive 相對強度。所有欄位 attribution-only。
+    """
+    import statistics
+    from collections import defaultdict
+
+    codes = [it.get("code") for it in items]
+    rets = {c: (daily_map.get(c) or {}).get("ret") for c in codes}
+    ret3 = {c: (daily_map.get(c) or {}).get("ret_3d") for c in codes}
+
+    # 族群成員(全體,含自己)—— 族群層級的量描述的是族群本身,每個成員看到同一個值。
+    members: dict[str, list[str]] = defaultdict(list)
+    for c in codes:
+        s = code_group.get(c)
+        if s:
+            members[s].append(c)
+
+    def _median(vals):
+        vals = [v for v in vals if v is not None]
+        return round(statistics.median(vals), 2) if vals else None
+
+    market_ret_median = _median(rets.values())
+    market_ret3_median = _median(ret3.values())
+
+    sector_ret_median, sector_breadth, sector_rel_3d = {}, {}, {}
+    for s, mem in members.items():
+        sector_ret_median[s] = _median([rets[c] for c in mem])
+        vals = [rets[c] for c in mem if rets[c] is not None]
+        sector_breadth[s] = (round(sum(1 for v in vals if v > 0) / len(vals) * 100, 1)
+                             if vals else None)
+        s3, m3 = _median([ret3[c] for c in mem]), market_ret3_median
+        sector_rel_3d[s] = (round(s3 - m3, 2)
+                            if (s3 is not None and m3 is not None) else None)
+
+    # peer-exclusive(排除自己)—— 個股相對強度必須排除自己,否則小族群裡
+    # 自己會把基準拉向自己,「贏過族群」變成部分在跟自己比。
+    peer_med, peer_n_map, sector_rel_peer = {}, {}, {}
+    market_rel_peer = {}
+    for c in codes:
+        s = code_group.get(c)
+        peers = [x for x in members.get(s, []) if x != c] if s else []
+        peer_n_map[c] = len(peers)
+        pm = _median([rets[x] for x in peers])
+        peer_med[c] = pm
+        sector_rel_peer[c] = (round(rets[c] - pm, 2)
+                              if (rets[c] is not None and pm is not None) else None)
+        mm = _median([rets[x] for x in codes if x != c])
+        market_rel_peer[c] = (round(rets[c] - mm, 2)
+                              if (rets[c] is not None and mm is not None) else None)
+
+    mkt_pct = _pctile_map(market_rel_peer)
+    sec_pct = _pctile_map(sector_rel_peer)
+    mregime = market_ctx.get("market_regime")
+
+    for it in items:
+        c = it.get("code")
+        s = code_group.get(c)
+        peer_n = peer_n_map.get(c, 0)
+        reliable = peer_n >= SECTOR_BREADTH_MIN_PEERS
+        it.update(market_ctx)
+        it.update({
+            "sector_name": s,
+            "sector_member_n": len(members.get(s, [])) if s else 0,
+            "sector_peer_n": peer_n,
+            # 族群層級(含自己):描述族群本身,同族群成員共用一個值
+            "sector_ret_median": sector_ret_median.get(s),
+            "sector_breadth": sector_breadth.get(s),
+            "sector_breadth_reliable": reliable,
+            "sector_rel_3d": sector_rel_3d.get(s),
+            "sector_regime": _sector_regime(
+                sector_ret_median.get(s), sector_breadth.get(s),
+                sector_rel_3d.get(s), reliable, mregime),
+            "sector_regime_source": "pool51",
+            "sector_regime_version": SECTOR_REGIME_VERSION,
+            # 個股層級(排除自己):attribution-only,不餵 layered_score
+            "sector_peer_ret_median": peer_med.get(c),
+            "sector_rel_peer": sector_rel_peer.get(c),
+            "market_rel_peer": market_rel_peer.get(c),
+            "market_ret_median": market_ret_median,
+            "stock_ret": rets.get(c),
+            "market_rel_pctile": mkt_pct.get(c),
+            "sector_rel_pctile": sec_pct.get(c),
+        })
+    return items
 
 
 def _strict_previous_bar(rows: list[dict], d: _dt.date) -> dict | None:
@@ -469,7 +695,15 @@ def build(universe: list[str], db_path: str = "mls.db",
     for c in universe:
         if (q.get(c) or {}).get("change_rate") is not None:
             derivs[c]["change_rate"] = (q.get(c) or {}).get("change_rate")
+    # ⚠ PHASE1 LEGACY:rels 的族群/大盤中位數「含自己」,且會流進 layered_score
+    #   → continuation → strong → classify() → candidate pool。Phase 3 兩個舊分數
+    #   退場前一律不得改動,否則 Phase 1 就已經改了模型。量測用的 exclude-self
+    #   版本另外算在 build_context_layers(),兩者刻意不共用名字。
     rels = _relative_strength(universe, derivs)
+    # PHASE1 MEASUREMENT:近 3 日累計漲跌(族群相對強度用)。刻意另存,絕不併進
+    # derivs —— derivs 會被 **splat 進 layered_score.build_input(具名 keyword-only),
+    # 多一個 key 就是 TypeError,而且那條路是 decision path。
+    measure_ret3 = {c: _ret_3d(c, d, db_path) for c in universe}
     flow_now = {c: (af_t.get(c) or {}).get("net_active") for c in universe}
     flow_prev = {c: (af_y.get(c) or {}).get("net_active") for c in universe}
     sector_turn = recovery_scan.sector_flow_turns(
@@ -632,6 +866,17 @@ def build(universe: list[str], db_path: str = "mls.db",
             it["entry_rule"] = "市場 Risk Off·禁新倉,僅追蹤不進場"
             it["trigger_price"] = None
 
+    # ── Phase 1 量測層(attribution-only)────────────────────────────────
+    # 刻意排在所有決策動作「之後」:track/tier/order 這時全部定案,本層只掛欄位,
+    # 不回頭改任何決策欄。上面那道既有 Risk Off 閘(_read_regime,舊 30% 門檻)
+    # 繼續控制行為,新 market_regime 只寫欄位 —— 兩套並存是 Phase 1 的定義,
+    # 一邊宣稱不改行為一邊順手換掉舊閘,就不是 measurement phase 了。
+    market_ctx = build_market_context(universe, b)
+    _daily_map = {c: {"ret": derivs[c].get("change_rate"),
+                      "ret_3d": measure_ret3.get(c)} for c in universe}
+    build_context_layers(kept, market_ctx, _daily_map, cg)      # pool 與 kept 同物件
+    build_context_layers(dropped, market_ctx, _daily_map, cg)
+
     gen = _dt.datetime.now().isoformat(timespec="seconds")
 
     # 寫前清該日舊列(治同日重建殘留:落選碼舊列會留著顯示缺籌碼/錯 chip)
@@ -674,6 +919,7 @@ def build(universe: list[str], db_path: str = "mls.db",
     return {
         "phase": "POST", "data_date": d.isoformat(), "applies_date": applies,
         "regime": regime,
+        "market_context": market_ctx,   # Phase 1 量測層,不參與任何判定
         "purpose": _pool_purpose(applies, pool, regime),
         "actionable": False,
         "generated_at": gen,

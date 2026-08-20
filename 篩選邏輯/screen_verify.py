@@ -74,6 +74,71 @@ CREATE TABLE IF NOT EXISTS pool_outcome (
 );
 """
 
+# ── Phase 1 量測欄(attribution-only,不影響 hit / verdict)──────────────
+# hit 的語意完全不變:仍是「依當初預標的進場軌,這筆交易做得成不成」。
+# 三分命中率是並列新增,不是取代 —— 只刪分母會讓命中率變好看卻學不到東西。
+_MEASURE_COLS_REAL = ("stock_ret_t1", "market_ret_t1", "sector_ret_t1")
+_MEASURE_COLS_INT = ("hit_abs", "hit_vs_market", "hit_vs_sector", "sector_peer_n_t1")
+_MEASURE_COLS_TEXT = (
+    "market_ret_t1_source", "sector_ret_t1_source",
+    "market_regime", "market_regime_raw", "market_regime_source", "market_regime_version",
+    "sector_regime", "sector_regime_source", "sector_regime_version",
+    "sector_name",
+)
+
+
+_CODE_GROUP = None
+
+
+def _code_group() -> dict:
+    """族群對照 {code: 族群}。與 screen_post 同一份 config.CODE_GROUP;
+    撞名(mls-v4 也有 config)時退回本檔同層 config.py 直讀。"""
+    global _CODE_GROUP
+    if _CODE_GROUP is not None:
+        return _CODE_GROUP
+    try:
+        import config as _cfg
+        _CODE_GROUP = getattr(_cfg, "CODE_GROUP", None) or {}
+    except Exception:
+        _CODE_GROUP = {}
+    if not _CODE_GROUP:
+        try:
+            import importlib.util as _ilu
+            from pathlib import Path as _P
+            _spec = _ilu.spec_from_file_location(
+                "_verify_config", _P(__file__).resolve().parent / "config.py")
+            _m = _ilu.module_from_spec(_spec)
+            _spec.loader.exec_module(_m)
+            _CODE_GROUP = getattr(_m, "CODE_GROUP", None) or {}
+        except Exception:
+            _CODE_GROUP = {}
+    return _CODE_GROUP
+
+
+def _median(vals):
+    """中位數。缺值不參與,全缺回 None(不猜、不用 0 頂替)。"""
+    import statistics
+    vals = [v for v in vals if v is not None]
+    return round(statistics.median(vals), 2) if vals else None
+
+
+def _rate(items: list[dict], key: str):
+    """某個三分命中欄的命中率(%)。None 不計入分母。"""
+    vals = [r.get(key) for r in items if r.get(key) is not None]
+    return round(sum(vals) / len(vals) * 100, 1) if vals else None
+
+
+def _pct_below_t1(bar: dict, key: str):
+    """T+1 當日池內收盤跌破指定均線的比例(%)。缺值不計入分母。"""
+    total = hit = 0
+    for _row in bar.values():
+        close, ma = (_row or {}).get("close"), (_row or {}).get(key)
+        if close is None or not ma:
+            continue
+        total += 1
+        hit += (close < ma)
+    return round(hit / total * 100, 1) if total else None
+
 
 def _ensure_table(db_path: str = "mls.db") -> None:
     with store.conn(db_path) as c:
@@ -85,6 +150,16 @@ def _ensure_table(db_path: str = "mls.db") -> None:
                 c.execute(f"ALTER TABLE pool_outcome ADD COLUMN {col} TEXT")
         if "chase_risk" not in cols:
             c.execute("ALTER TABLE pool_outcome ADD COLUMN chase_risk REAL")
+        # Phase 1 量測欄補欄(同一套 ALTER 相容模式,舊列留 NULL 不回填假值)
+        for col in _MEASURE_COLS_REAL:
+            if col not in cols:
+                c.execute(f"ALTER TABLE pool_outcome ADD COLUMN {col} REAL")
+        for col in _MEASURE_COLS_INT:
+            if col not in cols:
+                c.execute(f"ALTER TABLE pool_outcome ADD COLUMN {col} INTEGER")
+        for col in _MEASURE_COLS_TEXT:
+            if col not in cols:
+                c.execute(f"ALTER TABLE pool_outcome ADD COLUMN {col} TEXT")
         c.commit()
     try:
         store.register_table(TABLE, PLUGIN)
@@ -204,6 +279,60 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
                 r["verdict"] = f"大盤RiskOff({breadth_pct}%)·攻擊軌不追(不計)"
                 regime_excluded += 1
 
+    # ── Phase 1 三分命中率(絕對 / 相對大盤 / 相對族群)────────────────────
+    # 為什麼要三個:南亞科 -6.6% vs 大盤 -2% vs 族群 -4% = 三項全敗 = 真的挑錯;
+    # 但 -0.5% vs 大盤 -2% vs 族群 -4% 在舊制同樣被打成 Fail,實際上它非常強。
+    # 把後者當普通選股失敗會讓人往錯的方向改篩選器。
+    _cg = _code_group()
+    t1_ret = {}
+    for _c, _bb in bar.items():
+        _nc = (_bb or {}).get("close")
+        _pc = (bar_prev.get(_c) or {}).get("close")
+        if _nc is not None and _pc:
+            t1_ret[_c] = round((_nc - _pc) / _pc * 100, 2)
+    market_t1 = _median(list(t1_ret.values()))
+    sector_members = {}
+    for _c in t1_ret:
+        sector_members.setdefault(_cg.get(_c), []).append(_c)
+
+    for r in items:
+        code = r["code"]
+        payload = pool.get(code, {})
+        try:
+            pl = json.loads(payload["payload"]) if payload.get("payload") else {}
+        except Exception:
+            pl = {}
+        sec = _cg.get(code)
+        # peer-exclusive:族群基準要排除自己,否則小族群裡「贏過族群」變成部分在跟自己比
+        peers = [x for x in sector_members.get(sec, []) if x != code]
+        sector_t1 = _median([t1_ret[x] for x in peers])
+        # 用 daily_bar 同一基準(T收→T+1收)算個股報酬,才跟大盤/族群可比。
+        # 與既有 ret_pct 可能有微小差異:ret_pct 的基準是選股當下 payload 的 close,
+        # 可能來自即時報價回填。ret_pct 語意不動,這裡另存一欄。
+        sret = t1_ret.get(code)
+        r.update({
+            "stock_ret_t1": sret,
+            "market_ret_t1": market_t1,
+            "market_ret_t1_source": "pool51" if market_t1 is not None else None,
+            "sector_ret_t1": sector_t1,
+            "sector_ret_t1_source": "pool51_peer" if sector_t1 is not None else None,
+            "sector_peer_n_t1": len(peers),
+            "sector_name": sec,
+            "hit_abs": (None if sret is None else int(sret > 0)),
+            "hit_vs_market": (None if (sret is None or market_t1 is None)
+                              else int(sret > market_t1)),
+            "hit_vs_sector": (None if (sret is None or sector_t1 is None)
+                              else int(sret > sector_t1)),
+            # 選股當時的環境快照(由 candidate_pool.payload 帶過來,不重算)
+            "market_regime": pl.get("market_regime"),
+            "market_regime_raw": pl.get("market_regime_raw"),
+            "market_regime_source": pl.get("market_regime_source"),
+            "market_regime_version": pl.get("market_regime_version"),
+            "sector_regime": pl.get("sector_regime"),
+            "sector_regime_source": pl.get("sector_regime_source"),
+            "sector_regime_version": pl.get("sector_regime_version"),
+        })
+
     store.upsert_intraday(TABLE, PLUGIN, rows, db_path)
 
     scored = [r for r in items if r["hit"] is not None]     # 攻擊+引擎(有資料;普跌日攻擊軌已剔除)
@@ -225,10 +354,125 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
         "hit_rate": round(hits / denom * 100, 1) if denom else None,
         "breadth_pct": breadth_pct, "risk_off": risk_off,
         "regime_excluded": regime_excluded,
+        # Phase 1 三分命中率:母體是「全部有 T+1 報酬的列」,不套進場軌過濾,
+        # 也不做 regime 排除 —— 這三個數字的用途是診斷哪一層失效,
+        # 不是拿來當戰績,所以刻意不縮分母。
+        "market_context_t1": {
+            "market_ret_t1": market_t1,
+            "market_ret_t1_source": "pool51" if market_t1 is not None else None,
+            "breadth_pct": breadth_pct,
+            "below_ma5_pct": _pct_below_t1(bar, "ma5"),
+            "below_ma20_pct": _pct_below_t1(bar, "ma20"),
+        },
+        "hit_abs_rate": _rate(items, "hit_abs"),
+        "hit_vs_market_rate": _rate(items, "hit_vs_market"),
+        "hit_vs_sector_rate": _rate(items, "hit_vs_sector"),
         "ret_median": median,
         "ret_avg": round(sum(rets) / len(rets), 2) if rets else None,
         "items": items,
     }
+
+
+_RS_BUCKETS = (("Top 20%", 80), ("20–40%", 60), ("40–60%", 40),
+               ("60–80%", 20), ("Bottom 20%", 0))
+
+_ATTR_AGG = """COUNT(*) n,
+               AVG(stock_ret_t1) avg_t1,
+               SUM(CASE WHEN hit_abs=1 THEN 1 ELSE 0 END) hit_abs,
+               SUM(CASE WHEN hit_abs IS NOT NULL THEN 1 ELSE 0 END) hit_abs_n,
+               SUM(CASE WHEN hit_vs_market=1 THEN 1 ELSE 0 END) hit_vs_market,
+               SUM(CASE WHEN hit_vs_market IS NOT NULL THEN 1 ELSE 0 END) hit_vs_market_n,
+               SUM(CASE WHEN hit_vs_sector=1 THEN 1 ELSE 0 END) hit_vs_sector,
+               SUM(CASE WHEN hit_vs_sector IS NOT NULL THEN 1 ELSE 0 END) hit_vs_sector_n"""
+
+
+def _finish_attr(rows: list[dict]) -> list[dict]:
+    for r in rows:
+        r["avg_t1"] = round(r["avg_t1"], 2) if r["avg_t1"] is not None else None
+        for k in ("hit_abs", "hit_vs_market", "hit_vs_sector"):
+            n = r.pop(f"{k}_n", 0) or 0
+            r[f"{k}_rate"] = round(r[k] / n * 100, 1) if n else None
+    return rows
+
+
+def _attribution_tables(since: str, db_path: str) -> dict:
+    """Phase 1 四張歸因表。
+
+    刻意「不」一次 GROUP BY 市場×族群×RS×軌道五層:以目前樣本數會全部變成
+    n=1、n=2,什麼都看不出來。先各自看一維,樣本夠大再 drill-down 交叉。
+
+    母體用 stock_ret_t1 IS NOT NULL(全部有 T+1 報酬的列),不篩 hit ——
+    要看的是每一層環境本身對 T+1 的方向,不是被進場軌過濾後的殘存樣本。
+    """
+    out = {}
+    with store.conn(db_path) as c:
+        out["by_market_regime"] = _finish_attr([dict(r) for r in c.execute(
+            f"""SELECT market_regime, {_ATTR_AGG}
+                FROM pool_outcome
+                WHERE data_date >= ? AND stock_ret_t1 IS NOT NULL
+                      AND market_regime IS NOT NULL
+                GROUP BY market_regime""", (since,))])
+        out["by_sector_regime"] = _finish_attr([dict(r) for r in c.execute(
+            f"""SELECT sector_regime, {_ATTR_AGG}
+                FROM pool_outcome
+                WHERE data_date >= ? AND stock_ret_t1 IS NOT NULL
+                      AND sector_regime IS NOT NULL
+                GROUP BY sector_regime""", (since,))])
+        out["by_track_market_regime"] = _finish_attr([dict(r) for r in c.execute(
+            f"""SELECT track, market_regime, {_ATTR_AGG}
+                FROM pool_outcome
+                WHERE data_date >= ? AND stock_ret_t1 IS NOT NULL
+                      AND market_regime IS NOT NULL AND track IS NOT NULL
+                GROUP BY track, market_regime""", (since,))])
+
+    # RS 分桶:percentile 存在 candidate_pool.payload(選股當日橫截面 freeze),
+    # pool_outcome 沒有這欄 → 由 payload 讀回來對齊,不在這裡重算
+    # (重算會變成用「驗證當天」的橫截面,問錯問題)。
+    buckets: dict[str, list] = {label: [] for label, _ in _RS_BUCKETS}
+    # candidate_pool 是別人(screen_post)的表,本支只讀不寫;新裝的庫/測試庫可能還沒有它。
+    # 量測層絕不能因為讀不到別人的表就把 stats() 弄垮 —— 拿不到就這張表留空。
+    try:
+        with store.conn(db_path) as c:
+            rows = [dict(r) for r in c.execute(
+                """SELECT o.pool_date, o.code, o.stock_ret_t1, o.hit_abs,
+                          o.hit_vs_market, o.hit_vs_sector, p.payload
+                   FROM pool_outcome o JOIN candidate_pool p
+                     ON p.data_date = o.pool_date AND p.code = o.code
+                   WHERE o.data_date >= ? AND o.stock_ret_t1 IS NOT NULL""", (since,))]
+    except Exception as e:
+        rows = []
+        out["by_relative_strength_error"] = f"{type(e).__name__}: {e}"[:120]
+    for r in rows:
+        try:
+            pct = (json.loads(r["payload"]) or {}).get("market_rel_pctile")
+        except Exception:
+            pct = None
+        if pct is None:
+            continue
+        for label, lo in _RS_BUCKETS:
+            if pct >= lo:
+                buckets[label].append(r)
+                break
+
+    by_rs = []
+    for label, _lo in _RS_BUCKETS:
+        grp = buckets[label]
+        if not grp:
+            continue
+        rets = [g["stock_ret_t1"] for g in grp if g["stock_ret_t1"] is not None]
+        row = {"bucket": label, "n": len(grp),
+               "avg_t1": round(sum(rets) / len(rets), 2) if rets else None}
+        for k in ("hit_abs", "hit_vs_market", "hit_vs_sector"):
+            vals = [g[k] for g in grp if g[k] is not None]
+            row[k] = sum(vals) if vals else 0
+            row[f"{k}_rate"] = round(sum(vals) / len(vals) * 100, 1) if vals else None
+        by_rs.append(row)
+    out["by_relative_strength"] = by_rs
+    out["attribution_note"] = (
+        "四張一維表,不做五層交叉(樣本數不足會全變 n=1~2)。母體=有 T+1 報酬的全部列,"
+        "不套進場軌過濾、不做 regime 排除 —— 用途是診斷哪一層失效,不是戰績。"
+        "hit_vs_market/hit_vs_sector 才分得出「真的挑錯」與「絕對跌但相對強」。")
+    return out
 
 
 def stats(days: int = 30, db_path: str = "mls.db") -> dict:
@@ -288,12 +532,20 @@ def stats(days: int = 30, db_path: str = "mls.db") -> dict:
     by_tier.sort(key=lambda t: -(t["avg_ret"] if t["avg_ret"] is not None else -999))
     by_verification.sort(key=lambda t: -(t["avg_ret"] if t["avg_ret"] is not None else -999))
 
+    # 量測層失敗不得拖垮命中率統計本身(owner 規範:這支爆掉不影響任何名單,
+    # 同理歸因層爆掉也不該影響它在量測的數字)。
+    try:
+        attribution = _attribution_tables(since, db_path)
+    except Exception as e:
+        attribution = {"attribution_error": f"{type(e).__name__}: {e}"[:200]}
+
     return {
         "window_days": days, "since": since,
         "overall_hit_rate": round(total_hits / total_scored * 100, 1) if total_scored else None,
         "scored": total_scored, "hits": total_hits,
         "by_track": by_track, "daily": daily,
         "by_tier": by_tier, "by_verification": by_verification,
+        **attribution,
         "note": ("by_tier/by_verification 是規則歸因(rule attribution):某 tier/驗證狀態的股票,"
                  "T+1 實際平均報酬多少。avg_ret 若對 ⏳強勢但不追 或 UNCONFIRMED 這種'降級但未淘汰'"
                  "的分類反而是正的高值,代表該條規則正在製造反指標,不是門檻要微調,是方向錯了。"),

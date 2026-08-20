@@ -159,6 +159,36 @@ def breadth_from_snapshots(snaps):
     }
 
 
+# ══════════════════════════════════════════════════════════
+# Phase 1 量測層：三態正規化
+#
+# assess() 的五種 regime 是既有演算法的原始輸出，本區塊只做「名稱收斂」，
+# 不改任何門檻或判定邏輯（INDEX_CRASH / BREADTH_* 全部原封不動）。
+# 呼叫端務必同時保存 raw 值，否則日後分不清 NEUTRAL 是真的判斷為中性，
+# 還是因為當日寬度尚未發布（PENDING）而退為中性。
+# ══════════════════════════════════════════════════════════
+RISK_OFF = "RISK_OFF"
+NEUTRAL = "NEUTRAL"
+RISK_ON = "RISK_ON"
+
+_NORMALIZE = {
+    "SYSTEMIC": RISK_OFF,   # 指數崩跌 or 寬度崩壞
+    "WEAK": RISK_OFF,       # 大盤走弱
+    "NEUTRAL": NEUTRAL,
+    "PENDING": NEUTRAL,     # 當日寬度未發布 → 中性（raw 保留 PENDING 以區分）
+    "NORMAL": RISK_ON,
+    # NO_DATA 刻意不映射：完全無市場基準時回 None 進「資料不足」桶，
+    # 不併進 NEUTRAL 冒充「判斷過而中性」。
+}
+
+
+def normalize_regime(raw):
+    """assess()['regime'] → 三態 RISK_OFF / NEUTRAL / RISK_ON。
+
+    無法判定（NO_DATA、未知值）回 None，不猜。呼叫端要一併保存 raw。"""
+    return _NORMALIZE.get(str(raw or "").upper())
+
+
 def assess(breadth_row=None, index_pct=None, aflow_ratio=None):
     """
     判定市場體制。承 regime.py。

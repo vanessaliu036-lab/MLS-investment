@@ -1,0 +1,1695 @@
+{
+ "_note": "由引擎正式庫 2026-08-18 候選池 + 08-18/08-19 daily_bar 產出。⚠ payload 內的 market_regime/market_regime_raw 是影子測試時把 fetch_breadth 固定成漲1314/跌843(58.2%)所得,不是 08-18 當日真實 regime —— 那天的真實寬度沒有留存。本 fixture 的用途是鎖住三分命中率的計算,不是拿來當歷史 regime 的依據。",
+ "pool_date": "2026-08-18",
+ "items": [
+  {
+   "code": "1815",
+   "track": "攻擊軌",
+   "trigger_price": 105.5,
+   "payload": {
+    "close": 95.3,
+    "tier": "👀 保留觀察",
+    "chase_risk": 54.0,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "2049",
+   "track": "引擎軌",
+   "trigger_price": 343.0,
+   "payload": {
+    "close": 368.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 9.6,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "2303",
+   "track": "觀察",
+   "trigger_price": 124.0,
+   "payload": {
+    "close": 119.0,
+    "tier": "❌ 結構失效",
+    "chase_risk": 11.2,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "2327",
+   "track": "觀察",
+   "trigger_price": 622.0,
+   "payload": {
+    "close": 576.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 8.4,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "2337",
+   "track": "觀察",
+   "trigger_price": 135.0,
+   "payload": {
+    "close": 122.0,
+    "tier": "❌ 結構失效",
+    "chase_risk": 13.5,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "2344",
+   "track": "引擎軌",
+   "trigger_price": 161.28,
+   "payload": {
+    "close": 176.5,
+    "tier": "👀 保留觀察",
+    "chase_risk": 15.9,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "2359",
+   "track": "攻擊軌",
+   "trigger_price": 183.0,
+   "payload": {
+    "close": 177.5,
+    "tier": "🔥 A級啟動",
+    "chase_risk": 91.4,
+    "verification_status": null,
+    "entry_status": "禁止追高",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "2383",
+   "track": "引擎軌",
+   "trigger_price": 5211.75,
+   "payload": {
+    "close": 6205.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 31.4,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "2408",
+   "track": "引擎軌",
+   "trigger_price": 443.75,
+   "payload": {
+    "close": 515.0,
+    "tier": "🔥 A級啟動",
+    "chase_risk": 19.8,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "2455",
+   "track": "攻擊軌",
+   "trigger_price": 437.5,
+   "payload": {
+    "close": 417.5,
+    "tier": "🔥 A級啟動",
+    "chase_risk": 69.5,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "2464",
+   "track": "攻擊軌",
+   "trigger_price": 208.0,
+   "payload": {
+    "close": 178.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 15.1,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "2481",
+   "track": "攻擊軌",
+   "trigger_price": 152.5,
+   "payload": {
+    "close": 139.5,
+    "tier": "👀 保留觀察",
+    "chase_risk": 22.8,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "2484",
+   "track": "引擎軌",
+   "trigger_price": 69.72,
+   "payload": {
+    "close": 71.9,
+    "tier": "👀 保留觀察",
+    "chase_risk": 6.8,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "2492",
+   "track": "引擎軌",
+   "trigger_price": 267.43,
+   "payload": {
+    "close": 282.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 16.2,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3006",
+   "track": "攻擊軌",
+   "trigger_price": 279.0,
+   "payload": {
+    "close": 248.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 8.7,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3016",
+   "track": "攻擊軌",
+   "trigger_price": 109.0,
+   "payload": {
+    "close": 105.0,
+    "tier": "🔄 反轉候選",
+    "chase_risk": 17.0,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3026",
+   "track": "引擎軌",
+   "trigger_price": 585.52,
+   "payload": {
+    "close": 668.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 13.2,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3037",
+   "track": "攻擊軌",
+   "trigger_price": 1200.0,
+   "payload": {
+    "close": 1145.0,
+    "tier": "🔥 A級啟動",
+    "chase_risk": 69.3,
+    "verification_status": null,
+    "entry_status": "禁止追高",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3042",
+   "track": "攻擊軌",
+   "trigger_price": 196.5,
+   "payload": {
+    "close": 178.5,
+    "tier": "👀 保留觀察",
+    "chase_risk": 8.7,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3189",
+   "track": "攻擊軌",
+   "trigger_price": 937.0,
+   "payload": {
+    "close": 865.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 16.9,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3221",
+   "track": "觀察",
+   "trigger_price": 49.5,
+   "payload": {
+    "close": 46.5,
+    "tier": "👀 保留觀察",
+    "chase_risk": 9.5,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3264",
+   "track": "引擎軌",
+   "trigger_price": 204.35,
+   "payload": {
+    "close": 210.5,
+    "tier": "👀 保留觀察",
+    "chase_risk": 10.9,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3317",
+   "track": "觀察",
+   "trigger_price": 69.8,
+   "payload": {
+    "close": 66.9,
+    "tier": "👀 保留觀察",
+    "chase_risk": 16.7,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3363",
+   "track": "引擎軌",
+   "trigger_price": 571.15,
+   "payload": {
+    "close": 586.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 13.2,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3374",
+   "track": "觀察",
+   "trigger_price": 301.0,
+   "payload": {
+    "close": 306.5,
+    "tier": "🔄 反轉候選",
+    "chase_risk": 20.7,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3450",
+   "track": "攻擊軌",
+   "trigger_price": 600.0,
+   "payload": {
+    "close": 579.0,
+    "tier": "🔥 A級啟動",
+    "chase_risk": 71.7,
+    "verification_status": null,
+    "entry_status": "禁止追高",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3532",
+   "track": "攻擊軌",
+   "trigger_price": 402.5,
+   "payload": {
+    "close": 369.0,
+    "tier": "🔄 反轉候選",
+    "chase_risk": 60.8,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3707",
+   "track": "引擎軌",
+   "trigger_price": 60.52,
+   "payload": {
+    "close": 62.9,
+    "tier": "👀 保留觀察",
+    "chase_risk": 13.7,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "3711",
+   "track": "引擎軌",
+   "trigger_price": 597.15,
+   "payload": {
+    "close": 599.0,
+    "tier": "🔄 反轉候選",
+    "chase_risk": 9.9,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "4919",
+   "track": "觀察",
+   "trigger_price": 128.0,
+   "payload": {
+    "close": 118.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 11.3,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "4979",
+   "track": "引擎軌",
+   "trigger_price": 463.9,
+   "payload": {
+    "close": 528.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 5.2,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "5328",
+   "track": "觀察",
+   "trigger_price": 66.8,
+   "payload": {
+    "close": 62.5,
+    "tier": "❌ 結構失效",
+    "chase_risk": 13.5,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "5347",
+   "track": "引擎軌",
+   "trigger_price": 154.82,
+   "payload": {
+    "close": 155.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 11.5,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "5425",
+   "track": "攻擊軌",
+   "trigger_price": 97.9,
+   "payload": {
+    "close": 91.5,
+    "tier": "🔥 A級啟動",
+    "chase_risk": 65.9,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "5483",
+   "track": "引擎軌",
+   "trigger_price": 183.12,
+   "payload": {
+    "close": 185.0,
+    "tier": "🔄 反轉候選",
+    "chase_risk": 15.9,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "6173",
+   "track": "攻擊軌",
+   "trigger_price": 230.0,
+   "payload": {
+    "close": 194.5,
+    "tier": "👀 保留觀察",
+    "chase_risk": 13.9,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "6174",
+   "track": "觀察",
+   "trigger_price": 46.1,
+   "payload": {
+    "close": 42.5,
+    "tier": "👀 保留觀察",
+    "chase_risk": 7.6,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "6182",
+   "track": "攻擊軌",
+   "trigger_price": 131.0,
+   "payload": {
+    "close": 120.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 66.4,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "6213",
+   "track": "引擎軌",
+   "trigger_price": 366.02,
+   "payload": {
+    "close": 488.0,
+    "tier": "🔥 A級啟動",
+    "chase_risk": 47.9,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "6223",
+   "track": "觀察",
+   "trigger_price": 5950.0,
+   "payload": {
+    "close": 5270.0,
+    "tier": "❌ 結構失效",
+    "chase_risk": 24.6,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "6239",
+   "track": "觀察",
+   "trigger_price": 282.0,
+   "payload": {
+    "close": 265.5,
+    "tier": "❌ 結構失效",
+    "chase_risk": 8.8,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "6274",
+   "track": "攻擊軌",
+   "trigger_price": 1695.0,
+   "payload": {
+    "close": 1545.0,
+    "tier": "🔄 反轉候選",
+    "chase_risk": 9.7,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "6451",
+   "track": "攻擊軌",
+   "trigger_price": 474.5,
+   "payload": {
+    "close": 421.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 13.6,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "6488",
+   "track": "引擎軌",
+   "trigger_price": 954.8,
+   "payload": {
+    "close": 1060.0,
+    "tier": "🔥 A級啟動",
+    "chase_risk": 50.7,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "8028",
+   "track": "觀察",
+   "trigger_price": 271.0,
+   "payload": {
+    "close": 248.5,
+    "tier": "❌ 結構失效",
+    "chase_risk": 8.1,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "8043",
+   "track": "引擎軌",
+   "trigger_price": 137.85,
+   "payload": {
+    "close": 138.5,
+    "tier": "👀 保留觀察",
+    "chase_risk": 10.5,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "8046",
+   "track": "引擎軌",
+   "trigger_price": 1109.0,
+   "payload": {
+    "close": 1245.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 15.0,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "8150",
+   "track": "引擎軌",
+   "trigger_price": 87.03,
+   "payload": {
+    "close": 89.1,
+    "tier": "👀 保留觀察",
+    "chase_risk": 9.6,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "8182",
+   "track": "引擎軌",
+   "trigger_price": 39.11,
+   "payload": {
+    "close": 39.95,
+    "tier": "👀 保留觀察",
+    "chase_risk": 13.8,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "8261",
+   "track": "觀察",
+   "trigger_price": 197.5,
+   "payload": {
+    "close": 186.5,
+    "tier": "👀 保留觀察",
+    "chase_risk": 19.7,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "RISK_OFF",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  },
+  {
+   "code": "8358",
+   "track": "攻擊軌",
+   "trigger_price": 441.0,
+   "payload": {
+    "close": 416.0,
+    "tier": "👀 保留觀察",
+    "chase_risk": 18.0,
+    "verification_status": null,
+    "entry_status": "等待觸發",
+    "market_regime": "RISK_ON",
+    "market_regime_raw": "NORMAL",
+    "market_regime_source": "market",
+    "market_regime_version": "phase1-assess-v1",
+    "sector_regime": "NEUTRAL",
+    "sector_regime_source": "pool51",
+    "sector_regime_version": "phase1-provisional-v1"
+   }
+  }
+ ],
+ "daily_bar": {
+  "2026-08-18": [
+   {
+    "code": "1815",
+    "close": 95.3,
+    "high": 105.5,
+    "ma5": 92.64,
+    "ma20": 80.81
+   },
+   {
+    "code": "2049",
+    "close": 368.0,
+    "high": 385.0,
+    "ma5": 374.6,
+    "ma20": 343.0
+   },
+   {
+    "code": "2303",
+    "close": 119.0,
+    "high": 124.0,
+    "ma5": 121.8,
+    "ma20": 121.47
+   },
+   {
+    "code": "2327",
+    "close": 576.0,
+    "high": 615.0,
+    "ma5": 614.0,
+    "ma20": 588.02
+   },
+   {
+    "code": "2337",
+    "close": 122.0,
+    "high": 133.5,
+    "ma5": 132.3,
+    "ma20": 122.37
+   },
+   {
+    "code": "2344",
+    "close": 176.5,
+    "high": 192.0,
+    "ma5": 179.1,
+    "ma20": 161.28
+   },
+   {
+    "code": "2359",
+    "close": 177.5,
+    "high": 183.0,
+    "ma5": 162.4,
+    "ma20": 144.47
+   },
+   {
+    "code": "2383",
+    "close": 6205.0,
+    "high": 6470.0,
+    "ma5": 6028.0,
+    "ma20": 5211.75
+   },
+   {
+    "code": "2408",
+    "close": 515.0,
+    "high": 553.0,
+    "ma5": 509.5,
+    "ma20": 443.75
+   },
+   {
+    "code": "2455",
+    "close": 417.5,
+    "high": 437.5,
+    "ma5": 396.5,
+    "ma20": 349.7
+   },
+   {
+    "code": "2464",
+    "close": 178.0,
+    "high": 199.5,
+    "ma5": 189.7,
+    "ma20": 162.32
+   },
+   {
+    "code": "2481",
+    "close": 139.5,
+    "high": 152.5,
+    "ma5": 140.8,
+    "ma20": 134.43
+   },
+   {
+    "code": "2484",
+    "close": 71.9,
+    "high": 75.4,
+    "ma5": 73.9,
+    "ma20": 69.72
+   },
+   {
+    "code": "2492",
+    "close": 282.0,
+    "high": 301.0,
+    "ma5": 296.1,
+    "ma20": 267.43
+   },
+   {
+    "code": "3006",
+    "close": 248.0,
+    "high": 279.0,
+    "ma5": 269.2,
+    "ma20": 230.65
+   },
+   {
+    "code": "3016",
+    "close": 105.0,
+    "high": 109.0,
+    "ma5": 104.4,
+    "ma20": 96.62
+   },
+   {
+    "code": "3026",
+    "close": 668.0,
+    "high": 685.0,
+    "ma5": 676.0,
+    "ma20": 585.52
+   },
+   {
+    "code": "3037",
+    "close": 1145.0,
+    "high": 1200.0,
+    "ma5": 1057.0,
+    "ma20": 920.0
+   },
+   {
+    "code": "3042",
+    "close": 178.5,
+    "high": 192.5,
+    "ma5": 184.5,
+    "ma20": 167.72
+   },
+   {
+    "code": "3189",
+    "close": 865.0,
+    "high": 937.0,
+    "ma5": 868.2,
+    "ma20": 770.9
+   },
+   {
+    "code": "3221",
+    "close": 46.5,
+    "high": 48.85,
+    "ma5": 48.23,
+    "ma20": 46.8
+   },
+   {
+    "code": "3264",
+    "close": 210.5,
+    "high": 220.5,
+    "ma5": 220.4,
+    "ma20": 204.35
+   },
+   {
+    "code": "3317",
+    "close": 66.9,
+    "high": 71.5,
+    "ma5": 68.98,
+    "ma20": 69.24
+   },
+   {
+    "code": "3363",
+    "close": 586.0,
+    "high": 632.0,
+    "ma5": 605.2,
+    "ma20": 571.15
+   },
+   {
+    "code": "3374",
+    "close": 306.5,
+    "high": 321.5,
+    "ma5": 315.8,
+    "ma20": 322.48
+   },
+   {
+    "code": "3450",
+    "close": 579.0,
+    "high": 600.0,
+    "ma5": 534.6,
+    "ma20": 461.62
+   },
+   {
+    "code": "3532",
+    "close": 369.0,
+    "high": 402.5,
+    "ma5": 350.3,
+    "ma20": 333.38
+   },
+   {
+    "code": "3707",
+    "close": 62.9,
+    "high": 66.4,
+    "ma5": 64.56,
+    "ma20": 60.52
+   },
+   {
+    "code": "3711",
+    "close": 599.0,
+    "high": 634.0,
+    "ma5": 615.4,
+    "ma20": 597.15
+   },
+   {
+    "code": "4919",
+    "close": 118.0,
+    "high": 125.0,
+    "ma5": 123.7,
+    "ma20": 125.22
+   },
+   {
+    "code": "4979",
+    "close": 528.0,
+    "high": 550.0,
+    "ma5": 544.0,
+    "ma20": 463.9
+   },
+   {
+    "code": "5328",
+    "close": 62.5,
+    "high": 67.0,
+    "ma5": 66.16,
+    "ma20": 64.61
+   },
+   {
+    "code": "5347",
+    "close": 155.0,
+    "high": 161.5,
+    "ma5": 160.0,
+    "ma20": 154.82
+   },
+   {
+    "code": "5425",
+    "close": 91.5,
+    "high": 97.9,
+    "ma5": 88.48,
+    "ma20": 83.03
+   },
+   {
+    "code": "5483",
+    "close": 185.0,
+    "high": 195.0,
+    "ma5": 186.4,
+    "ma20": 183.12
+   },
+   {
+    "code": "6173",
+    "close": 194.5,
+    "high": 215.5,
+    "ma5": 208.5,
+    "ma20": 175.47
+   },
+   {
+    "code": "6174",
+    "close": 42.5,
+    "high": 45.1,
+    "ma5": 44.69,
+    "ma20": 42.59
+   },
+   {
+    "code": "6182",
+    "close": 120.0,
+    "high": 131.0,
+    "ma5": 114.0,
+    "ma20": 105.64
+   },
+   {
+    "code": "6213",
+    "close": 488.0,
+    "high": 500.0,
+    "ma5": 476.4,
+    "ma20": 366.02
+   },
+   {
+    "code": "6223",
+    "close": 5270.0,
+    "high": 5895.0,
+    "ma5": 6121.0,
+    "ma20": 5860.25
+   },
+   {
+    "code": "6239",
+    "close": 265.5,
+    "high": 279.5,
+    "ma5": 277.2,
+    "ma20": 266.07
+   },
+   {
+    "code": "6274",
+    "close": 1545.0,
+    "high": 1640.0,
+    "ma5": 1604.0,
+    "ma20": 1377.5
+   },
+   {
+    "code": "6451",
+    "close": 421.0,
+    "high": 474.5,
+    "ma5": 438.4,
+    "ma20": 414.25
+   },
+   {
+    "code": "6488",
+    "close": 1060.0,
+    "high": 1120.0,
+    "ma5": 1009.6,
+    "ma20": 954.8
+   },
+   {
+    "code": "8028",
+    "close": 248.5,
+    "high": 265.0,
+    "ma5": 261.8,
+    "ma20": 269.88
+   },
+   {
+    "code": "8043",
+    "close": 138.5,
+    "high": 148.0,
+    "ma5": 146.3,
+    "ma20": 137.85
+   },
+   {
+    "code": "8046",
+    "close": 1245.0,
+    "high": 1355.0,
+    "ma5": 1265.0,
+    "ma20": 1109.0
+   },
+   {
+    "code": "8150",
+    "close": 89.1,
+    "high": 92.4,
+    "ma5": 91.52,
+    "ma20": 87.03
+   },
+   {
+    "code": "8182",
+    "close": 39.95,
+    "high": 41.85,
+    "ma5": 41.01,
+    "ma20": 39.11
+   },
+   {
+    "code": "8261",
+    "close": 186.5,
+    "high": 210.5,
+    "ma5": 190.6,
+    "ma20": 190.97
+   },
+   {
+    "code": "8358",
+    "close": 416.0,
+    "high": 441.0,
+    "ma5": 420.7,
+    "ma20": 367.25
+   }
+  ],
+  "2026-08-19": [
+   {
+    "code": "1815",
+    "close": 98.0,
+    "high": 98.8,
+    "ma5": 94.24,
+    "ma20": 81.69
+   },
+   {
+    "code": "2049",
+    "close": 367.0,
+    "high": 378.0,
+    "ma5": 374.2,
+    "ma20": 345.32
+   },
+   {
+    "code": "2303",
+    "close": 115.5,
+    "high": 117.0,
+    "ma5": 120.3,
+    "ma20": 120.3
+   },
+   {
+    "code": "2327",
+    "close": 576.0,
+    "high": 590.0,
+    "ma5": 608.8,
+    "ma20": 581.67
+   },
+   {
+    "code": "2337",
+    "close": 119.0,
+    "high": 120.5,
+    "ma5": 128.8,
+    "ma20": 121.57
+   },
+   {
+    "code": "2344",
+    "close": 168.0,
+    "high": 169.5,
+    "ma5": 177.3,
+    "ma20": 161.12
+   },
+   {
+    "code": "2359",
+    "close": 161.0,
+    "high": 180.5,
+    "ma5": 166.0,
+    "ma20": 145.57
+   },
+   {
+    "code": "2383",
+    "close": 5880.0,
+    "high": 6130.0,
+    "ma5": 6058.0,
+    "ma20": 5249.5
+   },
+   {
+    "code": "2408",
+    "close": 481.0,
+    "high": 494.5,
+    "ma5": 509.2,
+    "ma20": 445.52
+   },
+   {
+    "code": "2455",
+    "close": 396.5,
+    "high": 415.0,
+    "ma5": 398.9,
+    "ma20": 353.3
+   },
+   {
+    "code": "2464",
+    "close": 181.5,
+    "high": 190.0,
+    "ma5": 186.7,
+    "ma20": 163.85
+   },
+   {
+    "code": "2481",
+    "close": 136.5,
+    "high": 148.0,
+    "ma5": 140.3,
+    "ma20": 133.38
+   },
+   {
+    "code": "2484",
+    "close": 73.0,
+    "high": 74.5,
+    "ma5": 73.72,
+    "ma20": 69.76
+   },
+   {
+    "code": "2492",
+    "close": 298.0,
+    "high": 308.5,
+    "ma5": 298.1,
+    "ma20": 267.32
+   },
+   {
+    "code": "3006",
+    "close": 245.5,
+    "high": 246.5,
+    "ma5": 263.5,
+    "ma20": 232.05
+   },
+   {
+    "code": "3016",
+    "close": 102.0,
+    "high": 105.0,
+    "ma5": 104.0,
+    "ma20": 96.47
+   },
+   {
+    "code": "3026",
+    "close": 690.0,
+    "high": 692.0,
+    "ma5": 677.0,
+    "ma20": 586.88
+   },
+   {
+    "code": "3037",
+    "close": 1130.0,
+    "high": 1165.0,
+    "ma5": 1083.0,
+    "ma20": 931.15
+   },
+   {
+    "code": "3042",
+    "close": 186.0,
+    "high": 190.5,
+    "ma5": 185.4,
+    "ma20": 168.57
+   },
+   {
+    "code": "3189",
+    "close": 849.0,
+    "high": 902.0,
+    "ma5": 866.4,
+    "ma20": 773.55
+   },
+   {
+    "code": "3221",
+    "close": 47.85,
+    "high": 48.5,
+    "ma5": 48.0,
+    "ma20": 46.84
+   },
+   {
+    "code": "3264",
+    "close": 206.5,
+    "high": 210.5,
+    "ma5": 218.4,
+    "ma20": 203.82
+   },
+   {
+    "code": "3317",
+    "close": 66.9,
+    "high": 69.7,
+    "ma5": 68.4,
+    "ma20": 68.58
+   },
+   {
+    "code": "3363",
+    "close": 584.0,
+    "high": 592.0,
+    "ma5": 596.0,
+    "ma20": 572.05
+   },
+   {
+    "code": "3374",
+    "close": 299.0,
+    "high": 306.5,
+    "ma5": 309.6,
+    "ma20": 316.52
+   },
+   {
+    "code": "3450",
+    "close": 567.0,
+    "high": 593.0,
+    "ma5": 546.6,
+    "ma20": 467.05
+   },
+   {
+    "code": "3532",
+    "close": 356.5,
+    "high": 369.5,
+    "ma5": 359.2,
+    "ma20": 327.8
+   },
+   {
+    "code": "3707",
+    "close": 61.4,
+    "high": 63.6,
+    "ma5": 64.14,
+    "ma20": 60.29
+   },
+   {
+    "code": "3711",
+    "close": 588.0,
+    "high": 596.0,
+    "ma5": 608.8,
+    "ma20": 593.75
+   },
+   {
+    "code": "4919",
+    "close": 116.5,
+    "high": 119.5,
+    "ma5": 121.9,
+    "ma20": 123.9
+   },
+   {
+    "code": "4979",
+    "close": 529.0,
+    "high": 533.0,
+    "ma5": 537.6,
+    "ma20": 471.4
+   },
+   {
+    "code": "5328",
+    "close": 63.1,
+    "high": 65.5,
+    "ma5": 65.34,
+    "ma20": 64.45
+   },
+   {
+    "code": "5347",
+    "close": 151.5,
+    "high": 152.5,
+    "ma5": 158.4,
+    "ma20": 153.85
+   },
+   {
+    "code": "5425",
+    "close": 91.8,
+    "high": 98.5,
+    "ma5": 89.5,
+    "ma20": 82.98
+   },
+   {
+    "code": "5483",
+    "close": 176.5,
+    "high": 179.5,
+    "ma5": 184.7,
+    "ma20": 180.25
+   },
+   {
+    "code": "6173",
+    "close": 213.5,
+    "high": 213.5,
+    "ma5": 210.5,
+    "ma20": 177.25
+   },
+   {
+    "code": "6174",
+    "close": 44.75,
+    "high": 44.75,
+    "ma5": 44.83,
+    "ma20": 42.38
+   },
+   {
+    "code": "6182",
+    "close": 110.0,
+    "high": 117.5,
+    "ma5": 115.4,
+    "ma20": 104.69
+   },
+   {
+    "code": "6213",
+    "close": 484.0,
+    "high": 500.0,
+    "ma5": 480.4,
+    "ma20": 371.88
+   },
+   {
+    "code": "6223",
+    "close": 5255.0,
+    "high": 5550.0,
+    "ma5": 5852.0,
+    "ma20": 5823.0
+   },
+   {
+    "code": "6239",
+    "close": 262.5,
+    "high": 267.5,
+    "ma5": 273.4,
+    "ma20": 264.5
+   },
+   {
+    "code": "6274",
+    "close": 1500.0,
+    "high": 1575.0,
+    "ma5": 1584.0,
+    "ma20": 1384.75
+   },
+   {
+    "code": "6451",
+    "close": 414.0,
+    "high": 457.5,
+    "ma5": 431.0,
+    "ma20": 412.75
+   },
+   {
+    "code": "6488",
+    "close": 983.0,
+    "high": 1030.0,
+    "ma5": 1019.6,
+    "ma20": 941.95
+   },
+   {
+    "code": "8028",
+    "close": 247.0,
+    "high": 253.0,
+    "ma5": 258.2,
+    "ma20": 266.82
+   },
+   {
+    "code": "8043",
+    "close": 143.0,
+    "high": 149.5,
+    "ma5": 145.4,
+    "ma20": 137.55
+   },
+   {
+    "code": "8046",
+    "close": 1180.0,
+    "high": 1280.0,
+    "ma5": 1248.0,
+    "ma20": 1102.75
+   },
+   {
+    "code": "8150",
+    "close": 87.3,
+    "high": 88.6,
+    "ma5": 90.54,
+    "ma20": 86.4
+   },
+   {
+    "code": "8182",
+    "close": 40.4,
+    "high": 40.9,
+    "ma5": 40.74,
+    "ma20": 39.09
+   },
+   {
+    "code": "8261",
+    "close": 183.5,
+    "high": 202.0,
+    "ma5": 190.5,
+    "ma20": 187.45
+   },
+   {
+    "code": "8358",
+    "close": 410.5,
+    "high": 413.5,
+    "ma5": 419.1,
+    "ma20": 367.15
+   }
+  ]
+ }
+}

@@ -528,6 +528,23 @@ def verify_history(date: str = Query("", description="pool_date;預設最近已�
                 "priority_label": payload.get("priority_label"),
                 "trigger_source": payload.get("trigger_source"),
                 "flow_status_label": payload.get("flow_status_label"),
+                # ── Phase 1 三分命中率 + 環境快照(量測層,不影響上面的 hit)──
+                # 絕對跌不等於挑錯:個股 −0.5% / 大盤 −2% / 族群 −4% 在舊制同樣是
+                # 「未命中」,但它其實贏了兩個基準。三行並列才看得出是弱中強還是真的錯。
+                "stock_ret_t1": o.get("stock_ret_t1"),
+                "market_ret_t1": o.get("market_ret_t1"),
+                "sector_ret_t1": o.get("sector_ret_t1"),
+                "sector_peer_n_t1": o.get("sector_peer_n_t1"),
+                "hit_abs": o.get("hit_abs"),
+                "hit_vs_market": o.get("hit_vs_market"),
+                "hit_vs_sector": o.get("hit_vs_sector"),
+                "sector_name": o.get("sector_name") or payload.get("sector_name"),
+                "market_regime": o.get("market_regime"),
+                "market_regime_raw": o.get("market_regime_raw"),
+                "sector_regime": o.get("sector_regime"),
+                "sector_rel_peer": payload.get("sector_rel_peer"),
+                "market_rel_peer": payload.get("market_rel_peer"),
+                "market_rel_pctile": payload.get("market_rel_pctile"),
             })
         rows.sort(key=lambda r: (0 if r["hit"] == 1 else 1 if r["hit"] == 0 else 2,
                                  -(r["ret_pct"] if r["ret_pct"] is not None else -999)))
@@ -542,10 +559,30 @@ def verify_history(date: str = Query("", description="pool_date;預設最近已�
     obs_median = obs_rets[len(obs_rets) // 2] if obs_rets else None
     obs_pos = sum(1 for x in obs_rets if x > 0)
 
+    def _rate(key):
+        vals = [r[key] for r in rows if r.get(key) is not None]
+        return round(sum(vals) / len(vals) * 100, 1) if vals else None
+
+    # 環境快照:那天到底是什麼盤,擺在最上面才知道命中率低是選股還是環境。
+    _first = next((r for r in rows if r.get("market_ret_t1") is not None), {})
+    market_context = {
+        "market_ret_t1": _first.get("market_ret_t1"),
+        "market_regime": _first.get("market_regime"),
+        "market_regime_raw": _first.get("market_regime_raw"),
+        "hit_abs_rate": _rate("hit_abs"),
+        "hit_vs_market_rate": _rate("hit_vs_market"),
+        "hit_vs_sector_rate": _rate("hit_vs_sector"),
+        "scored_n": len([r for r in rows if r.get("stock_ret_t1") is not None]),
+    }
+
     return JSONResponse({
         "pool_date": pd, "dates": dates,
         "denom": len(judged), "hits": hits,
         "hit_rate": round(hits / len(judged) * 100, 1) if judged else None,
+        "market_context": market_context,
+        "hit_abs_rate": market_context["hit_abs_rate"],
+        "hit_vs_market_rate": market_context["hit_vs_market_rate"],
+        "hit_vs_sector_rate": market_context["hit_vs_sector_rate"],
         "obs_n": len(obs), "obs_scored": len(obs_rets),
         "obs_ret_median": obs_median,
         "obs_ret_avg": round(sum(obs_rets) / len(obs_rets), 2) if obs_rets else None,
