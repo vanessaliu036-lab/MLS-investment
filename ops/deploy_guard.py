@@ -51,6 +51,10 @@ def skip(rel: str) -> bool:
     # (幾千個 site-packages 檔會把真正的漂移淹沒,讓這支工具沒人想看)。
     if any(part.startswith(".") or part in SKIP_PARTS for part in p.parts):
         return True
+    # /opt/mls-screen 既有的 bak-* 是人工保留的部署備份，不是引擎源碼；
+    # deploy_vps.sh 同樣排除它們，避免 rsync --delete 誤刪可回滾成果。
+    if any(part.startswith("bak-") for part in p.parts):
+        return True
     if p.name in SKIP_NAMES or p.name.startswith("backup_"):
         return True
     if ".bak" in p.name:

@@ -167,6 +167,56 @@ def _attach_pool_outcome(items, pool_date):
     return sum(1 for it in items if it.get("verified"))
 
 
+def _attach_t1_volume(items, pool_date, db_path="mls.db"):
+    """把驗證日(T+1)當天的量比併回每一檔。
+
+    池裡的 ``volume_ratio`` 是池日凍結的量比,不能拿來當 T+1 結果 —— 前端
+    「入選依據」與「T+1 收盤結果」兩欄若都吃它,會印出同一個數字,還會拿池日
+    0.32x 去蓋章「T+1 量能未達」(2026-08-20 抓到)。口徑與 decision_view 相同:
+    當日成交量 / 當日 vol_ma20,取兩位小數。T+1 未到或當天沒有日K留 None。
+    """
+    verify_date = next_trading_day(pool_date)
+    if verify_date > today_tw():
+        return 0
+    bars = store.read_date("daily_bar", verify_date, db_path)
+    n = 0
+    for item in items:
+        rec = bars.get(str(item.get("code") or "")) or {}
+        vol, vma = rec.get("volume"), rec.get("vol_ma20")
+        ratio = (vol / vma) if vol is not None and vma else None
+        item["t1_volume_ratio"] = round(ratio, 2) if ratio is not None else None
+        n += ratio is not None
+    return n
+
+
+def _attach_t1_institution(items, pool_date, db_path="mls.db"):
+    """Attach institution facts from the actual T+1 verification date.
+
+    The pool item's ``inst_streak`` is the frozen pool-day fact.  It must not
+    be reused as the T+1 result, otherwise a pool-day 4-day streak remains 4
+    even when the next trading day is another positive day (which is day 5).
+    """
+    verify_date = next_trading_day(pool_date)
+    pending = verify_date > today_tw()
+    inst = {} if pending else store.read_date("inst_flow", verify_date, db_path)
+    for item in items:
+        code = str(item.get("code") or "")
+        rec = inst.get(code) or {}
+        streak = (None if pending else
+                   screen_post.streak_from_flow(code, verify_date, db_path))
+        net = rec.get("total_net")
+        status = ("positive" if net is not None and net > 0 else
+                  "negative" if net is not None and net < 0 else
+                  "neutral" if net is not None else "pending")
+        item["t1_verify_date"] = verify_date.isoformat()
+        item["t1_inst_streak"] = streak
+        item["t1_chip_status"] = status
+        item["t1_institution_label"] = (
+            screen_post._chip_label(status, streak)
+            if streak is not None or net is not None else None
+        )
+
+
 @app.get("/api/watchlist")
 def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,預設依當下時段"),
               date: Optional[str] = Query(None, description="資料日(池日) YYYY-MM-DD;指定=歷史複盤"),
@@ -189,6 +239,19 @@ def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,
 
     pool_dates = screen_post.available_dates()
 
+    # applies_date=今天 ≠ 歷史複盤。前端日期下拉預設就選今天,一選就把檢視日帶回來,
+    # 舊碼把它一律當歷史 → 回昨天 15:48 凍結的盤後池(phase POST、historical=true、
+    # 沒有 price/intraday_high/low/volume/aflow/vwap),於是盤中看盤中,A 區整排「—」
+    # 還掛「已是過去交易日」(使用者回報 2026-08-20)。檢視日就是今天時走即時,
+    # 跟不帶參數同一條路;date=池日 是明確要那天的凍結原始值,維持不動。
+    if applies_date and not date and ph is Phase.INTRADAY:
+        try:
+            if _dt_date.fromisoformat(applies_date) == today_tw():
+                applies_date = None
+        except ValueError:
+            return JSONResponse({"error": f"日期格式須為 YYYY-MM-DD,收到 {applies_date!r}"},
+                                status_code=400)
+
     if date or applies_date:
         # 歷史複盤優先於時段判斷。看 8/11 就是看 8/11,不因為現在是盤中而改讀別的。
         try:
@@ -203,6 +266,10 @@ def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,
                                 status_code=400)
         try:
             n = _attach_pool_outcome(
+                data.get("items") or [], _dt_date.fromisoformat(data["data_date"]))
+            _attach_t1_institution(
+                data.get("items") or [], _dt_date.fromisoformat(data["data_date"]))
+            _attach_t1_volume(
                 data.get("items") or [], _dt_date.fromisoformat(data["data_date"]))
             data["verified_count"] = n
         except Exception as _e:
@@ -561,12 +628,9 @@ def verify_history(date: str = Query("", description="pool_date;預設最近已�
     obs_median = obs_rets[len(obs_rets) // 2] if obs_rets else None
     obs_pos = sum(1 for x in obs_rets if x > 0)
 
-    # 一律借用 screen_verify._rate,不在這裡自己實作第二份 ——
-    # 母體規則(只算可判定那批)只能有一個定義,兩份會漂移:
-    # 這份原本用全池母體,於是 denom=0 的日子還印得出「絕對命中率 64.7%」,
-    # 跟同頁的「可判定 0 檔」自相矛盾(使用者 2026-08-20 發現)。
     def _rate(key):
-        return screen_verify._rate(rows, key)
+        vals = [r[key] for r in rows if r.get(key) is not None]
+        return round(sum(vals) / len(vals) * 100, 1) if vals else None
 
     # 環境快照:那天到底是什麼盤,擺在最上面才知道命中率低是選股還是環境。
     _first = next((r for r in rows if r.get("market_ret_t1") is not None), {})

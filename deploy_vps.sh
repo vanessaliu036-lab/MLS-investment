@@ -72,7 +72,7 @@ rsync -avz --delete \
   --exclude='*.db' \
   --exclude='*.db-shm' \
   --exclude='*.db-wal' \
-  --exclude='*.bak' \
+  --exclude='*.bak*' \
   --exclude='*.log' \
   --exclude='.DS_Store' \
   --exclude='__pycache__' \
@@ -106,6 +106,7 @@ rsync -avz --delete \
   --exclude='*.db-shm' \
   --exclude='*.db-wal' \
   --exclude='*.bak*' \
+  --exclude='bak-*' \
   --exclude='*.log' \
   --exclude='.DS_Store' \
   --exclude='__pycache__' \
