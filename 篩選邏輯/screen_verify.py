@@ -329,14 +329,15 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
             ups += (_nc > _pc)
     breadth_pct = round(ups / tot * 100, 1) if tot else None
     risk_off = breadth_pct is not None and breadth_pct < RISK_OFF_BREADTH_PCT
-    regime_excluded = 0
+    regime_excluded_codes = set()
     if risk_off:
         for r in items:
             # 攻擊軌(追突破)當天會被盤中 regime 閘擋下、不進場 → hit 設 None 剔出分母
             if r["track"] == "攻擊軌" and r["hit"] is not None:
                 r["hit"] = None
                 r["verdict"] = f"大盤RiskOff({breadth_pct}%)·攻擊軌不追(不計)"
-                regime_excluded += 1
+                regime_excluded_codes.add(r["code"])
+    regime_excluded = len(regime_excluded_codes)
 
     # ── Phase 1 三分命中率(絕對 / 相對大盤 / 相對族群)────────────────────
     # 為什麼要三個:南亞科 -6.6% vs 大盤 -2% vs 族群 -4% = 三項全敗 = 真的挑錯;
@@ -356,7 +357,7 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
 
     store.upsert_intraday(TABLE, PLUGIN, rows, db_path)
     return _finish_verify(items, rows, pool, envs, d, pool_date, now,
-                          breadth_pct, risk_off, regime_excluded, bar, market_t1)
+                          breadth_pct, risk_off, regime_excluded_codes, bar, market_t1)
 
 
 def _measure_three_way(items, pool, bar, bar_prev, _dstr) -> None:
@@ -418,9 +419,67 @@ def _measure_three_way(items, pool, bar, bar_prev, _dstr) -> None:
         })
 
 
+# 來回交易成本(%)。手續費牌告 0.1425%×6折×雙邊 = 0.171%,加賣出證交稅 0.3%。
+# 現股當沖證交稅減半(0.15%)→ 32.1 bps,但盤後名單是隔日進場,用一般稅率。
+ROUND_TRIP_COST_PCT = 0.471
+
+
+def _track_breakdown(items, regime_excluded_codes, market_t1) -> dict:
+    """依軌道拆成:候選數 → 觸發率 → 觸發後勝率 → 觸發後淨報酬/Alpha。
+
+    為什麼要拆:攻擊軌的觸發價是 max(昨高,前日高) 的結構壓力位,衝高收黑日會
+    拉到 10%+ 變不可觸發。把「沒觸發」算成交易失敗,等於拿沒下的單算勝負 ——
+    實測攻擊軌混合命中率 31.9%,但拆開後觸發後勝率 54.7%,跟引擎軌一樣好。
+    未觸發從此只算「沒有形成交易」,不進勝率分母。
+    """
+    out = {}
+    for track in ("攻擊軌", "引擎軌"):
+        cand = [r for r in items if r.get("track") == track]
+        if not cand:
+            continue
+        excluded = [r for r in cand if r["code"] in regime_excluded_codes]
+        # regime 閘擋下的當天根本不進場,不算候選失敗也不算沒觸發
+        evaluable = [r for r in cand if r["code"] not in regime_excluded_codes
+                     and r.get("triggered") is not None]
+        trig = [r for r in evaluable if r.get("triggered") == 1]
+        scored = [r for r in trig if r.get("hit") is not None]
+        rets = [r["ret_pct"] for r in trig if r.get("ret_pct") is not None]
+        alphas = [r["ret_pct"] - market_t1 for r in trig
+                  if r.get("ret_pct") is not None and market_t1 is not None]
+        avg = (lambda xs: round(sum(xs) / len(xs), 2) if xs else None)
+        out[track] = {
+            "candidates": len(cand),
+            "excluded_by_regime": len(excluded),
+            "no_data": len([r for r in cand if r.get("triggered") is None
+                            and r["code"] not in regime_excluded_codes]),
+            "evaluable": len(evaluable),
+            "triggered": len(trig),
+            "no_trade": len(evaluable) - len(trig),      # 未觸發 = 沒有形成交易
+            "trigger_rate": (round(len(trig) / len(evaluable) * 100, 1)
+                             if evaluable else None),
+            "win_rate_after_trigger": (
+                round(sum(1 for r in scored if r["hit"] == 1) / len(scored) * 100, 1)
+                if scored else None),
+            "win_n_after_trigger": sum(1 for r in scored if r["hit"] == 1),
+            "scored_after_trigger": len(scored),
+            "avg_ret_after_trigger": avg(rets),
+            "avg_net_ret_after_trigger": (
+                round(sum(rets) / len(rets) - ROUND_TRIP_COST_PCT, 2) if rets else None),
+            # Alpha 基準是 TAIEX(market_ret_t1),不是池中位 —— 池中位是這 51 檔
+            # 電子股,拿它當大盤會讓 Alpha 變成自己跟自己比。
+            "avg_alpha_vs_taiex_after_trigger": avg(alphas),
+            "cost_pct_assumed": ROUND_TRIP_COST_PCT,
+        }
+    return out
+
+
 def _finish_verify(items, rows, pool, envs, d, pool_date, now,
-                   breadth_pct, risk_off, regime_excluded, bar, market_t1) -> dict:
-    """彙總回傳。hit / denom / hit_rate 的算法與語意完全不變。"""
+                   breadth_pct, risk_off, regime_excluded_codes, bar, market_t1) -> dict:
+    """彙總回傳。hit / denom / hit_rate 的算法與語意完全不變。
+
+    track_breakdown 是並列新增的分母拆解(#6),不改 hit_rate —— 舊欄位還在,
+    要換算法是之後的決定,不在這一步偷偷做掉。"""
+    regime_excluded = len(regime_excluded_codes)
     scored = [r for r in items if r["hit"] is not None]     # 攻擊+引擎(有資料;普跌日攻擊軌已剔除)
     denom = len(scored)
     hits = sum(1 for r in scored if r["hit"] == 1)
@@ -440,6 +499,8 @@ def _finish_verify(items, rows, pool, envs, d, pool_date, now,
         "hit_rate": round(hits / denom * 100, 1) if denom else None,
         "breadth_pct": breadth_pct, "risk_off": risk_off,
         "regime_excluded": regime_excluded,
+        # #6 攻擊軌分母修正:候選數 → 觸發率 → 觸發後勝率 → 觸發後淨報酬/Alpha
+        "track_breakdown": _track_breakdown(items, regime_excluded_codes, market_t1),
         # Phase 1 三分命中率:母體是「全部有 T+1 報酬的列」,不套進場軌過濾,
         # 也不做 regime 排除 —— 這三個數字的用途是診斷哪一層失效,
         # 不是拿來當戰績,所以刻意不縮分母。
