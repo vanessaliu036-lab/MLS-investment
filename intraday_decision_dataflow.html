@@ -774,7 +774,7 @@ document.addEventListener('click',e=>{
   // 來源標籤:後台原碼翻中文(ab＝盤後篩選鏈、radar＝盤中機會雷達),不再露 raw「ab」。
   const srcLabel=s=>({ab:'盤後篩選',radar:'盤中雷達',resilient:'抗跌',engine:'引擎軌',attack:'攻擊軌'})[s]||s||'—';
   const pickReason=x=>{const r=String(x.reason||'').trim();if(r){const kept=r.split('·').map(s=>s.trim()).filter(s=>s&&!/法人|大戶|投信|外資|資金連續|連續\s*\d+\s*日|連買|連賣/.test(s));return kept.length?esc2(kept.join(' · ')):'—'}return textReason(x)};
-  const triggerCondition=x=>{const p=x.trigger_price??x.entry_ref??x.base_close??x.prev_high??x.previous_high??x.ma20??x.ma_20??x.month_line;const n=p==null?'—':Number(p).toLocaleString('en-US');const raw=String(x.entry_rule||x.track||x.action||x.classification_reason||x.reason||'');if(x.track==='engine'||/回測|月線|MA20|引擎/.test(raw))return `回測月線 ${n}`;if(x.track==='attack'||/突破|昨高|攻擊/.test(raw))return `突破昨高 ${n}`;return p==null?'待盤後產生':`關鍵價 ${n}`};
+  const triggerCondition=x=>{const p=x.trigger_price??x.entry_ref??x.base_close??x.prev_high??x.previous_high??x.ma20??x.ma_20??x.month_line;const n=p==null?'—':Number(p).toLocaleString('en-US');const raw=String(x.entry_rule||x.track||x.action||x.classification_reason||x.reason||'');if(x.track==='attack')return `突破昨高 ${n}`;if(x.track==='engine')return `回測月線 ${n}`;if(/回測|月線|MA20|引擎/.test(raw))return `回測月線 ${n}`;if(/突破|昨高|攻擊/.test(raw))return `突破昨高 ${n}`;return p==null?'待盤後產生':`關鍵價 ${n}`};
   // signal_type 缺值時的退路只能猜「策略類型」，猜不到「今天有沒有觸發」——
   // 舊版不管三七二十一固定回傳「突破前高」/「回測月線」，於是價格根本還沒到關鍵價
   // 的股票，也會在「今日型態」印出「突破前高」，跟旁邊即時算的「未達X」互相矛盾
@@ -854,9 +854,8 @@ document.addEventListener('click',e=>{
       // 進場日還沒到（未來名單，如今晚才產出的隔日單）→ 交易日欄位全空白，只留盤後已決定的欄
       if(notTraded){
         const cond0=triggerCondition(x),reason0=(String(x.reason||'').trim()?pickReason(x):'待進場日盤中資料'),chip0=chips(x),chipCls0=/連賣|賣超/.test(chip0)?'down':/連買|買超|同步/.test(chip0)?'up':'',signal0=signalType(x);
-        // 適用日尚未開盤，價格本身保留作為明日進場參考，不再附多餘的池日註解。
-        const base0=x.base_close??x.close??x.close_price??x.price;
-        return `<tr><td class="stock"><small class="sector-tag">${esc2(x.sector||'其他')}</small><b>${esc2(rowName(x))}</b><small>${esc2(rowCode(x))}</small></td><td class="price">${base0==null?'—':Number(base0).toLocaleString('en-US')}</td><td class="muted-state">—<small>待開盤</small></td><td class="flow muted-state">—<small>進場日未到</small></td><td class="cond">${esc2(cond0)}</td><td class="explain">${reason0}</td><td class="${chipCls0}">${chip0==='待法人資料'?stateCell('待法人資料','post-ready'):esc2(chip0)}</td><td>${signal0==='待更新'?stateCell('18:00 後更新','post-ready'):esc2(signal0)}</td>${semanticCells(x)}<td>${stateCell('待進場日盤中','verify-pending')}</td><td>${stateCell('待進場日收盤','verify-pending')}</td></tr>`;
+        // 明日尚未發生，任何今日收盤、觸發價都不能放在明日名單上當作價格。
+        return `<tr><td class="stock"><small class="sector-tag">${esc2(x.sector||'其他')}</small><b>${esc2(rowName(x))}</b><small>${esc2(rowCode(x))}</small></td><td class="price">—</td><td class="muted-state">—<small>待開盤</small></td><td class="flow muted-state">—<small>進場日未到</small></td><td class="cond">${esc2(cond0)}</td><td class="explain">${reason0}</td><td class="${chipCls0}">${chip0==='待法人資料'?stateCell('待法人資料','post-ready'):esc2(chip0)}</td><td>${signal0==='待更新'?stateCell('18:00 後更新','post-ready'):esc2(signal0)}</td>${semanticCells(x)}<td>${stateCell('待進場日盤中','verify-pending')}</td><td>${stateCell('待進場日收盤','verify-pending')}</td></tr>`;
       }
       const price=settledPrice(x), ch=settledChange(x), flow=flowValue(x), fN=finite(flow);
       const isToday=x.state==='live'||/驗證中/.test(String(x.verdict||''));
@@ -932,58 +931,23 @@ document.addEventListener('click',e=>{
     return sorted.map(x=>{
       const code=rowCode(x),name=rowName(x),sector=x.sector||'其他';
       if(notTraded){
-        const cond0=triggerCondition(x),reason0=(String(x.reason||'').trim()?pickReason(x):'待進場日盤中資料'),chip0=chips(x),chipCls0=/連賣|賣超/.test(chip0)?'down':/連買|買超|同步/.test(chip0)?'up':'',signal0=signalType(x),base0=x.base_close??x.close??x.close_price??x.price,v0=semanticVals(x);
+        const cond0=triggerCondition(x),reason0=(String(x.reason||'').trim()?pickReason(x):'待進場日盤中資料'),chip0=chips(x),chipCls0=/連賣|賣超/.test(chip0)?'down':/連買|買超|同步/.test(chip0)?'up':'',signal0=signalType(x),v0=semanticVals(x);
         const maDefense0=(String(x.entry_rule||'').match(/MA5\s*[\d.]+/)||[])[0];
-        const limitUp0=exactLimitUp(x,base0,x.base_change_rate??x.change_rate);
         return `<article class="stock-card mr-card" data-code="${esc2(code)}">
           <div class="mr-card-head"><div class="mr-card-id"><span class="sector-tag">${esc2(sector)}</span><span class="mr-card-name">${esc2(name)}</span><span class="mr-card-code">${esc2(code)}</span></div><span class="mr-card-state pending">待進場日盤中</span></div>
-          ${(()=>{
-            // 待進場卡的大字曾是「池日收盤」——但這張卡講的是還沒到的進場日,
-            // 把昨天的收盤放在最大字級,看的人會以為那是明日價(2026-08-20 回報)。
-            // 明日唯一有意義的價＝觸發價(要突破才進場);池日收盤降為小字基準。
-            const trig0=x.trigger_price??x.entry_ref;
-            return Number.isFinite(Number(trig0))
-              ? `<div class="mr-card-price"><span class="mr-card-p">${Number(trig0).toLocaleString('en-US')}</span><span class="mr-card-p-note">${esc2(verifyDate||'進場日')} 觸發價｜突破才進場</span></div>`
-              : `<div class="mr-card-price"><span class="mr-card-p">—</span><span class="mr-card-p-note">${esc2(verifyDate||'進場日')} 觸發價未定</span></div>`;
-          })()}
-          <div class="mr-top-badges">
-            <div class="mr-f4"><label>今日型態</label><b>${esc2(signal0)}</b></div>
-            <div class="mr-f4"><label>量能(相對)</label><b>${esc2(x.volume_label||'—')}</b></div>
-            <div class="mr-f4"><label>本日強度</label><b>${esc2(v0.potential)}</b></div>
-          </div>
-          <div class="mr-stage-label mr-stage-a">A｜${esc2(verifyDate||'適用日')} 進場日盤中快照<small>尚未開盤｜僅顯示盤中可取得的資料</small></div>
-          <div class="mr-facts-grid mr-facts-grid8">
-            <div class="mr-f4"><label>時間</label><b>—</b></div>
-            <div class="mr-f4"><label>現價</label><b>—</b></div>
-            <div class="mr-f4"><label>漲跌幅</label><b>—</b></div>
-            <div class="mr-f4"><label>最高</label><b>—</b></div>
-            <div class="mr-f4"><label>最低</label><b>—</b></div>
-            <div class="mr-f4"><label>成交量</label><b>—</b></div>
-            <div class="mr-f4"><label>量比(同期)</label><b>—</b></div>
-          </div>
-          <div class="mr-facts-grid mr-facts-grid7">
-            <div class="mr-f4"><label>主動買賣差(估)</label><b>—</b></div>
-            <div class="mr-f4"><label>主動買賣比(估)</label><b>—</b></div>
-            <div class="mr-f4"><label>主動成交加速度(估)</label><b>—</b></div>
-            <div class="mr-f4"><label>日內位置</label><b>—</b></div>
-            <div class="mr-f4"><label>關鍵價位</label><b>${esc2(cond0)}</b></div>
-            <div class="mr-f4"><label>防守價位</label><b>${esc2(maDefense0||'—')}</b></div>
-            <div class="mr-f4"><label>VWAP</label><b>—</b></div>
-          </div>
-          <div class="mr-a-note">說明：明日尚未開盤，盤中資料需等 09:00 後才會有數值。</div>
-          <div class="mr-c-source-note">🔒 入選依據：${esc2(poolDate||'—')} 收盤快照｜不可回寫</div>
+          <div class="mr-card-price"><span class="mr-card-p">—</span><span class="mr-card-p-note">現價｜進場日開盤後填入</span></div>
+          <div class="mr-card-line">${esc2(signal0)} ${esc2(String(cond0).replace(/^[^0-9]*/,''))}${maDefense0?`，防守 ${esc2(maDefense0)}`:''}｜強度 ${esc2(v0.potential)}</div>
           ${(()=>{
             // 待進場卡原本只印一條「🔒 入選依據」小字就跳到 B 區「尚無對照資料」，
             // 等於整張卡完全沒講「當初憑什麼選它」——使用者在手機上看到的就是
             // 入選條件消失(2026-08-20)。這裡把已驗證卡 B 表的「入選依據」欄
             // 原樣搬過來:同樣 6 個因子、同樣措辭，只是還沒有 T+1 結果欄可對照。
-            const base=_entryBasis(x);
-            return `<table class="mr-c-table mr-c-base-table"><thead><tr><th>入選條件</th><th>${esc2(poolDate||'—')} 入選依據 🔒</th></tr></thead><tbody>${
+            // 價格表現(關鍵價)與型態驗證已在上面那一行講完,表格不再重覆同一句。
+            const base=_entryBasis(x).filter(([,l])=>l!=='價格表現'&&l!=='型態驗證');
+            return `<table class="mr-c-table mr-c-base-table"><thead><tr><th>入選條件</th><th>入選依據</th></tr></thead><tbody>${
               base.map(([kind,label,val])=>`<tr class="${kind==='core'?'mr-c-core':''}"><td><span class="mr-c-tag ${kind}">${kind.toUpperCase()}</span>${label}</td><td>${val}</td></tr>`).join('')
             }</tbody></table>`;
           })()}
-          <div class="mr-stage-label mr-stage-c">B｜T+1 收盤驗證<small>待進場日收盤後才會產生驗證結果</small></div>
-          <div class="mr-c-block"><div class="mr-c-row"><span>待進場日盤中/收盤後才能驗證，此時尚無 T+1 對照資料</span></div></div>
         </article>`;
       }
       const price=settledPrice(x), ch=settledChange(x), flow=flowValue(x), fN=finite(flow);
@@ -1154,7 +1118,7 @@ document.addEventListener('click',e=>{
         <div class="mr-c-source-note">🔒 入選依據：${esc2(poolDate||'—')} 收盤快照｜不可回寫</div>
         <div class="mr-stage-label mr-stage-c">B｜T+1 收盤驗證<small>${x.verified?`${esc2(verifyDate||'—')} 收盤結果，對照 ${esc2(poolDate||'—')} 入選依據`:`${esc2(poolDate||'—')} 入選依據已鎖定；今日盤中即時，13:30 收盤蓋章後才會補上收盤結果`}</small></div>
         ${(()=>{
-          const volR=finite(x.volume_ratio);
+          const volR=finite(x.volume_ratio),t1VolR=finite(x.t1_volume_ratio);
           const structFail=(x.structural_failures||[]).length>0;
           const verified=!!x.verified;
           // 核心因子(價格方向/關鍵價/結構型態/有無結構失效)決定命中與否；
@@ -1195,7 +1159,11 @@ document.addEventListener('click',e=>{
             {label:'結構是否失效',base:_ebv['結構是否失效'],now:verified?(structFail?'四道結構失效':'結構維持'):'待收盤重算',ok:verified?!structFail:null},
           ];
           const confirm=[
-            {label:'量能驗證',base:_ebv['量能驗證'],now:verified?(volR==null?'—':`${volR}x${volR>1.2?'，放量':''}`):(volR==null?'—':`盤中 ${volR}x${volR>1.2?'，已放量':'，量未跟上'}`),ok:verified?(volR==null?null:volR>1.2):null},
+            // T+1 量比只能用 t1_volume_ratio(進場日當天的量)。舊寫法兩欄都吃 volume_ratio
+            // ＝池日量比,於是「入選依據」跟「T+1 結果」永遠印同一個數字,還拿池日 0.32x
+            // 去蓋章「T+1 量能未達」(使用者 2026-08-20 抓到)。引擎沒送就顯示無資料、
+            // 判定留 · 不計入 CONFIRM 分母,不准拿池日值冒充當日結果。
+            {label:'量能驗證',base:_ebv['量能驗證'],now:verified?(t1VolR==null?'無 T+1 量比':`${t1VolR}x${t1VolR>1.2?'，放量':''}`):(volR==null?'—':`盤中 ${volR}x${volR>1.2?'，已放量':'，量未跟上'}`),ok:verified?(t1VolR==null?null:t1VolR>1.2):null},
             {label:'法人籌碼',base:_ebv['法人籌碼'],now:verified?esc2(instStreakText):'待盤後法人',ok:verified?resultChipStatus==='positive':null},
             {label:'籌碼結構',base:_ebv['籌碼結構'],now:verified?(resultChipStatus==='positive'?'偏多強化':resultChipStatus==='negative'?'轉弱':'持平'):'待盤後法人',ok:verified?resultChipStatus!=='negative':null},
           ];
@@ -1210,9 +1178,8 @@ document.addEventListener('click',e=>{
           else if(!coreOk)verdictLabel='🔴 未命中',verdictCls='bad';
           else if(confirmScored.length===0||confirmHits===confirmScored.length)verdictLabel='🟢 完整命中',verdictCls='good';
           else verdictLabel='🟢 命中',verdictCls='good';
-          const devianceRow=r=>r.ok===false?`<tr class="mr-c-deviance"><td colspan="4">⚠️ 偏差原因｜${r.label}：${r.base}，實際${r.now}，未達模型條件</td></tr>`:'';
-          const rowsHtml=core.map(r=>`<tr class="mr-c-core"><td><span class="mr-c-tag core">CORE</span>${r.label}</td><td>${r.base}</td><td>${r.now}</td><td>${r.ok===true?'<span class="mr-check ok">✓</span>':r.ok===false?'<span class="mr-check no">✕</span>':'<span class="mr-check pending">·</span>'}</td></tr>${devianceRow(r)}`).join('')
-            +confirm.map(r=>`<tr><td><span class="mr-c-tag confirm">CONFIRM</span>${r.label}</td><td>${r.base}</td><td>${r.now}</td><td>${r.ok===true?'<span class="mr-check ok">✓</span>':r.ok===false?'<span class="mr-check no">✕</span>':'<span class="mr-check pending">·</span>'}</td></tr>${devianceRow(r)}`).join('');
+          const rowsHtml=core.map(r=>`<tr class="mr-c-core"><td><span class="mr-c-tag core">CORE</span>${r.label}</td><td>${r.base}</td><td>${r.now}</td><td>${r.ok===true?'<span class="mr-check ok">✓</span>':r.ok===false?'<span class="mr-check no">✕</span>':'<span class="mr-check pending">·</span>'}</td></tr>`).join('')
+            +confirm.map(r=>`<tr><td><span class="mr-c-tag confirm">CONFIRM</span>${r.label}</td><td>${r.base}</td><td>${r.now}</td><td>${r.ok===true?'<span class="mr-check ok">✓</span>':r.ok===false?'<span class="mr-check no">✕</span>':'<span class="mr-check pending">·</span>'}</td></tr>`).join('');
           // 收尾一句改由 CORE/CONFIRM 實際結果合成，不再套用另一支模組(intraday_verdict.py)
           // 算的即時盤中判讀——那支答的是「現在盤中資金有沒有跟上」，跟這裡「T+1 收盤
           // 對不對」是兩個問題，放在同一格會出現「完整命中」旁邊寫「動能待確認」互打架。
@@ -2821,10 +2788,10 @@ async function loadBreadth(embedded){
 .mr-card-id .sector-tag{font-size:10px;padding:2px 7px;border-radius:99px;background:#eef1f7;color:#5c7393;font-weight:700}
 .mr-card-state{font-size:11px;font-weight:800;padding:4px 9px;border-radius:99px;background:#f1f4f9;color:var(--muted);white-space:nowrap}
 .mr-card-state.limitup{background:#fdecec;color:#d92d20}
-.mr-card-price{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin-top:8px}
-.mr-card-p-sub{flex-basis:100%;font-size:11px;color:var(--muted)}
+.mr-card-price{display:flex;align-items:baseline;gap:8px;margin-top:8px}
 .mr-card-p{font-size:24px;font-weight:900;font-variant-numeric:tabular-nums}
 .mr-card-p-note{font-size:11px;color:var(--muted)}
+.mr-card-line{margin:8px 0 4px;font-size:13px;font-weight:700;color:var(--ink)}
 .mr-card-chg{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
 .mr-card-limit{font-size:11px;font-weight:800;color:#d92d20;background:#fdecec;border:1px solid #f0a9a9;padding:2px 7px;border-radius:8px}
 /* A/B/C 階段標籤:輕量文字條,不做滿版色塊 —— 卡片版靠密度取勝,不能讓分區標題
