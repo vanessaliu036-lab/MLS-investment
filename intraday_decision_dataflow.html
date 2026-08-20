@@ -807,7 +807,10 @@ document.addEventListener('click',e=>{
   const rowName=x=>x.name??x.stock_name??rowCode(x);
   const flowValue=x=>x.aflow??x.active_flow??x.active_buy_diff??x.net_active??x.capital_flow;
   // 命中＝觸發 + 收盤站穩門檻。後端 success 可能只看盤中觸發、漏了收盤確認（如 6173 收 165<門檻 169.5 卻標命中），前端再守一道：收盤<門檻一律不算命中。
-  const closeConfirm=x=>{const c=finite(settledPrice(x)),e=finite(x.entry_ref??x.base_close??x.trigger_price);return (c!=null&&e!=null)?c>=e:null};
+  // 收盤達標的比較基準只能是「池日收盤」(base_close)。舊碼優先拿 entry_ref/trigger_price:
+  // 引擎軌的觸發價是回測支撐(月線),用它當收盤門檻等於「只要沒跌破月線就算命中」——
+  // 6174 安碁 T+1 收 44.2、池日收 44.75(-1.23%),引擎判「站月線未收紅」不命中,前端卻判命中。
+  const closeConfirm=x=>{const c=finite(settledPrice(x)),e=finite(x.base_close??x.entry_ref??x.trigger_price);return (c!=null&&e!=null)?c>=e:null};
   const isHit=x=>!!x.verified&&(x.triggered===1||x.triggered===true)&&!!x.success&&closeConfirm(x)!==false;
   // 核心命中(2026-08-18)：命中與否只看核心因子(價格方向/是否觸發/有無結構失效)，
   // 不再讓量能/法人/籌碼等確認因子單獨否決核心方向——跟C區逐因子表、跟🔴結構風險
@@ -815,10 +818,17 @@ document.addEventListener('click',e=>{
   // 被x.success這個不可靠欄位錯殺(4/5甚至5/5全過仍被記成失敗的舊bug)。
   const coreHit=x=>{
     if(!x.verified)return null;
+    // 命中與否是引擎蓋章的事實(screen_verify/pool_outcome 的 success/verdict),前端只翻譯。
+    // 前端自己重算會漏掉軌道差異:攻擊軌要「收盤站上突破價」(3042 晶技 T+1 +1.34% 但收 188.5
+    // 沒站回 192.5 → 不算站穩),引擎軌要「收紅」(6174 安碁站月線但收黑 → 不算)。
+    // 一條 c>=e 蓋不住兩種規則,兩邊各報一個命中率就是這樣來的(2026-08-20 稽核)。
+    if(x.success!=null)return !!x.success;
     const priceOk=closeConfirm(x);
     if(priceOk==null)return null;
-    const structFail=(x.structural_failures||[]).length>0;
-    return (x.triggered===1||x.triggered===true)&&priceOk===true&&!structFail;
+    // structural_failures 是「入選當下」的結構標記,不是 T+1 重算的結果;
+    // 拿它否決 T+1 事實,會把 3363 上詮(T+1 +4.45%、引擎判命中)算成未命中。
+    // 結構失效仍在卡片與🔴結構風險分組顯示,只是不再回溯改寫已經發生的收盤結果。
+    return (x.triggered===1||x.triggered===true)&&priceOk===true;
   };
   const intradayReason=x=>{const flow=flowValue(x),ch=x.change_rate??x.today_change??x.chg??x.pct,parts=[];parts.push({label:'即時資金流',detail:flow!=null?`${numberText(flow)}｜${Number(flow)>0?'主動買盤流入':Number(flow)<0?'主動賣盤流出':'方向不明'}`:'API 未提供即時資金流'});parts.push({label:'當日漲跌',detail:ch!=null?`${pctText(ch)}｜${Number(ch)>0?'當日上漲':Number(ch)<0?'當日下跌':'持平'}`:'API 未提供當日漲跌'});parts.push({label:'即時觸發條件',detail:triggerCondition(x)});return parts};
   const phaseLabel=phase=>phase==='POST'?'18:00 後｜盤後正式名單':'盤中｜初篩資料逐步補齊';
@@ -1156,7 +1166,9 @@ document.addEventListener('click',e=>{
           const core=[
             {label:'價格表現',base:_ebv['價格表現'],now:verified?`收盤 ${price==null?'—':Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})`:(price==null?'—':`盤中 ${Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})`),ok:verified?closeOk:null},
             {label:'型態驗證',base:_ebv['型態驗證'],now:verified?(limitUp?'漲停鎖價，強勢收盤':(x.triggered?'已突破，結構延續':'未突破前高')):patNow,ok:verified?!!x.triggered:null},
-            {label:'結構是否失效',base:_ebv['結構是否失效'],now:verified?(structFail?'四道結構失效':'結構維持'):'待收盤重算',ok:verified?!structFail:null},
+            // 四道結構閘只在盤後篩選當下算過,沒有 T+1 版本 —— 舊碼把池日標記印成
+            // 「T+1 結構維持/失效」並拿去打勾打叉,跟量能那格同一種冒充。沒有就說沒有。
+            {label:'結構是否失效',base:_ebv['結構是否失效'],now:verified?'無 T+1 結構重算':'待收盤重算',ok:null},
           ];
           const confirm=[
             // T+1 量比只能用 t1_volume_ratio(進場日當天的量)。舊寫法兩欄都吃 volume_ratio
