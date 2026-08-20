@@ -1151,15 +1151,29 @@ document.addEventListener('click',e=>{
           // 入選依據欄一律取 _entryBasis(個股池日實際值)，跟未進場卡同一份事實，
           // 兩張卡不會出現「同一檔昨天寫 >1.2x、今天寫 量比0.3x」互相打架。
           const _eb=_entryBasis(x),_ebv=Object.fromEntries(_eb.map(([,l,v])=>[l,v]));
+          // 「今日結果」欄盤中不再一律空白(使用者回報 2026-08-20)：整欄六格全 '—' 等於
+          // 整個交易日都沒有資訊，但判定(ok)確實只能等 13:30 蓋章。兩者要分開處理：
+          //   ok  → 未收盤一律 null(顯示 ·)，絕不用盤中價冒充收盤結論(2026-08-19 的坑)
+          //   now → 能即時算的就顯示即時值並標「盤中」，不能的就明講在等什麼
+          // 價格/量比是即時成交算得出來的；法人與籌碼要盤後公布才有，拿池日舊值填進
+          // 「今日結果」會變成「今天的結果=昨天的資料」，比空白更誤導，所以標「待盤後法人」。
+          // 這跟本卡上方「盤中僅使用即時成交與可計算資料；法人與籌碼待盤後公布」同一條原則。
+          const _trigP=finite(x.trigger_price)??finite(x.entry_ref)??finite(x.base_close);
+          const _hiP=finite(x.intraday_high);
+          // 型態盤中用三態(與主表今日觸發燈同語意)：站上／曾觸及回落／未達，
+          // 不印「已突破」——triggered=1 但現價已摔回來時那句話會跟旁邊現價互相矛盾。
+          const patNow=_trigP==null?'盤中待突破價'
+            :(price!=null&&price>=_trigP?'盤中已站上'
+            :(_hiP!=null&&_hiP>=_trigP?'盤中曾觸及·已回落':'盤中未達'));
           const core=[
-            {label:'價格表現',base:_ebv['價格表現'],now:verified?`收盤 ${price==null?'—':Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})`:'—',ok:verified?closeOk:null},
-            {label:'型態驗證',base:_ebv['型態驗證'],now:verified?(limitUp?'漲停鎖價，強勢收盤':(x.triggered?'已突破，結構延續':'未突破前高')):'—',ok:verified?!!x.triggered:null},
-            {label:'結構是否失效',base:_ebv['結構是否失效'],now:verified?(structFail?'四道結構失效':'結構維持'):'—',ok:verified?!structFail:null},
+            {label:'價格表現',base:_ebv['價格表現'],now:verified?`收盤 ${price==null?'—':Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})`:(price==null?'—':`盤中 ${Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})`),ok:verified?closeOk:null},
+            {label:'型態驗證',base:_ebv['型態驗證'],now:verified?(limitUp?'漲停鎖價，強勢收盤':(x.triggered?'已突破，結構延續':'未突破前高')):patNow,ok:verified?!!x.triggered:null},
+            {label:'結構是否失效',base:_ebv['結構是否失效'],now:verified?(structFail?'四道結構失效':'結構維持'):'待收盤重算',ok:verified?!structFail:null},
           ];
           const confirm=[
-            {label:'量能驗證',base:_ebv['量能驗證'],now:verified?(volR==null?'—':`${volR}x${volR>1.2?'，放量':''}`):'—',ok:verified?(volR==null?null:volR>1.2):null},
-            {label:'法人籌碼',base:_ebv['法人籌碼'],now:verified?esc2(instStreakText||'—'):'—',ok:verified?x.chip_status==='positive':null},
-            {label:'籌碼結構',base:_ebv['籌碼結構'],now:verified?(x.chip_status==='positive'?'偏多強化':x.chip_status==='negative'?'轉弱':'持平'):'—',ok:verified?x.chip_status!=='negative':null},
+            {label:'量能驗證',base:_ebv['量能驗證'],now:verified?(volR==null?'—':`${volR}x${volR>1.2?'，放量':''}`):(volR==null?'—':`盤中 ${volR}x${volR>1.2?'，已放量':'，量未跟上'}`),ok:verified?(volR==null?null:volR>1.2):null},
+            {label:'法人籌碼',base:_ebv['法人籌碼'],now:verified?esc2(instStreakText||'—'):'待盤後法人',ok:verified?x.chip_status==='positive':null},
+            {label:'籌碼結構',base:_ebv['籌碼結構'],now:verified?(x.chip_status==='positive'?'偏多強化':x.chip_status==='negative'?'轉弱':'持平'):'待盤後法人',ok:verified?x.chip_status!=='negative':null},
           ];
           const coreScored=core.filter(r=>r.ok!==null);
           const coreOk=coreScored.length>0&&coreScored.every(r=>r.ok===true);
