@@ -1420,7 +1420,12 @@ document.addEventListener('click',e=>{
       // 不是今天(applies_date)即時混入的值。/ab/watchlist?date=X 查得到那天的凍結原始值
       // (已驗證：date=2026-08-17 回的 close/change_rate 就是 8/17 當天收盤，非今日重算)。
       // 只補 base_* 三欄給 B 區用，不覆蓋 A 區既有的即時欄位。
-      const _poolDate=data.build_date||data.data_date||data.pool_date;
+      // ⚠ pool_date 必須排在 data_date 前面。盤中即時回應的 data_date 是「今天」
+      //   (2026-08-20)，而 pool_date 才是這批名單真正的池日(2026-08-19)。
+      //   舊順序讓 data_date 先命中 → 去抓 ?date=今天 的池，那份 15:05 才建得出來，
+      //   實測回 0 檔 → 整個 base_* 合併靜默失效，入選依據三列全退成「待補」，
+      //   看起來就像寫死(使用者回報 2026-08-20)。
+      const _poolDate=data.build_date||data.pool_date||data.data_date;
       if(_poolDate){
         try{
           const snap=await getJson('/ab/watchlist?date='+encodeURIComponent(_poolDate)).catch(()=>null);
