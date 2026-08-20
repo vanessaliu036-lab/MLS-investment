@@ -1398,6 +1398,10 @@ document.addEventListener('click',e=>{
     return `<article class="dr-single decision-view"><div class="dr-single-toolbar"><div><b>盤後驗證主表</b><small>保留原欄位、盤中資金流與累積歷史；四分組只改呈現</small></div><div><span class="dr-single-date">${esc2(status)}</span><span class="dr-single-date">資料日 <select onchange="window._pickMainDate&&window._pickMainDate(this.value)" style="border:0;background:transparent;font:inherit;font-weight:850;color:inherit;cursor:pointer">${dateOpts}</select></span></div></div>${stats}<nav class="decision-pool-nav">${DECISION_POOLS.map(p=>`<span onclick="window._jumpToPool&&window._jumpToPool('${p.key}')">${p.label} ${groups[p.key].length}<small>${esc2(p.desc||'')}</small></span>`).join('')}</nav>${summaries}<div class="dr-single-note">明日觀察與今日淘汰繼續使用原本驗證流程；新增四欄只顯示語意，不重算、不刪除、不改寫歷史。結構失效股票已併入上方🔴結構風險分組顯示，不再另移出主名單。</div></article>`;
   };
   observeSection=()=>'';
+  // 卡片實際渲染的是 rows ∪ observe_rows(canonicalItems)，但盤中補值迴圈舊碼只跑 rows，
+  // 觀察軌的卡永遠補不到 high/low/VWAP/aflow 與池日量比 —— 使用者截圖的 3026/3042
+  // 正好都是觀察軌(2026-08-20)。補值範圍必須跟渲染範圍同一份。
+  const _allRows=d=>[...((d&&(d.items||d.rows))||[]),...((d&&d.observe_rows)||[])];
   async function renderSingle(quiet){const body=document.querySelector('#featureBody'),title=document.querySelector('#featureTitle'),status=document.querySelector('#featureStatus');if(!body)return;const phase=phaseNow();if(!quiet)body.innerHTML='<div class="dr-single-empty">讀取主表資料中…</div>';try{
     const sel=window._mainTableDate||'';
     // 檢視日直接帶給 AB(applies_date 口徑，與 /ab/dropped 一致)，歷史複盤也走 AB 正宗來源。
@@ -1430,7 +1434,7 @@ document.addEventListener('click',e=>{
         try{
           const snap=await getJson('/ab/watchlist?date='+encodeURIComponent(_poolDate)).catch(()=>null);
           const byCode=new Map((snap&&Array.isArray(snap.items)?snap.items:[]).map(it=>[String(it.code),it]));
-          for(const row of (data.items||data.rows||[])){
+          for(const row of _allRows(data)){
             const s=byCode.get(String(rowCode(row)));
             // 入選依據的「法人籌碼／籌碼結構／結構是否失效」三列同樣要吃池日凍結值。
             // 盤中即時路徑不帶 chip_status/inst_streak/structural_failures(實測 0/51)，
@@ -1460,7 +1464,7 @@ document.addEventListener('click',e=>{
       try{
         const daily=await getJson('/api/intraday-daily?date='+encodeURIComponent(_viewDate)).catch(()=>null);
         const byCode=new Map((daily&&Array.isArray(daily.rows)?daily.rows:[]).map(r=>[String(r.code),r]));
-        for(const row of (data.items||data.rows||[])){
+        for(const row of _allRows(data)){
           const d=byCode.get(String(rowCode(row)));
           if(!d)continue;
           if(row.intraday_high==null&&d.high!=null)row.intraday_high=d.high;
@@ -1482,7 +1486,7 @@ document.addEventListener('click',e=>{
       try{
         const abOwn=await getJson('/ab/watchlist?date='+encodeURIComponent(_viewDate)).catch(()=>null);
         const byCode2=new Map((abOwn&&Array.isArray(abOwn.items)?abOwn.items:[]).map(it=>[String(it.code),it]));
-        for(const row of (data.items||data.rows||[])){
+        for(const row of _allRows(data)){
           if(row.aflow!=null)continue;
           const it=byCode2.get(String(rowCode(row)));
           if(it&&it.aflow_today!=null)row.aflow=it.aflow_today;
