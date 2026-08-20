@@ -83,8 +83,14 @@ def _intraday_daily_conn():
 
 
 def _persist_intraday_daily_extremes(rows, trade_date):
-    """逐日落地每檔盤中 high/low/VWAP(avg_price)/aflow；每輪覆寫同一天同一檔的最新值，
-    收盤最後一輪即為當日定案值，不隨 intraday_live_snapshot.json 被隔日覆寫而消失。"""
+    """逐日落地每檔盤中 high/low/VWAP(avg_price)/aflow，收盤後不消失。
+
+    寫入規則是「只進不退」，不是單純覆寫最新值 —— 盤中後段常出現行情降級輪次
+    (Shioaji buffer 斷線/aflow_status=UNAVAILABLE 時整批回 None)，若無腦覆寫，
+    一個壞輪次就會把整天累積的數值抹成 NULL，正是「盤中數據都沒保留」的成因：
+      · high 取 MAX、low 取 MIN     → 壞輪次的空值/縮水值不會吃掉當日真實極值
+      · 其餘欄位 COALESCE(新值,舊值) → 新值為 NULL 時保留既有值,不倒退成空
+    """
     if not rows or not trade_date:
         return
     try:
@@ -100,8 +106,15 @@ def _persist_intraday_daily_extremes(rows, trade_date):
                    (trade_date, code, high, low, avg_price, aflow, volume, volume_ratio, updated_at)
                    VALUES (?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(trade_date, code) DO UPDATE SET
-                     high=excluded.high, low=excluded.low, avg_price=excluded.avg_price,
-                     aflow=excluded.aflow, volume=excluded.volume, volume_ratio=excluded.volume_ratio,
+                     high=MAX(COALESCE(excluded.high, intraday_stock_daily.high),
+                              COALESCE(intraday_stock_daily.high, excluded.high)),
+                     low=MIN(COALESCE(excluded.low, intraday_stock_daily.low),
+                             COALESCE(intraday_stock_daily.low, excluded.low)),
+                     avg_price=COALESCE(excluded.avg_price, intraday_stock_daily.avg_price),
+                     aflow=COALESCE(excluded.aflow, intraday_stock_daily.aflow),
+                     volume=MAX(COALESCE(excluded.volume, intraday_stock_daily.volume),
+                                COALESCE(intraday_stock_daily.volume, excluded.volume)),
+                     volume_ratio=COALESCE(excluded.volume_ratio, intraday_stock_daily.volume_ratio),
                      updated_at=excluded.updated_at""",
                 payload)
     except Exception as exc:
