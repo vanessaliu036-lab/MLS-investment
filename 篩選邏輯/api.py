@@ -533,6 +533,8 @@ def verify_history(date: str = Query("", description="pool_date;預設最近已�
                 # 「未命中」,但它其實贏了兩個基準。三行並列才看得出是弱中強還是真的錯。
                 "stock_ret_t1": o.get("stock_ret_t1"),
                 "market_ret_t1": o.get("market_ret_t1"),
+                "market_ret_t1_source": o.get("market_ret_t1_source"),
+                "pool_median_ret_t1": o.get("pool_median_ret_t1"),
                 "sector_ret_t1": o.get("sector_ret_t1"),
                 "sector_peer_n_t1": o.get("sector_peer_n_t1"),
                 "hit_abs": o.get("hit_abs"),
@@ -567,6 +569,8 @@ def verify_history(date: str = Query("", description="pool_date;預設最近已�
     _first = next((r for r in rows if r.get("market_ret_t1") is not None), {})
     market_context = {
         "market_ret_t1": _first.get("market_ret_t1"),
+        "market_ret_t1_source": _first.get("market_ret_t1_source"),
+        "pool_median_ret_t1": _first.get("pool_median_ret_t1"),
         "market_regime": _first.get("market_regime"),
         "market_regime_raw": _first.get("market_regime_raw"),
         "hit_abs_rate": _rate("hit_abs"),

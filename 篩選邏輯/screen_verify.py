@@ -77,7 +77,8 @@ CREATE TABLE IF NOT EXISTS pool_outcome (
 # ── Phase 1 量測欄(attribution-only,不影響 hit / verdict)──────────────
 # hit 的語意完全不變:仍是「依當初預標的進場軌,這筆交易做得成不成」。
 # 三分命中率是並列新增,不是取代 —— 只刪分母會讓命中率變好看卻學不到東西。
-_MEASURE_COLS_REAL = ("stock_ret_t1", "market_ret_t1", "sector_ret_t1")
+_MEASURE_COLS_REAL = ("stock_ret_t1", "market_ret_t1", "sector_ret_t1",
+                      "pool_median_ret_t1")
 _MEASURE_COLS_INT = ("hit_abs", "hit_vs_market", "hit_vs_sector", "sector_peer_n_t1")
 _MEASURE_COLS_TEXT = (
     "market_ret_t1_source", "sector_ret_t1_source",
@@ -122,9 +123,63 @@ def _median(vals):
     return round(statistics.median(vals), 2) if vals else None
 
 
-def _rate(items: list[dict], key: str):
-    """某個三分命中欄的命中率(%)。None 不計入分母。"""
-    vals = [r.get(key) for r in items if r.get(key) is not None]
+# ── 真實大盤基準(TAIEX)──────────────────────────────────────────────
+# ⚠ 為什麼非接不可:原本拿「51 檔池的報酬中位數」當大盤,但那 51 檔全是半導體/電子,
+#   實測與真實 TAIEX 平均差 2.76pp、最大 12.81pp ——
+#     2026-08-04  池中位 +12.75%  vs  真實 TAIEX -0.06%   (差 12.81pp,方向相反)
+#     2026-08-03  池中位  +9.81%  vs  真實 TAIEX +0.62%   (差 9.19pp)
+#   拿這種基準算「贏大盤」,結論會整個反過來。
+# 資料源 TWSE FMTQIK(每日市場成交資訊,含 TAIEX 收盤與漲跌點),官方免費、約一個月滾動。
+_INDEX_URL = "https://openapi.twse.com.tw/v1/exchangeReport/FMTQIK"
+_INDEX_CACHE = {"ts": 0.0, "data": None}
+_INDEX_TTL = 1800
+
+
+def _roc_to_iso(s):
+    s = str(s or "").strip()
+    if len(s) >= 7 and s.isdigit():
+        return f"{int(s[:3]) + 1911:04d}-{s[3:5]}-{s[5:7]}"
+    return None
+
+
+def fetch_index_returns(force: bool = False) -> dict:
+    """{ISO 日期: 當日 TAIEX 漲跌%}。取數失敗回 {} —— 不猜、不用池中位頂替。"""
+    import time
+    import urllib.request
+    now = time.time()
+    if not force and _INDEX_CACHE["data"] is not None and (now - _INDEX_CACHE["ts"]) < _INDEX_TTL:
+        return _INDEX_CACHE["data"]
+    out = {}
+    try:
+        req = urllib.request.Request(_INDEX_URL, headers={"User-Agent": "MLS/4.0"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            rows = json.loads(r.read().decode("utf-8"))
+        for row in rows:
+            d = _roc_to_iso(row.get("Date"))
+            try:
+                close = float(str(row.get("TAIEX", "")).replace(",", ""))
+                chg = float(str(row.get("Change", "")).replace(",", ""))
+            except (TypeError, ValueError):
+                continue
+            prev = close - chg
+            if d and prev:
+                out[d] = round(chg / prev * 100, 2)
+        _INDEX_CACHE.update({"ts": now, "data": out})
+    except Exception as e:
+        print(f"[screen_verify] TAIEX 取數失敗(市場基準留空,不用池中位頂替): "
+              f"{type(e).__name__}: {e}", flush=True)
+    return out
+
+
+def _rate(items: list[dict], key: str, scored_only: bool = True):
+    """某個三分命中欄的命中率(%)。None 不計入分母。
+
+    ⚠ scored_only 預設 True:母體必須是「可判定(攻擊/引擎軌)」那批,不能用全 51。
+      用全池母體時「贏大盤」在池中位基準下照定義就是約 50%(實測每天都 49.0%),
+      毫無資訊量 —— 有意義的問法是「被選進場的那批,有沒有贏過基準」。
+    """
+    src = [r for r in items if r.get("hit") is not None] if scored_only else items
+    vals = [r.get(key) for r in src if r.get(key) is not None]
     return round(sum(vals) / len(vals) * 100, 1) if vals else None
 
 
@@ -292,7 +347,7 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
     #   絕不能變成「今天沒有 pool_outcome」——那會讓命中率頁整天空白。
     market_t1 = None
     try:
-        _measure_three_way(items, pool, bar, bar_prev)
+        _measure_three_way(items, pool, bar, bar_prev, d.isoformat())
     except Exception as _e:
         print(f"[screen_verify] Phase1 三分命中率降級(不影響 hit): {_e}", flush=True)
     else:
@@ -304,7 +359,7 @@ def verify(db_path: str = "mls.db", data_date: _dt.date | None = None) -> dict:
                           breadth_pct, risk_off, regime_excluded, bar, market_t1)
 
 
-def _measure_three_way(items, pool, bar, bar_prev) -> None:
+def _measure_three_way(items, pool, bar, bar_prev, _dstr) -> None:
     """把三分命中率與環境快照掛到每一列(就地改)。attribution-only。"""
     _cg = _code_group()
     t1_ret = {}
@@ -313,7 +368,12 @@ def _measure_three_way(items, pool, bar, bar_prev) -> None:
         _pc = (bar_prev.get(_c) or {}).get("close")
         if _nc is not None and _pc:
             t1_ret[_c] = round((_nc - _pc) / _pc * 100, 2)
-    market_t1 = _median(list(t1_ret.values()))
+    # 大盤基準:真實 TAIEX 優先;取不到就留 None,不用池中位頂替
+    # (池中位是「這 51 檔電子股」,不是大盤 —— 兩者實測平均差 2.76pp)。
+    _idx = fetch_index_returns()
+    market_t1 = _idx.get(_dstr)
+    market_src = "taiex" if market_t1 is not None else None
+    pool_median_t1 = _median(list(t1_ret.values()))   # 保留當診斷,名字誠實
     sector_members = {}
     for _c in t1_ret:
         sector_members.setdefault(_cg.get(_c), []).append(_c)
@@ -336,7 +396,8 @@ def _measure_three_way(items, pool, bar, bar_prev) -> None:
         r.update({
             "stock_ret_t1": sret,
             "market_ret_t1": market_t1,
-            "market_ret_t1_source": "pool51" if market_t1 is not None else None,
+            "market_ret_t1_source": market_src,
+            "pool_median_ret_t1": pool_median_t1,   # 診斷用,不是大盤
             "sector_ret_t1": sector_t1,
             "sector_ret_t1_source": "pool51_peer" if sector_t1 is not None else None,
             "sector_peer_n_t1": len(peers),
@@ -384,7 +445,12 @@ def _finish_verify(items, rows, pool, envs, d, pool_date, now,
         # 不是拿來當戰績,所以刻意不縮分母。
         "market_context_t1": {
             "market_ret_t1": market_t1,
-            "market_ret_t1_source": "pool51" if market_t1 is not None else None,
+            "market_ret_t1_source": ("taiex" if market_t1 is not None else None),
+            # 池中位另列,名字誠實 —— 它是「這 51 檔電子股」不是大盤,
+            # 實測與 TAIEX 平均差 2.76pp、最大 12.81pp,不可混用。
+            "pool_median_ret_t1": next(
+                (r.get("pool_median_ret_t1") for r in items
+                 if r.get("pool_median_ret_t1") is not None), None),
             "breadth_pct": breadth_pct,
             "below_ma5_pct": _pct_below_t1(bar, "ma5"),
             "below_ma20_pct": _pct_below_t1(bar, "ma20"),

@@ -55,7 +55,15 @@ class ThreeWayHitTests(unittest.TestCase):
         cls._tmp = tempfile.TemporaryDirectory()
         cls.db = str(Path(cls._tmp.name) / "fixture.db")
         _seed_db(cls.db)
-        cls.res = sv.verify(cls.db, DATA_DATE)
+        # 大盤基準改吃真實 TAIEX 後,verify 會打 TWSE API。單測不准依賴網路,
+        # 也不准因為 API 掛掉就紅 —— 用 fixture 內記錄的當日指數報酬釘死。
+        cls._orig_idx = sv.fetch_index_returns
+        sv.fetch_index_returns = lambda force=False: {
+            EXPECT["data_date"]: EXPECT["market_context_t1"]["market_ret_t1"]}
+        try:
+            cls.res = sv.verify(cls.db, DATA_DATE)
+        finally:
+            sv.fetch_index_returns = cls._orig_idx
         cls.by_code = {r["code"]: r for r in cls.res["items"]}
 
     @classmethod
@@ -71,6 +79,25 @@ class ThreeWayHitTests(unittest.TestCase):
     def test_three_way_rates(self):
         for key in ("hit_abs_rate", "hit_vs_market_rate", "hit_vs_sector_rate"):
             self.assertEqual(self.res[key], EXPECT["aggregate"][key], key)
+
+    def test_rates_use_scored_population_not_whole_pool(self):
+        """母體必須是可判定那批。用全 51 當母體時,「贏大盤」在池中位基準下
+        照定義就是約 50%(實測每天都 49.0%),那個數字毫無資訊量。"""
+        scored = [r for r in self.res["items"] if r["hit"] is not None]
+        self.assertLess(len(scored), len(self.res["items"]))
+        manual = [r["hit_vs_market"] for r in scored if r["hit_vs_market"] is not None]
+        self.assertEqual(self.res["hit_vs_market_rate"],
+                         round(sum(manual) / len(manual) * 100, 1))
+
+    def test_market_benchmark_is_real_index_not_pool_median(self):
+        """大盤基準必須是真實 TAIEX,不能拿 51 檔電子股的中位數冒充
+        (實測兩者平均差 2.76pp、最大 12.81pp,08-04 甚至方向相反)。"""
+        r = self.by_code["2408"]
+        self.assertEqual(r["market_ret_t1_source"], "taiex")
+        self.assertEqual(r["market_ret_t1"],
+                         EXPECT["market_context_t1"]["market_ret_t1"])
+        # 池中位仍保留當診斷,但必須是另一個欄位、不得混用
+        self.assertIsNotNone(r["pool_median_ret_t1"])
 
     def test_real_miss_fails_all_three(self):
         """南亞科 −6.6%:大盤/族群都輸 → 三項全敗 = 真的挑錯。"""
