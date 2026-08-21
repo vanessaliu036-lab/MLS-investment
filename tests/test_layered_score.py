@@ -6,7 +6,10 @@
   2. 高追價風險 → 禁追,不移除
   3. 籌碼 Pending 不加分不扣分
   4. 漲停走獨立模型,不因無籌碼被判淘汰
-  5. 只有 >=2 項結構失效才淘汰
+  5. 四道結構閘門(價格結構破壞/主動資金持續流出/量價轉弱/反彈失敗)全中才淘汰
+     (V3 2026-08-13 定案，取代舊版「>=2 不同類」；本檔 2026-08-21 對齊，
+     之前 3 個測試仍鎖著已被取代的 V2 規格，跟正式站上的 layered_score.py
+     對不起來，是測試沒跟上、不是引擎邏輯要改)
   6. 雙分數(延續/追價)並存且獨立
   7. 四層齊全(核心/禁追/候補/淘汰)
 """
@@ -37,28 +40,28 @@ def test_limit_up_no_chase_not_rejected():
     assert r["limit_up"] and r["limit_up"]["is_limit_up"]
 
 
-# ── §5 只有 >=2 項結構失效才淘汰 ─────────────────────────────
-def test_two_structural_failures_rejected():
-    # V2:需 >=2「不同類」失效。跌破月線(價格) + 法人連續賣超(籌碼,streak<=-2) = 2 類 → 淘汰
-    f = L.build_input("T", _bar(open=100, high=101, low=96, close=96,
-                                ma5=100, ma20=98, ma60=97, volume=1200, vol_ma20=1000),
-                      {"foreign_net": -500, "trust_net": -100, "total_net": -600,
-                       "consecutive_days": -3}, change_rate=-2.0)
+# ── §5 四道結構閘門全中才淘汰(V3) ────────────────────────────
+def test_four_gates_all_true_rejected():
+    # 價格結構破壞(收盤破 MA5/MA20)+ 主動資金持續流出(連兩日流出)+
+    # 量價轉弱(收黑且爆量收最低)+ 反彈失敗(最高曾摸到均線又收破)= 四道全中 → 淘汰
+    f = L.build_input("T", _bar(open=100, high=101, low=94, close=94,
+                                ma5=100, ma20=98, ma60=97, volume=1500, vol_ma20=1000),
+                      None, aflow_today=-500, aflow_previous=-300, change_rate=-2.0)
     r = L.score_layered(f)
+    assert len(r["structural_failures"]) == 4
     assert r["tier"] == L.TIER_REJECTED
-    assert len(L.failure_categories(r["structural_failures"])) >= 2
 
 
-def test_single_day_selling_not_double_counted():
-    # V2 治重複計分:跌破月線 + 單日法人賣超收黑(streak=-1)= 只算「價格」1 類 → 不得淘汰。
-    # (舊邏輯會把「法人賣超且收黑」的收黑再算一次,單根黑 K 湊 2 項誤刪。)
-    f = L.build_input("T", _bar(open=100, high=101, low=96, close=96,
-                                ma5=100, ma20=98, ma60=97, volume=1200, vol_ma20=1000),
-                      {"foreign_net": -500, "trust_net": -100, "total_net": -600,
-                       "consecutive_days": -1}, change_rate=-2.0)
+def test_three_of_four_gates_not_rejected():
+    # 同上一步到位三道(價格結構破壞/量價轉弱/反彈失敗成立),資金只有單日流出
+    # (未連兩日,主動資金持續流出不成立)→ 只有 3 道 → 不得淘汰。
+    # 四道閘門全中才淘汰是唯一判準(見 §5 docstring)，3/4 不夠。
+    f = L.build_input("T", _bar(open=100, high=101, low=94, close=94,
+                                ma5=100, ma20=98, ma60=97, volume=1500, vol_ma20=1000),
+                      None, aflow_today=-500, aflow_previous=None, change_rate=-2.0)
     r = L.score_layered(f)
+    assert len(r["structural_failures"]) < 4
     assert r["tier"] != L.TIER_REJECTED
-    assert len(L.failure_categories(r["structural_failures"])) < 2
 
 
 def test_single_failure_not_rejected():
@@ -141,9 +144,8 @@ def test_all_four_tiers_reachable():
     tiers.add(L.score_layered(L.build_input("T", _bar(open=101, high=103, low=101, close=102,
         ma5=100, ma20=101, ma60=103, volume=1000, vol_ma20=1000), None,
         change_rate=2.0))["tier"])
-    # 淘汰:多重結構失效
-    tiers.add(L.score_layered(L.build_input("T", _bar(open=100, high=101, low=96, close=96,
-        ma5=100, ma20=98, ma60=97, volume=1200, vol_ma20=1000),
-        {"foreign_net": -500, "trust_net": -100, "total_net": -600, "consecutive_days": -2},
-        change_rate=-2.0))["tier"])
+    # 淘汰:四道結構閘門全中(見 test_four_gates_all_true_rejected)
+    tiers.add(L.score_layered(L.build_input("T", _bar(open=100, high=101, low=94, close=94,
+        ma5=100, ma20=98, ma60=97, volume=1500, vol_ma20=1000),
+        None, aflow_today=-500, aflow_previous=-300, change_rate=-2.0))["tier"])
     assert tiers == {L.TIER_CORE, L.TIER_NO_CHASE, L.TIER_CANDIDATE, L.TIER_REJECTED}

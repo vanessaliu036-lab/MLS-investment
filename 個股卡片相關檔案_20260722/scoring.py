@@ -79,9 +79,15 @@ def update_aflow(code, total_volume, tick_type=None,
     _prev_vol[code] = total_volume or 0
     sign = 0
     t = str(tick_type)
-    if t in ("2", "TickType.Buy"):
+    # Shioaji TickType(IntEnum):Buy=1、Sell=2(官方 tick_type 欄位定義)。
+    # 這裡原本寫反(1→Sell、2→Buy)：退回法只在 buy_volume/sell_volume 缺值時
+    # 才會被 engine.py 呼叫到，但一旦真的走到這條路徑，主動買賣方向就是反的——
+    # 跟 aflow-sign-shioaji 那次事故(漲停被判假流出)同一種錯，只是這條是備援路徑
+    # 沒被那次修到(2026-08-21，由 test_scoring_tick_type_one_is_active_buy 抓出;
+    # 該測試名稱本身就在鎖「tick_type=1 是主動買」)。
+    if t in ("1", "TickType.Buy"):
         sign = 1
-    elif t in ("1", "TickType.Sell"):
+    elif t in ("2", "TickType.Sell"):
         sign = -1
     _aflow[code] = _aflow.get(code, 0) + delta * sign
     return _aflow[code]

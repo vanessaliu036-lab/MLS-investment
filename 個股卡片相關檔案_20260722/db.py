@@ -21,13 +21,29 @@ def _conn():
     return c
 
 
+def _table_exists(c, table):
+    return c.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone() is not None
+
+
 def _column_exists(c, table, column):
     return any(r["name"] == column
                for r in c.execute(f"PRAGMA table_info({table})"))
 
 
 def _add_column(c, table, column, decl):
-    """冪等遷移：欄位不存在才 ADD COLUMN，避免重啟時 migration 重複執行報錯。"""
+    """冪等遷移：欄位不存在才 ADD COLUMN，避免重啟時 migration 重複執行報錯。
+
+    表不存在就跳過(不是報錯) —— dec_watchlist 的 owner 是 decision_v22._init_tables()
+    而非本模組(見同檔案上方註解)，正式站已跑多年、表老早存在，這條件從沒觸發過；
+    但全新資料庫(測試、或未來真的重建)照原本寫法會在建表前就 ALTER 一張不存在的表
+    而整個 init() 中斷，後面所有遷移都不會執行(test_verify_today_integration 就是
+    在乾淨臨時 db 上踩到，2026-08-21)。跳過此欄位、留給 decision_v22 自己建表時
+    一併補齊 schema，不在此處代管別人的表。
+    """
+    if not _table_exists(c, table):
+        return
     if not _column_exists(c, table, column):
         c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 

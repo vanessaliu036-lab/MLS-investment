@@ -4,7 +4,12 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
+# 舊路徑 "../.." 從 tests/ 只會爬到 mls-intraday 的上一層(Desktop/)，
+# 從沒指到任何有 scoring.py 的目錄，這支測試自匯入以來就沒真的跑過
+# (2026-08-21 才發現)。scoring.py 的正本在「個股卡片相關檔案_20260722」
+# (8000 站活的後端，見 memory not-a-shell-server-py-is-live)。
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..",
+                                "個股卡片相關檔案_20260722"))
 
 import scoring
 

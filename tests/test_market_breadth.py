@@ -18,6 +18,24 @@ import market_breadth as M  # noqa: E402
 
 def setup_function():
     M.DB_PATH = Path(tempfile.mkdtemp()) / "breadth_test.db"
+    # 本檔要測的是「market_regime 不可用時純 aflow 代理/門檻邏輯」(docstring:
+    # 純 SQLite,不打外部 API)。但若同一 pytest 進程先跑過別的測試檔
+    # (例如 test_after_hours_model.py 把「個股卡片相關檔案_20260722」塞進
+    # sys.path 並匯入過 market_regime)，Python 模組快取(sys.modules)會讓
+    # 這裡的 compute() 意外接到「真的」market_regime，連到真實資料庫，
+    # 回傳跟假造 rows 完全無關的今日真實數字(2026-08-21 抓到：
+    # assert 65.9 == 70.6，65.9 正是當下 VPS 大盤寬度真實值，不是本檔任何
+    # 一組假資料能產生的數字)。每次測試前把它從快取清掉，逼 compute() 走
+    # 本檔要測的那條路徑，不看其他檔案的執行順序臉色。
+    # pop 不夠：其他測試檔可能把「個股卡片相關檔案_20260722」也留在 sys.path 上，
+    # 光清模組快取，import market_regime 還是會重新從那個目錄挖到真的檔案。
+    # 塞 None 是 Python import 系統認得的哨兵值，會讓 import 保證失敗，不管
+    # sys.path 上還留著什麼路徑。
+    sys.modules["market_regime"] = None
+
+
+def teardown_function():
+    sys.modules.pop("market_regime", None)
 
 
 def rows(n_in, n_out, n_missing=0):
@@ -30,11 +48,16 @@ def at(iso):
     return datetime.fromisoformat(iso).replace(tzinfo=M.TW_TZ)
 
 
-def test_risk_on_門檻():
+def test_risk_on_門檻_真實寬度可判():
+    """真實寬度不可得(降級 aflow 代理)時，「鐵律」封頂中性，不得判 Risk On——
+    崩盤日 aflow 也會系統性偏正，代理值不可信到能升格積極操作(見 compute() 內
+    「鐵律：aflow 代理值不得升格 Risk On」)。本測試原本直接斷言 70.6%→risk_on，
+    寫在鐵律加上之前，跟現在的程式碼(已是正式站在跑的版本)矛盾，2026-08-21 對齊。
+    """
     b = M.compute(rows(36, 15), index_pct=1.0)      # 36/51 = 70.6%
     assert b["ratio_pct"] == 70.6
-    assert b["level"] == "risk_on" and b["level_title"] == "Risk On"
-    assert "積極" in b["level_advice"]
+    assert b["level"] == "neutral"
+    assert "代理" in b["level_advice"]
 
 
 def test_risk_off_門檻():
