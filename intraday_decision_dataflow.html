@@ -942,7 +942,7 @@ document.addEventListener('click',e=>{
       const code=rowCode(x),name=rowName(x),sector=x.sector||'其他';
       if(notTraded){
         const cond0=triggerCondition(x),reason0=(String(x.reason||'').trim()?pickReason(x):'待進場日盤中資料'),chip0=chips(x),chipCls0=/連賣|賣超/.test(chip0)?'down':/連買|買超|同步/.test(chip0)?'up':'',signal0=signalType(x),v0=semanticVals(x);
-        const maDefense0=(String(x.entry_rule||'').match(/MA5\s*[\d.]+/)||[])[0];
+        const maDefense0=x.defense_label||(String(x.entry_rule||'').match(/MA5\s*[\d.]+/)||[])[0];
         return `<article class="stock-card mr-card" data-code="${esc2(code)}">
           <div class="mr-card-head"><div class="mr-card-id"><span class="sector-tag">${esc2(sector)}</span><span class="mr-card-name">${esc2(name)}</span><span class="mr-card-code">${esc2(code)}</span></div><span class="mr-card-state pending">待進場日盤中</span></div>
           <div class="mr-card-price"><span class="mr-card-p">—</span><span class="mr-card-p-note">現價｜進場日開盤後填入</span></div>
@@ -1099,7 +1099,7 @@ document.addEventListener('click',e=>{
         :`<div class="mr-check pending"><span>·</span>${isToday?'今日尚未收盤,待驗證':'待進場日驗證'}</div>`;
       // B 區:移除跟 A 重複的「趨勢/進場狀態/等待站上xxx」,只留「當初為什麼選它」——
       // 昨日收盤建立的快照,今天不因盤中價格變化而改寫。
-      const maDefense=(String(x.entry_rule||'').match(/MA5\s*[\d.]+/)||[])[0];
+      const maDefense=x.defense_label||(String(x.entry_rule||'').match(/MA5\s*[\d.]+/)||[])[0];
       return `<article class="stock-card mr-card ${limitUp?'limit-up':''}" data-code="${esc2(code)}">
         <div class="mr-card-head"><div class="mr-card-id"><span class="sector-tag">${esc2(sector)}</span><span class="mr-card-name">${esc2(name)}</span><span class="mr-card-code">${esc2(code)}</span></div>${stateBadge}</div>
         <div class="mr-card-price"><span class="mr-card-p ${color(ch)}">${esc2(price==null?'—':Number(price).toLocaleString('en-US'))}</span><span class="mr-card-chg ${color(ch)}">${esc2(pctText(ch))}</span>${limitUp?'<span class="mr-card-limit">漲停</span>':''}</div>
@@ -1114,6 +1114,7 @@ document.addEventListener('click',e=>{
           <div class="mr-f4"><label>最高</label><b>${esc2(_numOrDash(x.intraday_high))}</b></div>
           <div class="mr-f4"><label>最低</label><b>${esc2(_numOrDash(x.intraday_low))}</b></div>
           <div class="mr-f4"><label>成交量</label><b>${esc2(_numOrDash(x.volume))}</b></div>
+          <div class="mr-f4"><label>量比(累計/20日均量)</label><b>${esc2(finite(x.intraday_volume_ratio)==null?'—':x.intraday_volume_ratio+'x')}</b></div>
         </div>
         <div class="mr-facts-grid mr-facts-grid7">
           <div class="mr-f4"><label>主動買賣差(估)</label><b class="${fN>0?'up':fN<0?'down':''}">${flow==null?'—':(fN>0?'+':'')+numberText(flow)}</b></div>
@@ -1187,7 +1188,7 @@ document.addEventListener('click',e=>{
             // ＝池日量比,於是「入選依據」跟「T+1 結果」永遠印同一個數字,還拿池日 0.32x
             // 去蓋章「T+1 量能未達」(使用者 2026-08-20 抓到)。引擎沒送就顯示無資料、
             // 判定留 · 不計入 CONFIRM 分母,不准拿池日值冒充當日結果。
-            {label:'量能驗證',base:_ebv['量能驗證'],now:verified?(t1VolR==null?'無 T+1 量比':`${t1VolR}x${t1VolR>1.2?'，放量':''}`):'待盤中量比',ok:verified?(t1VolR==null?null:t1VolR>1.2):null},
+            {label:'量能驗證',base:_ebv['量能驗證'],now:verified?(t1VolR==null?'無 T+1 量比':`${t1VolR}x${t1VolR>1.2?'，放量':''}`):(x.intraday_volume_label||'待盤中量比'),ok:verified?(t1VolR==null?null:t1VolR>1.2):null},
             {label:'法人籌碼',base:_ebv['法人籌碼'],now:verified?esc2(instStreakText):'待盤後法人',ok:verified?resultChipStatus==='positive':null},
             {label:'籌碼結構',base:_ebv['籌碼結構'],now:verified?(resultChipStatus==='positive'?'偏多強化':resultChipStatus==='negative'?'轉弱':'持平'):'待盤後法人',ok:verified?resultChipStatus!=='negative':null},
           ];
@@ -1361,7 +1362,7 @@ document.addEventListener('click',e=>{
   // 卡片版取代寬表格(45 層 CSS 疊加、選擇器優先度互打，列高壓不下去、手機會把中文切成直排)。
   // 一檔一卡：上半部原始數據(現價/漲跌/資金流/觸發條件)，AI 判讀不重複這些數字，
   // 盤後八項語意/籌碼收進可展開區塊，預設收合維持掃描密度。
-  const validationTable=(rows,phase,notTraded,date,isHistorical,poolDate)=>`<div class="mr-card-list-wrap">${notTraded?'':`<div class="mr-card-date">${esc2(date)} 當日盤中即時（收盤後存檔）</div>`}<div class="mr-card-list">${mainCards(rows,phase,notTraded,isHistorical,date,poolDate)}</div></div>`;
+  const validationTable=(rows,phase,notTraded,date,isHistorical,poolDate)=>`<div class="mr-card-list-wrap"><div class="mr-card-date">${notTraded?`${esc2(poolDate||'池日')} 收盤基準｜供 ${esc2(date)} 使用`:`${esc2(date)} 當日盤中即時（收盤後存檔）`}</div><div class="mr-card-list">${mainCards(rows,phase,notTraded,isHistorical,date,poolDate)}</div></div>`;
   // display_pool(後端英文代碼)→ T+1 身份白話文。與 DECISION_POOLS 同一組分類,純翻譯,
   // 不判斷、不改動後端結果 —— 分類邏輯永遠只在後端算一次。
   const T1_IDENTITY={core:'核心觀察',reversal:'反轉觀察',pullback:'強勢觀察·暫不追',watch:'一般觀察',rejected:'結構風險·暫停新倉'};

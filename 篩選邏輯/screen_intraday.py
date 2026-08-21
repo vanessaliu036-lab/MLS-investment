@@ -104,6 +104,14 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
     y_high = (bar_y or {}).get("high")
     ma20 = (bar_y or {}).get("ma20")
     y_vol = (bar_y or {}).get("volume")
+    # 盤中量比:池日 daily_bar 的 volume_ratio 是「昨天的量比」,盤中拿它當今天的量能
+    # 等於用昨天的數字冒充今天(前端兩欄印出同一個 4.86x,2026-08-21 抓到)。
+    # 口徑:今日累計成交量(Shioaji quote 單位=張) x1000 → 股,除以 20 日均量(股)。
+    # 實測 1815 8/20 quote volume 133,016 張 vs daily_bar 134,497,060 股,確認 1000 倍。
+    # 這是「累計量 vs 20日均量」,不是同時段比較,標籤要講清楚,別再冒充「同期」。
+    vol_ma20 = (bar_y or {}).get("vol_ma20")
+    intraday_vr = (round(vol * 1000 / vol_ma20, 2)
+                   if vol is not None and vol_ma20 else None)
 
     # 距買點:現價相對觸發價的乖離%。>0 = 已站上、追多少;<0 = 還沒到。
     # 日內位置:現價落在今日高低區間的百分位,0=最低、100=最高。
@@ -211,6 +219,9 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
         # 一律讀 `aflow`,故同值加別名,否則「盤中資金流」欄恆顯示「—」(2026-08-05)。
         "price": price, "change_rate": cr, "net_active": na, "aflow": na,
         "volume": vol, "active_buy": active_buy, "active_sell": active_sell,
+        "intraday_volume_ratio": intraday_vr,
+        "intraday_volume_label": (f"累計 {intraday_vr}x(對20日均量)"
+                                  if intraday_vr is not None else "待盤中量比"),
         # 「現在這個價格能不能買」四件事(2026-08-18 補,A 卡原本只判「有沒有突破」,
         # 沒判「突破後現在追不追得下去」):
         "intraday_high": day_high, "intraday_low": day_low, "vwap": vwap,

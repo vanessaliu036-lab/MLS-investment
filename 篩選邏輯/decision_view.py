@@ -149,7 +149,8 @@ def _reason_tags(classified: dict, market: dict, trigger_price=None) -> list[str
     return list(dict.fromkeys(tags))[:3]
 
 
-def _next_upgrade(classification: str, market: dict, trigger_price=None) -> str:
+def _next_upgrade(classification: str, market: dict, trigger_price=None,
+                  trigger_source: str | None = None) -> str:
     close = _num(market.get("current_price"))
     if close is None:
         close = _num(market.get("close"))
@@ -158,10 +159,17 @@ def _next_upgrade(classification: str, market: dict, trigger_price=None) -> str:
     if resistance is None:
         resistance = prior_high
     flow = _num(market.get("aflow_today"))
-    if classification == layered_score.TIER_CORE:
-        return f"回測 MA5 {_fmt(ma5)} 不破 → 可進" if ma5 is not None else "等待低風險買點"
-    if classification == layered_score.TIER_NO_CHASE:
-        return f"回測 MA5 {_fmt(ma5)} 不破 → 可進" if ma5 is not None else "等待回測支撐 → 可進"
+    # 進場條件必須指向 canonical trigger 的那個價位。引擎軌的 trigger 是 MA20,
+    # 規則文字卻寫 MA5,同一張卡就出現兩個支撐價(6213 聯茂:trigger 380.2/MA20、
+    # 規則寫 488.6/MA5,差 108 元,2026-08-21 使用者抓到)。MA5 是防守價,另走
+    # defense_price 欄位,不再冒充進場價。
+    if classification in (layered_score.TIER_CORE, layered_score.TIER_NO_CHASE):
+        if trigger_source == "ma20" and resistance is not None:
+            return f"回測月線 {_fmt(resistance)} 不破 → 可進"
+        if ma5 is not None:
+            return f"回測 MA5 {_fmt(ma5)} 不破 → 可進"
+        return ("等待低風險買點" if classification == layered_score.TIER_CORE
+                else "等待回測支撐 → 可進")
     if classification == layered_score.TIER_REVERSAL:
         if ma20 is not None and (close is None or close < ma20):
             return f"站回 MA20 {_fmt(ma20)} → A級"
@@ -264,7 +272,7 @@ def build(classified: dict, market: dict | None, trigger: dict | None) -> dict:
     low_priority = (classification == layered_score.TIER_CANDIDATE and flow is not None and
                     flow < 0 and canonical_price is not None and
                     (close is None or close <= canonical_price))
-    next_upgrade = _next_upgrade(classification, market, canonical_price)
+    next_upgrade = _next_upgrade(classification, market, canonical_price, trigger_source)
     result = {
         "classification": classification,
         "display_pool": POOL_MAP[classification],
@@ -290,6 +298,11 @@ def build(classified: dict, market: dict | None, trigger: dict | None) -> dict:
         "margin_label": margin_label,
         "volume_label": volume_label,
         "volume_ratio": round(volume_ratio, 2) if volume_ratio is not None else None,
+        # 防守價 = MA5,與進場價(trigger_price)分開兩個欄位,避免顯示端從規則字串
+        # 用正則撈 MA5 又把它讀成進場價。
+        "defense_price": _num(market.get("ma5")),
+        "defense_label": (f"MA5 {_fmt(_num(market.get('ma5')))}"
+                          if _num(market.get("ma5")) is not None else None),
     }
     result.update(factors)
     return result
