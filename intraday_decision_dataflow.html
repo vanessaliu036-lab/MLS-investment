@@ -1005,11 +1005,21 @@ document.addEventListener('click',e=>{
         // 現價≥觸發價,於是 6213 聯茂現價 531、月線 380.2(高出 39%)被標成「🟢 盤中已回測
         // 380.2」,引擎自己給的 entry_state 明明是 wait_pullback 等待回測(2026-08-21)。
         const lowN=finite(x.intraday_low);
-        if(isEng&&trigN!=null&&curN!=null){
-          const gap=((curN-trigN)/trigN*100);
-          if(lowN!=null&&lowN<=trigN&&curN>=trigN){trigHtml=`<span class="mr-badge hit">🟢 盤中已回測 ${erefT}·未破</span><small>最低 ${lowN.toLocaleString('en-US')} ≤ ${erefT}｜現 ${curN.toLocaleString('en-US')}</small>`;trigShort=`🟢 盤中已回測 ${erefT}·未破`;}
-          else if(curN<trigN){trigHtml=`<span class="mr-badge warn">🔴 跌破 ${erefT}</span><small>現 ${curN.toLocaleString('en-US')} < ${erefT}</small>`;trigShort=`🔴 跌破 ${erefT}`;}
-          else {trigHtml=`<span class="badge verify-pending">⬜ 未回測 ${erefT}</span><small>現價高於 ${erefT} ${gap.toFixed(1)}%</small>`;trigShort=`⬜ 未回測 ${erefT}`;}
+        // 引擎軌有兩條不同性質的線,不能合成一句:
+        //  · MA5(短期)＝真的今天會被碰到的回測支撐——2484/8182/6174 今天低點都已跌破
+        //    MA5 又拉回,是「已回測」,但舊碼拿 MA20 判,MA20 離現價常有 7~40%,一天
+        //    根本碰不到,永遠印「未回測」(使用者 2026-08-21：「已經回測為啥沒顯示」)。
+        //  · MA20(長期結構支撐/trigger_price)＝canonical 進場觸發價,不因弱勢一天而降,
+        //    但拉回測不到不代表沒發生的事，只代表「離長期支撐還有多遠」，跟MA5各自標名、
+        //    不合併成同一句「已/未回測」。
+        const ma5N=finite(x.defense_price),ma5T=ma5N==null?'—':ma5N.toLocaleString('en-US');
+        if(isEng&&ma5N!=null&&curN!=null){
+          const gap5=((curN-ma5N)/ma5N*100);
+          const gap20=(trigN!=null?((curN-trigN)/trigN*100):null);
+          const note20=trigN!=null?`<small>長期支撐 MA20 ${erefT}｜距 ${gap20>=0?'+':''}${gap20.toFixed(1)}%</small>`:'';
+          if(lowN!=null&&lowN<=ma5N&&curN>=ma5N){trigHtml=`<span class="mr-badge hit">🟢 短期已回測 MA5 ${ma5T}·未破</span><small>最低 ${lowN.toLocaleString('en-US')} ≤ ${ma5T}｜現 ${curN.toLocaleString('en-US')}</small>${note20}`;trigShort=`🟢 短期已回測 MA5 ${ma5T}·未破`;}
+          else if(curN<ma5N){trigHtml=`<span class="mr-badge warn">🔴 跌破 MA5 ${ma5T}</span><small>現 ${curN.toLocaleString('en-US')} < ${ma5T}</small>${note20}`;trigShort=`🔴 跌破 MA5 ${ma5T}`;}
+          else {trigHtml=`<span class="badge verify-pending">⬜ 短期未回測 MA5 ${ma5T}</span><small>現價高於 MA5 ${gap5.toFixed(1)}%</small>${note20}`;trigShort=`⬜ 短期未回測 MA5 ${ma5T}`;}
         }
         else if(trigN!=null&&curN!=null){
           if(curN>=trigN){trigHtml=`<span class="mr-badge hit">🟢 盤中已站上 ${erefT}</span><small>現 ${curN.toLocaleString('en-US')} ≥ ${erefT}</small>`;trigShort=`🟢 盤中已站上 ${erefT}`;}
@@ -1170,10 +1180,16 @@ document.addEventListener('click',e=>{
           // 不印「已突破」——triggered=1 但現價已摔回來時那句話會跟旁邊現價互相矛盾。
           const _isEngP=x.track==='engine';
           const _loP=finite(x.intraday_low);
-          const patNow=_trigP==null?'盤中待突破價'
-            :(_isEngP
-              ?(_loP!=null&&_loP<=_trigP&&price!=null&&price>=_trigP?'盤中已回測·未破'
-                :(price!=null&&price<_trigP?'盤中跌破月線':'盤中未回測'))
+          // 與上方卡頭徽章同一套規則(2026-08-21):引擎軌短期回測看 MA5,不是 MA20——
+          // MA20 一天內幾乎碰不到,拿它判「已/未回測」在盤中會永遠卡在「未回測」。
+          const _ma5P=finite(x.defense_price);
+          const _gap20P=(_trigP!=null&&price!=null)?((price-_trigP)/_trigP*100):null;
+          const _note20P=_trigP!=null&&_gap20P!=null?`（長期支撐 MA20 距 ${_gap20P>=0?'+':''}${_gap20P.toFixed(1)}%）`:'';
+          const patNow=_isEngP
+            ?(_ma5P==null?'盤中待資料'
+              :(_loP!=null&&_loP<=_ma5P&&price!=null&&price>=_ma5P?`盤中已回測MA5·未破${_note20P}`
+                :(price!=null&&price<_ma5P?`盤中跌破MA5${_note20P}`:`盤中未回測MA5${_note20P}`)))
+            :(_trigP==null?'盤中待突破價'
               :(price!=null&&price>=_trigP?'盤中已站上'
                 :(_hiP!=null&&_hiP>=_trigP?'盤中曾觸及·已回落':'盤中未達')));
           const core=[
