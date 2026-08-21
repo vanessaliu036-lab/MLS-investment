@@ -1001,8 +1001,18 @@ document.addEventListener('click',e=>{
       // 這種定論式字眼——那時才是真的蓋棺定論。
       if(isToday&&!x.verified){
         const trigN=finite(eref),curN=finite(price),hiN=finite(x.intraday_high);
-        if(trigN!=null&&curN!=null){
-          if(curN>=trigN){trigHtml=`<span class="mr-badge hit">🟢 盤中已${isEng?'回測':'站上'} ${erefT}</span><small>現 ${curN.toLocaleString('en-US')} ≥ ${erefT}</small>`;trigShort=`🟢 盤中已${isEng?'回測':'站上'} ${erefT}`;}
+        // 引擎軌的觸發價是「回測支撐(月線)」——回測是往下測,不是往上站。舊碼兩軌共用
+        // 現價≥觸發價,於是 6213 聯茂現價 531、月線 380.2(高出 39%)被標成「🟢 盤中已回測
+        // 380.2」,引擎自己給的 entry_state 明明是 wait_pullback 等待回測(2026-08-21)。
+        const lowN=finite(x.intraday_low);
+        if(isEng&&trigN!=null&&curN!=null){
+          const gap=((curN-trigN)/trigN*100);
+          if(lowN!=null&&lowN<=trigN&&curN>=trigN){trigHtml=`<span class="mr-badge hit">🟢 盤中已回測 ${erefT}·未破</span><small>最低 ${lowN.toLocaleString('en-US')} ≤ ${erefT}｜現 ${curN.toLocaleString('en-US')}</small>`;trigShort=`🟢 盤中已回測 ${erefT}·未破`;}
+          else if(curN<trigN){trigHtml=`<span class="mr-badge warn">🔴 跌破 ${erefT}</span><small>現 ${curN.toLocaleString('en-US')} < ${erefT}</small>`;trigShort=`🔴 跌破 ${erefT}`;}
+          else {trigHtml=`<span class="badge verify-pending">⬜ 未回測 ${erefT}</span><small>現價高於 ${erefT} ${gap.toFixed(1)}%</small>`;trigShort=`⬜ 未回測 ${erefT}`;}
+        }
+        else if(trigN!=null&&curN!=null){
+          if(curN>=trigN){trigHtml=`<span class="mr-badge hit">🟢 盤中已站上 ${erefT}</span><small>現 ${curN.toLocaleString('en-US')} ≥ ${erefT}</small>`;trigShort=`🟢 盤中已站上 ${erefT}`;}
           else if(hiN!=null&&hiN>=trigN){trigHtml=`<span class="mr-badge warn">🟡 盤中曾觸及 ${hiN.toLocaleString('en-US')}·已回落</span><small>高 ${hiN.toLocaleString('en-US')} ≥ ${erefT}｜現 ${curN.toLocaleString('en-US')}</small>`;trigShort=`🟡 盤中曾觸及 ${hiN.toLocaleString('en-US')}·已回落`;}
           else {trigHtml=`<span class="badge verify-pending">⬜ 盤中未${isEng?'回測':'達'} ${erefT}</span><small>盤中最高 ${hiN==null?'—':hiN.toLocaleString('en-US')}</small>`;trigShort=`⬜ 盤中未${isEng?'回測':'達'} ${erefT}`;}
         } else {trigHtml=stateCell('待收盤蓋章','verify-pending');trigShort='待收盤蓋章';}
@@ -1095,18 +1105,15 @@ document.addEventListener('click',e=>{
         <div class="mr-card-price"><span class="mr-card-p ${color(ch)}">${esc2(price==null?'—':Number(price).toLocaleString('en-US'))}</span><span class="mr-card-chg ${color(ch)}">${esc2(pctText(ch))}</span>${limitUp?'<span class="mr-card-limit">漲停</span>':''}</div>
         <div class="mr-top-badges">
           <div class="mr-f4"><label>今日型態</label><b>${esc2(limitUp?'漲停鎖價・'+signal:signal)}</b></div>
-          <div class="mr-f4"><label>量能(相對)</label><b>${esc2(volLabel)}${finite(x.volume_ratio)>1.2?'　放量':''}</b></div>
+          <div class="mr-f4"><label>量能(池日)</label><b>${esc2(volLabel)}${finite(x.volume_ratio)>1.2?'　放量':''}</b></div>
           <div class="mr-f4"><label>本日強度</label><b>${gradeBar(x.potential_grade)>=4?'✅ 強勢':gradeBar(x.potential_grade)>=2?'◉ 中性':'⚠️ 偏弱'}</b></div>
         </div>
         <div class="mr-stage-label mr-stage-a">A｜今日盤中快照<small>${!isToday?`該日盤中最後一筆快照，13:30 收盤（非即時，已是過去交易日）`:(_marketClosedNow()?`截至 13:30 收盤前最後一筆盤中資料，非正式收盤值`:`盤中即時，截至 ${esc2(_nowHHMM())}`)}</small></div>
         <div class="mr-facts-grid mr-facts-grid8">
           <div class="mr-f4"><label>時間</label><b>${esc2(!isToday?'13:30':_intradayAsOf())}</b></div>
-          <div class="mr-f4"><label>現價</label><b class="${color(ch)}">${esc2(price==null?'—':Number(price).toLocaleString('en-US'))}</b><small class="${color(ch)}">${esc2(pctText(ch))}</small></div>
-          <div class="mr-f4"><label>漲跌幅</label><b class="${color(ch)}">${esc2(pctText(ch))}</b></div>
           <div class="mr-f4"><label>最高</label><b>${esc2(_numOrDash(x.intraday_high))}</b></div>
           <div class="mr-f4"><label>最低</label><b>${esc2(_numOrDash(x.intraday_low))}</b></div>
           <div class="mr-f4"><label>成交量</label><b>${esc2(_numOrDash(x.volume))}</b></div>
-          <div class="mr-f4"><label>量比(同期)</label><b>${esc2(volLabel)}</b></div>
         </div>
         <div class="mr-facts-grid mr-facts-grid7">
           <div class="mr-f4"><label>主動買賣差(估)</label><b class="${fN>0?'up':fN<0?'down':''}">${flow==null?'—':(fN>0?'+':'')+numberText(flow)}</b></div>
@@ -1160,9 +1167,14 @@ document.addEventListener('click',e=>{
           const _hiP=finite(x.intraday_high);
           // 型態盤中用三態(與主表今日觸發燈同語意)：站上／曾觸及回落／未達，
           // 不印「已突破」——triggered=1 但現價已摔回來時那句話會跟旁邊現價互相矛盾。
+          const _isEngP=x.track==='engine';
+          const _loP=finite(x.intraday_low);
           const patNow=_trigP==null?'盤中待突破價'
-            :(price!=null&&price>=_trigP?'盤中已站上'
-            :(_hiP!=null&&_hiP>=_trigP?'盤中曾觸及·已回落':'盤中未達'));
+            :(_isEngP
+              ?(_loP!=null&&_loP<=_trigP&&price!=null&&price>=_trigP?'盤中已回測·未破'
+                :(price!=null&&price<_trigP?'盤中跌破月線':'盤中未回測'))
+              :(price!=null&&price>=_trigP?'盤中已站上'
+                :(_hiP!=null&&_hiP>=_trigP?'盤中曾觸及·已回落':'盤中未達')));
           const core=[
             {label:'價格表現',base:_ebv['價格表現'],now:verified?`收盤 ${price==null?'—':Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})`:(price==null?'—':`盤中 ${Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})`),ok:verified?closeOk:null},
             {label:'型態驗證',base:_ebv['型態驗證'],now:verified?(limitUp?'漲停鎖價，強勢收盤':(x.triggered?'已突破，結構延續':'未突破前高')):patNow,ok:verified?!!x.triggered:null},
@@ -1175,7 +1187,7 @@ document.addEventListener('click',e=>{
             // ＝池日量比,於是「入選依據」跟「T+1 結果」永遠印同一個數字,還拿池日 0.32x
             // 去蓋章「T+1 量能未達」(使用者 2026-08-20 抓到)。引擎沒送就顯示無資料、
             // 判定留 · 不計入 CONFIRM 分母,不准拿池日值冒充當日結果。
-            {label:'量能驗證',base:_ebv['量能驗證'],now:verified?(t1VolR==null?'無 T+1 量比':`${t1VolR}x${t1VolR>1.2?'，放量':''}`):(volR==null?'—':`盤中 ${volR}x${volR>1.2?'，已放量':'，量未跟上'}`),ok:verified?(t1VolR==null?null:t1VolR>1.2):null},
+            {label:'量能驗證',base:_ebv['量能驗證'],now:verified?(t1VolR==null?'無 T+1 量比':`${t1VolR}x${t1VolR>1.2?'，放量':''}`):'待盤中量比',ok:verified?(t1VolR==null?null:t1VolR>1.2):null},
             {label:'法人籌碼',base:_ebv['法人籌碼'],now:verified?esc2(instStreakText):'待盤後法人',ok:verified?resultChipStatus==='positive':null},
             {label:'籌碼結構',base:_ebv['籌碼結構'],now:verified?(resultChipStatus==='positive'?'偏多強化':resultChipStatus==='negative'?'轉弱':'持平'):'待盤後法人',ok:verified?resultChipStatus!=='negative':null},
           ];
@@ -1197,7 +1209,7 @@ document.addEventListener('click',e=>{
           // 對不對」是兩個問題，放在同一格會出現「完整命中」旁邊寫「動能待確認」互打架。
           const failedCore=core.filter(r=>r.ok===false).map(r=>r.label);
           const summaryLine=!verified
-            ?`今日尚未收盤，13:30 收盤蓋章後才會產生 T+1 驗證結果；目前僅供參考的盤中即時價 ${price==null?'—':Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})，非最終收盤值。`
+            ?'今日尚未收盤'
             :(()=>{
               const coreLine=coreScored.length===0?'核心因子尚無資料':coreOk?'核心方向成立':`核心${failedCore.join('、')}未成立`;
               const confirmLine=confirmScored.length===0?'確認因子尚無資料':confirmHits===confirmScored.length?'確認因子仍偏強':confirmHits===0?'確認因子同步走弱':`${confirmMissed.join('、')}未達標，其餘確認仍強`;
