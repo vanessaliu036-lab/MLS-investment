@@ -160,6 +160,10 @@ def build_input(code: str, bar: Optional[dict], inst: Optional[dict],
         "total_net": total_net,
         "inst_ratio": inst_ratio,
         "inst_streak": _num(i.get("consecutive_days")),
+        # ⚠ consecutive_days 是「三法人合計」連買。回測驗證的是**外資**連買>=5
+        # (51 檔內 train +0.350% / test +0.484%),三法人合計那版弱很多。
+        # v2 評分要用這個,不要拿合計冒充。
+        "foreign_streak": _num(i.get("foreign_days")),
         "inst_3d": _num(inst_3d), "inst_5d": _num(inst_5d),
         "sector_rel": _num(sector_rel), "market_rel": _num(market_rel),
         "up_days": _num(up_days), "catalyst": catalyst,
@@ -292,6 +296,106 @@ def continuation_score(f: dict, g: dict) -> dict:
     score = round(got / wsum * 100, 1) if wsum else 0.0
     return {"score": score, "reasons": reasons, "missing": missing,
             "coverage": round(wsum, 0)}
+
+
+# ══════════════════════════════════════════════════════════
+# 1b. continuation_score_v2 —— 只加不減的平行評分
+#
+# 依據 2026-08 回測(51 檔母體、隔日開盤進場、扣 47.1bps):
+#   · 外資連買>=5      train +0.350% / test +0.484%(T+3 超額),同母體跨時間站得住
+#   · close_above_ma20 lift -1.07pp    ← 負貢獻
+#   · ma5_above_ma20   lift -1.29pp    ← 負貢獻
+# 所以外資力道獨立成一個 bucket,兩個均線條件降權保留作結構描述(不刪)。
+#
+# ⚠ v1 continuation_score 完全不動。這支並存輸出,選股門檻與候選數不變,
+#   用途是新舊名單平行對照。要不要換裝是之後看對照結果的決定。
+# ══════════════════════════════════════════════════════════
+FOREIGN_STREAK_FULL = 5    # 回測驗證的門檻,不調成 4 或 6 去追結果
+
+
+def continuation_score_v2(f: dict, g: dict) -> dict:
+    parts: list[tuple[str, float, float]] = []
+    reasons: list[str] = []
+    missing: list[str] = []
+    c = f["close"]
+
+    # 外資力道 20(新):驗證過的核心
+    fs, fr = f.get("foreign_streak"), f.get("inst_ratio")
+    if fs is not None or fr is not None or f.get("foreign_net") is not None:
+        p = 0.0
+        if fs is not None and fs > 0:
+            p += 0.55 * _clamp(fs / FOREIGN_STREAK_FULL)
+            if fs >= FOREIGN_STREAK_FULL:
+                reasons.append(f"外資連買{int(fs)}日(回測驗證門檻)")
+        if fr is not None and fr > 0:
+            p += 0.25 * _clamp(fr / 0.06)
+        if f.get("foreign_net") is not None and f["foreign_net"] > 0:
+            p += 0.20
+        parts.append(("外資力道", 20 * _clamp(p), 20))
+    else:
+        missing.append("外資力道")
+
+    # 趨勢結構 20 → 12,且兩個負 lift 條件降到僅描述用
+    if c is not None and f["ma5"] and f["ma20"]:
+        t = 0.0
+        if c >= f["ma5"]:
+            t += 0.50
+        if f["ma60"] and f["ma20"] >= f["ma60"]:
+            t += 0.30
+        if f["ma5"] >= f["ma20"]:      # 回測 -1.29pp,保留描述、幾乎不給分
+            t += 0.10
+        if c >= f["ma20"]:             # 回測 -1.07pp,同上
+            t += 0.10
+        parts.append(("趨勢結構", 12 * t, 12))
+    else:
+        missing.append("趨勢結構")
+
+    # 以下沿用 v1 的定義與權重,只有資金持續性/籌碼同步降權避免與外資力道重複計分
+    if f["sector_rel"] is not None:
+        parts.append(("族群強度", 15 * _clamp((f["sector_rel"] + 1) / 3), 15))
+    else:
+        missing.append("族群強度")
+    if f["market_rel"] is not None:
+        parts.append(("相對大盤", 15 * _clamp((f["market_rel"] + 1) / 3), 15))
+    else:
+        missing.append("相對大盤")
+
+    if g["vol_ratio"] is not None and g["close_pos"] is not None:
+        vr = g["vol_ratio"]
+        vp = (1.0 if 1.2 <= vr <= 2.5 else 0.5 if 1.0 <= vr < 1.2 else 0.2 if vr > 2.5 else 0.3)
+        vp = vp * (0.5 + 0.5 * g["close_pos"])
+        parts.append(("量價結構", 15 * vp, 15))
+    else:
+        missing.append("量價結構")
+
+    if any(f[k] is not None for k in ("inst_streak", "inst_ratio", "inst_3d", "inst_5d")):
+        fp = 0.0
+        if f["inst_streak"] is not None and f["inst_streak"] > 0:
+            fp += 0.40 * _clamp(f["inst_streak"] / 5)
+        if f["inst_3d"] is not None and f["inst_3d"] > 0:
+            fp += 0.30
+        if f["inst_5d"] is not None and f["inst_5d"] > 0:
+            fp += 0.30
+        parts.append(("資金持續性", 10 * _clamp(fp), 10))
+    else:
+        missing.append("資金持續性")
+
+    if f["foreign_net"] is not None and f["trust_net"] is not None:
+        both = (1.0 if f["foreign_net"] > 0 and f["trust_net"] > 0
+                else 0.5 if f["foreign_net"] > 0 or f["trust_net"] > 0 else 0.0)
+        parts.append(("籌碼同步", 8 * both, 8))
+    else:
+        missing.append("籌碼同步")
+
+    if f["catalyst"] is not None:
+        parts.append(("催化題材", 10 * (1.0 if f["catalyst"] else 0.0), 10))
+    else:
+        missing.append("催化題材")
+
+    got = sum(p for _, p, _ in parts)
+    wsum = sum(w for _, _, w in parts)
+    return {"score": round(got / wsum * 100, 1) if wsum else 0.0,
+            "reasons": reasons, "missing": missing, "coverage": round(wsum, 0)}
 
 
 # ══════════════════════════════════════════════════════════
@@ -505,6 +609,7 @@ def score_layered(f: dict) -> dict:
     """一檔完整評分 → 雙分數 + 四層 + 結構失效 + 漲停模型 + 籌碼四態。"""
     g = _geometry(f)
     cont = continuation_score(f, g)
+    cont2 = continuation_score_v2(f, g)      # 平行輸出,不參與任何選股決策
     chase = chase_risk_score(f, g)
     gates = failure_gates(f, g)
     fails = structural_failures(f, g)
@@ -523,6 +628,10 @@ def score_layered(f: dict) -> dict:
     return {
         "code": f["code"],
         "continuation": cont["score"],
+        # v2 只並列輸出供新舊名單對照,tier / entry_status / 候選數一律仍由 v1 決定
+        "continuation_v2": cont2["score"],
+        "continuation_v2_reasons": cont2["reasons"],
+        "continuation_v2_coverage": cont2["coverage"],
         "chase_risk": chase["score"],
         "chase_safety": round(100 - chase["score"], 1),
         "tier": tier,
