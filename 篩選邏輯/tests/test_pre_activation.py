@@ -89,3 +89,21 @@ def test_backfill_uses_next_day_open_as_entry():
     assert row["entry_open"] == 100.0                     # T+1 開盤,不是 T0 收盤 99
     assert round(row["ret_t3"], 3) == round((103.0 / 100.0 - 1) * 100, 3)
     assert round(row["net_t3"], 3) == round(row["ret_t3"] - 0.471, 3)
+
+
+def test_report_refuses_to_conclude_on_thin_samples():
+    """樣本不足時只列出、不下結論 —— live baseline 剛開始收,
+    前幾週用十幾筆去判斷 stage 好壞會比沒有資料更糟。"""
+    import tempfile, os, datetime as dt, sqlite3
+    import pa_snapshot, pa_report
+    db = os.path.join(tempfile.mkdtemp(), "t.db")
+    pa_snapshot.ensure(db)
+    c = sqlite3.connect(db)
+    for i in range(5):
+        c.execute("INSERT INTO pa_snapshot (data_date,code,stage,net_t5) VALUES (?,?,?,?)",
+                  (f"2026-08-{24+i}", f"900{i}", "ARMED", 1.0))
+    c.commit()
+    s = pa_report.by_stage(db)["ARMED"]["T+5"]
+    assert s["n"] == 5 and s["enough"] is False
+    assert "樣本不足" in pa_report.summary_text(db)
+    assert pa_report.MIN_N == 20
