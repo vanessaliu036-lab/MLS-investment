@@ -1,0 +1,91 @@
+"""Pre-Activation 規則版:四階段判定與「不放假分數」的約束。"""
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+import pre_activation as pa
+
+
+def base(**kw):
+    d = dict(close=102.0, ma5=100.0, volume=1000.0, vol_ma20=1000.0,
+             foreign_days=0, prev_high=103.0, high5=110.0)
+    d.update(kw)
+    return pa.describe(**d)
+
+
+def test_stage_ladder_follows_money_then_volume_then_price():
+    assert base(foreign_days=4, volume=900)["stage"] == pa.EARLY
+    assert base(foreign_days=4, volume=1400)["stage"] == pa.ARMED
+    assert base(foreign_days=4, volume=1400, close=104)["stage"] == pa.TRIGGER
+
+
+def test_overheat_always_wins_and_is_marked_do_not_chase():
+    """距 MA5 對 T+3 是負向且單調(F1 效果量 -1.0),所以過熱是禁追條件。"""
+    for kw in (dict(close=112), dict(volume=3000), dict(close=115, high5=105)):
+        r = base(foreign_days=4, **kw)
+        assert r["stage"] == pa.EXTENDED, kw
+        assert r["do_not_chase"] is True
+
+
+def test_no_unvalidated_scores_are_emitted():
+    """上線版不得輸出 Activation / Tradeability / Entry Confidence ——
+    沒有模型依據的分數比沒有分數更危險。"""
+    r = base(foreign_days=4)
+    banned = [k for k in r if "score" in k.lower() or "confidence" in k.lower()]
+    assert not banned, f"不該出現未驗證分數:{banned}"
+
+
+def test_missing_data_is_reported_as_none_not_guessed():
+    r = pa.describe(close=None, ma5=100, volume=None, vol_ma20=1000, foreign_days=None)
+    assert r["foreign_state"] is None and r["volume_state"] is None
+    assert r["ma5_state"] is None and r["stage"] == pa.WATCH
+
+
+def test_foreign_streak_must_be_the_foreign_one_not_combined():
+    """欄位語意鎖定:吃的是 foreign_days(外資),不是 consecutive_days(三法人合計)。"""
+    import inspect
+    src = inspect.getsource(pa.describe)
+    assert "foreign_days" in src and "consecutive_days" not in src
+
+
+def test_thresholds_are_pinned():
+    assert (pa.FOREIGN_STRONG_DAYS, pa.VOL_RISING, pa.MA5_HOT) == (2, 1.2, 0.07)
+    assert pa.MA5_HOT == 0.07      # 與引擎 HIGH_BIAS_PCT 一致
+
+
+def test_snapshot_writes_facts_not_predictions():
+    """快照只記 stage 與當下事實,不得寫入任何預測分數。"""
+    import sqlite3, tempfile, os
+    import pa_snapshot
+    db = os.path.join(tempfile.mkdtemp(), "t.db")
+    pa_snapshot.ensure(db)
+    cols = [r[1] for r in sqlite3.connect(db).execute("pragma table_info(pa_snapshot)")]
+    banned = [c for c in cols if "score" in c or "confidence" in c or "prob" in c]
+    assert not banned, f"快照表不該有預測欄位:{banned}"
+    for need in ("stage", "entry_open", "net_t3", "net_t5", "net_t7", "mfe_t7", "mae_t7"):
+        assert need in cols, need
+
+
+def test_backfill_uses_next_day_open_as_entry():
+    """盤後名單在 T0 收盤買不到 —— 進場價必須是 T+1 開盤,
+    用收盤會把隔夜跳空(實測約 +0.94%/日)算成自己的績效。"""
+    import sqlite3, datetime as dt, tempfile, os
+    import pa_snapshot
+    db = os.path.join(tempfile.mkdtemp(), "t.db")
+    pa_snapshot.ensure(db)
+    c = sqlite3.connect(db)
+    c.executescript("CREATE TABLE IF NOT EXISTS daily_bar (code TEXT, data_date TEXT,"
+                    " open REAL, high REAL, low REAL, close REAL);")
+    for i, d in enumerate(["2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28",
+                           "2026-08-29", "2026-09-01", "2026-09-02", "2026-09-03"]):
+        c.execute("INSERT INTO daily_bar VALUES (?,?,?,?,?,?)",
+                  ("9999", d, 100.0 + i, 102.0 + i, 99.0 + i, 101.0 + i))
+    c.commit()
+    pa_snapshot.write_snapshot(dt.date(2026, 8, 24), [{
+        "code": "9999", "close": 99.0, "continuation": 50.0, "legacy_rank": 1,
+        "pre_activation": {"stage": "ARMED", "do_not_chase": False,
+                           "rule_version": "v1"}}], db)
+    pa_snapshot.backfill(db)
+    row = dict(zip([r[1] for r in c.execute("pragma table_info(pa_snapshot)")],
+                   c.execute("SELECT * FROM pa_snapshot").fetchone()))
+    assert row["entry_open"] == 100.0                     # T+1 開盤,不是 T0 收盤 99
+    assert round(row["ret_t3"], 3) == round((103.0 / 100.0 - 1) * 100, 3)
+    assert round(row["net_t3"], 3) == round(row["ret_t3"] - 0.471, 3)

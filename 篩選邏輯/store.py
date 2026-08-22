@@ -34,6 +34,7 @@ DB_PATH = "mls.db"
 # 新插件就算寫了 UPDATE inst_flow,也會在執行前被擋掉。
 
 TABLE_OWNER: dict[str, str] = {
+    "pa_snapshot": "pre_activation",   # Pre-Activation 每日快照(2026-08-24 起)
     "inst_flow": "post_pipeline",      # 法人買賣超(死值)
     "margin": "post_pipeline",         # 融資融券(死值)
     "daily_bar": "post_pipeline",      # 日 K / MA / 均量(死值)

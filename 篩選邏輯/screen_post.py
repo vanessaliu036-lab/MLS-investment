@@ -26,6 +26,7 @@ import json
 import store
 import config
 import layered_score
+import pre_activation
 import chip_price_divergence
 import six_state
 import recovery_scan
@@ -774,7 +775,26 @@ def build(universe: list[str], db_path: str = "mls.db",
             store.read_recent("daily_bar", c, d, 25, db_path),
             store.read_recent("aflow", c, d, 25, db_path))
         _protect = _dv.get("divergence_type") in ("chip_reversal", "sell_absorption", "accumulation", "washout")
+        # ── Pre-Activation 規則版(2026-08-24 上線)────────────────────────
+        # 只給階段與判斷依據,不給任何未驗證的分數。主排序仍由 Legacy 負責。
+        _hi5 = None
+        try:
+            _r5 = store.read_recent("daily_bar", c, d, 6, db_path)
+            _prior = [x for x in _r5 if str(x.get("data_date")) < d.isoformat()]
+            _hs = [x.get("high") for x in _prior if x.get("high") is not None]
+            _hi5 = max(_hs) if _hs else None
+        except Exception:
+            _hi5 = None
+        _pa = pre_activation.describe(
+            close=bar.get("close"), ma5=bar.get("ma5"),
+            volume=bar.get("volume"), vol_ma20=bar.get("vol_ma20"),
+            foreign_days=(i.get(c) or {}).get("foreign_days"),
+            prev_high=(previous_bar or {}).get("high"), high5=_hi5)
+
         lay_fields = {
+            "pre_activation": _pa,
+            "pre_activation_stage": _pa["stage"],
+            "do_not_chase": _pa["do_not_chase"],
             "tier": lay["tier"], "classification": lay["classification"],
             "potential_grade": lay["potential_grade"], "trend_stage": lay["trend_stage"],
             "potential_tier": lay["potential_tier"], "potential_label": lay["potential_label"],
