@@ -1,11 +1,11 @@
 """
 MLS 模組 — money_health_api.py（資金健康度 · 證據卡後端 v3 純盤後）
 ====================================================================
-僅供盤後分析使用，所有數據來自 mls.db：
+僅供盤後分析使用，所有數據來自已落地資料與官方日K：
   - eod_snapshot：收盤價、漲跌幅、量比、族群、aflow_ratio（若有）
-  - daily_bars：歷史 K 線（計算均線、ATR、前高）
+  - daily_bars 或 TWSE/TPEx 官方月K：歷史 K 線（計算均線、ATR、前高）
 
-無任何即時資料來源，無 broker / shioaji / yfinance 依賴。
+無任何盤中即時資料來源，也不依賴 Shioaji 金鑰。
 若資料庫缺 K 線，技術分自動降級但健康分仍由其他模組支撐。
 ====================================================================
 """
@@ -14,6 +14,8 @@ import sqlite3
 import json
 import math
 import os
+import urllib.parse
+import urllib.request
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
@@ -48,13 +50,14 @@ class PARAMS:
     MA20_BIAS_MAX = 5.0      # 偏離 5% 得滿分 25
     MA60_BIAS_MAX = 10.0     # 偏離 10% 得滿分 15
     BREAKOUT_DIST_MAX = 5.0  # 距前高 5% 內線性給分
+    BREAKOUT_LOOKBACK = 10   # 突破確認只比較前 10 個交易日高點
     BIAS_OVER = 8.0          # 過度乖離觸發軟風險
 
     # 資金流門檻
     FLOW_EPS = 0.02
 
     # 風險門檻
-    NEAR_LIMIT_PCT = 9.0
+    NEAR_LIMIT_CLOSE_PCT = 0.98  # 收盤達漲停價 98% 才標示「接近漲停」
     VOL_SPIKE = 2.5
     RESIST_NEAR = 1.5
 
@@ -74,36 +77,98 @@ class PARAMS:
 # ═══════════════════════════════════════════════════════════
 # 資料庫讀取函數（唯讀，無任何外部呼叫）
 # ═══════════════════════════════════════════════════════════
-def _read_daily_bars(code: str, days: int = 70) -> List[Dict]:
+def _yahoo_daily_bars(code: str, days: int, asof: Optional[str]) -> List[Dict]:
+    """官方／FinMind歷史不足時的完整日K備援；僅供技術指標，不混充官方收盤。"""
+    end = datetime.strptime(asof, "%Y-%m-%d").replace(tzinfo=TW_TZ) if asof else datetime.now(TW_TZ)
+    start = end - timedelta(days=max(days * 3, 180))
+    query = urllib.parse.urlencode({
+        "period1": int(start.timestamp()), "period2": int((end + timedelta(days=1)).timestamp()),
+        "interval": "1d",
+    })
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{code}.TW?{query}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 MLS NEXORA"})
+        with urllib.request.urlopen(req, timeout=20) as response:
+            result = json.loads(response.read().decode("utf-8"))["chart"]["result"][0]
+        quote = (result.get("indicators", {}).get("quote") or [{}])[0]
+        out = []
+        for ts, close, high, low, volume in zip(result.get("timestamp") or [], quote.get("close") or [],
+                                                quote.get("high") or [], quote.get("low") or [],
+                                                quote.get("volume") or []):
+            if close is None or high is None or low is None:
+                continue
+            date = datetime.fromtimestamp(ts, TW_TZ).strftime("%Y-%m-%d")
+            if asof and date > asof:
+                continue
+            out.append({"date": date, "open": close, "high": float(high), "low": float(low),
+                        "close": float(close), "volume": float(volume or 0), "source": "yahoo_history"})
+        return out[-days:]
+    except Exception as e:
+        print(f"[money_health_api] Yahoo 日K讀取失敗 {code}: {e}")
+        return []
+
+
+def _read_daily_bars(code: str, days: int = 70, asof: Optional[str] = None) -> List[Dict]:
     """
     從 daily_bars 表讀取 K 線（最新 days 根），若表不存在或無資料回傳空串列。
     回傳格式：[{date, open, high, low, close, volume}, ...]（時間升序）
     """
-    if not DB_PATH.exists():
-        return []
+    if DB_PATH.exists():
+        try:
+            conn = sqlite3.connect(str(DB_PATH), timeout=2)
+            cur = conn.execute(
+                "SELECT date, open, high, low, close, volume FROM daily_bars WHERE code=? ORDER BY date DESC LIMIT ?",
+                (code, days)
+            )
+            rows = cur.fetchall()
+            conn.close()
+            if rows:
+                bars = []
+                for r in reversed(rows):
+                    bars.append({
+                        "date": r[0],
+                        "open": float(r[1]) if r[1] else 0.0,
+                        "high": float(r[2]) if r[2] else 0.0,
+                        "low": float(r[3]) if r[3] else 0.0,
+                        "close": float(r[4]) if r[4] else 0.0,
+                        "volume": float(r[5]) if r[5] else 0.0,
+                    })
+                return [b for b in bars if not asof or str(b["date"])[:10] <= asof]
+        except Exception as e:
+            print(f"[money_health_api] DB 日K讀取失敗 {code}: {e}")
+
+    # DB 沒有日K時改讀 eod_source：優先 TWSE/TPEx 官方，受阻時退 FinMind 日K。
+    # 不可改呼叫 Shioaji：VPS 盤後服務未持有交易 API 金鑰，失敗會靜默退成空資料。
     try:
-        conn = sqlite3.connect(str(DB_PATH), timeout=2)
-        cur = conn.execute(
-            "SELECT date, open, high, low, close, volume FROM daily_bars WHERE code=? ORDER BY date DESC LIMIT ?",
-            (code, days)
-        )
-        rows = cur.fetchall()
-        conn.close()
-        if not rows:
-            return []
-        bars = []
-        for r in reversed(rows):
-            bars.append({
-                "date": r[0],
-                "open": float(r[1]) if r[1] else 0.0,
-                "high": float(r[2]) if r[2] else 0.0,
-                "low": float(r[3]) if r[3] else 0.0,
-                "close": float(r[4]) if r[4] else 0.0,
-                "volume": float(r[5]) if r[5] else 0.0,
-            })
-        return bars
+        import eod_source
+        end = datetime.strptime(asof, "%Y-%m-%d") if asof else datetime.now(TW_TZ)
+        start = (end - timedelta(days=max(days * 3, 180))).strftime("%Y-%m-%d")
+        rows = eod_source._price_rows(code, start, trade_date=end.strftime("%Y-%m-%d"))
+        by_date: Dict[str, Dict] = {}
+        for row in rows:
+            date = str(row.get("date") or "")[:10]
+            if not date or (asof and date > asof):
+                continue
+            close = row.get("close")
+            high = row.get("max")
+            low = row.get("min")
+            if close is None or high is None or low is None:
+                continue
+            by_date[date] = {
+                "date": date,
+                "open": row.get("open") or close,
+                "high": float(high),
+                "low": float(low),
+                "close": float(close),
+                "volume": float(row.get("Trading_Volume") or 0),
+            }
+        official_bars = [by_date[date] for date in sorted(by_date)[-days:]]
+        if len(official_bars) >= min(20, days):
+            return official_bars
+        yahoo_bars = _yahoo_daily_bars(code, days, asof)
+        return yahoo_bars or official_bars
     except Exception as e:
-        print(f"[money_health_api] 讀取K線錯誤 {code}: {e}")
+        print(f"[money_health_api] 官方日K讀取失敗 {code}: {e}")
         return []
 
 
@@ -230,8 +295,10 @@ def score_technical(snap: Dict, bars: List[Dict]) -> tuple:
     # D. 突破前高（連續）
     prev_high = None
     if len(bars) >= 2:
-        highs = [b.get("high") for b in bars[:-1] if b.get("high") is not None]
+        recent = bars[-(PARAMS.BREAKOUT_LOOKBACK + 1):-1]
+        highs = [b.get("high") for b in recent if b.get("high") is not None]
         prev_high = max(highs) if highs else None
+    prev_close = bars[-2].get("close") if len(bars) >= 2 else None
     if price and prev_high:
         dist = (price - prev_high) / prev_high * 100
         if dist >= 0:
@@ -253,6 +320,8 @@ def score_technical(snap: Dict, bars: List[Dict]) -> tuple:
         "breakout": round(s_brk, 1),
         "bias_pct": round(bias20, 1),
         "prev_high": prev_high,
+        "prev_close": prev_close,
+        "breakout_lookback": PARAMS.BREAKOUT_LOOKBACK,
         "ma20_val": ma20,
         "ma60_val": ma60,
     }
@@ -366,22 +435,56 @@ def trend_of(quad: str, prev_quad: Optional[str]) -> str:
 # ═══════════════════════════════════════════════════════════
 # 三、風險旗標（硬／軟）
 # ═══════════════════════════════════════════════════════════
+def _tick_size(price: float) -> float:
+    if price < 10:
+        return 0.01
+    if price < 50:
+        return 0.05
+    if price < 100:
+        return 0.1
+    if price < 500:
+        return 0.5
+    if price < 1000:
+        return 1.0
+    return 5.0
+
+
+def _limit_up_price(prev_close: Optional[float]) -> Optional[float]:
+    """台股漲停價：昨收 × 1.1 後依價格級距向下取整至跳動單位。"""
+    if prev_close is None or prev_close <= 0:
+        return None
+    raw = float(prev_close) * 1.10
+    tick = _tick_size(raw)
+    return math.floor(raw / tick + 1e-9) * tick
+
+
+def _close_near_limit(snap: Dict, price: Optional[float]) -> bool:
+    if price is None:
+        return False
+    limit_up = snap.get("limit_up") or snap.get("limit_up_price")
+    if limit_up is None:
+        limit_up = _limit_up_price(snap.get("prev_close"))
+    return bool(limit_up and float(price) >= float(limit_up) * PARAMS.NEAR_LIMIT_CLOSE_PCT)
+
+
 def risk_flags(snap: Dict, tech_ev: Dict, cap_ev: Dict, data_quality: Dict) -> Dict:
     price = snap.get("price") or snap.get("close")
     chg = snap.get("change_rate") or 0
     vr = snap.get("volume_ratio") or 0
-    ma20, ma60 = tech_ev.get("ma20_val"), tech_ev.get("ma60_val")
+    ma20 = tech_ev.get("ma20_val")
     prev_high = tech_ev.get("prev_high")
 
     # 硬風險
-    ma_break = int(price is not None and (
-        (ma20 is not None and price < ma20) or (ma60 is not None and price < ma60)))
+    ma_break = int(price is not None and ma20 is not None and price < ma20)
     divergence = int((chg > 0 and vr < 0.8) or (chg < 0 and vr >= 1.5))
     proxy = int(cap_ev.get("real") == 0)
 
     # 軟風險
     over_bias = int(abs(tech_ev.get("bias_pct") or 0) >= PARAMS.BIAS_OVER)
-    near_limit = int(chg >= PARAMS.NEAR_LIMIT_PCT or (chg > 0 and vr >= PARAMS.VOL_SPIKE))
+    near_limit_snap = snap if snap.get("prev_close") is not None else {
+        **snap, "prev_close": tech_ev.get("prev_close")
+    }
+    near_limit = int(_close_near_limit(near_limit_snap, price))
     no_breakout = int((tech_ev.get("breakout") or 0) < 20)
     resistance = int(price is not None and prev_high is not None and prev_high > 0 and
                      0 <= (prev_high - price) / prev_high * 100 <= PARAMS.RESIST_NEAR)
@@ -400,7 +503,7 @@ def risk_flags(snap: Dict, tech_ev: Dict, cap_ev: Dict, data_quality: Dict) -> D
 
 
 def hard_hits(risk: Dict) -> List[str]:
-    names = {"ma_break": "跌破均價線", "divergence": "量價背離", "proxy": "資金為代理"}
+    names = {"ma_break": "跌破 MA20", "divergence": "量價背離", "proxy": "資金為代理"}
     return [v for k, v in names.items() if risk.get(k)]
 
 
@@ -641,7 +744,7 @@ try:
                 continue
 
             # 讀取 K 線（盤後固定讀 70 日）
-            bars = _read_daily_bars(code, days=70)
+            bars = _read_daily_bars(code, days=70, asof=tdate)
 
             # 讀取籌碼（若有 chip_provider）
             chip_data = None

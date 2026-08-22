@@ -495,9 +495,10 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
     const fac=k=>{const z=dec.factors&&dec.factors[k];if(z&&typeof z==='object')return{pts:z.points??z.score,max:z.max??DEF[k][1],note:z.status||z.reason||''};if(f5f[k]!=null)return{pts:f5f[k],max:DEF[k][1],note:f5n[k]||''};return{pts:null,max:DEF[k][1],note:'資料回補中'}};
 
     document.title=`${code} ${d.name||code}｜個股決策報告`;
-    const tn=document.getElementById('topnote');if(tn)tn.textContent=`${d.name||code} ${code}｜盤後固定資料 ${p.source_date||d.data_date||'—'}`;
+    const liveNow=!!p.intraday_available;
+    const tn=document.getElementById('topnote');if(tn)tn.textContent=`${d.name||code} ${code}｜${liveNow?'盤中即時行情':'盤後固定資料'} ${p.source_date||d.data_date||'—'}`;
     // 身分 + 快捷
-    set('.identity .code',code);set('.identity .name',d.name||code);set('.identity .current-price',`現價 ${price??'—'}`);
+    set('.identity .code',code);set('.identity .name',d.name||code);set('.identity .current-price',`${liveNow?'現價':'收盤'} ${price??'—'}`);
     const tags=document.querySelectorAll('.identity .tag');if(tags[0])tags[0].textContent=d.sector||'—';if(tags[1])tags[1].textContent=c.stock_type==='engine'?'引擎軌':'攻擊軌';
     const starN=Math.max(1,Math.min(5,(c.health_stars??Math.round((Number(score)||0)/20))||1));
     set('.stars','★'.repeat(starN)+'☆'.repeat(5-starN));

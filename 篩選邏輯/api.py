@@ -298,6 +298,22 @@ def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,
         #   就是「資料待補、資金流沒勁」的病灶。
         if get_phase() is Phase.POST:
             data = screen_post.build(config.UNIVERSE)
+            # Pre-Activation 每日快照(2026-08-24 起):把 T0 的四階段與判斷依據
+            # 存下來,隔日回填 T+1/3/5/7 淨報酬與 MFE/MAE。
+            # 2026 holdout 已在研究端被看過,這批 live snapshot 才是下一代
+            # Pre-Activation Model 唯一沒有回看偏誤的驗證集 —— 不能漏存。
+            try:
+                import pa_snapshot, datetime as _d
+                _items = data.get("items") or []
+                for _r, _it in enumerate(_items, 1):
+                    _it.setdefault("legacy_rank", _r)
+                _n = pa_snapshot.write_snapshot(
+                    _d.date.fromisoformat(data["data_date"]), _items)
+                _b = pa_snapshot.backfill()
+                print(f"[pa_snapshot] 快照 {_n} 列 / 回填 {_b} 列", flush=True)
+            except Exception as _e:
+                # 快照是觀察資料,不得拖垮盤後名單本身
+                print(f"[pa_snapshot] 降級(不影響名單): {_e}", flush=True)
         else:
             data = screen_post.load_last_post()
 

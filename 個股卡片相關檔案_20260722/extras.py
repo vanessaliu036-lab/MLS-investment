@@ -30,6 +30,35 @@ import vps_intraday_test as VIT  # 內含 51 檔 / Shioaji 訂閱查詢
 import broker  # VPS Shioaji 訂閱 buffer
 
 
+def _read_intraday_daily(code: str, trade_date: str, db_path: Optional[Path] = None) -> Dict[str, Any]:
+    """讀取指定交易日已落地的盤中 VWAP／高低點；沒有就保留缺值。"""
+    import sqlite3
+    path = Path(db_path or (_ROOT / "intraday_eod.db"))
+    if not trade_date or not path.exists():
+        return {}
+    try:
+        with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT avg_price, high, low, aflow, volume, volume_ratio "
+                "FROM intraday_stock_daily WHERE trade_date=? AND code=?",
+                (trade_date, str(code)),
+            ).fetchone()
+        return dict(row) if row else {}
+    except Exception as exc:
+        print(f"[extras] intraday_stock_daily {code} 讀取失敗: {exc}", flush=True)
+        return {}
+
+
+def _sector_members(sector: str) -> List[Dict[str, str]]:
+    """回傳族群平均採用的固定觀察池成分，讓前端可逐檔稽核。"""
+    return [
+        {"code": str(code), "name": C.NAME_MAP.get(str(code), str(code))}
+        for code, meta in sorted(C.SECTOR_MAP.items())
+        if meta[0] == sector
+    ]
+
+
 def _health_for_card(code: str, snap: Dict[str, Any], all_rows: List[Dict[str, Any]]):
     """盤後卡片的健康度 fallback；不讀 Shioaji 即時 buffer。"""
     try:
@@ -45,7 +74,7 @@ def _health_for_card(code: str, snap: Dict[str, Any], all_rows: List[Dict[str, A
         sector_pct = (sum(changes) / len(changes)) if changes else None
         src = dict(snap)
         src["code"] = str(code)
-        src["avg_price"] = snap.get("avg_price") or snap.get("price")
+        src["avg_price"] = snap.get("avg_price")
         src["high"] = snap.get("high") or snap.get("price")
         src["volume_ratio"] = snap.get("volume_ratio") or 0
         return money_health.stock_health(src, sector_pct=sector_pct)
@@ -111,15 +140,54 @@ def _decision_factors(card: Dict[str, Any], live: Dict[str, Any]) -> Dict[str, A
     else:
         factors["margin"] = {"points": None, "max": 8, "status": "缺資料"}
     available = sum(v["max"] for v in factors.values() if v["points"] is not None)
-    score = round(sum(v["points"] or 0 for v in factors.values()), 1)
-    return {"factors": factors, "score": score, "score_max": 100,
+    raw_score = round(sum(v["points"] or 0 for v in factors.values()), 1)
+    score = round(raw_score / available * 100, 1) if available else None
+    missing = [k for k, v in factors.items() if v["points"] is None]
+    confidence = "High" if not missing else ("Medium" if available >= 50 else "Low")
+    return {"factors": factors, "score": score, "score_raw": raw_score, "score_max": 100,
             "score_available": available,
-            "missing": [k for k, v in factors.items() if v["points"] is None],
-            "rule": "screen intraday.py 六因子 100 分制；缺資料不補分。"}
+            "missing": missing, "confidence": confidence,
+            "rule": "只以已取得因子正規化計分；缺資料降低可信度，不當作 0 分。"}
 
 
 def _now_tw() -> str:
     return _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).isoformat(timespec="seconds")
+
+
+def _is_intraday_session(now: Optional[_dt.datetime] = None) -> bool:
+    """是否處於台股盤中；盤中不能把昨日收盤冒充今日現價。"""
+    tz = _dt.timezone(_dt.timedelta(hours=8))
+    now = now.astimezone(tz) if now else _dt.datetime.now(tz)
+    return now.weekday() < 5 and _dt.time(9, 0) <= now.time() < _dt.time(13, 35)
+
+
+def _merge_intraday_quote(code: str, snap: Dict[str, Any]) -> Dict[str, Any]:
+    """盤中以最新推播覆蓋收盤快照；取不到即保留收盤資料並標示原狀態。"""
+    if not _is_intraday_session():
+        return snap
+    try:
+        live_rows = broker.buffer_snapshots([str(code)])
+        live = next((r for r in live_rows if str(r.get("code")) == str(code)), None)
+    except Exception as exc:
+        print(f"[extras] 盤中行情 {code} 讀取失敗:{exc}", flush=True)
+        live = None
+    if not live or live.get("price") is None or live.get("change_rate") is None:
+        return snap
+
+    merged = dict(snap)
+    for key in ("price", "change_rate", "high", "low", "avg_price",
+                "volume_ratio", "total_volume", "total_amount",
+                "buy_volume", "sell_volume"):
+        if live.get(key) is not None:
+            merged[key] = live[key]
+    merged["eod_close"] = snap.get("price")
+    merged["eod_change_rate"] = snap.get("change_rate")
+    merged["data_mode"] = "intraday_shioaji"
+    merged["source_date"] = _dt.datetime.now(
+        _dt.timezone(_dt.timedelta(hours=8))).date().isoformat()
+    merged["price_source"] = "Shioaji 即時推播"
+    merged["intraday_available"] = True
+    return merged
 
 
 # 族群平均/大盤漲跌快取（60 秒）:規範=個股數據一律抓最近可用日期計算，
@@ -276,6 +344,7 @@ def _raw_rows() -> List[Dict[str, Any]]:
 # 因此：同一 (code, 盤後有效日) 只算一次，並寫到磁碟，重啟後直接沿用。
 _CARD_MEM: Dict[str, Dict[str, Any]] = {}
 _CARD_DIR = _BASE / "card_cache"
+_CARD_CACHE_VERSION = 2  # v2: 正確 VWAP、週期籌碼、可用分母計分與族群成分
 
 
 def _card_cache_path(code: str, asof: str) -> Path:
@@ -294,6 +363,8 @@ def _card_cache_read(code: str, asof: str) -> Optional[Dict[str, Any]]:
         import json
         with path.open(encoding="utf-8") as fh:
             data = json.load(fh)
+        if data.get("_card_cache_version") != _CARD_CACHE_VERSION:
+            return None
         _CARD_MEM[key] = data
         return data
     except Exception as exc:
@@ -302,6 +373,8 @@ def _card_cache_read(code: str, asof: str) -> Optional[Dict[str, Any]]:
 
 
 def _card_cache_write(code: str, asof: str, payload: Dict[str, Any]) -> None:
+    payload = dict(payload)
+    payload["_card_cache_version"] = _CARD_CACHE_VERSION
     _CARD_MEM[f"{asof}_{code}"] = payload
     try:
         import json
@@ -338,7 +411,8 @@ def build_stock_card(code: str, refresh: bool = False) -> Dict[str, Any]:
     """對外入口：優先吃快取，沒有才真的重算（見 _build_stock_card）。"""
     asof_limit, _ready = _post_market_asof()
     code = str(code)
-    if not refresh:
+    # 盤中不可命中盤後卡片快取，否則會把昨日收盤顯示成今日現價。
+    if not refresh and not _is_intraday_session():
         cached = _card_cache_read(code, asof_limit)
         if cached is not None:
             cached = dict(cached)
@@ -485,13 +559,16 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
             prev = valid[-2] if len(valid) > 1 else None
             close = float(last["close"])
             prev_close = float(prev["close"]) if prev else None
+            daily = _read_intraday_daily(code, str(last.get("date") or "")[:10])
             snap = {
                 "code": str(code), "price": close,
                 "prev_close": prev_close,
                 "change_rate": round((close / prev_close - 1) * 100, 2)
                 if prev_close else None,
-                "high": last.get("high"), "low": last.get("low"),
-                "avg_price": close, "total_volume": last.get("volume") or 0,
+                "high": daily.get("high") or last.get("high"),
+                "low": daily.get("low") or last.get("low"),
+                "avg_price": daily.get("avg_price"),
+                "total_volume": daily.get("volume") or last.get("volume") or 0,
                 "buy_volume": None, "sell_volume": None,
                 "data_mode": "post_market_daily_kbar",
                 "source_date": last.get("date"),
@@ -502,10 +579,13 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
                 "quadrant": eod_quadrant,
                 "group": eod_group,
             }
+            if daily.get("volume_ratio") is not None:
+                snap["volume_ratio"] = daily["volume_ratio"]
             closes = [float(b["close"]) for b in valid[-20:]
                       if b.get("close") is not None]
             if len(closes) >= 20:
                 snap["ma20"] = round(sum(closes[-20:]) / 20, 2)
+            snap = _merge_intraday_quote(code, snap)
             all_rows.append(snap)
     except Exception as exc:
         print(f"[extras] post kbar {code} 失敗: {exc}", flush=True)
@@ -553,6 +633,8 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
         if _chg is not None and _mkt_pct is not None:
             snap.setdefault("vs_market", round(float(_chg) - float(_mkt_pct), 2))
         snap.setdefault("rel_source", "族群=固定池成分股官方收盤平均；大盤=TWSE 官方")
+        card["sector_members"] = _sector_members(_sec_name)
+        card["sector_aggregation"] = "固定觀察池成分股等權平均"
         # 相對強弱的資料日＝這份盤後 K 線的交易日，不是「現在」。未收盤的今日不得蓋章。
         snap.setdefault("rel_date", snap.get("source_date") or asof_limit)
         card["factors5"] = _five_factors(snap, card.get("chip") or {},
@@ -561,7 +643,8 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
     except Exception as exc:
         print(f"[extras] 相對強弱補值失敗: {exc}", flush=True)
     data_date = (snap or {}).get("source_date") or eod_flow_date
-    status = ("今日官方盤後資料已更新" if official_ready and data_date == _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).date().isoformat()
+    status = ("今日盤中即時資料" if (snap or {}).get("intraday_available") else
+              "今日官方盤後資料已更新" if official_ready and data_date == _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).date().isoformat()
               else "等待今日 18:00 官方更新，目前顯示前一交易日資料")
     return {"ok": True, "code": code, "updated_at": _now_tw(),
             "data_date": data_date or asof_limit,
