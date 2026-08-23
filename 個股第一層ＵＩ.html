@@ -5,6 +5,39 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MLS｜觀察池</title>
 <script>
+/* ── Pre-Activation 四階段(EARLY/ARMED/TRIGGER/EXTENDED)────────────────
+   階段與判斷依據由盤後 AB 引擎算好、存 candidate_pool,經 /api/watchpool
+   唯讀帶出。前端只負責印,不重算不自判 —— 同一份資料在不同地方算出不同
+   答案,是這套系統踩過最多次的坑。 */
+(()=>{
+  const PA_COLOR={EARLY:'#1d4ed8',ARMED:'#a15c00',TRIGGER:'#168447',EXTENDED:'#b91c1c'};
+  const e=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  const pick=x=>{const p=x&&x.pre_activation;return (p&&p.stage&&p.stage!=='—')?p:null};
+  window.__paHTML=x=>{
+    const p=pick(x); if(!p)return '<span class="pa-none">—</span>';
+    const c=PA_COLOR[p.stage]||'#6b7280';
+    return `<span class="pa-badge" style="background:${c}18;color:${c};border:1px solid ${c}55">${e(p.stage)}</span>`
+         + (p.do_not_chase?' <b style="color:#b91c1c">不追</b>':'');
+  };
+  window.__paLines=x=>{
+    const p=pick(x); if(!p)return '';
+    const d=p.ma5_distance_pct;
+    return `<div class="pa-lines"><b>外資：</b>${e(p.foreign_state||'—')}　<b>｜量能：</b>${e(p.volume_state||'—')}<br>`
+      + `<b>距 MA5：</b>${d==null?'—':(d>0?'+':'')+d+'%'}　${e(p.ma5_state||'')}<br>`
+      + `<b>下一步：</b>${e(p.next_step||'—')}</div>`;
+  };
+  // 資料時間右邊補「Pre-Activation 快照日」——階段是盤後快照,和即時報價不同天,
+  // 不標日期會被誤讀成即時值。
+  window.__paStamp=d=>{
+    const el=document.getElementById('poolStamp'); if(!el)return;
+    const base=d.updated_at?('資料時間 '+e(d.updated_at)):'資料時間未提供';
+    el.textContent=base+(d.pre_activation_date
+      ?`　｜　Pre-Activation ${e(d.pre_activation_date)}（${d.pre_activation_count||0}/${d.count||0} 檔）`
+      :'　｜　Pre-Activation 尚無盤後快照');
+  };
+})();
+</script>
+<script>
 // 盤中欄位同步：/api/watchpool 每次都讀最新行情 buffer；初次渲染後持續
 // 把即時欄位寫回既有卡片，避免整頁重繪造成搜尋、展開狀態消失。
 (()=>{
@@ -22,6 +55,11 @@
     busy=true;
     try{
       const d=await (await fetch(API+'/api/watchpool',{cache:'no-store'})).json();
+      // 資料時間吃 API 的 updated_at(原本是寫死的 2026-07-23,永遠不會變,
+      // 看起來像資料過期一個月,其實 API 是新的)。syncLiveFields 每輪都跑,
+      // 放這裡才會持續更新。
+      {const el=document.getElementById('poolStamp');
+       if(el)el.textContent=d.updated_at?('資料時間 '+d.updated_at):'資料時間未提供';}
       const items=d.items||[], byCode=new Map(items.map(x=>[String(x.code),x])), bySector={};
       for(const x of items)(bySector[x.sector||'其他']??=[]).push(x);
       document.querySelectorAll('#sector-root .stock-card').forEach(card=>{
@@ -45,6 +83,9 @@
         }
         const decision=card.querySelector('.decision .status');
         if(decision){decision.className=`status ${status==='Ready'?'ready':status==='Risk'?'risk':'wait'}`;decision.textContent=status;}
+        if(signals[5]){const v=signals[5].querySelector('.v');if(v)v.innerHTML=window.__paHTML(x);}
+        const drawer=card.querySelector('.drawer'),oldLines=drawer&&drawer.querySelector('.pa-lines'),lines=window.__paLines(x);
+        if(drawer){if(oldLines)oldLines.outerHTML=lines; else if(lines)drawer.insertAdjacentHTML('afterbegin',lines);}
         card.dataset.status=({Ready:'可操作',Watch:'觀察',Risk:'排除'})[status]||status;
       });
       document.querySelectorAll('#sector-root .sector').forEach(sec=>{
@@ -60,6 +101,7 @@
       if(sum[2])sum[2].textContent=counts['觀察'];
       if(sum[3])sum[3].textContent=counts['排除'];
       if(sum[4])sum[4].textContent=d.updated_at||'—';
+      window.__paStamp(d);
     }catch(e){console.warn('watchpool live sync',e)}
     finally{busy=false;}
   }
@@ -343,7 +385,7 @@ h1{
 .muted{color:#7e8899}
 .signal-grid{
   display:grid;
-  grid-template-columns:repeat(5,minmax(88px,1fr));
+  grid-template-columns:repeat(6,minmax(88px,1fr));
   gap:8px;
 }
 .signal{
@@ -425,12 +467,18 @@ h1{
   color:var(--muted);
 }
 .stock-card.open .drawer{display:block}
+/* Pre-Activation 四階段(2026-08-24 規則版)：後台算好,前端只印 */
+.signal.pa .v{white-space:normal}
+.pa-badge{display:inline-block;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:900;letter-spacing:.04em}
+.pa-none{color:var(--muted);font-weight:800}
+.pa-lines{margin-bottom:8px;line-height:1.7;color:var(--text);font-size:12px}
+.pa-lines b{color:var(--muted);font-weight:850}
 @media(max-width:1180px){
   .stock-card{
     grid-template-columns:1fr;
   }
   .decision{justify-content:flex-start}
-  .signal-grid{grid-template-columns:repeat(5,1fr)}
+  .signal-grid{grid-template-columns:repeat(3,1fr)}
 }
 @media(max-width:820px){
   .page{padding:16px}
@@ -486,7 +534,7 @@ h1{
 
   <section class="info-panel">
     <p><strong>篩選說明：</strong>觀察池為固定 51 檔，不受盤中、盤後分數或資料完整度影響；此頁僅依族群整理顯示，不重新篩選名單。</p>
-    <div class="time">2026-07-23T15:05:13+08:00</div>
+    <div class="time" id="poolStamp">資料時間讀取中…</div>
   </section>
 
   <section class="sector">
@@ -667,6 +715,9 @@ document.querySelectorAll('.expand').forEach(btn=>{
   const cls=v=>Number(v)>0?'up':Number(v)<0?'down':'';  // 正=紅(up) 負=綠(down)
   try{
     const d=await (await fetch(API+'/api/watchpool',{cache:'no-store'})).json(),items=d.items||[],groups={};
+    // 資料時間改吃 API 的 updated_at。原本這裡是寫死的 2026-07-23T15:05:13,
+    // 永遠不會變 —— 看起來像「資料過期一個月」,其實 API 是新的。
+    window.__paStamp(d);
     for(const x of items)(groups[x.sector||'其他']??=[]).push(x);
     const main=document.querySelector('main.page');
     main.querySelectorAll(':scope > .sector').forEach(x=>x.remove());
@@ -677,7 +728,7 @@ document.querySelectorAll('.expand').forEach(btn=>{
     for(const [sector,stocks] of Object.entries(groups)){
       const changes=stocks.map(x=>Number(x.change_rate)).filter(Number.isFinite),avg=changes.length?changes.reduce((a,b)=>a+b,0)/changes.length:null;
       const section=document.createElement('section');section.className='sector';
-      section.innerHTML=`<div class="sector-head"><div><div class="sector-title-row"><div class="sector-title">${esc(sector)}</div><span class="sector-badge">族群固定池</span></div><div class="sector-sub">今日族群平均漲跌 <span class="sector-return ${avg>0?'up':avg<0?'down':''}">${avg==null?'—':(avg>0?'+':'')+avg.toFixed(2)+'%'}</span></div></div><div class="count">${stocks.length} 檔</div></div><div class="stock-list">${stocks.map(x=>{const ch=x.change_rate,group=x.group||'待回報',status=group==='可操作'?'Ready':group==='排除'?'Risk':group==='觀察'?'Watch':(x.data_mode==='post_market_daily_kbar'?'收盤':'待回報'),track=x.track==='engine'?'引擎軌':'攻擊軌',inst=x.inst_net_20d_lots,stk=x.inst_streak,rel=(ch!=null&&avg!=null)?ch-avg:null;return `<article class="stock-card" data-code="${esc(x.code)}"><div class="stock-main"><button class="expand" aria-label="開啟個股">▶</button><div class="identity"><div class="identity-top"><span class="code">${esc(x.code)}</span><span class="name">${esc(x.name)}</span><span class="current-price">現價 ${esc(x.price??'—')}</span><span class="sector-tag">${esc(sector)}</span></div><div class="base-row"><span class="base-item"><span class="label">現價</span><span class="value">${x.price??'—'}</span></span><span class="base-item"><span class="label">漲跌%</span><span class="value ${Number(ch)<0?'down':'up'}">${ch==null?'—':(ch>0?'+':'')+ch+'%'}</span></span><span class="base-item"><span class="label">aflow</span><span class="value ${cls(x.aflow)}">${x.aflow==null?'—':fmt(x.aflow)}</span></span><span class="base-item"><span class="label">狀態</span><span class="value">${esc(status)}</span></span></div></div></div><div class="signal-grid"><div class="signal flow"><div class="k">資金</div><div class="v ${x.aflow!=null?cls(x.aflow):cls(x.aflow_ratio)}">${x.aflow!=null?fmt(x.aflow):(x.aflow_ratio!=null?'資金比 '+x.aflow_ratio+'（'+esc(x.aflow_ratio_date||'')+'）':'盤中欄位')}</div></div><div class="signal"><div class="k">今日</div><div class="v ${Number(ch)<0?'down':'up'}">${ch==null?'—':(ch>0?'+':'')+ch+'%'}</div></div><div class="signal institutional"><div class="k">法人</div><div class="v">${inst==null?'待盤後資料':`<span class="${inst>0?'up':inst<0?'down':''}">20日 ${fmt(inst)} 張</span>${stk?` <span class="${stk>0?'up':'down'}">· 連${stk>0?'買':'賣'}${Math.abs(stk)} 日</span>`:''}`}</div></div><div class="signal relative"><div class="k">相對族群</div><div class="v ${rel>0?'up':rel<0?'down':''}">${rel==null?'待盤後計算':`${rel>0?'▲':rel<0?'▼':'━'} ${(rel>0?'+':'')+rel.toFixed(2)}%`}</div></div><div class="signal track"><div class="k">軌道</div><div class="v">${track}</div></div></div><div class="decision"><span class="status ${status==='Ready'?'ready':status==='Risk'?'risk':'wait'}">${esc(status)}</span></div><div class="drawer">第一層只顯示快速判讀資訊；點擊後開啟 ${esc(x.code)} 完整個股決策頁。</div></article>`}).join('')}</div>`;
+      section.innerHTML=`<div class="sector-head"><div><div class="sector-title-row"><div class="sector-title">${esc(sector)}</div><span class="sector-badge">族群固定池</span></div><div class="sector-sub">今日族群平均漲跌 <span class="sector-return ${avg>0?'up':avg<0?'down':''}">${avg==null?'—':(avg>0?'+':'')+avg.toFixed(2)+'%'}</span></div></div><div class="count">${stocks.length} 檔</div></div><div class="stock-list">${stocks.map(x=>{const ch=x.change_rate,group=x.group||'待回報',status=group==='可操作'?'Ready':group==='排除'?'Risk':group==='觀察'?'Watch':(x.data_mode==='post_market_daily_kbar'?'收盤':'待回報'),track=x.track==='engine'?'引擎軌':'攻擊軌',inst=x.inst_net_20d_lots,stk=x.inst_streak,rel=(ch!=null&&avg!=null)?ch-avg:null;return `<article class="stock-card" data-code="${esc(x.code)}"><div class="stock-main"><button class="expand" aria-label="開啟個股">▶</button><div class="identity"><div class="identity-top"><span class="code">${esc(x.code)}</span><span class="name">${esc(x.name)}</span><span class="current-price">現價 ${esc(x.price??'—')}</span><span class="sector-tag">${esc(sector)}</span></div><div class="base-row"><span class="base-item"><span class="label">現價</span><span class="value">${x.price??'—'}</span></span><span class="base-item"><span class="label">漲跌%</span><span class="value ${Number(ch)<0?'down':'up'}">${ch==null?'—':(ch>0?'+':'')+ch+'%'}</span></span><span class="base-item"><span class="label">aflow</span><span class="value ${cls(x.aflow)}">${x.aflow==null?'—':fmt(x.aflow)}</span></span><span class="base-item"><span class="label">狀態</span><span class="value">${esc(status)}</span></span></div></div></div><div class="signal-grid"><div class="signal flow"><div class="k">資金</div><div class="v ${x.aflow!=null?cls(x.aflow):cls(x.aflow_ratio)}">${x.aflow!=null?fmt(x.aflow):(x.aflow_ratio!=null?'資金比 '+x.aflow_ratio+'（'+esc(x.aflow_ratio_date||'')+'）':'盤中欄位')}</div></div><div class="signal"><div class="k">今日</div><div class="v ${Number(ch)<0?'down':'up'}">${ch==null?'—':(ch>0?'+':'')+ch+'%'}</div></div><div class="signal institutional"><div class="k">法人</div><div class="v">${inst==null?'待盤後資料':`<span class="${inst>0?'up':inst<0?'down':''}">20日 ${fmt(inst)} 張</span>${stk?` <span class="${stk>0?'up':'down'}">· 連${stk>0?'買':'賣'}${Math.abs(stk)} 日</span>`:''}`}</div></div><div class="signal relative"><div class="k">相對族群</div><div class="v ${rel>0?'up':rel<0?'down':''}">${rel==null?'待盤後計算':`${rel>0?'▲':rel<0?'▼':'━'} ${(rel>0?'+':'')+rel.toFixed(2)}%`}</div></div><div class="signal track"><div class="k">軌道</div><div class="v">${track}</div></div><div class="signal pa"><div class="k">階段</div><div class="v">${window.__paHTML(x)}</div></div></div><div class="decision"><span class="status ${status==='Ready'?'ready':status==='Risk'?'risk':'wait'}">${esc(status)}</span></div><div class="drawer">${window.__paLines(x)}第一層只顯示快速判讀資訊；點擊後開啟 ${esc(x.code)} 完整個股決策頁。</div></article>`}).join('')}</div>`;
       root.append(section);
     }
     root.querySelectorAll('.stock-card').forEach(card=>card.addEventListener('click',()=>{const code=card.dataset.code;location.href=location.protocol==='file:'?'5483_中美晶_個股決策UI.html?code='+encodeURIComponent(code):'/api/card_page?code='+encodeURIComponent(code)}));

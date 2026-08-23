@@ -765,9 +765,14 @@ def build_watchpool() -> Dict[str, Any]:
             "data_mode": snap.get("data_mode") or ("intraday_shioaji" if snap.get("price") else None),
             "source_date": snap.get("source_date"),
         })
+    # Pre-Activation 四階段：盤後由 AB 引擎算好、存 candidate_pool。
+    # 這裡唯讀併入，第一層 UI 只負責印，不自己重算。
+    pa_date, pa_n = VIT._attach_pre_activation(items)
     return {
         "ok": True,
         "updated_at": _now_tw(),
+        "pre_activation_date": pa_date,
+        "pre_activation_count": pa_n,
         "count": len(items),
         "items": items,
     }
