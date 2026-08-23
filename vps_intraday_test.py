@@ -99,9 +99,32 @@ def _read_intraday_snapshot(allow_prev_day=False):
         return None
 
 
+def _snapshot_quality(result):
+    """快照品質：有 aflow 值的檔數。用來擋「降級覆蓋」。"""
+    rows = (result or {}).get("rows") or []
+    return sum(1 for r in rows if r.get("aflow") is not None)
+
+
 def _write_intraday_snapshot(result):
-    """原子保存最後一筆有效盤中結果，供收盤後 API 直接回傳。"""
+    """原子保存最後一筆有效盤中結果，供收盤後 API 直接回傳。
+
+    ⚠ 只進不退：非交易日／行情未開時，本輪 result 的 aflow 會整片是 None。
+    直接覆蓋會把上一個交易日「有 aflow」的那份洗掉 —— 實測 2026-08-22（週六）
+    就是這樣讓畫面上 51 檔 aflow 全變「—」，而 DB 裡 8/21 的 51 筆 net_active
+    其實好好的。同一條「只進不退」原則之前只做在 intraday_stock_daily，
+    這個快照檔漏掉了。
+    """
     try:
+        new_q = _snapshot_quality(result)
+        if new_q == 0 and INTRADAY_SNAPSHOT_PATH.exists():
+            try:
+                old_payload = json.loads(INTRADAY_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+                if _snapshot_quality(old_payload.get("result")) > 0:
+                    print("[snapshot] 本輪 aflow 全空，保留上一份有效快照，不覆蓋",
+                          flush=True)
+                    return
+            except Exception:
+                pass
         payload = {"trade_date": _trade_date(), "saved_at": datetime.now(TW_TZ).isoformat(),
                    "result": result}
         tmp = INTRADAY_SNAPSHOT_PATH.with_suffix(".tmp")
