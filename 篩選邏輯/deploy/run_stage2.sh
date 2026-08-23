@@ -10,3 +10,4 @@ cd "$APP_DIR"
 [ -f "$APP_DIR/../.env" ] && set -a && . "$APP_DIR/../.env" && set +a
 python3 collect.py
 python3 run_stage2_verify.py
+python3 run_pa_snapshot.py
