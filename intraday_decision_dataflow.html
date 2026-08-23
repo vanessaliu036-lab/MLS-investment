@@ -1474,6 +1474,16 @@ document.addEventListener('click',e=>{
     const fwd=ab&&!ab._err?ab.applies_date:null,abDates=(ab&&!ab._err&&ab.dates)||[],decDates=(dec&&dec.dates)||[],
       _backendDates=[...new Set([...abDates,...decDates].filter(Boolean))],
       allDates=(_backendDates.length?_backendDates:[fwd].filter(Boolean)).sort().reverse();
+    // 休市日的預設檢視日。AB 的 CLOSED 回應把 items 清空,舊碼因此退去 radar 即時快照,
+    // 週末打開看到的是上一交易日的「盤中」欄位 —— 今日收盤結果整欄「待13:30 / 待盤後法人 /
+    // 待收盤重算」,可是 8/21 早就收盤定案了(使用者回報 2026-08-23)。
+    // 非交易日改預設看「最後一個已完成的檢視日」(不晚於今天的最新交易日),
+    // 那天引擎已蓋章 verified,欄位是真收盤結果,不是等待。
+    if(!sel&&nonTradingDay()){
+      const _todayTW=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei'}).format(new Date());
+      const _doneDate=allDates.find(d=>d<=_todayTW);
+      if(_doneDate){window._mainTableDate=_doneDate;return renderSingle(quiet);}
+    }
     // 收盤後 AB 明日清單(如 8/7)要等 18:00 才產出篩選；預設檢視時若 AB 尚無篩選(攻擊/引擎軌)，
     // 退回顯示「今天」的名單，不要讓主表變空。使用者從下拉手動選未來日時仍尊重其選擇。
     const _abRows=(ab&&!ab._err&&Array.isArray(ab.items))?ab.items.length:0;
