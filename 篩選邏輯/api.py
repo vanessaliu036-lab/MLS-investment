@@ -287,6 +287,14 @@ def watchlist(phase: Optional[str] = Query(None, description="PRE|INTRADAY|POST,
             # 池貼上「今日/明日」標籤,造成「非交易日卻多一張不一樣的表」的混淆。
             data["market_closed"] = True
             data["items"] = []
+            # load_for_premarket 的 applies_date=今天,那是 PRE 的口徑。休市時「今天」
+            # 不是交易日,照抄會讓前端日期下拉冒出週日/假日(使用者回報 2026-08-23)。
+            # 這批 8/21 盤後池真正適用的是次一交易日。
+            try:
+                data["applies_date"] = next_trading_day(
+                    _dt_date.fromisoformat(data["data_date"])).isoformat()
+            except Exception as _e:
+                print(f"[watchlist] closed applies_date skip: {_e}")
     elif ph is Phase.INTRADAY:
         # 盤中嚴判:只盯昨日候選池,四條件全中才綠燈(不吃 universe,自己讀 pool)
         data = screen_intraday.build()
