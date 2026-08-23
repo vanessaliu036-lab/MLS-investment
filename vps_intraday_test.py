@@ -6,6 +6,7 @@
 原子保存為 VPS 本地快照，供收盤後 API 還原。部署到 VPS 時可獨立跑在 8002。
 """
 
+import os
 import sys
 import time
 import json
@@ -716,6 +717,43 @@ def intraday_test():
         return {"ok": False, "source": "VPS Shioaji subscription buffer", "error": str(exc)}
 
 
+
+# ── Pre-Activation stage 併入(唯讀)────────────────────────────────────
+# 盤後算好的四階段存在 AB 引擎的 candidate_pool.payload;盤中這支自己不算,
+# 也不該重算 —— 同一份資料在兩個地方算出不同答案是這套踩過最多次的坑。
+# 唯讀併入,任何失敗都只是少了 badge,不影響觀察池本體。
+ENGINE_DB = os.environ.get("MLS_ENGINE_DB", "/opt/mls-screen/mls.db")
+
+
+def _attach_pre_activation(rows):
+    try:
+        import sqlite3
+        con = sqlite3.connect(f"file:{ENGINE_DB}?mode=ro", uri=True)
+        day = con.execute("SELECT MAX(data_date) FROM candidate_pool").fetchone()[0]
+        if not day:
+            return None, 0
+        pa = {}
+        for (payload,) in con.execute(
+                "SELECT payload FROM candidate_pool WHERE data_date=?", (day,)):
+            try:
+                obj = json.loads(payload)
+            except Exception:
+                continue
+            if obj.get("pre_activation"):
+                pa[str(obj.get("code"))] = obj["pre_activation"]
+        n = 0
+        for r in rows:
+            v = pa.get(str(r.get("code")))
+            if v:
+                r["pre_activation"] = v
+                r["pre_activation_stage"] = v.get("stage")
+                n += 1
+        return day, n
+    except Exception as exc:
+        print(f"[pre_activation] 併入略過(不影響本體): {exc}", flush=True)
+        return None, 0
+
+
 @router.get("/api/intraday-watchpool")
 def intraday_watchpool():
     """盤中雷達：固定池全集，僅把即時判讀套到有回報的檔案。"""
@@ -759,10 +797,13 @@ def intraday_watchpool():
                 row = _row(raw)
                 row["has_data"] = True
                 rows.append(row)
+        pa_date, pa_n = _attach_pre_activation(rows)
         return {
             "ok": True,
             "source": "固定 51 檔觀察池 + VPS Shioaji 盤中觀察邏輯",
             "read_only": True,
+            "pre_activation_date": pa_date,
+            "pre_activation_count": pa_n,
             "updated_at": saved_updated_at or datetime.now(TW_TZ).isoformat(timespec="seconds"),
             "count": len(rows),
             "rows": rows,
