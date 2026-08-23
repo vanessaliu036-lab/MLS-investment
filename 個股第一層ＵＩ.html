@@ -55,11 +55,6 @@
     busy=true;
     try{
       const d=await (await fetch(API+'/api/watchpool',{cache:'no-store'})).json();
-      // 資料時間吃 API 的 updated_at(原本是寫死的 2026-07-23,永遠不會變,
-      // 看起來像資料過期一個月,其實 API 是新的)。syncLiveFields 每輪都跑,
-      // 放這裡才會持續更新。
-      {const el=document.getElementById('poolStamp');
-       if(el)el.textContent=d.updated_at?('資料時間 '+d.updated_at):'資料時間未提供';}
       const items=d.items||[], byCode=new Map(items.map(x=>[String(x.code),x])), bySector={};
       for(const x of items)(bySector[x.sector||'其他']??=[]).push(x);
       document.querySelectorAll('#sector-root .stock-card').forEach(card=>{
@@ -715,8 +710,8 @@ document.querySelectorAll('.expand').forEach(btn=>{
   const cls=v=>Number(v)>0?'up':Number(v)<0?'down':'';  // 正=紅(up) 負=綠(down)
   try{
     const d=await (await fetch(API+'/api/watchpool',{cache:'no-store'})).json(),items=d.items||[],groups={};
-    // 資料時間改吃 API 的 updated_at。原本這裡是寫死的 2026-07-23T15:05:13,
-    // 永遠不會變 —— 看起來像「資料過期一個月」,其實 API 是新的。
+    // 資料時間吃 API 的 updated_at(原本寫死 2026-07-23T15:05:13,永遠不會變)。
+    // 兩個 fetch 點都要呼叫:這支只跑一次,syncLiveFields 每 5 秒持續刷新。
     window.__paStamp(d);
     for(const x of items)(groups[x.sector||'其他']??=[]).push(x);
     const main=document.querySelector('main.page');
