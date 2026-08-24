@@ -1886,6 +1886,14 @@ def ab_phase():
     return _ab_get("/api/phase")
 
 
+@app.get("/ab/funnel")
+def ab_funnel(phase: str = None):
+    """新版逐層淘汰漏斗(L1→L1.5→L2→L3,唯讀·對照/驗證用,2026-08-24 起並存)。
+    尚未取代 /ab/watchlist —— 這條只給並排比對,不接進任何決策/顯示路徑。
+    參見 篩選邏輯/funnel.py 檔頭規則、memory/new-funnel-status.md。"""
+    return _ab_get("/api/funnel", {"phase": phase}, timeout=20)
+
+
 if __name__ == "__main__":
     _launch_scheduler()
     uvicorn.run(app, host="0.0.0.0", port=8000)
