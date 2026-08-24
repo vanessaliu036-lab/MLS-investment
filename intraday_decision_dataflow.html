@@ -744,6 +744,14 @@ document.addEventListener('click',e=>{
   const finite=v=>{const n=Number(v);return Number.isFinite(n)?n:null};
   const numberText=v=>{const n=finite(v);return n==null?'—':`${n>0?'+':''}${n.toLocaleString('en-US')}`};
   const pctText=v=>{const n=finite(v);return n==null?'—':`${n>0?'+':''}${n.toFixed(2)}%`};
+  // 漲幅旁一律附漲跌點數(由現價與漲跌%回推昨收)。只有百分比,看不出一檔 282 的股票
+  // 今天是漲 25 塊還是 2 塊 —— 大戶盯的是點數,不是比例(使用者要求 2026-08-24)。
+  const ptsText=(v,price)=>{const n=finite(v),p=finite(price);
+    if(n==null||p==null||n===0)return null;
+    const d=p-p/(1+n/100);if(!isFinite(d))return null;
+    const a=Math.abs(d),r=a>=100?d.toFixed(0):a>=10?d.toFixed(1):d.toFixed(2);
+    return `${d>0?'+':''}${Number(r)}`};
+  const pctFull=(v,price)=>{const t=pctText(v),q=ptsText(v,price);return q?`${t}（${q}）`:t};
   const color=v=>{const n=finite(v);return n>0?'up':n<0?'down':''};
   const phaseNow=()=>{const h=Number(new Intl.DateTimeFormat('en-US',{hour:'2-digit',hour12:false,timeZone:'Asia/Taipei'}).format(new Date()));return h>=18?'POST':'INTRADAY'};
   // A 區卡片小工具：現在時刻(台北)、數字或缺值一律顯示 —（不編造）、主動買賣比(估)。
@@ -953,7 +961,7 @@ document.addEventListener('click',e=>{
         else if(x.triggered&&!x.success)verHtml=`<span class="mr-badge warn">⚠️ 觸發後失敗</span><small>${closeOk===true?`收盤 ${closeT} ≥ ${erefT}，但模型判定未成功`:closeOk===false?`收盤 ${closeT} &lt; ${erefT}`:'收盤條件未知'}</small>`;
         else verHtml=`<span class="mr-badge miss">❌ 未觸發</span><small>未到達條件</small>`;
       } else verHtml=stateCell(isToday?'待收盤驗證':'待進場日收盤','verify-pending');
-      return `<tr class="${limitUp?'mr-limit':''}"><td class="stock"><small class="sector-tag">${esc2(x.sector||'其他')}</small><b>${esc2(rowName(x))}</b><small>${esc2(rowCode(x))}</small></td><td class="price ${color(ch)}">${esc2(price==null?'—':Number(price).toLocaleString('en-US'))}${limitUp?'<small class="mr-lu">收盤漲停</small>':''}</td><td class="${color(ch)}">${esc2(pctText(ch))}</td><td class="flow ${fN>0?'flow-in':fN<0?'flow-out':''}">${esc2(flow==null?'—':numberText(flow))}<small>${flow==null?'無資料':fN>0?'流入':fN<0?'流出':'中性'}</small></td><td class="cond"><b>${esc2(condMain)}</b>${condSub?`<small>${esc2(condSub)}</small>`:''}</td><td class="explain">${reasonHtml}</td><td>${chipHtml}</td><td class="mr-sig"><b>${esc2(signal)}${eref!=null?' '+erefT:''}</b><small>${esc2(signalNote)}</small><span class="mr-arrow">↗</span></td>${semanticCells(x)}<td>${trigHtml}</td><td>${verHtml}</td></tr>`;
+      return `<tr class="${limitUp?'mr-limit':''}"><td class="stock"><small class="sector-tag">${esc2(x.sector||'其他')}</small><b>${esc2(rowName(x))}</b><small>${esc2(rowCode(x))}</small></td><td class="price ${color(ch)}">${esc2(price==null?'—':Number(price).toLocaleString('en-US'))}${limitUp?'<small class="mr-lu">收盤漲停</small>':''}</td><td class="${color(ch)}">${esc2(pctFull(ch,price))}</td><td class="flow ${fN>0?'flow-in':fN<0?'flow-out':''}">${esc2(flow==null?'—':numberText(flow))}<small>${flow==null?'無資料':fN>0?'流入':fN<0?'流出':'中性'}</small></td><td class="cond"><b>${esc2(condMain)}</b>${condSub?`<small>${esc2(condSub)}</small>`:''}</td><td class="explain">${reasonHtml}</td><td>${chipHtml}</td><td class="mr-sig"><b>${esc2(signal)}${eref!=null?' '+erefT:''}</b><small>${esc2(signalNote)}</small><span class="mr-arrow">↗</span></td>${semanticCells(x)}<td>${trigHtml}</td><td>${verHtml}</td></tr>`;
     }).join('')||'<tr><td colspan="14" class="dr-single-empty">目前沒有可顯示的正式名單</td></tr>';
   }
   // ══ 卡片版主表(取代寬表格)══════════════════════════════════════════
@@ -1148,7 +1156,7 @@ document.addEventListener('click',e=>{
       const maDefense=x.defense_label||(String(x.entry_rule||'').match(/MA5\s*[\d.]+/)||[])[0];
       return `<article class="stock-card mr-card ${limitUp?'limit-up':''}" data-code="${esc2(code)}">
         <div class="mr-card-head"><div class="mr-card-id"><span class="sector-tag">${esc2(sector)}</span><span class="mr-card-name">${esc2(name)}</span><span class="mr-card-code">${esc2(code)}</span></div>${stateBadge}</div>
-        <div class="mr-card-price"><span class="mr-card-p ${color(ch)}">${esc2(price==null?'—':Number(price).toLocaleString('en-US'))}</span><span class="mr-card-chg ${color(ch)}">${esc2(pctText(ch))}</span>${limitUp?'<span class="mr-card-limit">漲停</span>':''}</div>
+        <div class="mr-card-price"><span class="mr-card-p ${color(ch)}">${esc2(price==null?'—':Number(price).toLocaleString('en-US'))}</span><span class="mr-card-chg ${color(ch)}">${esc2(pctFull(ch,price))}</span>${limitUp?'<span class="mr-card-limit">漲停</span>':''}</div>
         <div class="mr-top-badges">
           <div class="mr-f4"><label>今日型態</label><b>${esc2(limitUp?'漲停鎖價・'+signal:signal)}</b></div>
           <div class="mr-f4"><label>量能(池日)</label><b>${esc2(volLabel)}${finite(x.volume_ratio)>1.2?'　放量':''}</b></div>
@@ -1229,7 +1237,7 @@ document.addEventListener('click',e=>{
               :(price!=null&&price>=_trigP?'盤中已站上'
                 :(_hiP!=null&&_hiP>=_trigP?'盤中曾觸及·已回落':'盤中未達')));
           const core=[
-            {label:'價格表現',base:_ebv['價格表現'],now:verified?`收盤 ${price==null?'—':Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})`:(price==null?'—':`盤中 ${Number(price).toLocaleString('en-US')} (${esc2(pctText(ch))})`),ok:verified?closeOk:null},
+            {label:'價格表現',base:_ebv['價格表現'],now:verified?`收盤 ${price==null?'—':Number(price).toLocaleString('en-US')} (${esc2(pctFull(ch,price))})`:(price==null?'—':`盤中 ${Number(price).toLocaleString('en-US')} (${esc2(pctFull(ch,price))})`),ok:verified?closeOk:null},
             {label:'型態驗證',base:_ebv['型態驗證'],now:verified?(limitUp?'漲停鎖價，強勢收盤':(x.triggered?'已突破，結構延續':'未突破前高')):patNow,ok:verified?!!x.triggered:null},
             // 四道結構閘只在盤後篩選當下算過,沒有 T+1 版本 —— 舊碼把池日標記印成
             // 「T+1 結構維持/失效」並拿去打勾打叉,跟量能那格同一種冒充。沒有就說沒有。
@@ -1255,8 +1263,8 @@ document.addEventListener('click',e=>{
           else if(!coreOk)verdictLabel='🔴 未命中',verdictCls='bad';
           else if(confirmScored.length===0||confirmHits===confirmScored.length)verdictLabel='🟢 完整命中',verdictCls='good';
           else verdictLabel='🟢 命中',verdictCls='good';
-          const rowsHtml=core.map(r=>`<tr class="mr-c-core"><td><span class="mr-c-tag core">CORE</span>${r.label}</td><td>${r.base}</td><td>${r.now}</td><td>${r.ok===true?'<span class="mr-check ok">✓</span>':r.ok===false?'<span class="mr-check no">✕</span>':'<span class="mr-check pending">·</span>'}</td></tr>`).join('')
-            +confirm.map(r=>`<tr><td><span class="mr-c-tag confirm">CONFIRM</span>${r.label}</td><td>${r.base}</td><td>${r.now}</td><td>${r.ok===true?'<span class="mr-check ok">✓</span>':r.ok===false?'<span class="mr-check no">✕</span>':'<span class="mr-check pending">·</span>'}</td></tr>`).join('');
+          const rowsHtml=core.map(r=>`<tr class="mr-c-core"><td><span class="mr-c-tag core">CORE</span>${r.label}</td><td>${r.base}</td><td>${r.now}</td><td>${r.ok===true?'<span class="mr-check ok">✓</span>':r.ok===false?'<span class="mr-check no">✕</span>':(verified?'<span class="mr-check pending" title="這一項沒有 T+1 版本可比,不計入 CORE/CONFIRM 分母 —— 不是成功也不是失效">不判定</span>':'<span class="mr-check pending" title="等當日 13:30 收盤蓋章後才判">待判</span>')}</td></tr>`).join('')
+            +confirm.map(r=>`<tr><td><span class="mr-c-tag confirm">CONFIRM</span>${r.label}</td><td>${r.base}</td><td>${r.now}</td><td>${r.ok===true?'<span class="mr-check ok">✓</span>':r.ok===false?'<span class="mr-check no">✕</span>':(verified?'<span class="mr-check pending" title="這一項沒有 T+1 版本可比,不計入 CORE/CONFIRM 分母 —— 不是成功也不是失效">不判定</span>':'<span class="mr-check pending" title="等當日 13:30 收盤蓋章後才判">待判</span>')}</td></tr>`).join('');
           // 收尾一句改由 CORE/CONFIRM 實際結果合成，不再套用另一支模組(intraday_verdict.py)
           // 算的即時盤中判讀——那支答的是「現在盤中資金有沒有跟上」，跟這裡「T+1 收盤
           // 對不對」是兩個問題，放在同一格會出現「完整命中」旁邊寫「動能待確認」互打架。
@@ -1394,7 +1402,7 @@ document.addEventListener('click',e=>{
     const trigger=x.trigger_price,current=price==null?'—':Number(price).toLocaleString('en-US');
     const triggerLine=trigger!=null?`觸發 ${Number(trigger).toLocaleString('en-US')} · 目前 ${current} · ${state}`:`目前 ${current} · ${state}`;
     return `<article class="decision-stock ${exactLimitUp(x,price,ch)?'limit-up-row':''}" onclick="openStock('${esc2(rowCode(x))}')">
-      <div class="decision-stock-head"><div><b>${esc2(rowName(x))}</b><small>${esc2(rowCode(x))} · ${esc2(x.sector||'其他')}</small></div><div class="decision-price ${color(ch)}">${price==null?'—':Number(price).toLocaleString('en-US')}<small>${pctText(ch)}</small></div></div>
+      <div class="decision-stock-head"><div><b>${esc2(rowName(x))}</b><small>${esc2(rowCode(x))} · ${esc2(x.sector||'其他')}</small></div><div class="decision-price ${color(ch)}">${price==null?'—':Number(price).toLocaleString('en-US')}<small>${pctFull(ch,price)}</small></div></div>
       <div class="decision-grades"><span>股票潛力 <b>${esc2(potential)}</b></span><span>趨勢 <b>${esc2(trend)}</b></span><span>買點品質 <b>${esc2(quality)}</b></span><span class="entry-${esc2(x.entry_state||'not_triggered')}">Entry <b>${esc2(state)}</b></span></div>
       <div class="decision-trigger-line">${esc2(triggerLine)}</div>
       <div class="decision-reasons">${x.priority_label?`<span class="decision-priority-low">${esc2(x.priority_label)}</span>`:''}${near?'<span class="decision-near">最接近升級</span>':''}${reasonTags(x)}</div>
@@ -2977,6 +2985,11 @@ async function loadBreadth(embedded){
 .mr-c-table th:nth-child(2),.mr-c-table td:nth-child(2){width:27%}
 .mr-c-table th:nth-child(3),.mr-c-table td:nth-child(3){width:28%}
 .mr-c-table th:nth-child(4),.mr-c-table td:nth-child(4){width:12%;text-align:center}
+/* 待進場卡的「入選條件/入選依據」只有兩欄,若沿用上面四欄的 33/27/28/12,
+   整張表只佔 60% 寬、右邊空一大塊(使用者回報 2026-08-24)。兩欄自己定寬。 */
+.mr-c-base-table th:nth-child(1),.mr-c-base-table td:nth-child(1){width:38%}
+.mr-c-base-table th:nth-child(2),.mr-c-base-table td:nth-child(2){width:62%}
+.mr-c-table.mr-c-base-table .mr-c-tag{display:inline-block;margin:0 6px 0 0;vertical-align:baseline}
 .mr-c-table .mr-c-tag{display:block;margin:0 0 2px}
 @media(max-width:640px){
   .mr-c-table{font-size:11px}

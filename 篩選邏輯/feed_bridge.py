@@ -47,6 +47,17 @@ def once():
         price = r0.get("price")
         if not code or not price:         # 無價的檔不寫空列
             continue
+        # 內部矛盾的一列不准寫進來:現價落在它自己的今日最高/最低之外,物理上不可能,
+        # 一定是上游那一輪拿昨收/舊值頂替了現價。跳過這一檔,保留 AB 上一輪好值 ——
+        # 與下面 aflow「壞輪詢就跳過」同一條原則,寧可慢一輪也不顯示錯的現價。
+        _hi, _lo = r0.get("high"), r0.get("low")
+        try:
+            if (_hi is not None and float(price) > float(_hi) + 1e-9) or \
+               (_lo is not None and float(price) < float(_lo) - 1e-9):
+                print(f"[bridge] {code} 現價 {price} 落在今日 {_lo}~{_hi} 之外 → 判壞列,跳過(保留上輪)", flush=True)
+                continue
+        except (TypeError, ValueError):
+            pass
         quotes.append({
             "code": code, "data_date": dd, "price": price,
             "change_rate": r0.get("change_rate") or 0.0,

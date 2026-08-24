@@ -80,6 +80,14 @@ def _parse_row(s: dict) -> dict | None:
         price = _mid_from_book(s)
         price_src = "book_mid" if price is not None else price_src
     if price is None and prev is not None:
+        # 昨收只在「今天真的還沒成交」時才勉強算現價。若 MIS 同一列已經有今日
+        # 最高/最低,而昨收落在那個區間外,昨收就**不可能**是現價 —— 那是這一輪
+        # z 與五檔同時空掉的壞輪詢。回 None 讓呼叫端沿用上一筆好值,不要用昨收
+        # 冒充現價(2026-08-24 實測:3532 台勝科漲停 376.5,一輪回 342.5 昨收、
+        # 漲跌 +0.00%,而同列 high=376.5/low=344.5,價比自己的最低價還低)。
+        _lo, _hi = _num(s.get("l")), _num(s.get("h"))
+        if _lo is not None and _hi is not None and not (_lo <= prev <= _hi):
+            return None
         price, price_src = prev, "prev_close"
     vol = _int(s.get("v"))                         # 累積成交量（張）
     chg = round((price - prev) / prev * 100, 2) if (price and prev) else None
