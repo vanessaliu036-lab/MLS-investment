@@ -51,6 +51,16 @@ def test_thresholds_are_pinned():
     assert pa.MA5_HOT == 0.07      # 與引擎 HIGH_BIAS_PCT 一致
 
 
+def test_trigger_next_step_does_not_imply_entry():
+    """2026-08-24 大樣本回測(n=555)證明 TRIGGER 對 51 檔基準線沒有 entry
+    edge —— 文案不得再暗示可進場(曾寫「盤中確認後可進場」)。"""
+    r = base(foreign_days=4, volume=1400, close=104)
+    assert r["stage"] == pa.TRIGGER
+    for banned in ("可進場", "可買", "buy", "entry"):
+        assert banned not in r["next_step"], r["next_step"]
+        assert banned not in r["stage_note"], r["stage_note"]
+
+
 def test_snapshot_writes_facts_not_predictions():
     """快照只記 stage 與當下事實,不得寫入任何預測分數。"""
     import sqlite3, tempfile, os
