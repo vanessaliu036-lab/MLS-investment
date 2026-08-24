@@ -8,7 +8,7 @@ try: print(sum(1 for r in json.load(sys.stdin).get(\"rows\",[]) if r.get(\"price
 except Exception: print(0)")
 if [ "${N:-0}" -lt 10 ]; then
   echo "[autorevert] 切換後只有 ${N}/51 有價 → 明顯壞掉,自動回退" | systemd-cat -t mls-gateway-autorevert
-  /opt/mls-intraday/gateway_ops/revert.sh
+  "$(dirname "$(readlink -f "$0")")/revert.sh"
 else
   echo "[autorevert] 切換後 ${N}/51 有價,健康,不動作" | systemd-cat -t mls-gateway-autorevert
 fi

@@ -22,14 +22,14 @@ gateway 驗證登入必須在**市場時段當唯一擁有者**，而那當下 8
 
 ## 切換步驟（**08:45–09:00 台北**，人在場）
 ```bash
-ssh mls '/opt/mls-intraday/gateway_ops/cutover.sh'
+ssh mls '/opt/mls-intraday/個股卡片相關檔案_20260722/gateway_ops/cutover.sh'
 ```
 腳本會：建旗標 drop-in → 啟用+啟動 gateway → 重啟 8000 → 印 gateway health + 8000 有價數。
 **看輸出**：`有價 ≈51/51、feed=LIVE` = 成功；偏低/feed 死 = 立刻回退。
 
 ## 一鍵回退（切壞或想退）
 ```bash
-ssh mls '/opt/mls-intraday/gateway_ops/revert.sh'
+ssh mls '/opt/mls-intraday/個股卡片相關檔案_20260722/gateway_ops/revert.sh'
 ```
 移除旗標 → 停用 gateway → 重啟 8000（回舊架構自登入）。
 
