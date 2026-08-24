@@ -477,6 +477,7 @@ async function loadWatchVerify(){const box=document.querySelector('#rvBody');if(
 async function loadRejects(){const box=document.querySelector('#rvBody');if(!box)return;box.innerHTML='<div class="muted" style="padding:20px">讀取中…</div>';let d={};try{d=await (await fetch(API_BASE+'/api/review/rejects?trade_date='+encodeURIComponent(_rvDate),{cache:'no-store'})).json();}catch(e){box.innerHTML='<div class="muted" style="padding:20px">讀取失敗</div>';return;}const rows=d.rows||[],g={};rows.forEach(r=>{const k=r.fail_factor||'—';g[k]=(g[k]||0)+1;});const dist=Object.entries(g).sort((a,b)=>b[1]-a[1]);box.innerHTML=`<div class="feature-table"><h3>落選因子分布（${esc(_rvDate)} · 共 ${rows.length} 檔）</h3><div class="muted">看「多數股都死在哪個因子」→ 判斷門檻是否過嚴</div><table><thead><tr><th>卡在哪個因子</th><th>檔數</th><th>占比</th></tr></thead><tbody>${dist.map(([k,v])=>`<tr><td>${esc(k)}</td><td>${v}</td><td>${rows.length?Math.round(v/rows.length*100):0}%</td></tr>`).join('')||'<tr><td colspan="3">此日尚無落選紀錄（Phase 1 上線後每日 18:00 累積）</td></tr>'}</tbody></table></div><div class="feature-table"><h3>逐檔落選明細</h3><div class="muted">逐因子分數（radar 七因子中接得上者）：主動＝主動買賣差、均線＝站上MA20、法人＝法人連買</div><table><thead><tr><th>代碼</th><th>名稱</th><th>族群</th><th>來源</th><th>卡在</th><th>細節</th><th>主動</th><th>均線</th><th>法人</th><th>總分</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b>${esc(r.stock_id)}</b></td><td>${esc(r.stock_name||'—')}</td><td>${esc(r.sector||'—')}</td><td>${esc(_rvSrc(r.source))}</td><td>${esc(r.fail_factor||'—')}</td><td class="muted">${esc(r.detail||'—')}</td><td>${r.score_volume??'—'}</td><td>${r.score_rs??'—'}</td><td>${r.score_chip??'—'}</td><td><b>${r.score_total??'—'}</b></td></tr>`).join('')||'<tr><td colspan="10">此日尚無落選紀錄</td></tr>'}</tbody></table></div>`;}
 async function loadRuleValidation(){const box=document.querySelector('#rvBody');if(!box)return;box.innerHTML='<div class="muted" style="padding:20px">讀取中…</div>';let d={};try{d=await (await fetch(API_BASE+'/api/review/rules',{cache:'no-store'})).json();}catch(e){box.innerHTML='<div class="muted" style="padding:20px">讀取失敗</div>';return;}if(!d.ok){box.innerHTML=`<div class="feature-table"><h3>分類規則命中率（自動盤後驗證）</h3><div class="muted">資料尚未就緒：${esc(d.error||'')}</div></div>`;return;}const s=d.summary||[],t=d.today||[];box.innerHTML=`<div class="feature-table"><h3>分類規則命中率（自動盤後驗證 · 累積 ${d.days??0} 個交易日）</h3><div class="muted">${esc(d.note||'')}</div><table><thead><tr><th>分類</th><th>判定規則</th><th>驗證筆數</th><th>命中</th><th>命中率</th></tr></thead><tbody>${s.map(x=>`<tr style="cursor:pointer"${x.category===(window._ruleCat||'可操作')?' class="rv-cur"':''} onclick="window._ruleCat='${esc(x.category)}';loadRuleValidation();"><td><b>${esc(x.category)}</b> ▾</td><td class="muted">${esc(x.rule||'')}</td><td>${x.total}</td><td>${x.hits}</td><td class="${cls(x.hit_rate-50)}">${x.hit_rate??'—'}%</td></tr>`).join('')||'<tr><td colspan="5">尚無已驗證資料；收盤 13:33 後自動判定當日訊號</td></tr>'}</tbody></table><h3 style="margin-top:16px">今日「${esc(window._ruleCat||'可操作')}」個股（${esc(d.trade_date||'')}）</h3><div class="muted" style="margin-bottom:8px">上方點分類可切換；預設「可操作」＝今日通過七因子篩選的進場候選。依漲跌%由高到低，點列開個股決策卡。</div><table><thead><tr><th>代碼</th><th>名稱</th><th>子分類</th><th>訊號價</th><th>收盤價</th><th>漲跌%</th><th>判定</th></tr></thead><tbody>${t.filter(x=>x.category===(window._ruleCat||'可操作')).slice().sort((a,b)=>(b.change_rate??-1e9)-(a.change_rate??-1e9)).map(x=>`<tr style="cursor:pointer" onclick="openStock('${esc(x.code)}')"><td>${esc(x.code)}</td><td><b>${esc(x.name||x.code)}</b></td><td class="muted">${esc(x.subgroup||'—')}</td><td>${x.signal_price??'—'}</td><td>${x.last_price??'—'}</td><td class="${cls(x.change_rate)}">${x.change_rate==null?'—':x.change_rate+'%'}</td><td>${x.result==='命中'?'<b class="positive">命中</b>':esc(x.result||'待驗證')}</td></tr>`).join('')||`<tr><td colspan="7">今日「${esc(window._ruleCat||'可操作')}」尚無訊號</td></tr>`}</tbody></table></div>`;}
 function openStock(code){
+  if(window.openStockGuarded)return window.openStockGuarded(code);  // 用下方有複製保護的版本
   code=(String(code||'').match(/\d{4}/)||[])[0];
   if(code)window.location.href=`${API_BASE}/api/card_page?code=${encodeURIComponent(code)}`;
 }
@@ -2163,9 +2164,32 @@ table.wt td.wt-note{white-space:normal;min-width:260px;line-height:1.55}
 <script>
 // 使用流程統一：任何地方點個股 → 直接開完整個股決策頁（含全部數據與小字說明）。
 // 原本的內嵌面板在 /api/dec/card 無回應時會卡在「讀取中」，改為不再使用。
-window.openStock=function(code){
+// 複製保護：拖曳選字(或選取後放開)不算「點擊看卡片」。
+// 表格數字要能反白複製,以前只要滑過去選一段字就整列跳走 —— 資料抄不出來。
+// 判定:1) mousedown→mouseup 位移 >4px = 在選字 2) click 當下仍有選取文字 = 在選字。
+let _dragFrom=null,_dragged=false;
+document.addEventListener('mousedown',e=>{_dragFrom=[e.clientX,e.clientY];_dragged=false},true);
+document.addEventListener('mouseup',e=>{
+  _dragged=!!_dragFrom&&(Math.abs(e.clientX-_dragFrom[0])>4||Math.abs(e.clientY-_dragFrom[1])>4);
+},true);
+window.isTextSelecting=function(){
+  if(_dragged)return true;
+  const sel=window.getSelection&&window.getSelection();
+  return !!(sel&&!sel.isCollapsed&&String(sel).trim());
+};
+// 導頁延後 200ms:雙擊選字的「第一下」會先送出 click,若不等一下就會在選字途中跳走。
+// 期間出現 dblclick 或已產生選取 → 取消導頁,純粹讓使用者複製。
+let _navTimer=null;
+document.addEventListener('dblclick',()=>{clearTimeout(_navTimer);_navTimer=null},true);
+window.openStockGuarded=window.openStock=function(code){
+  if(window.isTextSelecting())return;   // 使用者在複製,不要導頁
   code=(String(code||'').match(/\d{4}/)||[])[0];
-  if(code)location.href=`${API_BASE}/api/card_page?code=${encodeURIComponent(code)}`;
+  if(!code)return;
+  clearTimeout(_navTimer);
+  _navTimer=setTimeout(()=>{
+    if(window.isTextSelecting())return;
+    location.href=`${API_BASE}/api/card_page?code=${encodeURIComponent(code)}`;
+  },200);
 };
 </script>
 <style>
