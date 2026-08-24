@@ -633,7 +633,7 @@ def intraday_test():
                 saved["snapshot"] = True
                 saved["source"] = "VPS persisted intraday snapshot"
                 saved.setdefault("notes", []).append("收盤後由 VPS 回傳最後一筆盤中快照，不依賴瀏覽器快取")
-                return saved
+                return _with_pre_activation(saved)
             # 首次在收盤後開啟頁面時，API buffer 可能已清空；
             # 改用主服務尚未被盤後篩選覆寫的最後盤中 state。
             raw = _last_server_intraday_snapshots()
@@ -647,7 +647,7 @@ def intraday_test():
                     saved["stale"] = True
                     saved["snapshot"] = True
                     saved["source"] = "VPS persisted intraday snapshot (latest)"
-                    return saved
+                    return _with_pre_activation(saved)
         else:
             fallback_source = False
         regime = _current_regime()
@@ -660,6 +660,7 @@ def intraday_test():
             except Exception as _e:
                 print(f"[intraday-test] quote_health 跳過: {_e}", flush=True)
         rows = [_row(item) for item in raw]
+        _pa_date, _pa_n = _attach_pre_activation(rows)
         # v5 分類攤平：可操作→觀察→排除；各群內仍維持漲幅優先，再按 aflow。
         group_order = {"可操作": 0, "觀察": 1, "排除": 2}
         rows.sort(key=lambda x: (group_order.get(x["group"], 9),
@@ -684,6 +685,8 @@ def intraday_test():
             "trade_date": _trade_date(),
             "count": len(rows),
             "rows": rows,
+            "pre_activation_date": _pa_date,
+            "pre_activation_count": _pa_n,
             "category_counts": category_counts,
             "regime": regime,
             "quota": quota,
@@ -752,6 +755,18 @@ def _attach_pre_activation(rows):
     except Exception as exc:
         print(f"[pre_activation] 併入略過(不影響本體): {exc}", flush=True)
         return None, 0
+
+
+def _with_pre_activation(payload):
+    """把 stage 貼到 payload["rows"] 上並記錄快照日。
+    intraday-test 有多個快照回退出口,每個出口都要帶,否則首頁會時有時無。"""
+    try:
+        day, n = _attach_pre_activation(payload.get("rows") or [])
+        payload["pre_activation_date"] = day
+        payload["pre_activation_count"] = n
+    except Exception as exc:
+        print(f"[pre_activation] payload 併入略過: {exc}", flush=True)
+    return payload
 
 
 @router.get("/api/intraday-watchpool")
