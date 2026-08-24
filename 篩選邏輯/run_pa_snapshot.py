@@ -11,11 +11,20 @@ backfill 只補 ret_t7 仍為 NULL 的列。
 """
 from __future__ import annotations
 import datetime as dt
+import os
 import sys
 
 import config
 import screen_post
 import pa_snapshot
+import store
+
+# 當日 daily_bar 覆蓋率門檻。低於這個比例就拒寫,不留半真樣本。
+# 為什麼要有:2026-08-24(首日)FinMind 晚出,daily_bar 只有 30/51,
+# 但快照照樣寫了 51 列 —— 其中 21 檔是拿前一交易日的價量算 stage,
+# 卻蓋上當日 data_date。live observation 是「不能污染」的前瞻樣本,
+# 寧可缺一天(17:30 補跑或隔日人工補),也不要混入回看不出來的髒列。
+MIN_BAR_COVERAGE = float(os.environ.get("PA_MIN_BAR_COVERAGE", "1.0"))
 
 
 def main() -> int:
@@ -25,6 +34,16 @@ def main() -> int:
         for rank, it in enumerate(items, 1):
             it.setdefault("legacy_rank", rank)
         d = dt.date.fromisoformat(data["data_date"])
+
+        # 覆蓋率斷言:當日 daily_bar 沒補齊就不寫(見 MIN_BAR_COVERAGE 註解)
+        bars = store.has_date("daily_bar", d)
+        need = max(1, int(len(items) * MIN_BAR_COVERAGE))
+        if bars < need:
+            print(f"[pa_snapshot] ✋ 拒寫:{d} daily_bar 只有 {bars}/{len(items)} 檔"
+                  f"(門檻 {need}),資料未補齊,不寫半真快照。"
+                  f"補齊後重跑本支即可(INSERT OR REPLACE)。", flush=True)
+            return 2
+
         n = pa_snapshot.write_snapshot(d, items)
         b = pa_snapshot.backfill()
         missing = [i for i in items if not i.get("pre_activation")]
