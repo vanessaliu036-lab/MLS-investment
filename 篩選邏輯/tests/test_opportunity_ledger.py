@@ -115,6 +115,24 @@ def test_render_contains_no_technical_state_section():
     assert "Technical State" not in html
 
 
+def test_name_map_loads_even_when_config_module_name_is_shadowed():
+    """真實 production bug(2026-08-25):8000 站自己有一支同名 config.py。
+    若用 `import config`,一旦該進程先載入過別的同名模組,sys.modules
+    快取會讓這裡拿到錯的 config——結果是 NAME 查不到,UI 顯示成
+    「代號 代號」而不是公司名。用 importlib 指名檔案路徑載入來繞開。"""
+    import sys
+    import types
+    fake = types.ModuleType("config")
+    fake.NAME = {}   # 模擬「別人的」config,沒有真正的 NAME 對照
+    sys.modules["config"] = fake
+    try:
+        name_map = render._load_name_map()
+        assert name_map.get("8358") == "金居"
+        assert name_map.get("2383") == "台光電"
+    finally:
+        del sys.modules["config"]
+
+
 def test_render_never_emits_forbidden_wording():
     row = _row(tier="PRIMARY", sector_opportunity=1, stock_level_available=1,
                p_hit_3pct=90.0, expected_upside=13.3, expected_downside=-6.5,

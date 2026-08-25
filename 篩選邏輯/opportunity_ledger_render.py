@@ -8,14 +8,28 @@ from __future__ import annotations
 import html as _html
 from typing import Optional
 
-try:
-    import sys
+def _load_name_map() -> dict:
+    """用檔案路徑明確載入 config.py 的 NAME,不用 `import config`。
+
+    ⚠ 8000 站(個股卡片相關檔案_20260722/)自己也有一支 config.py。若這裡
+    寫 `import config`,一旦該進程先載入過同名模組,Python 的 sys.modules
+    快取會讓這裡拿到「別人的」config,不是這個目錄的——結果是 NAME 查不到
+    半檔,UI 顯示成「代號 代號」而不是公司名。用 importlib 指名檔案路徑
+    載入,完全繞開模組名稱衝突。
+    """
+    import importlib.util
     from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent))
-    import config as _config
-    NAME = _config.NAME
-except Exception:
-    NAME = {}
+    path = Path(__file__).with_name("config.py")
+    try:
+        spec = importlib.util.spec_from_file_location("_opportunity_ledger_config", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.NAME
+    except Exception:
+        return {}
+
+
+NAME = _load_name_map()
 
 
 def _esc(s) -> str:
