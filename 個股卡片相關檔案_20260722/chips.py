@@ -204,16 +204,24 @@ def get_chips_detail(code, asof=None):
         return cached
 
     result = {"foreign_net_d": None, "trust_net_d": None, "dealer_net_d": None,
+              "dealer_self_d": None, "dealer_hedge_d": None,
+              "foreign_net_3d": None, "trust_net_3d": None, "inst_net_3d_lots": None,
               "foreign_net_5d": None, "trust_net_5d": None,
               "dealer_net_5d": None, "inst_net_5d_lots": None,
               "foreign_net_20d": None, "trust_net_20d": None,
-              "dealer_net_20d": None, "inst_streak": None,
+              "dealer_net_20d": None, "inst_streak": None, "trust_streak": None,
               "source": None, "source_date": None,
               "big400_pct": None, "big400_delta": None,
               "big1000_pct": None, "big1000_delta": None,
               "main_force_net": None,
               "margin_change_d": None, "margin_change_5d": None,
-              "margin_balance": None, "margin_source_date": None}
+              "margin_balance": None, "margin_source_date": None,
+              "short_balance": None, "short_change_d": None,
+              "short_change_5d": None, "short_margin_ratio": None,
+              "lending_volume_d": None, "lending_source_date": None,
+              "lending_balance": None, "lending_balance_change_d": None,
+              "foreign_share_pct": None, "foreign_share_change": None,
+              "foreign_share_remain_pct": None, "foreign_share_source_date": None}
 
     # ── 三大法人單日 + 滾動5/20日：官方快取優先 ─────────
     if official:
@@ -221,11 +229,17 @@ def get_chips_detail(code, asof=None):
             "foreign_net_d": official.get("foreign_net_d", official.get("foreign")),
             "trust_net_d": official.get("trust_net_d", official.get("trust")),
             "dealer_net_d": official.get("dealer_net_d", official.get("dealer")),
+            "dealer_self_d": official.get("dealer_self_d"),
+            "dealer_hedge_d": official.get("dealer_hedge_d"),
+            "foreign_net_3d": official.get("foreign_net_3d"),
+            "trust_net_3d": official.get("trust_net_3d"),
+            "inst_net_3d_lots": official.get("inst_net_3d_lots"),
             "foreign_net_5d": official.get("foreign_net_5d"),
             "trust_net_5d": official.get("trust_net_5d"),
             "dealer_net_5d": official.get("dealer_net_5d"),
             "inst_net_5d_lots": official.get("inst_net_5d_lots"),
             "inst_streak": official.get("inst_streak"),
+            "trust_streak": official.get("trust_streak"),
             "foreign_net_20d": official.get("foreign_net_20d"),
             "trust_net_20d": official.get("trust_net_20d"),
             "dealer_net_20d": official.get("dealer_net_20d"),
@@ -241,13 +255,19 @@ def get_chips_detail(code, asof=None):
             d = r["date"]
             net = (r.get("buy", 0) - r.get("sell", 0)) / 1000     # 股→張
             nm = r.get("name", "")
-            g = by_date.setdefault(d, {"f": 0, "t": 0, "dl": 0})
+            g = by_date.setdefault(d, {"f": 0, "t": 0, "dl": 0, "ds": 0, "dh": 0})
             if nm == "Foreign_Investor":
                 g["f"] += net
             elif nm == "Investment_Trust":
                 g["t"] += net
-            elif nm.startswith("Dealer"):                          # 自營(自行+避險)
+            elif nm == "Dealer_self":                              # 自營商自行買賣
                 g["dl"] += net
+                g["ds"] += net
+            elif nm == "Dealer_Hedging":                           # 自營商避險
+                g["dl"] += net
+                g["dh"] += net
+            elif nm.startswith("Dealer") or nm == "Foreign_Dealer_Self":
+                g["dl"] += net                                     # 其餘自營相關,計入合計不拆細項
         dates = sorted(by_date.keys())
         if dates:
             last = by_date[dates[-1]]
@@ -256,6 +276,14 @@ def get_chips_detail(code, asof=None):
             result["foreign_net_d"] = round(last["f"])
             result["trust_net_d"] = round(last["t"])
             result["dealer_net_d"] = round(last["dl"])
+            result["dealer_self_d"] = round(last["ds"])
+            result["dealer_hedge_d"] = round(last["dh"])
+            recent3 = dates[-3:]
+            result["foreign_net_3d"] = round(sum(by_date[d]["f"] for d in recent3))
+            result["trust_net_3d"] = round(sum(by_date[d]["t"] for d in recent3))
+            result["inst_net_3d_lots"] = round(sum(
+                by_date[d]["f"] + by_date[d]["t"] + by_date[d]["dl"]
+                for d in recent3))
             recent5 = dates[-5:]
             result["foreign_net_5d"] = round(sum(by_date[d]["f"] for d in recent5))
             result["trust_net_5d"] = round(sum(by_date[d]["t"] for d in recent5))
@@ -269,16 +297,20 @@ def get_chips_detail(code, asof=None):
                 sum(by_date[d]["t"] for d in dates[-INST_DAYS:]))
             result["dealer_net_20d"] = round(
                 sum(by_date[d]["dl"] for d in dates[-INST_DAYS:]))
-            streak = 0
-            for d in reversed(dates):
-                f = by_date[d]["f"]
-                if streak == 0:
-                    streak = 1 if f > 0 else (-1 if f < 0 else 0)
-                elif (streak > 0 and f > 0) or (streak < 0 and f < 0):
-                    streak += 1 if streak > 0 else -1
-                else:
-                    break
-            result["inst_streak"] = streak
+
+            def _streak(field):
+                s = 0
+                for d in reversed(dates):
+                    v = by_date[d][field]
+                    if s == 0:
+                        s = 1 if v > 0 else (-1 if v < 0 else 0)
+                    elif (s > 0 and v > 0) or (s < 0 and v < 0):
+                        s += 1 if s > 0 else -1
+                    else:
+                        break
+                return s
+            result["inst_streak"] = _streak("f")
+            result["trust_streak"] = _streak("t")
       except Exception as e:
         print(f"[chips] 法人細項 {code} 失敗: {e}")
 
@@ -329,32 +361,107 @@ def get_chips_detail(code, asof=None):
                 (latest.get("MarginPurchaseTodayBalance") or 0)
                 - (latest.get("MarginPurchaseYesterdayBalance") or 0)
             )
+            result["short_balance"] = latest.get("ShortSaleTodayBalance")
+            result["short_change_d"] = (
+                (latest.get("ShortSaleTodayBalance") or 0)
+                - (latest.get("ShortSaleYesterdayBalance") or 0)
+            )
+            if result["margin_balance"]:
+                result["short_margin_ratio"] = round(
+                    (result["short_balance"] or 0) / result["margin_balance"], 4)
             if len(rows) >= 6:
                 result["margin_change_5d"] = (
                     (latest.get("MarginPurchaseTodayBalance") or 0)
                     - (rows[-6].get("MarginPurchaseTodayBalance") or 0)
                 )
+                result["short_change_5d"] = (
+                    (latest.get("ShortSaleTodayBalance") or 0)
+                    - (rows[-6].get("ShortSaleTodayBalance") or 0)
+                )
     except Exception as e:
-        print(f"[chips] 融資 {code} 失敗: {e}")
+        print(f"[chips] 融資融券 {code} 失敗: {e}")
 
-    # 不允許法人與融資使用不同交易日卻被組成同一張「最新」卡片。
-    # FinMind 若仍停在上一週，融資欄位必須留白，不能冒充本日變化。
+    # ── 借券(成交量 + 賣出餘額,日資料) ─────────────────
+    # TaiwanStockSecuritiesLending:單日逐筆借券成交,加總當日 volume = 借券成交量。
+    # TaiwanDailyShortSaleBalances:官方每日借券賣出餘額(SBL),取當日餘額與日增減。
+    try:
+        start = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+        rows = _finmind("TaiwanStockSecuritiesLending", code, start)
+        by_date_vol = {}
+        for r in rows:
+            by_date_vol[r["date"]] = by_date_vol.get(r["date"], 0) + (r.get("volume") or 0)
+        if by_date_vol:
+            latest_d = sorted(by_date_vol.keys())[-1]
+            result["lending_source_date"] = latest_d
+            result["lending_volume_d"] = round(by_date_vol[latest_d] / 1000)  # 股→張
+    except Exception as e:
+        print(f"[chips] 借券成交 {code} 失敗: {e}")
+    try:
+        start = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+        rows = _finmind("TaiwanDailyShortSaleBalances", code, start)
+        rows = sorted(rows, key=lambda r: r.get("date", ""))
+        if rows:
+            latest = rows[-1]
+            bal = latest.get("SBLShortSalesCurrentDayBalance")
+            prev = latest.get("SBLShortSalesPreviousDayBalance")
+            result["lending_balance"] = round(bal / 1000) if bal is not None else None
+            if bal is not None and prev is not None:
+                result["lending_balance_change_d"] = round((bal - prev) / 1000)
+    except Exception as e:
+        print(f"[chips] 借券餘額 {code} 失敗: {e}")
+
+    # ── 外資持股結構(週資料,依實際公告日更新) ─────────
+    try:
+        start = (datetime.now() - timedelta(days=40)).strftime("%Y-%m-%d")
+        rows = _finmind("TaiwanStockShareholding", code, start)
+        rows = sorted(rows, key=lambda r: r.get("date", ""))
+        if rows:
+            latest = rows[-1]
+            result["foreign_share_source_date"] = latest.get("date")
+            result["foreign_share_pct"] = latest.get("ForeignInvestmentSharesRatio")
+            result["foreign_share_remain_pct"] = latest.get("ForeignInvestmentRemainRatio")
+            if len(rows) >= 2:
+                prev_pct = rows[-2].get("ForeignInvestmentSharesRatio")
+                if result["foreign_share_pct"] is not None and prev_pct is not None:
+                    result["foreign_share_change"] = round(
+                        result["foreign_share_pct"] - prev_pct, 2)
+    except Exception as e:
+        print(f"[chips] 外資持股 {code} 失敗: {e}")
+
+    # 不允許法人與融資/借券使用不同交易日卻被組成同一張「最新」卡片。
+    # FinMind 若仍停在上一週，相關欄位必須留白，不能冒充本日變化。
+    # 外資持股結構是週資料，本來就跟日資料的 source_date 不同期，不在此比對之列。
     if (result.get("source_date") and asof and result["source_date"] != asof):
         # 盤後報告指定的交易日尚未有完整法人資料，整組留白，避免
         # 把前一週五日統計拼到今日價格上。
         for field in ("foreign_net_d", "trust_net_d", "dealer_net_d",
+                      "dealer_self_d", "dealer_hedge_d",
+                      "foreign_net_3d", "trust_net_3d", "inst_net_3d_lots",
                       "foreign_net_5d", "trust_net_5d", "dealer_net_5d",
                       "inst_net_5d_lots", "foreign_net_20d",
-                      "trust_net_20d", "dealer_net_20d", "inst_streak"):
+                      "trust_net_20d", "dealer_net_20d",
+                      "inst_streak", "trust_streak"):
             result[field] = None
         result["source"] = None
         result["source_date"] = None
-    elif (result.get("source_date") and result.get("margin_source_date")
+
+    if (result.get("source_date") and result.get("margin_source_date")
             and result["margin_source_date"] != result["source_date"]):
         result["margin_change_d"] = None
         result["margin_change_5d"] = None
         result["margin_balance"] = None
         result["margin_source_date"] = None
+        result["short_balance"] = None
+        result["short_change_d"] = None
+        result["short_change_5d"] = None
+        result["short_margin_ratio"] = None
+
+    if (result.get("source_date") and result.get("lending_source_date")
+            and result["lending_source_date"] != result["source_date"]):
+        result["lending_volume_d"] = None
+        result["lending_source_date"] = None
+        result["lending_balance"] = None
+        result["lending_balance_change_d"] = None
 
     if _cache.get("date") != today:
         _cache = {"date": today, "stocks": {}}

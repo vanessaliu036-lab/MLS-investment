@@ -93,14 +93,32 @@ def build_card(code, snap=None, health=None, grade=None,
             print(f"[stock_card] 籌碼細項失敗:{e}")
             chip_detail = {}
     cd = chip_detail or {}
+    # 法人占成交量比:用法人當日淨買賣超(張)佔當日成交量(張)的比重,
+    # 同樣 1,000 張買超,量 5,000 張跟量 100,000 張意義完全不同——這是量比後
+    # 才看得出來的「力度」,不是另一個籌碼分數,純比例換算,查無成交量給 None。
+    today_vol_lots = None
+    if bars and bars[-1].get("date") == cd.get("source_date"):
+        v = bars[-1].get("volume")
+        if v:
+            today_vol_lots = v / 1000
+    def _pct_of_volume(net_lots):
+        if net_lots is None or not today_vol_lots:
+            return None
+        return round(net_lots / today_vol_lots * 100, 2)
     chip_block = {
         "foreign": cd.get("foreign_net_d"), "trust": cd.get("trust_net_d"),
         "dealer": cd.get("dealer_net_d"),
+        "dealer_self": cd.get("dealer_self_d"),
+        "dealer_hedge": cd.get("dealer_hedge_d"),
+        "foreign_net_3d": cd.get("foreign_net_3d"),
+        "trust_net_3d": cd.get("trust_net_3d"),
+        "inst_net_3d_lots": cd.get("inst_net_3d_lots"),
         "foreign_net_5d": cd.get("foreign_net_5d"),
         "trust_net_5d": cd.get("trust_net_5d"),
         "dealer_net_5d": cd.get("dealer_net_5d"),
         "inst_net_5d_lots": cd.get("inst_net_5d_lots"),
         "inst_streak": cd.get("inst_streak"),
+        "trust_streak": cd.get("trust_streak"),
         "inst_net_20d_lots": cd.get("inst_net_20d_lots"),
         "foreign_net_20d": cd.get("foreign_net_20d"),
         "trust_net_20d": cd.get("trust_net_20d"),
@@ -113,11 +131,31 @@ def build_card(code, snap=None, health=None, grade=None,
         "margin_change_5d": cd.get("margin_change_5d"),
         "margin_balance": cd.get("margin_balance"),
         "margin_source_date": cd.get("margin_source_date"),
+        "short_balance": cd.get("short_balance"),
+        "short_change_d": cd.get("short_change_d"),
+        "short_change_5d": cd.get("short_change_5d"),
+        "short_margin_ratio": cd.get("short_margin_ratio"),
+        "lending_volume_d": cd.get("lending_volume_d"),
+        "lending_balance": cd.get("lending_balance"),
+        "lending_balance_change_d": cd.get("lending_balance_change_d"),
+        "lending_source_date": cd.get("lending_source_date"),
+        "foreign_share_pct": cd.get("foreign_share_pct"),
+        "foreign_share_change": cd.get("foreign_share_change"),
+        "foreign_share_remain_pct": cd.get("foreign_share_remain_pct"),
+        "foreign_share_source_date": cd.get("foreign_share_source_date"),
+        "foreign_pct_volume": _pct_of_volume(cd.get("foreign_net_d")),
+        "trust_pct_volume": _pct_of_volume(cd.get("trust_net_d")),
+        "inst_pct_volume": _pct_of_volume(
+            None if cd.get("foreign_net_d") is None or cd.get("trust_net_d") is None
+            or cd.get("dealer_net_d") is None else
+            cd["foreign_net_d"] + cd["trust_net_d"] + cd["dealer_net_d"]),
+        "today_volume_lots": round(today_vol_lots) if today_vol_lots else None,
         "source": cd.get("source") or "FinMind 盤後法人",
         "source_url": cd.get("source_url"),
         "source_date": cd.get("source_date"),
         "sources": cd.get("sources"),
-        "period_note": "法人=T-1 盤後蓋章(非即時);大戶級距=集保週資料;主力分點=待接籌碼商",
+        "period_note": "法人=T-1 盤後蓋章(非即時);大戶級距=集保週資料;主力分點=待接籌碼商;"
+                       "外資持股比=集保週資料,更新日獨立標示,不跟日資料比對新鮮度",
     }
 
     # ── 資金 ────────────────────────────────────────────

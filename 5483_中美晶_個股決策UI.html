@@ -282,9 +282,21 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
 </section>
 
 <section class="section" id="chips">
-  <div class="section-head"><div class="section-title">籌碼面 · 誰在買／承接品質</div><div class="source">FinMind · 第五模組</div></div>
+  <div class="section-head"><div class="section-title">籌碼面 · 誰在買／承接品質</div><div class="source">TWSE/TPEx 官方或 FinMind · 第五模組</div></div>
   <div class="section-body">
     <div class="data-grid">
+      <div class="card">
+        <div class="card-head"><div class="card-title">今日（T-1 正式蓋章）</div><div class="card-source">—</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">三大法人合計</div><div class="v">—</div></div>
+          <div class="row"><div class="k">├ 外資</div><div class="v">—</div></div>
+          <div class="row"><div class="k">├ 投信</div><div class="v">—</div></div>
+          <div class="row"><div class="k">├ 自營自行</div><div class="v">—</div></div>
+          <div class="row"><div class="k">└ 自營避險</div><div class="v">—</div></div>
+          <div class="row"><div class="k">外資／投信連續</div><div class="v">—</div></div>
+          <div class="row"><div class="k">法人占成交量</div><div class="v">—</div></div>
+        </div>
+      </div>
       <div class="card">
         <div class="card-head"><div class="card-title">5日區間</div><div class="card-source">—</div></div>
         <div class="rows">
@@ -307,6 +319,16 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
         </div>
       </div>
       <div class="card">
+        <div class="card-head"><div class="card-title">信用交易／借券</div><div class="card-source">TWSE 融資融券 + 借券</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">融資餘額變化</div><div class="v">—</div></div>
+          <div class="row"><div class="k">融券餘額變化</div><div class="v">—</div></div>
+          <div class="row"><div class="k">券資比</div><div class="v">—</div></div>
+          <div class="row"><div class="k">借券賣出餘額變化</div><div class="v">—</div></div>
+          <div class="row"><div class="k">借券成交</div><div class="v">—</div></div>
+        </div>
+      </div>
+      <div class="card">
         <div class="card-head"><div class="card-title">承接品質 · 誰在接刀</div><div class="card-source">法人＋融資＋大戶＋收盤技術位置</div></div>
         <div class="rows">
           <div class="row"><div class="k">綜評</div><div class="v">—</div></div>
@@ -316,6 +338,15 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
           <div class="row"><div class="k">股價</div><div class="v">—</div></div>
         </div>
         <div style="padding:0 14px 14px"><div class="notice">—</div></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><div class="card-title">外資持股結構</div><div class="card-source">集保週資料</div></div>
+        <div class="rows">
+          <div class="row"><div class="k">外資持股比</div><div class="v">—</div></div>
+          <div class="row"><div class="k">持股比變化</div><div class="v">—</div></div>
+          <div class="row"><div class="k">距外資上限</div><div class="v">—</div></div>
+          <div class="sub" style="padding-bottom:8px">週資料，更新日獨立標示，不跟日資料比對新鮮度。</div>
+        </div>
       </div>
     </div>
   </div>
@@ -546,10 +577,17 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
     const cs=document.getElementById('quad-seq');
     if(cs&&qh.length){const curr=qh[0],prev=qh[1];const rank=q=>((/^in/.test(q||'')?1:0)+(/_up$/.test(q||'')?1:0));const bj=prev?(rank(curr.quadrant)>rank(prev.quadrant)?'改善':rank(curr.quadrant)<rank(prev.quadrant)?'惡化':'持平'):'—';cs.innerHTML=`${qchip(prev)}<span class="arrow">→</span>${qchip(curr)}<span class="badge ${bj==='改善'?'ok':bj==='惡化'?'fail':'blue'}">${bj}</span>`}
     // 籌碼
-    cardVals('#chips',0,[cN(chip.inst_net_5d_lots),cN(chip.foreign_net_5d),cN(chip.trust_net_5d),cN(chip.dealer_net_5d),cN(chip.margin_change_5d)]);
-    cardVals('#chips',1,[cN(inst20),cN(chip.foreign_net_20d),cN(chip.trust_net_20d),cN(chip.dealer_net_20d),cN(chip.big_holder_delta)]);
-    cardVals('#chips',2,[(dec.missing&&dec.missing.includes('absorption'))?'缺 absorption':'已接入',cN(chip.foreign_net_5d),cN(chip.margin_change_5d),cN(chip.big_holder_delta),cP(change)]);
-    const cc2=document.querySelectorAll('#chips .card')[2];if(cc2){const nt=cc2.querySelector('.notice');if(nt){const seg=[];if(chip.foreign_net_5d!=null)seg.push('外資'+(chip.foreign_net_5d>0?'買超':'賣超'));if(chip.margin_change_5d!=null)seg.push('融資'+(chip.margin_change_5d>0?'增':'減'));if(chip.big_holder_delta!=null)seg.push('大戶'+(chip.big_holder_delta>0?'增':'減'));if(change!=null)seg.push('股價'+(change>0?'漲':'跌'));nt.textContent=seg.length?('承接結論：'+seg.join('、')+'。'):'承接資料回補中。';}}
+    const instToday=(chip.foreign==null&&chip.trust==null&&chip.dealer==null)?null:((chip.foreign||0)+(chip.trust||0)+(chip.dealer||0));
+    const streakTxt=(f,t)=>{const s1=f==null?'—':(f>0?'外連買'+f+'日':f<0?'外連賣'+Math.abs(f)+'日':'外持平');const s2=t==null?'—':(t>0?'投連買'+t+'日':t<0?'投連賣'+Math.abs(t)+'日':'投持平');return `${s1}／${s2}`};
+    const instPctTxt=v=>v==null?'—':`<span class="${cls(v)}">${v>0?'+':''}${v.toFixed(2)}%</span>${chip.today_volume_lots?`<span class="sub"> 今日量 ${num(chip.today_volume_lots)} 張</span>`:''}`;
+    cardVals('#chips',0,[cN(instToday),cN(chip.foreign),cN(chip.trust),cN(chip.dealer_self),cN(chip.dealer_hedge),streakTxt(chip.inst_streak,chip.trust_streak),instPctTxt(chip.inst_pct_volume)]);
+    cardVals('#chips',1,[cN(chip.inst_net_5d_lots),cN(chip.foreign_net_5d),cN(chip.trust_net_5d),cN(chip.dealer_net_5d),cN(chip.margin_change_5d)]);
+    cardVals('#chips',2,[cN(inst20),cN(chip.foreign_net_20d),cN(chip.trust_net_20d),cN(chip.dealer_net_20d),cN(chip.big_holder_delta)]);
+    cardVals('#chips',3,[cN(chip.margin_change_d),cN(chip.short_change_d),chip.short_margin_ratio==null?'—':(chip.short_margin_ratio*100).toFixed(2)+'%',cN(chip.lending_balance_change_d),chip.lending_volume_d==null?'—':num(chip.lending_volume_d)+' 張']);
+    cardVals('#chips',4,[(dec.missing&&dec.missing.includes('absorption'))?'缺 absorption':'已接入',cN(chip.foreign_net_5d),cN(chip.margin_change_5d),cN(chip.big_holder_delta),cP(change)]);
+    const cc2=document.querySelectorAll('#chips .card')[4];if(cc2){const nt=cc2.querySelector('.notice');if(nt){const seg=[];if(chip.foreign_net_5d!=null)seg.push('外資'+(chip.foreign_net_5d>0?'買超':'賣超'));if(chip.margin_change_5d!=null)seg.push('融資'+(chip.margin_change_5d>0?'增':'減'));if(chip.big_holder_delta!=null)seg.push('大戶'+(chip.big_holder_delta>0?'增':'減'));if(change!=null)seg.push('股價'+(change>0?'漲':'跌'));nt.textContent=seg.length?('承接結論：'+seg.join('、')+'。'):'承接資料回補中。';}}
+    cardVals('#chips',5,[chip.foreign_share_pct==null?'—':chip.foreign_share_pct+'%',chip.foreign_share_change==null?'—':cP(chip.foreign_share_change),chip.foreign_share_remain_pct==null?'—':chip.foreign_share_remain_pct+'%']);
+    const cc5=document.querySelectorAll('#chips .card')[5];if(cc5&&chip.foreign_share_source_date){const sb=cc5.querySelector('.sub');if(sb)sb.textContent=`週資料，更新日獨立標示，不跟日資料比對新鮮度。（集保 ${chip.foreign_share_source_date}）`;}
     // 四層 / 三角 / 文件三大
     const MOD=document.querySelectorAll('#validation .module .v');
     [(score>=75)?'✓ 通過':'待觀察',(dec.missing&&dec.missing.length)?'待補':'✓ 通過','無硬風險',c.stock_type==='engine'?'引擎軌':'攻擊軌',group].forEach((v,i)=>{if(MOD[i])MOD[i].textContent=v});

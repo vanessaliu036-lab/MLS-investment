@@ -67,12 +67,15 @@ def _twse_day(d):
         code = str(row[0]).strip()
         if not code.isdigit():
             continue
-        # T86 欄位：[4]外陸資(不含自營) [7]外資自營商 [10]投信 [11]自營合計 [-1]三大法人合計
+        # T86 欄位：[4]外陸資(不含自營) [7]外資自營商 [10]投信 [11]自營合計
+        # [14]自營商自行買賣 [17]自營商避險 [-1]三大法人合計
         foreign = ((_num(row[4]) or 0) + (_num(row[7]) or 0)) / 1000
         out[code] = {
             "foreign": foreign,
             "trust": (_num(row[10]) or 0) / 1000,
             "dealer": (_num(row[11]) or 0) / 1000,
+            "dealer_self": (_num(row[14]) or 0) / 1000,
+            "dealer_hedge": (_num(row[17]) or 0) / 1000,
             "total": (_num(row[-1]) or 0) / 1000,
         }
     return out
@@ -83,6 +86,7 @@ def _tpex_day(d):
 
     欄位（24 欄，單位：股）：
       [10] 外資及陸資合計買賣超  [13] 投信買賣超
+      [16] 自營商自行買賣買賣超  [19] 自營商避險買賣超
       [22] 自營商合計買賣超      [-1] 三大法人合計
     """
     url = ("https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade"
@@ -104,6 +108,8 @@ def _tpex_day(d):
                 "foreign": (_num(row[10]) or 0) / 1000,
                 "trust": (_num(row[13]) or 0) / 1000,
                 "dealer": (_num(row[22]) or 0) / 1000,
+                "dealer_self": (_num(row[16]) or 0) / 1000,
+                "dealer_hedge": (_num(row[19]) or 0) / 1000,
                 "total": (_num(row[-1]) or 0) / 1000,
             }
         except Exception:
@@ -156,28 +162,41 @@ def build_cache(codes, merge=True):
         if not series:
             continue
         net20 = round(sum(x["total"] for _, x in series))
-        streak = 0
-        for _, x in series:                                        # 由最近往回
-            f = x["foreign"]
-            if streak == 0:
-                streak = 1 if f > 0 else (-1 if f < 0 else 0)
-                if streak == 0:
+
+        def _streak(field):
+            s = 0
+            for _, x in series:                                    # 由最近往回
+                v = x[field]
+                if s == 0:
+                    s = 1 if v > 0 else (-1 if v < 0 else 0)
+                    if s == 0:
+                        break
+                elif s > 0 and v > 0:
+                    s += 1
+                elif s < 0 and v < 0:
+                    s -= 1
+                else:
                     break
-            elif streak > 0 and f > 0:
-                streak += 1
-            elif streak < 0 and f < 0:
-                streak -= 1
-            else:
-                break
+            return s
+
+        streak = _streak("foreign")
+        trust_streak = _streak("trust")
         latest_date, latest = series[0]
+        recent3 = [x for _, x in series[:3]]
         recent5 = [x for _, x in series[:5]]
         rec = dict(payload["stocks"].get(code) or {})
         rec.update({
             "inst_net_20d_lots": net20,
             "inst_streak": streak,
+            "trust_streak": trust_streak,
             "foreign_net_d": round(latest["foreign"]),
             "trust_net_d": round(latest["trust"]),
             "dealer_net_d": round(latest["dealer"]),
+            "dealer_self_d": round(latest.get("dealer_self", 0)),
+            "dealer_hedge_d": round(latest.get("dealer_hedge", 0)),
+            "foreign_net_3d": round(sum(x["foreign"] for x in recent3)),
+            "trust_net_3d": round(sum(x["trust"] for x in recent3)),
+            "inst_net_3d_lots": round(sum(x["total"] for x in recent3)),
             "foreign_net_5d": round(sum(x["foreign"] for x in recent5)),
             "trust_net_5d": round(sum(x["trust"] for x in recent5)),
             "dealer_net_5d": round(sum(x["dealer"] for x in recent5)),

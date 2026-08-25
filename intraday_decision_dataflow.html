@@ -1943,6 +1943,58 @@ document.querySelector('.sidebar .nav-item.active')?.classList.add('selected');
     const n=Number(score||0),pct=Math.max(0,Math.min(100,n/max*100));
     return `<div class="full-factor"><h4>${name}</h4><div class="factor-score">${val(score)} <span class="muted">/ ${max}</span></div><div class="factor-bar"><i style="width:${pct}%"></i></div><div class="factor-note">${escFull(note)}</div></div>`;
   }
+  // 籌碼模組(2026-08-25 三層改版):昨日正式籌碼(TWSE/TPEx官方或FinMind盤後)
+  // → 籌碼趨勢(3/5日累計、連買天數、占量比) → 今日盤中確認(aflow/主動買賣/相對族群)。
+  // 每一列都是後端真實欄位,缺值一律「—」,不補造;結論是規則式方向讀法,不是回測訊號,
+  // 註記清楚避免跟正式研究層(sec_rs_10d)的「PASS/REJECTED」證據等級混淆。
+  const lots=v=>v==null?'—':`${Number(v)>0?'+':''}${Number(v).toLocaleString('en-US')} 張`;
+  const pctv=v=>v==null?'—':`${Number(v)>0?'+':''}${Number(v).toFixed(2)}%`;
+  const streakTxt=v=>v==null?'—':v>0?`連買 ${v} 日`:v<0?`連賣 ${Math.abs(v)} 日`:'持平';
+  function chipVerdict(c){
+    if(c.foreign==null&&c.trust==null)return{label:'資料不足',cls:''};
+    let s=0;
+    if(c.foreign>0)s+=1;else if(c.foreign<0)s-=1;
+    if(c.trust>0)s+=1;else if(c.trust<0)s-=1;
+    if(c.margin_change_d<0)s+=0.5;else if(c.margin_change_d>0)s-=0.5;
+    if(c.lending_balance_change_d>0)s-=0.5;else if(c.lending_balance_change_d<0)s+=0.5;
+    if(c.short_change_d>0)s-=0.5;else if(c.short_change_d<0)s+=0.5;
+    const label=s>=2.5?'強多':s>=1?'偏多':s<=-2.5?'強空':s<=-1?'偏空':'中性';
+    const cls=s>=1?'up':s<=-1?'down':'';
+    const bits=[];
+    if(c.trust>0&&c.foreign<0)bits.push('投信主導買盤，外資站賣方');
+    else if(c.foreign>0&&c.trust<0)bits.push('外資主導買盤，投信站賣方');
+    else if(c.foreign>0&&c.trust>0)bits.push('外資投信同步買超');
+    else if(c.foreign<0&&c.trust<0)bits.push('外資投信同步賣超');
+    if(c.margin_change_d<0)bits.push('融資下降屬正向');else if(c.margin_change_d>0)bits.push('融資回升');
+    if(c.lending_balance_change_d>0)bits.push('借券餘額增加形成壓力');
+    if(c.short_change_d>0)bits.push('融券增加');
+    return{label,cls,note:bits.join('，')||'訊號不足以判斷方向'};
+  }
+  function chipModule(chip,flow,rel){
+    if(chip.has_data===false||(chip.foreign==null&&chip.trust==null&&chip.dealer==null)){
+      return `<div class="dense-extra"><h3>💼 籌碼面</h3><div class="dense-note">⚠ 目前籌碼來源沒有回傳資料，這一項不補造數字。</div></div>`;
+    }
+    const instToday=['foreign','trust','dealer'].every(k=>chip[k]!=null)?Number(chip.foreign)+Number(chip.trust)+Number(chip.dealer):null;
+    const v=chipVerdict(chip);
+    const dateNote=`資料日 ${escFull(chip.source_date||'—')}｜來源 ${escFull(chip.source||'—')}`;
+    const shareNote=chip.foreign_share_source_date?`（集保 ${escFull(chip.foreign_share_source_date)}）`:'';
+    return `<div class="dense-extra"><h3>💼 籌碼面</h3>
+      <div class="full-detail-line"><b>法人籌碼結論：<span class="${v.cls}">${escFull(v.label)}</span></b>　${escFull(v.note||'')}</div>
+      <div class="dense-note" style="margin-top:2px">昨日正式籌碼（T-1 收盤蓋章，非即時）</div>
+      <div class="full-detail-line">三大法人合計 <b>${lots(instToday)}</b> ｜ 外資 <b>${lots(chip.foreign)}</b> ｜ 投信 <b>${lots(chip.trust)}</b></div>
+      <div class="full-detail-line">自營商合計 <b>${lots(chip.dealer)}</b>（自行 ${lots(chip.dealer_self)} ／避險 ${lots(chip.dealer_hedge)}）</div>
+      <div class="full-detail-line">融資餘額變化 <b>${lots(chip.margin_change_d)}</b> ｜ 融券餘額變化 <b>${lots(chip.short_change_d)}</b> ｜ 券資比 ${val(chip.short_margin_ratio)}</div>
+      <div class="full-detail-line">借券賣出餘額變化 <b>${lots(chip.lending_balance_change_d)}</b> ｜ 借券成交 ${val(chip.lending_volume_d)} 張</div>
+      <div class="dense-note" style="margin-top:8px">籌碼趨勢</div>
+      <div class="full-detail-line">外資 3D <b>${lots(chip.foreign_net_3d)}</b> ／ 5D <b>${lots(chip.foreign_net_5d)}</b> ｜ 投信 3D <b>${lots(chip.trust_net_3d)}</b> ／ 5D <b>${lots(chip.trust_net_5d)}</b></div>
+      <div class="full-detail-line">外資 ${streakTxt(chip.inst_streak)} ｜ 投信 ${streakTxt(chip.trust_streak)} ｜ 法人近月 <b>${lots(chip.inst_net_20d_lots)}</b></div>
+      <div class="full-detail-line">外資占成交量 <b>${pctv(chip.foreign_pct_volume)}</b> ｜ 投信占成交量 <b>${pctv(chip.trust_pct_volume)}</b> ｜ 法人合計占量 <b>${pctv(chip.inst_pct_volume)}</b>${chip.today_volume_lots?`（今日量 ${chip.today_volume_lots.toLocaleString('en-US')} 張）`:''}</div>
+      <div class="full-detail-line">外資持股比 <b>${val(chip.foreign_share_pct)}${chip.foreign_share_pct!=null?'%':''}</b>（${chip.foreign_share_change==null?'—':pctv(chip.foreign_share_change)+'pp'}）｜ 距外資上限 <b>${val(chip.foreign_share_remain_pct)}${chip.foreign_share_remain_pct!=null?'%':''}</b>${shareNote}</div>
+      <div class="dense-note" style="margin-top:8px">今日盤中確認</div>
+      <div class="full-detail-line">主動買賣差(aflow) <b>${val(flow.net_active)}</b> ｜ 主動買 <b>${flow.active_buy_pct==null?'—':flow.active_buy_pct+'%'}</b> ｜ 相對族群 <b>${rel==null?'—':(rel>0?'+':'')+rel.toFixed(2)+'pp'}</b></div>
+      <div class="dense-note">${escFull(dateNote)}；今日盤中資金流獨立於昨日正式籌碼，不混算同一格。籌碼結論為規則式方向讀法，非回測驗證訊號。</div>
+    </div>`;
+  }
   window.openStock=async function(code){
     code=(String(code||'').match(/\d{4}/)||[])[0]||'';
     const panel=document.querySelector('#stockDetail'),body=document.querySelector('#detailBody'),status=document.querySelector('#detailStatus');
@@ -1970,7 +2022,7 @@ document.querySelector('.sidebar .nav-item.active')?.classList.add('selected');
       <div class="dense-extra"><h3>📌 最終結論</h3><div class="full-detail-line"><b>${escFull(label)}</b></div><div class="full-detail-line">${escFull(reason)}</div><div class="full-detail-line">個股決策分 <b>${val(decision.score)}</b> / 100 ｜ 可計分 ${val(decision.score_available)} / 100 ｜ 可信度 <b>${val(decision.confidence)}</b></div><div class="dense-note">${escFull(decision.rule||'資料缺值只影響可信度，不當作 0 分。')} 操作：${escFull(row.operation||trade.advice||'列入觀察,等量能與法人蓋章再進場。')}</div></div>
       <div class="dense-extra"><h3>🛡 執行紀律</h3><div class="full-detail-line">建議停損　<b>${val(row.suggested_stop??trade.stop)}</b>　　內外盤 BS　<b>${val(row.bs)}${row.bs!=null?'%':''}</b></div><div class="dense-note">跌破停損代表進場理由失效，依紀律出場。買進參考 ${val(trade.buy)}｜T1 ${val(trade.t1)}｜T2 ${val(trade.t2)}｜RR ${val(trade.rr)}</div></div>
       <div class="dense-extra"><h3>💡 為何上漲</h3><div class="full-detail-line">${escFull(ai.reasons?.join(' ｜ ')||row.classification_reason||reason)}</div></div>
-      <div class="dense-extra"><h3>💼 籌碼面</h3><div class="full-detail-line">法人近月買超 <b>${val(chip.inst_net_20d_lots??chip.foreign)} 張</b> ｜ 外資連買 ${val(chip.inst_streak)} 日</div><div class="full-detail-line">外資 Today <b>${val(chip.foreign)} 張</b> ｜ 投信 Today <b>${val(chip.trust)} 張</b> ｜ 自營商 Today <b>${val(chip.dealer)} 張</b> ｜ 三大法人 Today <b>${val(instToday)} 張</b></div><div class="full-detail-line">外資 5D <b>${val(chip.foreign_net_5d)} 張</b> ｜ 投信 5D <b>${val(chip.trust_net_5d)} 張</b> ｜ 融資 5D <b>${val(chip.margin_change_5d)} 張</b></div><div class="dense-note">${chip.has_data===false?'⚠ 目前籌碼來源沒有回傳資料，這一項不補造數字。':'籌碼資料已由 stock_card.py 接入；Today 與 5D 為不同週期，禁止混讀。'}</div></div>
+      ${chipModule(chip,flow,rel)}
       <div class="dense-extra"><h3>🧩 族群成分</h3><div class="full-detail-line">${escFull(card.sector_aggregation||'固定觀察池成分股等權平均')}</div><details><summary>展開 ${sectorMembers.length} 檔成分</summary><div class="dense-note">${sectorMembers.map(m=>escFull(m.code+' '+m.name)).join(' ｜ ')||'成分資料未回傳'}</div></details></div>
       <div class="dense-extra"><h3>🔺 三角交叉驗證</h3><div class="full-detail-line"><b>${escFull(row.triangulation?.verdict||'等待確認')}</b>　${escFull(row.triangulation?.conflict||'')}</div><div class="full-detail-line">${escFull([...(row.triangulation?.log?.positive||[]),...(row.triangulation?.log?.negative||[]),...(row.triangulation?.log?.neutral||[])].join(' ｜ ')||'尚無三角驗證資料')}</div></div>
       <div class="dense-extra"><h3>📋 文件四大策略 <span class="dense-pending">${val(row.doc_strategy?.score)}分</span></h3><div class="full-detail-line">${row.doc_strategy?.c1_market?'✓':'✗'} 大盤 ｜ ${row.doc_strategy?.c2_chip?'✓':'✗'} 籌碼 ｜ ${row.doc_strategy?.c3_tech?'✓':'✗'} 技術MA20 ｜ ${row.doc_strategy?.c4_bs?'✓':'✗'} BS盤</div></div>`;
