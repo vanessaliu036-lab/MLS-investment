@@ -90,7 +90,7 @@ def build_card(code, snap=None, health=None, grade=None,
             import chips
             chip_detail = chips.get_chips_detail(code, asof=chip_asof)
         except Exception as e:
-            print(f"[stock_card] 籌碼細項失敗:{e}")
+            print(f"[stock_card] 籌碼細項失敗:{e}", flush=True)
             chip_detail = {}
     cd = chip_detail or {}
     # 法人占成交量比:用法人當日淨買賣超(張)佔當日成交量(張)的比重,

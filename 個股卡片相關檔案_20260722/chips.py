@@ -199,6 +199,9 @@ def get_chips_detail(code, asof=None):
             and "margin_source_date" in cached
             and "inst_streak" in cached
             and "trust_net_20d" in cached
+            and "dealer_self_d" in cached
+            and "lending_source_date" in cached
+            and "foreign_share_source_date" in cached
             and (not asof or cached.get("source_date") == asof)
             and (not official or cached.get("source_date") == official.get("source_date"))):
         return cached
