@@ -214,24 +214,32 @@ def assign_tier(sector_opportunity: bool, cond_stats: dict,
     caveat = (f"⚠ 個股層區分為 DESCRIPTIVE_ONLY(n={n},未經 walk-forward/"
               f"max-stat/獨立窗驗證),不得解讀為已驗證的個股選股 edge")
     if pos >= PRIMARY_POSITIVE_RATE:
-        reasons.append(f"訊號觸發日勝率 {pos:.1f}% 達主榜線(n={n})")
+        reasons.append(f"Historical Net Win Rate {pos:.1f}% meets primary threshold (n={n})")
         reasons.append(caveat)
         return "PRIMARY", reasons
 
+    # ⚠ 2026-08-25 定案:這段文字曾用 P(+3%)/PF/ExpUpside/勝率/「payoff 結構強」
+    # 這種容易被誤讀成預測值的縮寫——UI 上面六項數字已經全部改成 Historical
+    # 前綴,下面這行 reason 卻突然寫得像模型輸出,語意會衝突。這裡只改文案,
+    # 分支條件(pos/pf/wl/up/hit 與四個 HP_* 門檻的比較)完全不動,
+    # 見 test_opportunity.py::test_reasons_wording_change_does_not_touch_tiering。
     hp = []
     if hit >= HP_HIT_RATE:
-        hp.append(f"P(+3%)={hit:.1f}%")
+        hp.append(f"Historical +3% Hit Rate {hit:.1f}%")
     if pf >= HP_PF:
-        hp.append(f"PF={pf:.2f}")
+        hp.append(f"Historical PF {pf:.2f}")
     if wl >= HP_WIN_LOSS:
-        hp.append(f"賺賠比={wl:.2f}")
+        hp.append(f"Avg Win/Loss {wl:.2f}×")
     if up >= HP_EXPECTED_UPSIDE:
-        hp.append(f"ExpUpside={up:.1f}%")
+        hp.append(f"Historical Avg Upside {up:.1f}%")
     if hp:
-        reasons.append(f"勝率 {pos:.1f}% 未達主榜線,但訊號觸發日 payoff 結構強:"
-                       + "、".join(hp) + f"(n={n})")
+        reasons.append(f"Historical Net Win Rate {pos:.1f}% below primary threshold, "
+                       f"but historical conditional payoff profile stands out (n={n})")
+        reasons.append("Frozen signal conditional history: " + " · ".join(hp)
+                       + " · DESCRIPTIVE ONLY")
     else:
-        reasons.append(f"訊號觸發日勝率 {pos:.1f}%、無突出 payoff 特徵(n={n})")
+        reasons.append(f"Historical Net Win Rate {pos:.1f}%, no standout "
+                       f"historical conditional payoff profile (n={n})")
     reasons.append(caveat)
     return "HIGH_POTENTIAL", reasons
 

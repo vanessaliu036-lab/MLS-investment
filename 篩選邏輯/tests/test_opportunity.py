@@ -319,6 +319,67 @@ def test_audit_fields_are_stored():
     assert r["conditional_stats_t10"]["n"] is not None
 
 
+# ══ tier_reasons 文案改版(2026-08-25,presentation text only)══════
+
+def test_reasons_wording_change_does_not_touch_tiering():
+    """⚠ 2026-08-25:tier_reasons 的字樣從 P(+3%)/PF/ExpUpside/勝率/
+    「payoff 結構強」改成 Historical 前綴的英文文案,原因是 UI 六項數字
+    已經全部標 Historical + DESCRIPTIVE ONLY,舊縮寫會讓下面這行 reason
+    讀起來像模型預測值,產生語意衝突。
+
+    這條測試鎖的是「只改字,不改判斷」——同一組輸入在改版前後,
+    tier 與四個 HP_* 門檻的比較結果必須完全相同,只有 reasons 的文字
+    改變。用門檻邊界值(HP_HIT_RATE/HP_PF/HP_WIN_LOSS/HP_EXPECTED_UPSIDE
+    附近)逐一測試,確保沒有任何比較運算子被順手改動。
+    """
+    def stats(pos, pf, up, hit, aw, al):
+        return {"insufficient": False, "n": 40, "net_positive_rate": pos,
+                "profit_factor": pf, "expected_upside": up, "p_hit_3pct": hit,
+                "net_expectancy": 1.0, "expected_downside": -5.0,
+                "avg_win": aw, "avg_loss": al}
+
+    # 1) 剛好達主榜線 → PRIMARY,且不再出現舊縮寫
+    tier, reasons = osc.assign_tier(True, stats(osc.PRIMARY_POSITIVE_RATE, 1.0, 1.0, 1.0, 1.0, -1.0))
+    assert tier == "PRIMARY"
+    joined = " ".join(reasons)
+    assert "Historical Net Win Rate" in joined
+    assert "訊號觸發日勝率" not in joined
+
+    # 2) 未達主榜線,但四項 HP 門檻全部剛好壓線達標 → 全部進 hp 清單
+    #    賺賠比 = avg_win/|avg_loss|,湊 2.0(HP_WIN_LOSS)
+    tier, reasons = osc.assign_tier(
+        True, stats(osc.PRIMARY_POSITIVE_RATE - 1, osc.HP_PF, osc.HP_EXPECTED_UPSIDE,
+                    osc.HP_HIT_RATE, 10.0, -5.0))
+    assert tier == "HIGH_POTENTIAL"
+    joined = " ".join(reasons)
+    for old in ("P(+3%)=", "ExpUpside=", "賺賠比=", "payoff 結構強", "訊號觸發日勝率"):
+        assert old not in joined, f"舊縮寫 {old!r} 不該再出現"
+    assert "Historical +3% Hit Rate" in joined
+    assert "Historical PF" in joined
+    assert "Avg Win/Loss" in joined
+    assert "Historical Avg Upside" in joined
+    assert "DESCRIPTIVE ONLY" in joined
+
+    # 3) 四項 HP 門檻全部沒達標 → 落到「無突出」分支,文字也要換新但 tier 不變
+    tier, reasons = osc.assign_tier(True, stats(1.0, 0.1, 0.1, 0.1, 1.0, -10.0))
+    assert tier == "HIGH_POTENTIAL"
+    joined = " ".join(reasons)
+    assert "no standout" in joined
+    assert "無突出 payoff 特徵" not in joined
+
+    # 4) 六項指標本身、frozen 常數、snapshot_hash 用到的欄位都不受這次改動影響
+    assert osc.PRIMARY_POSITIVE_RATE == 55.0
+    assert osc.HP_PF == 1.8 and osc.HP_WIN_LOSS == 2.0
+    assert osc.HP_EXPECTED_UPSIDE == 5.0 and osc.HP_HIT_RATE == 65.0
+    b = _bars([100 + i for i in range(300)])
+    s = osc.realized_opportunity_stats(b, horizon=10)
+    for k in ("p_hit_3pct", "expected_upside", "expected_downside",
+              "net_positive_rate", "profit_factor", "net_expectancy"):
+        assert k in s, k
+    r = osc.score_one("9999", b, {}, sector_rank_pct=0.95, stage=None)
+    assert r["score_version"] == osc.VERSION
+
+
 def test_snapshot_hash_covers_full_semantic_payload():
     """⚠ 只 hash tier + 六項指標不夠:底層 signal/mapping/scorer 改版但 tier
     恰好沒變時會假 no-op,歷史就被偷偷重寫。每一個語意欄位改動都必須讓
