@@ -236,20 +236,73 @@ def test_future_bars_do_not_change_todays_score():
     assert a["n"] == c["n"] and a["expected_upside"] == c["expected_upside"]
 
 
-def test_retroactive_snapshot_write_is_refused():
-    """sidecar 更新後不得回頭重算並覆寫舊快照 —— 否則 live 樣本被事後修改。"""
-    import tempfile, os, datetime as dt, sqlite3
+def _snap_row(code="9999", build="sidecar-1", hmax="2026-08-20"):
+    return {"code": code, "tier": "WATCH", "tier_reasons": [],
+            "conditional_stats_t10": {"n": 40, "outcome_matured_through": "2026-07-23"},
+            "display_stats_t10": {}, "sidecar_build_id": build,
+            "history_max_date": hmax, "score_date": "2026-08-24"}
+
+
+def test_append_new_dates_is_never_blocked():
+    """⚠ 已有 8/24 絕不得阻擋 8/25、8/26 寫入 —— 否則 live 累積會停住。"""
+    import tempfile, os, datetime as dt
     import opportunity_snapshot as osnap
     db = os.path.join(tempfile.mkdtemp(), "t.db")
-    row = {"code": "9999", "tier": "WATCH", "tier_reasons": [],
-           "conditional_stats_t10": {}, "display_stats_t10": {}}
-    osnap.write_snapshot(dt.date(2026, 8, 24), [row], db)
-    osnap.write_snapshot(dt.date(2026, 8, 25), [row], db)      # 往後寫:可以
+    assert osnap.write_snapshot(dt.date(2026, 8, 24), [_snap_row()], db) == 1
+    assert osnap.write_snapshot(dt.date(2026, 8, 25), [_snap_row()], db) == 1
+    assert osnap.write_snapshot(dt.date(2026, 8, 26), [_snap_row()], db) == 1
+    with osnap.store.conn(db) as c:
+        n = c.execute(f"SELECT COUNT(DISTINCT data_date) FROM {osnap.TABLE}").fetchone()[0]
+    assert n == 3
+
+
+def test_same_day_rerun_with_identical_input_is_noop():
+    """輸入完全相同 → idempotent no-op,不寫也不報錯。"""
+    import tempfile, os, datetime as dt
+    import opportunity_snapshot as osnap
+    db = os.path.join(tempfile.mkdtemp(), "t.db")
+    assert osnap.write_snapshot(dt.date(2026, 8, 24), [_snap_row()], db) == 1
+    assert osnap.write_snapshot(dt.date(2026, 8, 24), [_snap_row()], db) == 0   # no-op
+
+
+def test_same_day_rerun_with_changed_sidecar_is_refused():
+    """sidecar 版本或歷史截止日變了就重跑 → 拒絕,不得靜默覆寫當天樣本。"""
+    import tempfile, os, datetime as dt
+    import opportunity_snapshot as osnap
+    db = os.path.join(tempfile.mkdtemp(), "t.db")
+    osnap.write_snapshot(dt.date(2026, 8, 24), [_snap_row(build="sidecar-1")], db)
+    for changed in (_snap_row(build="sidecar-2"),
+                    _snap_row(hmax="2026-08-22")):
+        try:
+            osnap.write_snapshot(dt.date(2026, 8, 24), [changed], db)
+            assert False, "應該拒絕靜默覆寫"
+        except osnap.SnapshotMutationRefused:
+            pass
+
+
+def test_retroactive_snapshot_write_is_refused():
+    """舊日期不可變:已有更新的日期後,不得回頭改寫舊日期。"""
+    import tempfile, os, datetime as dt
+    import opportunity_snapshot as osnap
+    db = os.path.join(tempfile.mkdtemp(), "t.db")
+    osnap.write_snapshot(dt.date(2026, 8, 24), [_snap_row()], db)
+    osnap.write_snapshot(dt.date(2026, 8, 25), [_snap_row()], db)      # append 可以
     try:
-        osnap.write_snapshot(dt.date(2026, 8, 24), [row], db)  # 回頭寫:拒絕
+        osnap.write_snapshot(dt.date(2026, 8, 24), [_snap_row(build="x")], db)
         assert False, "應該拒絕回溯覆寫"
     except osnap.RetroactiveWriteRefused:
         pass
+
+
+def test_same_day_partial_backfill_appends_only_missing():
+    """同日補跑:已存在的不動,只補當時漏掉的股票。"""
+    import tempfile, os, datetime as dt
+    import opportunity_snapshot as osnap
+    db = os.path.join(tempfile.mkdtemp(), "t.db")
+    osnap.write_snapshot(dt.date(2026, 8, 24), [_snap_row("1111")], db)
+    n = osnap.write_snapshot(dt.date(2026, 8, 24),
+                             [_snap_row("1111"), _snap_row("2222")], db)
+    assert n == 1        # 只寫入新的那檔
 
 
 def test_audit_fields_are_stored():

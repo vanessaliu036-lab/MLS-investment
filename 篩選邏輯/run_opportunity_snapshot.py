@@ -191,7 +191,16 @@ def main() -> int:
                        "history_max_date": hmax,
                        "sidecar_build_id": ohist.build_id()}))
 
-        n = osnap.write_snapshot(d, scored)
+        try:
+            n = osnap.write_snapshot(d, scored)
+        except osnap.SnapshotMutationRefused as exc:
+            # 同日重跑但輸入已變 —— 這是設計上的拒絕,不是程式錯誤。
+            # 當天的 live 樣本必須保持當時看到的狀態。
+            print(f"[opportunity] ✋ {exc}", flush=True)
+            return 3
+        except osnap.RetroactiveWriteRefused as exc:
+            print(f"[opportunity] ✋ {exc}", flush=True)
+            return 3
         b = osnap.backfill()
 
         tiers: dict[str, int] = {}
@@ -202,8 +211,9 @@ def main() -> int:
         print(f"[opportunity] {d} 快照 {n} 列 / 回填 {b} 列 / 族群 Top10% {top} 檔 / "
               f"個股層可用 {per_stock}/{len(scored)} / 分層 {tiers}", flush=True)
         if n == 0:
-            print("[opportunity] ⚠ 一列都沒寫入", flush=True)
-            return 1
+            # append-only 語意下,0 列代表「同日重跑且結果完全相同」= 正常的
+            # idempotent no-op,不是失敗。
+            print("[opportunity] (同日重跑,結果與原始快照一致 → no-op)", flush=True)
         return 0
     except Exception as e:
         print(f"[opportunity] 失敗: {type(e).__name__}: {e}", flush=True)

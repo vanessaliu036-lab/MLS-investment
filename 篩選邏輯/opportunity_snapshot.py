@@ -10,6 +10,7 @@ T+10 / T+15 的實際結果由 backfill() 到期後自動回填。
 """
 from __future__ import annotations
 import datetime as _dt
+import hashlib as _hashlib
 
 import store
 import opportunity_score as osc
@@ -52,6 +53,7 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
     entry_open REAL,
     actual_mfe_t10 REAL, actual_mae_t10 REAL, actual_term_t10 REAL, actual_hit_t10 INTEGER,
     actual_mfe_t15 REAL, actual_mae_t15 REAL, actual_term_t15 REAL, actual_hit_t15 INTEGER,
+    snapshot_hash TEXT,                -- 稽核輸入 + 指標的指紋,用於同日重跑比對
     score_version TEXT, created_at TEXT,
     PRIMARY KEY (data_date, code)
 );
@@ -64,25 +66,57 @@ def ensure(db_path: str = "mls.db") -> None:
 
 
 class RetroactiveWriteRefused(RuntimeError):
-    """試圖覆寫舊日期的 snapshot —— sidecar 更新後不得回頭重算歷史快照。"""
+    """試圖覆寫**較舊**日期的 snapshot —— 歷史快照一旦寫入即凍結。"""
+
+
+class SnapshotMutationRefused(RuntimeError):
+    """同日重跑,但輸入(sidecar 版本 / 歷史截止日 / 指標)已經改變。
+
+    不得靜默覆寫 —— 那會讓當天的 live 樣本被事後修改。
+    """
+
+
+def _row_hash(row: dict) -> str:
+    """稽核輸入 + 分層結果的指紋。
+
+    只納入「會改變這張快照意義」的欄位:sidecar 版本、歷史截止日、
+    成熟截止日、分層、六項指標。created_at 之類的執行時戳刻意排除,
+    否則每次重跑都會不同,idempotent 判斷會永遠失敗。
+    """
+    keys = ("data_date", "code", "sidecar_build_id", "history_max_date",
+            "outcome_matured_through", "stats_sample_n", "tier",
+            "in_top_sector", "sector_rank_pct", "pa_stage",
+            "p_hit_3pct", "expected_upside", "expected_downside",
+            "net_positive_rate", "profit_factor", "net_expectancy",
+            "stats_basis", "stats_conditioning", "score_version")
+    payload = "|".join(f"{k}={row.get(k)!r}" for k in keys)
+    return _hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def write_snapshot(data_date: _dt.date, scored: list[dict],
-                   db_path: str = "mls.db", allow_same_day: bool = True) -> int:
-    """寫入當日 snapshot。
+                   db_path: str = "mls.db") -> int:
+    """寫入當日 snapshot —— **append-only**。
 
-    ⚠ **不可回溯**:sidecar 之後補了新資料,也不得重算並覆寫舊日期的快照 ——
-      8/24 的 PRIMARY/HIGH_POTENTIAL 必須永遠保持 8/24 當時看到的狀態,
-      否則 live validation 的樣本會被事後修改,失去前瞻性。
-      同一天內重跑允許(資料補齊後補寫),跨日覆寫一律拒絕。
+    語意(2026-08-24 定案):
+      1. **新日期照常新增**。已有 8/24 不得阻擋 8/25、8/26 寫入。
+      2. **舊日期不可變**:(code, score_date) 已存在就永不以新的歷史資料覆寫。
+      3. **同日重跑**:
+         · 稽核輸入與指標完全相同 → idempotent NO-OP(不寫、不報錯)
+         · sidecar_build_id / history_max_date / 指標有變 →
+           raise SnapshotMutationRefused,**不靜默覆寫**
+      理由:live validation 的價值全在「當時看到什麼就是什麼」。
+      一旦允許事後改寫,整條 evidence chain 就不再是前瞻的。
     """
     ensure(db_path)
+    now = _dt.datetime.now().isoformat(timespec="seconds")
+    d = data_date.isoformat()
     with store.conn(db_path) as c:
         newest = c.execute(f"SELECT MAX(data_date) FROM {TABLE}").fetchone()[0]
-    if newest and data_date.isoformat() < newest:
+    if newest and d < newest:
         raise RetroactiveWriteRefused(
-            f"拒絕回溯覆寫:要寫 {data_date},但表中已有更新的 {newest}。"
-            f"快照一旦寫入即凍結,sidecar 更新不得回頭重算。")
+            f"拒絕回溯覆寫:要寫 {d},但表中已有更新的 {newest}。"
+            f"快照一旦寫入即凍結,sidecar 更新不得回頭重算。"
+            f"(新增更新的日期不受此限)")
     now = _dt.datetime.now().isoformat(timespec="seconds")
     rows = []
     for r in scored:
@@ -134,6 +168,26 @@ def write_snapshot(data_date: _dt.date, scored: list[dict],
         })
     if not rows:
         return 0
+    for r in rows:
+        r["snapshot_hash"] = _row_hash(r)
+
+    # ── 同日重跑:比對指紋,決定 no-op / 拒絕 / 寫入 ──────────────────
+    with store.conn(db_path) as c:
+        existing = {r[0]: r[1] for r in c.execute(
+            f"SELECT code, snapshot_hash FROM {TABLE} WHERE data_date=?", (d,))}
+    if existing:
+        changed = [r["code"] for r in rows
+                   if r["code"] in existing and existing[r["code"]] != r["snapshot_hash"]]
+        if changed:
+            raise SnapshotMutationRefused(
+                f"{d} 已有快照,但重跑結果與原始不同({len(changed)} 檔,"
+                f"例如 {changed[:5]})。sidecar 版本或歷史截止日已改變 —— "
+                f"不得靜默覆寫當天的 live 樣本。要重建請先明確刪除該日資料。")
+        new_rows = [r for r in rows if r["code"] not in existing]
+        if not new_rows:
+            return 0        # 完全相同 → idempotent no-op
+        rows = new_rows
+
     cols = list(rows[0])
     ph = ",".join("?" * len(cols))
     with store.conn(db_path) as c:
