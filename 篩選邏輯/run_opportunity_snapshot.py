@@ -14,6 +14,7 @@ import os
 import sys
 
 import config
+import hashlib as _hashlib
 import store
 import opportunity_score as osc
 import opportunity_snapshot as osnap
@@ -177,6 +178,11 @@ def main() -> int:
         except Exception as exc:
             print(f"[opportunity] stage 併入略過(不影響本體): {exc}", flush=True)
 
+        # sector mapping 版本:mapping 改了 hash 必須跟著變,
+        # 否則「族群定義換過」的快照會被誤判成相同。
+        sector_map_version = _hashlib.sha256(
+            repr(sorted(config.CODE_GROUP.items())).encode()).hexdigest()[:12]
+
         scored = []
         for c in codes:
             sec = config.CODE_GROUP.get(c, "其他")
@@ -189,7 +195,10 @@ def main() -> int:
                 signal_days=signal_days.get(c, set()),
                 audit={"score_date": d.isoformat(),
                        "history_max_date": hmax,
-                       "sidecar_build_id": ohist.build_id()}))
+                       "sidecar_build_id": ohist.build_id()},
+                sector_id=sec,
+                sector_map_version=sector_map_version,
+                raw_sector_signal=rs_by_code.get(c)))
 
         try:
             n = osnap.write_snapshot(d, scored)

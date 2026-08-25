@@ -38,6 +38,10 @@ HP_EXPECTED_UPSIDE = 5.0
 HP_HIT_RATE = 65.0             # P(+3%) 高於獨立窗 in_top10 水準
 
 VERSION = "opportunity_score_v1_2026-08-24"
+# 凍結訊號的身分與版本 —— 進 snapshot hash,改版就不可能假 no-op
+FROZEN_SIGNAL_NAME = "sec_rs_10d@sector_median_rank_top10"
+FROZEN_SIGNAL_VERSION = "opportunity_frozen_v1_2026-08-24"
+CONDITIONING_VERSION = "conditional_on_frozen_signal_v1"
 EVIDENCE_LEVEL = "REPLICATED — PENDING LIVE"
 
 # ── 條件參考值(**僅供 debug/對照,不得參與 ranking**)──────────────
@@ -235,7 +239,10 @@ def assign_tier(sector_opportunity: bool, cond_stats: dict,
 def score_one(code: str, bars: list[dict], sector_bars: dict[str, list],
               sector_rank_pct: Optional[float], stage: Optional[str],
               signal_days: Optional[set] = None,
-              audit: Optional[dict] = None) -> dict:
+              audit: Optional[dict] = None,
+              sector_id: Optional[str] = None,
+              sector_map_version: Optional[str] = None,
+              raw_sector_signal: Optional[float] = None) -> dict:
     """單檔的完整 production 計分。
 
     回傳兩套統計,用途嚴格分開:
@@ -261,6 +268,14 @@ def score_one(code: str, bars: list[dict], sector_bars: dict[str, list],
         "code": code,
         "signal_in_top_sector": bool(in_top),
         "sector_opportunity": bool(in_top),
+        # ── 訊號身分:改版就必須讓 hash 變,不能靠 tier 恰好相同蒙混 ──
+        "frozen_signal_name": FROZEN_SIGNAL_NAME,
+        "frozen_signal_version": FROZEN_SIGNAL_VERSION,
+        "conditioning_version": CONDITIONING_VERSION,
+        "sector_id": sector_id,
+        "sector_map_version": sector_map_version,
+        "raw_sector_signal": (round(raw_sector_signal, 8)
+                              if raw_sector_signal is not None else None),
         "sector_rank_pct": (round(sector_rank_pct, 4)
                             if sector_rank_pct is not None else None),
         "pa_stage": stage,

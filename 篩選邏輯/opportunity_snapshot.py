@@ -30,6 +30,8 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
     evidence_level TEXT,
     sector_level_evidence TEXT,
     stock_level_evidence TEXT,
+    frozen_signal_name TEXT, frozen_signal_version TEXT, conditioning_version TEXT,
+    sector_id TEXT, sector_map_version TEXT, raw_sector_signal REAL,
     -- ── 六項原始指標(章程第 10 條,T+10 口徑)──
     p_hit_3pct REAL, expected_upside REAL, expected_downside REAL,
     net_positive_rate REAL, profit_factor REAL, net_expectancy REAL,
@@ -76,21 +78,43 @@ class SnapshotMutationRefused(RuntimeError):
     """
 
 
-def _row_hash(row: dict) -> str:
-    """稽核輸入 + 分層結果的指紋。
+# ── 完整 semantic payload(canonical,順序固定)────────────────────
+# ⚠ 只 hash tier + 六項指標**不夠**:底層 frozen signal 判定變了、
+#   sector mapping 改版、scorer 改版,但 tier 恰好沒變時,hash 會相同 →
+#   假 no-op,歷史就被偷偷重寫了。因此把「決定這張快照語意」的東西全部納入。
+#   execution timestamp(created_at)刻意排除,否則永遠判不出 idempotent。
+_HASH_KEYS = (
+    "data_date", "code",
+    # 訊號身分與版本
+    "frozen_signal_name", "frozen_signal_version", "conditioning_version",
+    "sector_id", "sector_map_version",
+    "sector_opportunity", "raw_sector_signal", "sector_rank_pct",
+    "pa_stage",
+    # 分層結果
+    "tier", "tier_reasons",
+    # 六項指標
+    "p_hit_3pct", "expected_upside", "expected_downside",
+    "net_positive_rate", "profit_factor", "net_expectancy",
+    # 統計性質與樣本
+    "stats_sample_n", "stats_basis", "stats_conditioning", "stats_usage",
+    "stock_level_available",
+    # 證據等級
+    "sector_level_evidence", "stock_level_evidence", "evidence_level",
+    # as-of 稽核
+    "history_max_date", "outcome_matured_through", "sidecar_build_id",
+    # 程式版本
+    "score_version",
+)
 
-    只納入「會改變這張快照意義」的欄位:sidecar 版本、歷史截止日、
-    成熟截止日、分層、六項指標。created_at 之類的執行時戳刻意排除,
-    否則每次重跑都會不同,idempotent 判斷會永遠失敗。
+
+def _row_hash(row: dict) -> str:
+    """完整 semantic snapshot payload 的 canonical hash。
+
+    任何語意改變(含 signal 改版 / sector mapping 改版 / scorer 改版)
+    都會讓 hash 不同 → SnapshotMutationRefused,不可能靜默重寫歷史。
     """
-    keys = ("data_date", "code", "sidecar_build_id", "history_max_date",
-            "outcome_matured_through", "stats_sample_n", "tier",
-            "in_top_sector", "sector_rank_pct", "pa_stage",
-            "p_hit_3pct", "expected_upside", "expected_downside",
-            "net_positive_rate", "profit_factor", "net_expectancy",
-            "stats_basis", "stats_conditioning", "score_version")
-    payload = "|".join(f"{k}={row.get(k)!r}" for k in keys)
-    return _hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+    payload = "\n".join(f"{k}={row.get(k)!r}" for k in _HASH_KEYS)
+    return _hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def write_snapshot(data_date: _dt.date, scored: list[dict],
@@ -132,6 +156,12 @@ def write_snapshot(data_date: _dt.date, scored: list[dict],
             "evidence_level": r.get("evidence_level"),
             "sector_level_evidence": r.get("sector_level_evidence"),
             "stock_level_evidence": r.get("stock_level_evidence"),
+            "frozen_signal_name": r.get("frozen_signal_name"),
+            "frozen_signal_version": r.get("frozen_signal_version"),
+            "conditioning_version": r.get("conditioning_version"),
+            "sector_id": r.get("sector_id"),
+            "sector_map_version": r.get("sector_map_version"),
+            "raw_sector_signal": r.get("raw_sector_signal"),
             "p_hit_3pct": t10.get("p_hit_3pct"),
             "expected_upside": t10.get("expected_upside"),
             "expected_downside": t10.get("expected_downside"),

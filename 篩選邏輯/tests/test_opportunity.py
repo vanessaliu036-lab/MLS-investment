@@ -317,3 +317,42 @@ def test_audit_fields_are_stored():
     assert r["sidecar_build_id"] == "sidecar-test"
     assert r["display_stats_t10"]["outcome_matured_through"] is not None
     assert r["conditional_stats_t10"]["n"] is not None
+
+
+def test_snapshot_hash_covers_full_semantic_payload():
+    """⚠ 只 hash tier + 六項指標不夠:底層 signal/mapping/scorer 改版但 tier
+    恰好沒變時會假 no-op,歷史就被偷偷重寫。每一個語意欄位改動都必須讓
+    hash 改變。"""
+    import opportunity_snapshot as osnap
+    base = {"data_date": "2026-08-24", "code": "9999",
+            "frozen_signal_name": "sec_rs_10d@sector_median_rank_top10",
+            "frozen_signal_version": "v1", "conditioning_version": "c1",
+            "sector_id": "PCB材料", "sector_map_version": "map1",
+            "sector_opportunity": 1, "raw_sector_signal": 0.0123,
+            "sector_rank_pct": 1.0, "pa_stage": None,
+            "tier": "PRIMARY", "tier_reasons": "x",
+            "p_hit_3pct": 90.0, "expected_upside": 14.2,
+            "expected_downside": -7.4, "net_positive_rate": 70.0,
+            "profit_factor": 4.35, "net_expectancy": 6.3,
+            "stats_sample_n": 40, "stats_basis": "per_stock_conditional_on_signal",
+            "stats_conditioning": "conditional_on_frozen_signal",
+            "stats_usage": "TIERING", "stock_level_available": 1,
+            "sector_level_evidence": "REPLICATED", "stock_level_evidence": "DESCRIPTIVE_ONLY",
+            "evidence_level": "REPLICATED — PENDING LIVE",
+            "history_max_date": "2026-08-20", "outcome_matured_through": "2026-07-23",
+            "sidecar_build_id": "sidecar-1", "score_version": "v1"}
+    h0 = osnap._row_hash(base)
+
+    # 每一個語意欄位單獨改動,hash 都必須不同
+    for k in osnap._HASH_KEYS:
+        mutated = dict(base)
+        mutated[k] = "MUTATED" if not isinstance(base.get(k), (int, float)) else 999
+        assert osnap._row_hash(mutated) != h0, f"{k} 改變後 hash 未變 —— 會造成假 no-op"
+
+    # 關鍵情境:signal 改版但 tier 恰好相同 → 仍須偵測到
+    same_tier_new_signal = dict(base, frozen_signal_version="v2")
+    assert same_tier_new_signal["tier"] == base["tier"]
+    assert osnap._row_hash(same_tier_new_signal) != h0
+
+    # execution timestamp 不進 hash(否則永遠判不出 idempotent)
+    assert osnap._row_hash(dict(base, created_at="2026-08-24T23:59:59")) == h0
