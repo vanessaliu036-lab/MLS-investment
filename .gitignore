@@ -42,3 +42,4 @@ chips_cache.json
 *.bak-*
 *.bak.*
 個股卡片相關檔案_20260722/reports/
+篩選邏輯/opportunity_history.db

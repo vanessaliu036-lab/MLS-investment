@@ -121,3 +121,63 @@ def test_frozen_constants_pinned():
     assert osc.SECTOR_TOP_PCT == 0.90
     assert osc.MIN_SECTOR_PEERS == 3
     assert osc.PRIMARY_POSITIVE_RATE == 55.0
+
+
+# ══ Sidecar 架構(2026-08-24)════════════════════════════════════════
+
+def test_insufficient_history_does_not_borrow_shared_constants():
+    """個股歷史不足時,六項指標不得填入所有股票共用的條件值 ——
+    那會讓 UI 看起來有個股分層,實際上沒有。"""
+    short = _bars([100.0] * 15)          # 遠低於 MIN_TRAILING_N
+    r = osc.score_one("9999", short, {}, sector_rank_pct=0.95, stage=None)
+    assert r["t10"]["stats_basis"] == "INSUFFICIENT_HISTORY"
+    assert r["stock_level_available"] is False
+    for k in ("p_hit_3pct", "expected_upside", "net_positive_rate", "profit_factor"):
+        assert k not in r["t10"], f"{k} 不該有值"
+    # 只有族群層訊號是真實資訊,理由必須明說
+    assert any("NOT YET AVAILABLE" in x for x in r["tier_reasons"])
+
+
+def test_conditional_reference_is_reference_only():
+    """條件參考值可保留供對照,但不得參與 ranking。"""
+    short = _bars([100.0] * 15)
+    r = osc.score_one("9999", short, {}, sector_rank_pct=0.95, stage=None)
+    assert "conditional_reference" in r            # 保留供對照
+    assert r["t10"].get("p_hit_3pct") is None      # 但沒進統計欄位
+    assert not hasattr(osc, "CONDITIONAL_FALLBACK")  # 舊的 ranking 用常數已移除
+
+
+def test_coverage_contract_degrades_per_stock_not_pipeline():
+    """契約失敗只降級該股票,不得讓整條盤後 pipeline 失敗。"""
+    import tempfile, os
+    import opportunity_history as oh
+    db = os.path.join(tempfile.mkdtemp(), "h.db")
+    # 日期必須貼近 production_date,否則會(正確地)觸發 staleness 檢查
+    rows = [("AAA", f"2026-{m:02d}-{d:02d}", 10, 11, 9, 10, 1000, "t")
+            for m in range(3, 9) for d in range(1, 21)]      # 3~8 月,120 天
+    rows += [("BBB", "2026-08-20", 10, 11, 9, 10, 1000, "t")]   # 只有 1 天
+    oh.rebuild_from_rows(rows, db)
+    cov = oh.coverage_contract(["AAA", "BBB"], "2026-08-24", db)
+    assert cov["AAA"]["ok"] is True
+    assert cov["BBB"]["ok"] is False                 # 只有這檔被降級
+    assert cov["_summary"]["ok_codes"] == 1          # 彙總照樣回傳,沒有拋例外
+
+
+def test_sidecar_reads_oldest_to_newest():
+    """sidecar 明確由舊到新 —— 與 store.read_recent 相反,這是曾出過的坑。"""
+    import tempfile, os
+    import opportunity_history as oh
+    db = os.path.join(tempfile.mkdtemp(), "h.db")
+    oh.rebuild_from_rows(
+        [("AAA", f"2026-01-{d:02d}", 10, 11, 9, 10 + d, 1000, "t") for d in range(1, 6)], db)
+    bars = oh.read_bars("AAA", "2026-01-31", 10, db)
+    assert [b["data_date"] for b in bars] == sorted(b["data_date"] for b in bars)
+    assert bars[-1]["close"] > bars[0]["close"]      # 最後一根是最新
+
+
+def test_missing_sidecar_does_not_raise():
+    """sidecar 不存在時回傳全部降級,不得拋例外拖垮盤後流程。"""
+    import opportunity_history as oh
+    cov = oh.coverage_contract(["AAA"], "2026-08-24", "/nonexistent/path.db")
+    assert cov["_summary"]["store_missing"] is True
+    assert cov["AAA"]["ok"] is False

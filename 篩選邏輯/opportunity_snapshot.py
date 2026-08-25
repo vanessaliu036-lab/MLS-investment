@@ -31,7 +31,9 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
     p_hit_3pct REAL, expected_upside REAL, expected_downside REAL,
     net_positive_rate REAL, profit_factor REAL, net_expectancy REAL,
     avg_win REAL, avg_loss REAL, mfe_given_hit REAL, trailing_n INTEGER,
-    stats_basis TEXT,                  -- per_stock / conditional_fallback
+    stats_basis TEXT,                  -- per_stock / INSUFFICIENT_HISTORY
+    stock_level_available INTEGER,     -- 個股層指標是否可用
+    sector_opportunity INTEGER,        -- 族群層訊號是否觸發
     -- ── 實際結果(到期回填,這才是 live 驗證的依據)──
     entry_open REAL,
     actual_mfe_t10 REAL, actual_mae_t10 REAL, actual_term_t10 REAL, actual_hit_t10 INTEGER,
@@ -70,6 +72,8 @@ def write_snapshot(data_date: _dt.date, scored: list[dict],
             "avg_win": t10.get("avg_win"), "avg_loss": t10.get("avg_loss"),
             "mfe_given_hit": t10.get("mfe_given_hit"), "trailing_n": t10.get("n"),
             "stats_basis": t10.get("stats_basis"),
+            "stock_level_available": int(bool(r.get("stock_level_available"))),
+            "sector_opportunity": int(bool(r.get("sector_opportunity"))),
             "entry_open": None,
             "actual_mfe_t10": None, "actual_mae_t10": None,
             "actual_term_t10": None, "actual_hit_t10": None,
@@ -140,7 +144,11 @@ def backfill(db_path: str = "mls.db") -> int:
 def live_summary(db_path: str = "mls.db", horizon: int = 10) -> dict:
     """live forward 驗證讀出:訊號組 vs 非訊號組的實際 +3% 命中率。
 
-    這是唯一沒有回看偏誤的證據來源。樣本不足時只列出,不下結論。
+    這是唯一沒有回看偏誤的證據來源。
+
+    ⚠ 樣本未達門檻時**照樣顯示 n 與當下數字**,只是標 DESCRIPTIVE ONLY。
+      理由(2026-08-24 定案):如果 live 從第 20 筆就完全反向,我們必須看得見;
+      看得見不等於可以據此改 frozen signal —— 那是兩件事。
     """
     ensure(db_path)
     out = {}
@@ -165,7 +173,12 @@ def live_summary(db_path: str = "mls.db", horizon: int = 10) -> dict:
                 "expected_downside": round(sum(maes) / len(maes), 2) if maes else None,
                 "net_expectancy": round(sum(terms) / len(terms), 3) if terms else None,
                 "enough": len(rows) >= 100,
+                "status": "CONFIRMATORY" if len(rows) >= 100 else "DESCRIPTIVE ONLY",
             }
+    out["status"] = ("CONFIRMATORY"
+                     if min(out.get("in_top_sector", {}).get("n", 0),
+                            out.get("rest", {}).get("n", 0)) >= 100
+                     else "DESCRIPTIVE ONLY —— 可以看,不得據此改 frozen signal")
     if out.get("in_top_sector", {}).get("n") and out.get("rest", {}).get("n"):
         out["lift_pp"] = round(out["in_top_sector"]["p_hit_3pct"]
                                - out["rest"]["p_hit_3pct"], 2)

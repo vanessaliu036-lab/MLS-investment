@@ -39,14 +39,14 @@ HP_HIT_RATE = 65.0             # P(+3%) 高於獨立窗 in_top10 水準
 VERSION = "opportunity_score_v1_2026-08-24"
 EVIDENCE_LEVEL = "REPLICATED — PENDING LIVE"
 
-# ── 個股歷史不足時的回退基準 ──────────────────────────────────────
-# 來源:2020-07~2023-12 獨立窗(FROZEN_OPPORTUNITY_TARGET_V1.md 的保守估計)。
-# ⚠ 為什麼需要:引擎 daily_bar 目前只有約 20 個交易日歷史,個股自身統計
-#    (需 >= MIN_TRAILING_N=60)全部不足 → 全部落 WATCH,分層失去意義。
-#    回退時報的是「該訊號狀態的歷史條件統計」,不是這一檔自己的統計,
-#    因此 stats_basis 必須標成 "conditional_fallback",UI 不得混為一談。
-#    引擎歷史累積足夠後會自動改用個股自身統計(per_stock)。
-CONDITIONAL_FALLBACK = {
+# ── 條件參考值(**僅供 debug/對照,不得參與 ranking**)──────────────
+# 來源:2020-07~2023-12 獨立窗(FROZEN_OPPORTUNITY_TARGET_V1.md 保守估計)。
+# ⚠ 2026-08-24 定案:這組值對所有股票相同,拿它分層會**製造假的個股差異**
+#    —— UI 看起來像有個股分層,實際上沒有。因此:
+#      · 個股歷史不足時,六項指標一律標 None + INSUFFICIENT_HISTORY
+#      · 該股票不參與 PRIMARY / HIGH_POTENTIAL 的個股層排序
+#      · 本常數只放在 reference 欄位供對照,不進 ranking
+CONDITIONAL_REFERENCE = {
     True: {   # 族群 Top10%
         "p_hit_3pct": 63.30, "expected_upside": 6.86, "expected_downside": -6.45,
         "net_positive_rate": 46.83, "profit_factor": 1.044, "net_expectancy": 0.140,
@@ -148,15 +148,15 @@ def assign_tier(stats: dict, in_top_sector: bool) -> tuple[str, list[str]]:
        一律留在 HIGH_POTENTIAL,不得丟掉。
     """
     if stats.get("insufficient"):
-        return "WATCH", ["樣本不足,僅列出不分級"]
-
-    # 統計採條件回退值時,所有股票的六項指標完全相同(那是族群狀態的
-    # 條件統計,不是個股差異)。此時唯一真實的個股資訊只有訊號狀態本身,
-    # 拿共用常數去分四層會製造假的區別度 —— 只依訊號分兩層,誠實標示。
-    if stats.get("stats_basis") == "conditional_fallback":
+        # 個股層統計不可用 → 只有 sector-level 訊號是真實資訊。
+        # 明確區分兩件事,UI 不得假裝這些股票已有不同的個股 confidence。
         if in_top_sector:
-            return "HIGH_POTENTIAL", ["族群 sec_rs_10d Top10%(凍結訊號觸發)"]
-        return "WATCH", ["族群未進 Top10%"]
+            return "HIGH_POTENTIAL", [
+                "Sector Opportunity = TRUE(sec_rs_10d 族群 Top10%)",
+                "Stock-level differentiation = NOT YET AVAILABLE(個股歷史不足)"]
+        return "WATCH", ["Sector Opportunity = FALSE",
+                         "Stock-level differentiation = NOT YET AVAILABLE"]
+
 
     reasons = []
     pos = stats.get("net_positive_rate") or 0
@@ -203,19 +203,10 @@ def score_one(code: str, bars: list[dict], sector_bars: dict[str, list],
     excluded = (stage == "EXTENDED")
     s10 = realized_opportunity_stats(bars, 10)
     s15 = realized_opportunity_stats(bars, 15)
-    # 個股歷史不足 → 回退到該訊號狀態的歷史條件統計,並明確標示基礎
-    if s10.get("insufficient"):
-        s10 = {**CONDITIONAL_FALLBACK[bool(in_top)], "n": s10.get("n", 0),
-               "insufficient": False, "stats_basis": "conditional_fallback"}
-    else:
-        s10["stats_basis"] = "per_stock"
-    if s15.get("insufficient"):
-        s15 = {**s15, "stats_basis": "conditional_fallback_unavailable"}
-    else:
-        s15["stats_basis"] = "per_stock"
+    # 個股歷史不足 → 六項指標一律 None,不用共用常數製造假的個股差異
+    s10["stats_basis"] = "INSUFFICIENT_HISTORY" if s10.get("insufficient") else "per_stock"
+    s15["stats_basis"] = "INSUFFICIENT_HISTORY" if s15.get("insufficient") else "per_stock"
     tier, reasons = assign_tier(s10, in_top and not excluded)
-    if s10.get("stats_basis") == "conditional_fallback":
-        reasons.append("⚠ 個股歷史不足,統計採歷史條件回退值(非本檔自身)")
     if excluded:
         tier, reasons = "AVOID", ["Pre-Activation EXTENDED(已漲太多,不追)"]
     return {
@@ -229,5 +220,9 @@ def score_one(code: str, bars: list[dict], sector_bars: dict[str, list],
         "evidence_level": EVIDENCE_LEVEL,
         "t10": s10,
         "t15": s15,
+        "stock_level_available": not s10.get("insufficient", False),
+        "sector_opportunity": bool(in_top),
+        # 僅供對照,**不參與 ranking**
+        "conditional_reference": CONDITIONAL_REFERENCE[bool(in_top)],
         "score_version": VERSION,
     }

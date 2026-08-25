@@ -17,6 +17,7 @@ import config
 import store
 import opportunity_score as osc
 import opportunity_snapshot as osnap
+import opportunity_history as ohist
 
 # 當日 daily_bar 覆蓋率門檻。與 run_pa_snapshot 同一理由:
 # live observation 是不能污染的前瞻樣本,寧可缺一天也不要混入半真樣本。
@@ -38,9 +39,31 @@ def main() -> int:
             return 1
 
         codes = [str(c) for c in config.UNIVERSE]
-        # ⚠ store.read_recent 回傳「由新到舊」;本模組全部假設「由舊到新」
-        #   (realized_opportunity_stats 的視窗、sector_rs_10d 的 idx 都是)。
-        #   不反轉會靜默算出反向統計 —— 2026-08-24 首次上線時被覆蓋率護欄擋下。
+
+        # ── 歷史統計一律讀 sidecar,**不把歷史塞進 production DB** ──────
+        #   架構:cache → sidecar → 今日 scoring → mls.db 只存結果。
+        #   coverage contract 任一項失敗只降級該股票,不讓整條盤後流程失敗。
+        cov = ohist.coverage_contract(codes, d.isoformat())
+        summ = cov.get("_summary", {})
+        if summ.get("store_missing"):
+            print(f"[opportunity] ⚠ sidecar 不存在({summ.get('path')}),"
+                  f"個股層統計全部降級為 INSUFFICIENT_HISTORY", flush=True)
+        else:
+            print(f"[opportunity] sidecar coverage {summ['ok_codes']}/{summ['total']} 檔通過"
+                  f"(歷史天數 min={summ['min_days']} 中位={summ['median_days']} "
+                  f"max={summ['max_days']},{summ['oldest']}~{summ['newest']})", flush=True)
+            for c in codes:
+                if not cov[c]["ok"]:
+                    print(f"[opportunity]   ↓ {c} 降級: {'; '.join(cov[c]['reasons'])}",
+                          flush=True)
+
+        hist = {c: (ohist.read_bars(c, d.isoformat(), HISTORY_DAYS)
+                    if cov.get(c, {}).get("ok") else [])
+                for c in codes}
+
+        # 當日 production bar(訊號狀態用這個,不用 sidecar)
+        # ⚠ store.read_recent 回傳「由新到舊」,本模組假設「由舊到新」——
+        #   不反轉會靜默算出反向統計(2026-08-24 上線時被覆蓋率護欄擋下)。
         bars = {c: list(reversed(store.read_recent("daily_bar", c, d, HISTORY_DAYS)))
                 for c in codes}
 
@@ -97,8 +120,10 @@ def main() -> int:
         scored = []
         for c in codes:
             sec = config.CODE_GROUP.get(c, "其他")
+            # 個股統計走 sidecar(不足時傳空 → INSUFFICIENT_HISTORY);
+            # 族群訊號走 production 當日 bar
             scored.append(osc.score_one(
-                c, bars[c], by_sector.get(sec, {}),
+                c, hist[c], by_sector.get(sec, {}),
                 sec_rank.get(sec), stage_by_code.get(c)))
 
         n = osnap.write_snapshot(d, scored)
@@ -108,8 +133,9 @@ def main() -> int:
         for r in scored:
             tiers[r["tier"]] = tiers.get(r["tier"], 0) + 1
         top = sum(1 for r in scored if r["signal_in_top_sector"])
-        print(f"[opportunity] {d} 快照 {n} 列 / 回填 {b} 列 / "
-              f"族群 Top10% {top} 檔 / 分層 {tiers}", flush=True)
+        per_stock = sum(1 for r in scored if r.get("stock_level_available"))
+        print(f"[opportunity] {d} 快照 {n} 列 / 回填 {b} 列 / 族群 Top10% {top} 檔 / "
+              f"個股層可用 {per_stock}/{len(scored)} / 分層 {tiers}", flush=True)
         if n == 0:
             print("[opportunity] ⚠ 一列都沒寫入", flush=True)
             return 1
