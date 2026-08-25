@@ -27,13 +27,27 @@ CREATE TABLE IF NOT EXISTS {TABLE} (
     tier TEXT,                         -- PRIMARY / HIGH_POTENTIAL / WATCH / AVOID
     tier_reasons TEXT,
     evidence_level TEXT,
+    sector_level_evidence TEXT,
+    stock_level_evidence TEXT,
     -- ── 六項原始指標(章程第 10 條,T+10 口徑)──
     p_hit_3pct REAL, expected_upside REAL, expected_downside REAL,
     net_positive_rate REAL, profit_factor REAL, net_expectancy REAL,
     avg_win REAL, avg_loss REAL, mfe_given_hit REAL, trailing_n INTEGER,
-    stats_basis TEXT,                  -- per_stock / INSUFFICIENT_HISTORY
-    stock_level_available INTEGER,     -- 個股層指標是否可用
+    -- DISPLAY_ONLY(unconditional 全歷史)。不得參與分層。
+    disp_p_hit_3pct REAL, disp_expected_upside REAL, disp_expected_downside REAL,
+    disp_net_positive_rate REAL, disp_profit_factor REAL, disp_net_expectancy REAL,
+    disp_n INTEGER,
+    stats_basis TEXT,                  -- per_stock_unconditional / _conditional_on_signal
+    stats_usage TEXT,                  -- DISPLAY_ONLY / TIERING / DESCRIPTIVE_ONLY
+    stats_conditioning TEXT,           -- unconditional / conditional_on_frozen_signal
+    stock_level_available INTEGER,     -- 個股層(conditional)指標是否足以分層
     sector_opportunity INTEGER,        -- 族群層訊號是否觸發
+    -- ── 不可變稽核欄位:snapshot 寫入後不得回頭重算 ──
+    score_date TEXT,                   -- 計分當日
+    history_max_date TEXT,             -- 當時 sidecar 可見的最新歷史日
+    outcome_matured_through TEXT,      -- 最後一個「已完整走完 horizon」的樣本進場日
+    sidecar_build_id TEXT,             -- 當時使用的 sidecar 版本
+    stats_sample_n INTEGER,            -- 分層所用 conditional 統計的樣本數
     -- ── 實際結果(到期回填,這才是 live 驗證的依據)──
     entry_open REAL,
     actual_mfe_t10 REAL, actual_mae_t10 REAL, actual_term_t10 REAL, actual_hit_t10 INTEGER,
@@ -49,13 +63,32 @@ def ensure(db_path: str = "mls.db") -> None:
         c.executescript(DDL)
 
 
+class RetroactiveWriteRefused(RuntimeError):
+    """試圖覆寫舊日期的 snapshot —— sidecar 更新後不得回頭重算歷史快照。"""
+
+
 def write_snapshot(data_date: _dt.date, scored: list[dict],
-                   db_path: str = "mls.db") -> int:
+                   db_path: str = "mls.db", allow_same_day: bool = True) -> int:
+    """寫入當日 snapshot。
+
+    ⚠ **不可回溯**:sidecar 之後補了新資料,也不得重算並覆寫舊日期的快照 ——
+      8/24 的 PRIMARY/HIGH_POTENTIAL 必須永遠保持 8/24 當時看到的狀態,
+      否則 live validation 的樣本會被事後修改,失去前瞻性。
+      同一天內重跑允許(資料補齊後補寫),跨日覆寫一律拒絕。
+    """
     ensure(db_path)
+    with store.conn(db_path) as c:
+        newest = c.execute(f"SELECT MAX(data_date) FROM {TABLE}").fetchone()[0]
+    if newest and data_date.isoformat() < newest:
+        raise RetroactiveWriteRefused(
+            f"拒絕回溯覆寫:要寫 {data_date},但表中已有更新的 {newest}。"
+            f"快照一旦寫入即凍結,sidecar 更新不得回頭重算。")
     now = _dt.datetime.now().isoformat(timespec="seconds")
     rows = []
     for r in scored:
-        t10 = r.get("t10") or {}
+        # 六項指標欄位存 **conditional**(即分層依據);unconditional 另存 display 欄
+        t10 = r.get("conditional_stats_t10") or {}
+        d10 = r.get("display_stats_t10") or {}
         rows.append({
             "data_date": data_date.isoformat(), "code": str(r["code"]),
             "in_top_sector": int(bool(r.get("signal_in_top_sector"))),
@@ -63,6 +96,8 @@ def write_snapshot(data_date: _dt.date, scored: list[dict],
             "pa_stage": r.get("pa_stage"), "tier": r.get("tier"),
             "tier_reasons": " / ".join(r.get("tier_reasons") or []),
             "evidence_level": r.get("evidence_level"),
+            "sector_level_evidence": r.get("sector_level_evidence"),
+            "stock_level_evidence": r.get("stock_level_evidence"),
             "p_hit_3pct": t10.get("p_hit_3pct"),
             "expected_upside": t10.get("expected_upside"),
             "expected_downside": t10.get("expected_downside"),
@@ -71,9 +106,25 @@ def write_snapshot(data_date: _dt.date, scored: list[dict],
             "net_expectancy": t10.get("net_expectancy"),
             "avg_win": t10.get("avg_win"), "avg_loss": t10.get("avg_loss"),
             "mfe_given_hit": t10.get("mfe_given_hit"), "trailing_n": t10.get("n"),
+            # DISPLAY_ONLY:unconditional 全歷史統計。UI 可顯示,
+            # 但**不得暗示它決定了分層** —— 那是已被否決的 Static Stock Prior。
+            "disp_p_hit_3pct": d10.get("p_hit_3pct"),
+            "disp_expected_upside": d10.get("expected_upside"),
+            "disp_expected_downside": d10.get("expected_downside"),
+            "disp_net_positive_rate": d10.get("net_positive_rate"),
+            "disp_profit_factor": d10.get("profit_factor"),
+            "disp_net_expectancy": d10.get("net_expectancy"),
+            "disp_n": d10.get("n"),
             "stats_basis": t10.get("stats_basis"),
+            "stats_usage": t10.get("usage"),
+            "stats_conditioning": t10.get("conditioning"),
             "stock_level_available": int(bool(r.get("stock_level_available"))),
             "sector_opportunity": int(bool(r.get("sector_opportunity"))),
+            "score_date": r.get("score_date"),
+            "history_max_date": r.get("history_max_date"),
+            "outcome_matured_through": t10.get("outcome_matured_through"),
+            "sidecar_build_id": r.get("sidecar_build_id"),
+            "stats_sample_n": t10.get("n"),
             "entry_open": None,
             "actual_mfe_t10": None, "actual_mae_t10": None,
             "actual_term_t10": None, "actual_hit_t10": None,

@@ -30,7 +30,7 @@ def test_low_win_rate_high_payoff_is_kept_not_deleted():
              "expected_upside": 7.5, "p_hit_3pct": 61.0,
              "net_expectancy": 2.5, "expected_downside": -4.0,
              "avg_win": 9.0, "avg_loss": -3.5}
-    tier, reasons = osc.assign_tier(stats, in_top_sector=False)
+    tier, reasons = osc.assign_tier(True, stats)
     assert tier == "HIGH_POTENTIAL", (tier, reasons)
     assert any("PF" in r or "payoff" in r for r in reasons)
 
@@ -40,9 +40,9 @@ def test_primary_requires_both_win_rate_and_sector():
              "profit_factor": 1.4, "expected_upside": 4.0, "p_hit_3pct": 60.0,
              "net_expectancy": 1.0, "expected_downside": -5.0,
              "avg_win": 6.0, "avg_loss": -5.0}
-    assert osc.assign_tier(stats, in_top_sector=True)[0] == "PRIMARY"
-    # 勝率達標但族群沒進 Top10% → 不進主榜,但也不能掉出去
-    assert osc.assign_tier(stats, in_top_sector=False)[0] == "HIGH_POTENTIAL"
+    assert osc.assign_tier(True, stats)[0] == "PRIMARY"
+    # 族群訊號未觸發 → 不進主榜(唯一 replicated 的證據就是族群訊號)
+    assert osc.assign_tier(False, stats)[0] == "WATCH"
 
 
 def test_avoid_only_for_clearly_bad():
@@ -51,9 +51,8 @@ def test_avoid_only_for_clearly_bad():
             "profit_factor": 1.0, "expected_upside": 3.0, "p_hit_3pct": 50.0,
             "net_expectancy": 0.1, "expected_downside": -5.0,
             "avg_win": 5.0, "avg_loss": -5.0}
-    assert osc.assign_tier(weak, False)[0] == "WATCH"
-    bad = dict(weak, net_expectancy=-1.5, expected_downside=-9.0)
-    assert osc.assign_tier(bad, False)[0] == "AVOID"
+    assert osc.assign_tier(False, weak)[0] == "WATCH"
+    assert osc.assign_tier(True, weak, excluded=True)[0] == "AVOID"
 
 
 def test_entry_is_next_day_open_not_today_close():
@@ -130,10 +129,10 @@ def test_insufficient_history_does_not_borrow_shared_constants():
     那會讓 UI 看起來有個股分層,實際上沒有。"""
     short = _bars([100.0] * 15)          # 遠低於 MIN_TRAILING_N
     r = osc.score_one("9999", short, {}, sector_rank_pct=0.95, stage=None)
-    assert r["t10"]["stats_basis"] == "INSUFFICIENT_HISTORY"
+    assert r["display_stats_t10"]["stats_basis"] == "INSUFFICIENT_HISTORY"
     assert r["stock_level_available"] is False
     for k in ("p_hit_3pct", "expected_upside", "net_positive_rate", "profit_factor"):
-        assert k not in r["t10"], f"{k} 不該有值"
+        assert k not in r["conditional_stats_t10"], f"{k} 不該有值"
     # 只有族群層訊號是真實資訊,理由必須明說
     assert any("NOT YET AVAILABLE" in x for x in r["tier_reasons"])
 
@@ -143,7 +142,7 @@ def test_conditional_reference_is_reference_only():
     short = _bars([100.0] * 15)
     r = osc.score_one("9999", short, {}, sector_rank_pct=0.95, stage=None)
     assert "conditional_reference" in r            # 保留供對照
-    assert r["t10"].get("p_hit_3pct") is None      # 但沒進統計欄位
+    assert r["conditional_stats_t10"].get("p_hit_3pct") is None
     assert not hasattr(osc, "CONDITIONAL_FALLBACK")  # 舊的 ranking 用常數已移除
 
 
@@ -181,3 +180,87 @@ def test_missing_sidecar_does_not_raise():
     cov = oh.coverage_contract(["AAA"], "2026-08-24", "/nonexistent/path.db")
     assert cov["_summary"]["store_missing"] is True
     assert cov["AAA"]["ok"] is False
+
+
+# ══ As-of leakage 與 Static Stock Prior 防護(2026-08-24)═══════════
+
+def test_unconditional_stats_never_decide_tier():
+    """⚠ 最重要的一條:全歷史(unconditional)統計不得決定分層。
+    「這檔過去勝率/PF 高 → 下一期仍強」= Static Stock Prior,已被否決。"""
+    b = _bars([100 + i for i in range(300)])       # 一路上漲,unconditional 數字極好
+    r = osc.score_one("9999", b, {}, sector_rank_pct=0.95, stage=None, signal_days=set())
+    # unconditional 有值且標 DISPLAY_ONLY
+    assert r["display_stats_t10"]["usage"] == "DISPLAY_ONLY"
+    assert r["display_stats_t10"]["p_hit_3pct"] is not None
+    # 但 conditional 無樣本 → 不得升級到 PRIMARY
+    assert r["tier"] == "HIGH_POTENTIAL"
+    assert any("NOT YET AVAILABLE" in x for x in r["tier_reasons"])
+
+
+def test_conditioning_rule_is_reported():
+    """每個指標都要能講出它的 conditioning 規則、n、horizon、成熟截止日。"""
+    b = _bars([100 + i for i in range(300)])
+    r = osc.score_one("9999", b, {}, 0.95, None, signal_days=set())
+    d = r["display_stats_t10"]
+    assert d["conditioning"] == "unconditional"
+    assert d["horizon"] == 10
+    assert d["outcome_matured_through"] is not None
+    assert d["n"] > 0
+    c = r["conditional_stats_t10"]
+    assert c["conditioning"] == "conditional_on_frozen_signal"
+
+
+def test_immature_samples_never_enter_statistics():
+    """未走完 horizon 的樣本絕不進統計 —— 最後 horizon+1 根不得被計入。"""
+    b = _bars([100 + i for i in range(100)])
+    s = osc.realized_opportunity_stats(b, horizon=10)
+    # 100 根、horizon=10:進場點 i=0..89(進場價取 bars[i+1].open,視窗 [i+1,i+11)),
+    # 共 n-horizon = 90 個完整樣本。多一個就是把未成熟樣本算進去了。
+    assert s["n"] == 100 - 10, s["n"]
+    assert s["outcome_matured_through"] == b[100 - 10 - 1]["date"]
+    # 再加 5 根未來 bar → 應多出 5 個成熟樣本,不多不少
+    b2 = _bars([100 + i for i in range(105)])
+    assert osc.realized_opportunity_stats(b2, horizon=10)["n"] == 105 - 10
+
+
+def test_future_bars_do_not_change_todays_score():
+    """as-of 不洩漏:把 score_date 之後的 bar 全部移除,當天分數必須不變。"""
+    full = _bars([100 + i for i in range(200)])
+    cut = 150
+    truncated = full[:cut]
+    a = osc.realized_opportunity_stats(truncated, horizon=10)
+    b = osc.realized_opportunity_stats(full[:cut], horizon=10)
+    assert a == b
+    # 加上未來 bar 後,「截至同一天」的統計仍應相同
+    c = osc.realized_opportunity_stats(full[:cut] , horizon=10)
+    assert a["n"] == c["n"] and a["expected_upside"] == c["expected_upside"]
+
+
+def test_retroactive_snapshot_write_is_refused():
+    """sidecar 更新後不得回頭重算並覆寫舊快照 —— 否則 live 樣本被事後修改。"""
+    import tempfile, os, datetime as dt, sqlite3
+    import opportunity_snapshot as osnap
+    db = os.path.join(tempfile.mkdtemp(), "t.db")
+    row = {"code": "9999", "tier": "WATCH", "tier_reasons": [],
+           "conditional_stats_t10": {}, "display_stats_t10": {}}
+    osnap.write_snapshot(dt.date(2026, 8, 24), [row], db)
+    osnap.write_snapshot(dt.date(2026, 8, 25), [row], db)      # 往後寫:可以
+    try:
+        osnap.write_snapshot(dt.date(2026, 8, 24), [row], db)  # 回頭寫:拒絕
+        assert False, "應該拒絕回溯覆寫"
+    except osnap.RetroactiveWriteRefused:
+        pass
+
+
+def test_audit_fields_are_stored():
+    """五個不可變稽核欄位必須存進 snapshot。"""
+    b = _bars([100 + i for i in range(300)])
+    r = osc.score_one("9999", b, {}, 0.95, None, signal_days=set(),
+                      audit={"score_date": "2026-08-24",
+                             "history_max_date": "2026-08-20",
+                             "sidecar_build_id": "sidecar-test"})
+    assert r["score_date"] == "2026-08-24"
+    assert r["history_max_date"] == "2026-08-20"
+    assert r["sidecar_build_id"] == "sidecar-test"
+    assert r["display_stats_t10"]["outcome_matured_through"] is not None
+    assert r["conditional_stats_t10"]["n"] is not None

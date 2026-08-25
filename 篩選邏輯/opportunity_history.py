@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS hist_bar (
     PRIMARY KEY (code, data_date)
 );
 CREATE INDEX IF NOT EXISTS idx_hist_bar_code_date ON hist_bar(code, data_date);
+CREATE TABLE IF NOT EXISTS hist_meta (k TEXT PRIMARY KEY, v TEXT);
 """
 
 # ── Coverage contract 門檻 ────────────────────────────────────────
@@ -66,13 +67,35 @@ def rebuild_from_rows(rows: list[tuple], path: str = DEFAULT_PATH) -> int:
     可重複執行:INSERT OR REPLACE。這個 store 本來就是可重建的。
     """
     ensure(path)
+    build_id = _dt.datetime.now().strftime("sidecar-%Y%m%d-%H%M%S")
     with connect(path) as c:
         cur = c.executemany(
             "INSERT OR REPLACE INTO hist_bar "
             "(code,data_date,open,high,low,close,volume,source) VALUES (?,?,?,?,?,?,?,?)",
             rows)
+        c.execute("INSERT OR REPLACE INTO hist_meta (k,v) VALUES ('build_id',?)", (build_id,))
         c.commit()
     return cur.rowcount
+
+
+def build_id(path: str = DEFAULT_PATH) -> Optional[str]:
+    """sidecar 版本識別 —— 存進每張 snapshot,之後才追得出當時用的是哪一版。"""
+    if not os.path.exists(path):
+        return None
+    try:
+        with connect(path) as c:
+            r = c.execute("SELECT v FROM hist_meta WHERE k='build_id'").fetchone()
+        return r["v"] if r else None
+    except Exception:
+        return None
+
+
+def signal_days_from_bars(code: str, path: str = DEFAULT_PATH) -> set:
+    """占位:frozen signal 的歷史觸發日由呼叫端算好後傳入。
+
+    刻意不在此重算 —— sector 訊號需要同族群橫斷面,單檔 sidecar 讀不出來。
+    """
+    return set()
 
 
 def read_bars(code: str, upto: str, limit: int = 400,

@@ -27,7 +27,8 @@ OPPORTUNITY_THRESHOLD = 0.03   # +3%
 SECTOR_TOP_PCT = 0.90          # Top10%
 MIN_SECTOR_PEERS = 3
 TRAILING_WINDOW = 250          # 個股自身統計的回看交易日數(約一年)
-MIN_TRAILING_N = 60            # 低於此不給統計,標 insufficient
+MIN_TRAILING_N = 60            # unconditional 統計的最低樣本數
+MIN_CONDITIONAL_N = 20         # conditional 統計低於此只能視為 DESCRIPTIVE_ONLY
 
 # 四層分級門檻(見 CLAUDE.md Research Lead 章程第 9 條)
 PRIMARY_POSITIVE_RATE = 55.0
@@ -86,20 +87,32 @@ def sector_rs_10d(sector_bars: dict[str, list], code: str, idx: int) -> Optional
 
 
 def realized_opportunity_stats(bars: list[dict], horizon: int = 10,
-                               window: int = TRAILING_WINDOW) -> dict:
-    """由個股自己近 `window` 個交易日的**已實現**結果,算六項原始指標。
+                               window: int = TRAILING_WINDOW,
+                               signal_days: Optional[set] = None) -> dict:
+    """由個股近 `window` 個交易日的**已實現**結果,算六項原始指標。
 
-    這是事實描述(這檔近期的機會結構長什麼樣),不是預測模型 ——
-    刻意不擬合任何東西,避免又變成一輪 discovery。
+    ⚠ conditioning 規則必須顯式回報,因為它決定這些數字能不能用來分層:
+      signal_days=None → **unconditional**:統計該檔所有歷史日。
+        這等同「這檔過去表現好不好」= Static Stock Prior,而該假說已被
+        walk-forward 驗證否決(過去強→未來強不成立)。
+        **因此 unconditional 數字一律 DISPLAY_ONLY,不得參與 tier 決策。**
+      signal_days=set(...) → **conditional**:只統計 frozen signal 觸發當日。
+        這才是「訊號觸發時這檔的機會結構」,可作 descriptive differentiation,
+        但必須同時揭露 n,n < MIN_CONDITIONAL_N 只能視為 descriptive。
 
-    bars 需含 date/open/high/low/close,依日期排序。只用已到期的樣本。
+    只用已成熟的樣本:進場日 + horizon 個交易日必須全部走完。
+    回傳 outcome_matured_through = 最後一個成熟樣本的進場基準日。
     """
     n = len(bars)
     hits, mfes, maes, terms = [], [], [], []
-    # 只取「進場日 + horizon 已完成」的樣本
+    # 只取「進場日 + horizon 已完成」的樣本 —— 未成熟樣本絕不進統計
     last_complete = n - horizon - 1
     start = max(0, last_complete - window + 1)
+    matured_through = None
     for i in range(start, last_complete + 1):
+        bar_date = bars[i].get("data_date") or bars[i].get("date")
+        if signal_days is not None and bar_date not in signal_days:
+            continue
         entry = bars[i + 1].get("open")
         if not entry:
             continue
@@ -116,9 +129,13 @@ def realized_opportunity_stats(bars: list[dict], horizon: int = 10,
         term = close_h / entry - 1 - COST
         hits.append(mfe >= OPPORTUNITY_THRESHOLD)
         mfes.append(mfe); maes.append(mae); terms.append(term)
+        matured_through = bar_date
 
-    if len(hits) < MIN_TRAILING_N:
-        return {"n": len(hits), "insufficient": True}
+    conditioning = "conditional_on_frozen_signal" if signal_days is not None else "unconditional"
+    min_n = MIN_CONDITIONAL_N if signal_days is not None else MIN_TRAILING_N
+    if len(hits) < min_n:
+        return {"n": len(hits), "insufficient": True, "conditioning": conditioning,
+                "horizon": horizon, "outcome_matured_through": matured_through}
 
     wins = [t for t in terms if t > 0]
     losses = [t for t in terms if t <= 0]
@@ -127,6 +144,9 @@ def realized_opportunity_stats(bars: list[dict], horizon: int = 10,
     return {
         "n": len(hits),
         "insufficient": False,
+        "conditioning": conditioning,
+        "horizon": horizon,
+        "outcome_matured_through": matured_through,
         # ── 六項原始指標(章程第 10 條:必須全部保留在資料層)──
         "p_hit_3pct": round(sum(hits) / len(hits) * 100, 2),
         "expected_upside": round(sum(mfes) / len(mfes) * 100, 2),
@@ -141,88 +161,127 @@ def realized_opportunity_stats(bars: list[dict], horizon: int = 10,
     }
 
 
-def assign_tier(stats: dict, in_top_sector: bool) -> tuple[str, list[str]]:
-    """四層分級。回傳 (tier, 理由清單)。
+def assign_tier(sector_opportunity: bool, cond_stats: dict,
+                excluded: bool = False) -> tuple[str, list[str]]:
+    """四層分級。
 
-    ⚠ 55% 是主榜**資格線**不是刪除線 —— 勝率不足但 payoff 結構好的,
-       一律留在 HIGH_POTENTIAL,不得丟掉。
+    ⚠ 2026-08-24 定案的關鍵界線:
+      **unconditional per-stock 統計不得參與分層。**
+      「這檔過去勝率/PF 比較高 → 下一期仍比較強」= Static Stock Prior,
+      已被 walk-forward 驗證否決(見專案記憶 pa-stock-sector-prior-no-persistence)。
+      拿全歷史 Win Rate / PF 在族群內排序,等於把已否決的假說從側門放回來。
+
+    目前唯一有 replicated evidence 的是:
+      sec_rs_10d @ Top10% → 未來 T+10/T+15 出現 Net MFE >= +3% 的機會提高
+    **不是**「2383 歷史 PF 3.816 所以比 1815 更值得買」。
+
+    因此分層只能用:
+      · frozen sector signal(已 replicated)
+      · Pre-Activation EXTENDED(禁追,獨立驗證過的排除條件)
+      · conditional 統計(只在訊號觸發日的樣本)—— 且 n >= MIN_CONDITIONAL_N
+        才可用於區分 PRIMARY;n 不足時只能 descriptive,不得升級。
     """
-    if stats.get("insufficient"):
-        # 個股層統計不可用 → 只有 sector-level 訊號是真實資訊。
-        # 明確區分兩件事,UI 不得假裝這些股票已有不同的個股 confidence。
-        if in_top_sector:
-            return "HIGH_POTENTIAL", [
-                "Sector Opportunity = TRUE(sec_rs_10d 族群 Top10%)",
-                "Stock-level differentiation = NOT YET AVAILABLE(個股歷史不足)"]
-        return "WATCH", ["Sector Opportunity = FALSE",
-                         "Stock-level differentiation = NOT YET AVAILABLE"]
+    if excluded:
+        return "AVOID", ["Pre-Activation EXTENDED(已漲太多,不追)"]
 
+    if not sector_opportunity:
+        return "WATCH", ["Sector Opportunity = FALSE(sec_rs_10d 未進族群 Top10%)"]
 
-    reasons = []
-    pos = stats.get("net_positive_rate") or 0
-    pf = stats.get("profit_factor") or 0
-    up = stats.get("expected_upside") or 0
-    hit = stats.get("p_hit_3pct") or 0
-    aw, al = stats.get("avg_win"), stats.get("avg_loss")
+    reasons = ["Sector Opportunity = TRUE(sec_rs_10d 族群 Top10%,歷史已 replicated)"]
+
+    n = cond_stats.get("n", 0)
+    if cond_stats.get("insufficient") or n < MIN_CONDITIONAL_N:
+        reasons.append(
+            f"Stock-level differentiation = NOT YET AVAILABLE"
+            f"(訊號觸發日樣本 n={n} < {MIN_CONDITIONAL_N},DESCRIPTIVE_ONLY)")
+        return "HIGH_POTENTIAL", reasons
+
+    # conditional 樣本足夠 → 才允許用它區分 PRIMARY
+    pos = cond_stats.get("net_positive_rate") or 0
+    pf = cond_stats.get("profit_factor") or 0
+    up = cond_stats.get("expected_upside") or 0
+    hit = cond_stats.get("p_hit_3pct") or 0
+    aw, al = cond_stats.get("avg_win"), cond_stats.get("avg_loss")
     wl = (aw / abs(al)) if (aw and al and al != 0) else 0
 
-    # 高 payoff 特徵(任一即可留 HIGH_POTENTIAL)
-    hp_hits = []
-    if hit >= HP_HIT_RATE:
-        hp_hits.append(f"P(+3%)={hit:.1f}%")
-    if pf >= HP_PF:
-        hp_hits.append(f"PF={pf:.2f}")
-    if wl >= HP_WIN_LOSS:
-        hp_hits.append(f"賺賠比={wl:.2f}")
-    if up >= HP_EXPECTED_UPSIDE:
-        hp_hits.append(f"ExpUpside={up:.1f}%")
-
-    if pos >= PRIMARY_POSITIVE_RATE and in_top_sector:
-        reasons.append(f"勝率 {pos:.1f}% 達主榜線 + 族群 Top10%")
-        return "PRIMARY", reasons
+    # ⚠ conditional 統計可以做 descriptive differentiation,但它本身
+    #   **尚未通過 walk-forward / max-stat / 獨立窗**,不是已驗證的個股層 edge。
+    #   唯一 replicated 的仍是族群層訊號。這行必須跟著 PRIMARY 一起出現。
+    caveat = (f"⚠ 個股層區分為 DESCRIPTIVE_ONLY(n={n},未經 walk-forward/"
+              f"max-stat/獨立窗驗證),不得解讀為已驗證的個股選股 edge")
     if pos >= PRIMARY_POSITIVE_RATE:
-        reasons.append(f"勝率 {pos:.1f}% 達主榜線,但族群未進 Top10%")
-        return "HIGH_POTENTIAL", reasons
-    if hp_hits:
-        reasons.append(f"勝率 {pos:.1f}% 未達主榜線,但 payoff 結構強:" + "、".join(hp_hits))
-        if in_top_sector:
-            reasons.append("且族群 Top10%")
-        return "HIGH_POTENTIAL", reasons
-    # 明顯不利才進 AVOID:期望值為負且下檔深
-    if (stats.get("net_expectancy") or 0) < 0 and (stats.get("expected_downside") or 0) < -8:
-        reasons.append("期望值為負且下檔深")
-        return "AVOID", reasons
-    reasons.append(f"勝率 {pos:.1f}%、無突出 payoff 特徵")
-    return "WATCH", reasons
+        reasons.append(f"訊號觸發日勝率 {pos:.1f}% 達主榜線(n={n})")
+        reasons.append(caveat)
+        return "PRIMARY", reasons
+
+    hp = []
+    if hit >= HP_HIT_RATE:
+        hp.append(f"P(+3%)={hit:.1f}%")
+    if pf >= HP_PF:
+        hp.append(f"PF={pf:.2f}")
+    if wl >= HP_WIN_LOSS:
+        hp.append(f"賺賠比={wl:.2f}")
+    if up >= HP_EXPECTED_UPSIDE:
+        hp.append(f"ExpUpside={up:.1f}%")
+    if hp:
+        reasons.append(f"勝率 {pos:.1f}% 未達主榜線,但訊號觸發日 payoff 結構強:"
+                       + "、".join(hp) + f"(n={n})")
+    else:
+        reasons.append(f"訊號觸發日勝率 {pos:.1f}%、無突出 payoff 特徵(n={n})")
+    reasons.append(caveat)
+    return "HIGH_POTENTIAL", reasons
 
 
 def score_one(code: str, bars: list[dict], sector_bars: dict[str, list],
-              sector_rank_pct: Optional[float], stage: Optional[str]) -> dict:
-    """單檔的完整 production 計分。"""
+              sector_rank_pct: Optional[float], stage: Optional[str],
+              signal_days: Optional[set] = None,
+              audit: Optional[dict] = None) -> dict:
+    """單檔的完整 production 計分。
+
+    回傳兩套統計,用途嚴格分開:
+      display_stats     unconditional(全歷史)—— **DISPLAY_ONLY,不參與分層**
+      conditional_stats 只在 frozen signal 觸發日 —— 可用於分層,但須 n 足夠
+    """
     in_top = (sector_rank_pct is not None and sector_rank_pct > SECTOR_TOP_PCT)
     excluded = (stage == "EXTENDED")
-    s10 = realized_opportunity_stats(bars, 10)
-    s15 = realized_opportunity_stats(bars, 15)
-    # 個股歷史不足 → 六項指標一律 None,不用共用常數製造假的個股差異
-    s10["stats_basis"] = "INSUFFICIENT_HISTORY" if s10.get("insufficient") else "per_stock"
-    s15["stats_basis"] = "INSUFFICIENT_HISTORY" if s15.get("insufficient") else "per_stock"
-    tier, reasons = assign_tier(s10, in_top and not excluded)
-    if excluded:
-        tier, reasons = "AVOID", ["Pre-Activation EXTENDED(已漲太多,不追)"]
+
+    disp10 = realized_opportunity_stats(bars, 10)
+    disp15 = realized_opportunity_stats(bars, 15)
+    cond10 = realized_opportunity_stats(bars, 10, signal_days=signal_days or set())
+    cond15 = realized_opportunity_stats(bars, 15, signal_days=signal_days or set())
+    for d in (disp10, disp15):
+        d["usage"] = "DISPLAY_ONLY"
+        d["stats_basis"] = "INSUFFICIENT_HISTORY" if d.get("insufficient") else "per_stock_unconditional"
+    for d in (cond10, cond15):
+        d["usage"] = ("TIERING" if not d.get("insufficient") else "DESCRIPTIVE_ONLY")
+        d["stats_basis"] = "per_stock_conditional_on_signal"
+
+    tier, reasons = assign_tier(in_top, cond10, excluded)
     return {
         "code": code,
         "signal_in_top_sector": bool(in_top),
+        "sector_opportunity": bool(in_top),
         "sector_rank_pct": (round(sector_rank_pct, 4)
                             if sector_rank_pct is not None else None),
         "pa_stage": stage,
         "tier": tier,
         "tier_reasons": reasons,
         "evidence_level": EVIDENCE_LEVEL,
-        "t10": s10,
-        "t15": s15,
-        "stock_level_available": not s10.get("insufficient", False),
-        "sector_opportunity": bool(in_top),
-        # 僅供對照,**不參與 ranking**
+        # 兩層證據等級必須分開 —— 族群層已 replicated,個股層尚未驗證
+        "sector_level_evidence": "REPLICATED (2020-23 independent window)",
+        "stock_level_evidence": (
+            f"DESCRIPTIVE_ONLY (n={cond10.get('n', 0)}, not validated)"
+            if not cond10.get("insufficient")
+            else "NOT YET AVAILABLE (insufficient conditional samples)"),
+        # ⚠ 展示用(unconditional)—— UI 可顯示,但不得暗示它決定了分層
+        "display_stats_t10": disp10,
+        "display_stats_t15": disp15,
+        # 分層依據(conditional on frozen signal)
+        "conditional_stats_t10": cond10,
+        "conditional_stats_t15": cond15,
+        "stock_level_available": (not cond10.get("insufficient", True)),
         "conditional_reference": CONDITIONAL_REFERENCE[bool(in_top)],
+        # ── 不可變稽核欄位(snapshot 寫入後不得回頭重算)──
+        **(audit or {}),
         "score_version": VERSION,
     }

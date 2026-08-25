@@ -25,6 +25,56 @@ MIN_BAR_COVERAGE = float(os.environ.get("OPP_MIN_BAR_COVERAGE", "1.0"))
 HISTORY_DAYS = 400          # 個股統計需要約一年 + T+15 到期緩衝
 
 
+def _historical_signal_days(hist: dict, codes: list[str]) -> dict:
+    """逐日重算 frozen signal(sec_rs_10d 族群中位數排名 Top10%)的歷史觸發日。
+
+    ⚠ 必須用同族群橫斷面逐日算 —— 這是族群層訊號,單檔算不出來。
+    ⚠ 一律 leave-one-out(sector_rs_10d 內建),否則是偽裝的個股動能。
+    """
+    # 對齊所有股票的日期軸
+    all_dates = sorted({b["data_date"] for c in codes for b in hist.get(c, [])})
+    idx_of = {c: {b["data_date"]: i for i, b in enumerate(hist.get(c, []))} for c in codes}
+    closes = {c: [b["close"] for b in hist.get(c, [])] for c in codes}
+    out = {c: set() for c in codes}
+
+    for day in all_dates:
+        # 當日各族群的 LOO sec_rs_10d 中位數
+        per_sector: dict[str, list[float]] = {}
+        per_code: dict[str, float] = {}
+        for c in codes:
+            i = idx_of[c].get(day)
+            if i is None or i < 10:
+                continue
+            sec = config.CODE_GROUP.get(c, "其他")
+            # ⚠ 每檔在自己序列中的 index 不同,不能共用同一個 idx。
+            #   切出「結束於同一天、長度都是 11」的片段,再統一用 idx=10。
+            aligned = {}
+            for m in codes:
+                if config.CODE_GROUP.get(m, "其他") != sec:
+                    continue
+                j = idx_of[m].get(day)
+                if j is None or j < 10:
+                    continue
+                aligned[m] = closes[m][j - 10:j + 1]
+            if c not in aligned:
+                continue
+            v = osc.sector_rs_10d(aligned, c, 10)
+            if v is None:
+                continue
+            per_code[c] = v
+            per_sector.setdefault(sec, []).append(v)
+        if not per_sector:
+            continue
+        med = {s: sorted(v)[len(v) // 2] for s, v in per_sector.items()}
+        order = sorted(med.items(), key=lambda kv: kv[1])
+        n = len(order)
+        rank = {s: (i + 1) / n for i, (s, _) in enumerate(order)}
+        for c in per_code:
+            if rank.get(config.CODE_GROUP.get(c, "其他"), 0) > osc.SECTOR_TOP_PCT:
+                out[c].add(day)
+    return out
+
+
 def _latest_trading_date(db_path: str = "mls.db") -> _dt.date | None:
     with store.conn(db_path) as c:
         row = c.execute("SELECT MAX(data_date) FROM daily_bar").fetchone()
@@ -60,6 +110,16 @@ def main() -> int:
         hist = {c: (ohist.read_bars(c, d.isoformat(), HISTORY_DAYS)
                     if cov.get(c, {}).get("ok") else [])
                 for c in codes}
+
+        # ── frozen signal 的歷史觸發日 ────────────────────────────────
+        #   conditional 統計只能用「訊號當日」的樣本。unconditional 全歷史統計
+        #   等同 Static Stock Prior(已被 walk-forward 否決),不得用於分層。
+        #   訊號是族群層的,必須用同族群橫斷面逐日重算,不能單檔算。
+        signal_days = _historical_signal_days(hist, codes)
+        sd_n = {c: len(signal_days.get(c, set())) for c in codes}
+        print(f"[opportunity] 歷史訊號觸發日 每檔 min={min(sd_n.values())} "
+              f"中位={sorted(sd_n.values())[len(sd_n)//2]} max={max(sd_n.values())}",
+              flush=True)
 
         # 當日 production bar(訊號狀態用這個,不用 sidecar)
         # ⚠ store.read_recent 回傳「由新到舊」,本模組假設「由舊到新」——
@@ -122,9 +182,14 @@ def main() -> int:
             sec = config.CODE_GROUP.get(c, "其他")
             # 個股統計走 sidecar(不足時傳空 → INSUFFICIENT_HISTORY);
             # 族群訊號走 production 當日 bar
+            hmax = hist[c][-1]["data_date"] if hist[c] else None
             scored.append(osc.score_one(
                 c, hist[c], by_sector.get(sec, {}),
-                sec_rank.get(sec), stage_by_code.get(c)))
+                sec_rank.get(sec), stage_by_code.get(c),
+                signal_days=signal_days.get(c, set()),
+                audit={"score_date": d.isoformat(),
+                       "history_max_date": hmax,
+                       "sidecar_build_id": ohist.build_id()}))
 
         n = osnap.write_snapshot(d, scored)
         b = osnap.backfill()
