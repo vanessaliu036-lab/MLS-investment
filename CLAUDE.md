@@ -95,3 +95,41 @@ decisions autonomously until a genuine user decision is required.
 18. **最終回報只回答六件事**：做了什麼／新增什麼真正的新證據／PASS 或 REJECTED 哪些／
     關鍵數字／是否影響 production／下一步你已自行決定做什麼。
     不要用「要我繼續嗎」「妳要選 A 還是 B」「下一步想往哪走」。
+
+---
+
+## 🔒 Evidence Pipeline 工程凍結（2026-08-25 起，最高優先）
+
+**從 2026-08-24 起，opportunity evidence pipeline 進入純觀察期。任何 scoring
+邏輯的改動都會讓 live experiment 的定義漂移，使已累積的樣本失去可比性。**
+
+### 禁止改動（除非 Vanessa 明確要求）
+```
+篩選邏輯/opportunity_score.py       凍結訊號、六項指標、四層分級規則
+篩選邏輯/opportunity_snapshot.py    schema、append-only 語意、_HASH_KEYS
+篩選邏輯/opportunity_history.py     sidecar 讀取與 coverage contract
+篩選邏輯/run_opportunity_snapshot.py 每日 scoring 流程
+winning_model_backtest/FROZEN_*.md  所有凍結紀錄
+```
+改 bug 修正以外的任何一行，都必須先問。**「順手改好一點」是被禁止的。**
+
+### 已封住的污染來源（不要重做，也不要「再加強」）
+production DB 與歷史 sidecar 分離／snapshot append-only／同日相同輸入 no-op／
+semantic payload 任一實質變化拒絕覆寫／sector mapping、signal version、raw
+signal 都進 hash／未成熟 T+10/T+15 不進歷史統計／stock-level 標 DESCRIPTIVE_ONLY／
+未收盤不寫當日樣本。
+
+### 下一個 checkpoint：只讀，不調
+讀 `n` / `P(Net MFE ≥ +3%)` / same-day baseline / Opportunity Hit Excess /
+Expected MFE / MAE / upside-downside asymmetry。
+
+**第一批 T+10 結果不論漂亮或難看，一律只標 `DESCRIPTIVE ONLY`：**
+- 前幾十筆表現差 → **不得**修改 `sec_rs_10d @ Top10%`
+- 表現好 → **不得**提早宣布 production PASS
+
+### 現在的正確判斷
+研究階段已找到歷史可複現的 Opportunity signal；工程階段已建立不可回寫的
+forward evidence chain；**現在進入純觀察期**。
+
+真正會改變結論的不是更多歷史實驗，而是 frozen signal 在 live T+10/T+15 上
+是否延續那個約 +3% 的 opportunity edge。**多做回測沒有 decision value。**
