@@ -53,6 +53,7 @@ import daily_close_report
 import engine_review
 import money_health
 import money_health_api
+import opportunity_ledger_api  # 機會分層觀察榜:唯讀讀 production opportunity_snapshot,不計分
 import explain  # 說明語意層:後台算白話,前台只印(見 說明語意層規格.md)
 import intraday_note  # 淘汰名單「今日盤中說明」:淘汰理由 × 今日盤中資金流/漲跌 → 背離/確認
 
@@ -887,6 +888,11 @@ try:
         app.include_router(money_health_api.router)
 except Exception as e:
     print(f"[plugin/money_health_api] router 掛載失敗:{e}")
+try:
+    if opportunity_ledger_api.router is not None:
+        app.include_router(opportunity_ledger_api.router)
+except Exception as e:
+    print(f"[plugin/opportunity_ledger_api] router 掛載失敗:{e}")
 
 
 @app.get("/money-health")
