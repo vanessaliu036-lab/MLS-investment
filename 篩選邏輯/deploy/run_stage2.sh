@@ -22,9 +22,14 @@ python3 collect.py
 set +e
 python3 run_stage2_verify.py; rc_verify=$?
 python3 run_pa_snapshot.py;   rc_pa=$?
+# Opportunity forward logging(2026-08-24 起)。frozen signal sec_rs_10d@Top10%
+# 的最終確認只能靠 8/24 之後的 forward data,每漏一天就少一天乾淨樣本。
+python3 run_opportunity_snapshot.py; rc_opp=$?
 set -e
 
 [ "$rc_verify" -ne 0 ] && echo "[stage2] ⚠ run_stage2_verify.py 失敗 rc=$rc_verify" >&2
 [ "$rc_pa" -ne 0 ] && echo "[stage2] ⚠ run_pa_snapshot.py 失敗 rc=$rc_pa（Pre-Activation 快照未寫入）" >&2
+# Opportunity 是純觀察快照,失敗只告警不擋盤後主流程(rc=2 是資料未齊的合法跳過)
+[ "$rc_opp" -ne 0 ] && [ "$rc_opp" -ne 2 ] && echo "[stage2] ⚠ run_opportunity_snapshot.py 失敗 rc=$rc_opp" >&2
 if [ "$rc_verify" -ne 0 ] || [ "$rc_pa" -ne 0 ]; then exit 1; fi
 exit 0
