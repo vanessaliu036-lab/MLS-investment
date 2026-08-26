@@ -129,8 +129,59 @@ Examples of allowed structure shapes:
 
 These examples are not pre-approved winners; they only illustrate the form.
 
-### Step 3 — Historical repeat, definitions frozen
-Run the frozen candidates on all available clean prior days in the fixed 51-stock universe.
+### Step 3 — Dedicated validation of `Prior Buy Run -> Short Sell -> Structure Intact`
+
+This pattern gets one direct historical test before any wider feature expansion.
+
+Frozen pattern skeleton:
+
+- prior institutional buy run exists and is meaningfully long
+- current sell segment is short (1–3 trading days)
+- current selling gives back only a minority of the preceding buy-run accumulation
+- price structure remains intact, with MA20 as the main structural reference
+- volume behavior during the sell/pullback segment is recorded as expanding vs contracting, but is not used to loosen the event definition after results are seen
+
+Primary validation month:
+
+> **2026-06-01 through 2026-06-30 only.**
+
+July 2026 is explicitly excluded from this test.
+
+Sampling rule:
+
+- Scan the fixed 51-stock universe over all June trading days.
+- Collect at least **20 qualifying stock-day events** before judging the pattern.
+- Prefer distinct stocks when possible, but do not relax the definition merely to reach 20.
+- If June contains fewer than 20 qualifying events, extend **backward into May 2026** until 20 events are reached.
+- Do NOT extend forward into July.
+- Do NOT tune thresholds after seeing June outcomes.
+
+For each qualifying event report:
+
+- code / date
+- prior buy-run days and cumulative buy amount
+- current sell-run days and cumulative sell amount
+- sellback ratio
+- pullback-day volume ratio / volume contraction or expansion
+- close vs MA5 / MA20
+- whether lows remain structurally intact
+- market regime / breadth
+- sector regime / relative strength
+- T+1 WATCH MODE / activation outcome
+- T+1 max favorable move
+- T+1 close return
+- T+1 intraday A-flow confirmation or contradiction when clean data exists
+
+Primary question:
+
+> Does this pattern produce a materially higher T+1 activation rate than the same-month fixed-51 baseline?
+
+Secondary question:
+
+> When it activates, does T-day A-flow tend to confirm the prior institutional/price thesis rather than contradict it?
+
+### Step 4 — Historical repeat of any remaining frozen candidates
+Only after the dedicated June test above is complete, run any other frozen candidate structures on clean historical days.
 
 Primary target:
 
@@ -150,7 +201,7 @@ No threshold tuning after seeing these historical results.
 
 A candidate can be marked `SUPPORTED` only if all are true:
 
-1. It is materially enriched in the A19 discovery cohort versus the other 32.
+1. It is materially enriched in the A19 discovery cohort versus the other 32, OR for the dedicated prior-buy-run pattern, it shows clear lift in the frozen June historical test.
 2. Historical clean-day activation lift remains in the same direction on a clear majority of days.
 3. The effect is not explained only by one sector or one market-regime day.
 4. The interpretation remains economically coherent after including market/sector context.
@@ -170,6 +221,7 @@ During this acceptance, DO NOT:
 - add new indicator families because one table looks interesting
 - use current-day dynamic A19 membership as if it were T-1 selection
 - automatically penalize one or two institutional sell days
+- use July 2026 for the dedicated prior-buy-run validation
 - change Line A
 - modify production selection/entry logic
 
@@ -180,11 +232,12 @@ Interesting results may be recorded, but unrelated branches are deferred until t
 One final report only:
 
 1. A19 vs 32 common-signal matrix
-2. the frozen top 1–3 structures
-3. historical repeat table by day
-4. market/sector conditional view
-5. intraday A-flow confirmation view
-6. final label for each candidate: `SUPPORTED / DESCRIPTIVE / REJECTED`
-7. one sentence on whether any finding deserves later production testing
+2. dedicated June 20-event test for `Prior Buy Run -> Short Sell -> Structure Intact`
+3. the frozen top 1–3 structures
+4. historical repeat table by day
+5. market/sector conditional view
+6. intraday A-flow confirmation view
+7. final label for each candidate: `SUPPORTED / DESCRIPTIVE / REJECTED`
+8. one sentence on whether any finding deserves later production testing
 
 No additional research branch should be opened before this report is complete.
