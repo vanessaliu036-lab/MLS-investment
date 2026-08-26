@@ -1,16 +1,17 @@
 # Chip × Price × Market × Intraday Flow — One-Shot Acceptance
 
-Status: RESEARCH ONLY
+Status: **CLOSED — RESEARCH ACCEPTANCE COMPLETE**
 Frozen: 2026-08-26
-Production impact: NONE until this acceptance is complete
+Closed: 2026-08-26
+Production impact: **NONE** — production code and Line A unchanged
 
 ## 1. Single question
 
 Only answer this:
 
-> Can T-1 institutional history + price/volume/technical structure + market/sector context, then T-day intraday A-flow confirmation, consistently identify the same kind of stocks that later enter WATCH MODE / activate?
+> Can T-1 institutional history + price/volume/technical structure, then T-day intraday A-flow confirmation, consistently identify the same kind of stocks that later enter WATCH MODE / activate?
 
-Do not branch into time-of-day studies, new early triggers, or unrelated factors.
+This acceptance does not open exact-time studies, new early triggers, or unrelated factors.
 
 ## 2. Discovery anchor
 
@@ -20,286 +21,192 @@ Use the 2026-08-26 intraday A19 as a retrospective discovery cohort only.
 - Other 32 = same fixed 51-stock universe not in that A19 snapshot.
 - This comparison is attribution/discovery only. It is NOT evidence that A19 was known at T-1.
 
-The purpose is to identify a small number of common T-1 structures worth repeating historically.
+## 3. Frozen candidates
 
-## 3. T-1 fields to compare — no extra feature expansion
+### C1 — `STRUCTURE_INTACT`
 
-### A. Institutional history with memory
-Do NOT use only current `consecutive_days`, because one sell day erases the prior buy run.
+```text
+close >= MA20
+```
 
-For each stock calculate:
+Interpretation: structural base condition, not assumed to be an independent predictor.
 
-- `prior_buy_run_days`: consecutive institutional buy days immediately before the current sell/neutral segment
-- `prior_buy_run_sum`: cumulative institutional net buy during that run
-- `current_sell_run_days`: current consecutive sell days
-- `current_sell_run_sum`: cumulative institutional sell during that run
-- `sellback_ratio`: abs(current sell-run sum) / prior buy-run sum, when prior buy-run sum > 0
-- current day institutional net
-- institutional 3d / 5d / 20d cumulative net
+### C2 — `SELLING_PRESSURE_WEAKENING + PRICE_RESPONSE`
 
-Interpretation must distinguish:
+Frozen operational definition used in this acceptance:
 
-- long buy run -> 1–3 sell days -> small giveback -> structure intact = profit-taking / turnover candidate
-- long buy run -> repeated heavy selling -> large giveback -> price structure breaks = distribution candidate
+```text
+price_5d > 0
+AND close_position >= 0.7
+AND NOT(inst_5d <= -3000)
+```
 
-A sell streak is never negative by itself.
+Interpretation must remain narrower than the label: this measures that recent institutional selling is not heavy while price has already responded positively and the close sits high in its range. It does not by itself prove a monotonic time-series decline in selling pressure.
 
-### B. Price / volume / technical structure
-
-Use only existing basic structure:
-
-- price return 1d / 3d / 5d
-- volume ratio vs 20d average
-- volume expanding vs contracting during sell/pullback days
-- close relative to MA5 and MA20
-- low trend / whether prior lows hold
-- breakout / failed breakout / near-high state
-- existing `chip_price_divergence` classification:
-  - chip_reversal
-  - sell_absorption
-  - accumulation
-  - washout
-  - buying_stall
-  - double_weak
-
-No new technical indicator family in this acceptance.
-
-### C. Market / sector context
-
-Include the existing attribution-only context:
-
-- market regime
-- market breadth
-- pool51 below MA5 %
-- pool51 below MA20 %
-- sector regime
-- sector breadth
-- sector relative 3d
-- stock relative to sector peers / market peers where available
-
-Purpose: determine whether the same chip/price pattern behaves differently under supportive vs weak market/sector conditions.
-
-Do not turn market context into a production gate during this run.
-
-## 4. T-day intraday comparison
-
-Intraday data is confirmation/context, not a new automatic entry rule.
-
-For each stock after it enters WATCH MODE, compare:
-
-- A-flow sign
-- A-flow change vs prior valid 5-minute snapshot
-- active buyer ratio when fresh
-- current price response to A-flow
-- whether price holds/reclaims the T-1 structural reference
-
-The question is:
-
-> Does intraday money flow confirm or contradict the T-1 chip/price thesis?
-
-Do not study 09:15 / 09:30 / exact clock-time effects. Time is only the data-update cadence.
-
-## 5. One-shot workflow
-
-### Step 1 — 2026-08-25 -> 2026-08-26 A19 vs 32
-Produce one matrix with the fields above and rank only the strongest common structures.
-
-Expected output:
-
-- prevalence in A19
-- prevalence in other 32
-- absolute difference
-- relative enrichment
-- median/mean numeric differences for buy-run length, sellback ratio, volume ratio, MA structure and market/sector context
-
-Do not create rules yet.
-
-### Step 2 — Freeze at most 3 candidate structures
-Select at most THREE structures with:
-
-1. clear trading interpretation,
-2. obvious A19 vs 32 separation,
-3. variables known at T-1 close.
-
-Current candidates:
-
-- C1 `Structure Intact`
-- C2 `Selling Pressure Weakening + Price Response`
-- C3 `Prior Buy Run -> Short Sell -> Structure Intact`
-
-Do not open C4 before this acceptance closes.
-
-### Step 3 — C3 dedicated validation: June -> January, month by month
-
-C3 is now frozen and must be traced **backward from June 2026 through January 2026**. July is excluded. Do not stop after seeing June.
-
-#### Frozen C3 event definition
+### C3 — `PRIOR_BUY_LIGHT_SELL`
 
 A T-1 stock-day qualifies only when ALL are true:
 
 1. `prior_buy_run_days >= 3`
 2. `prior_buy_run_sum > 0`
-3. `current_sell_run_days` is between **1 and 3** trading days inclusive
+3. `current_sell_run_days` is between 1 and 3 trading days inclusive
 4. `current_sell_run_sum < 0`
 5. `sellback_ratio = abs(current_sell_run_sum) / prior_buy_run_sum <= 0.30`
-6. T-1 close is **at or above MA20** (`close >= MA20`)
-
-This is the frozen eligibility definition. Do not alter these thresholds after seeing outcomes.
+6. `close >= MA20`
 
 Interpretation:
 
-> A meaningful institutional buy run is followed by only a short/light sell segment, while the main price structure remains intact. The sell segment is treated as a possible profit-taking / turnover event, not automatically as distribution.
+> A meaningful institutional buy run is followed by only a short/light sell segment, while the main price structure remains intact. The sell segment may be profit-taking / turnover rather than distribution.
 
-#### Volume is diagnostic, not eligibility
+Volume behavior is diagnostic only in this acceptance; it is not part of C3 eligibility.
 
-For every C3 event, separately record whether the sell/pullback segment is:
+## 4. Data-integrity rule discovered during execution
 
-- volume contracting
-- volume normal
-- volume expanding
+A sequencing bug was found and corrected in the T-1 -> T pairing logic.
 
-Do **not** use volume to admit/exclude C3 events in this run. First test whether volume behavior explains which C3 cases work.
+Incorrect behavior:
 
-#### Required calendar walkback
+> Pair T-1 with the next clean intraday day, which can silently skip intervening trading days and turn `T+1` into `T+N`.
 
-Run the fixed 51-stock universe separately for:
+Correct canonical behavior:
 
-- 2026-06-01 through 2026-06-30
-- 2026-05-01 through 2026-05-31
-- 2026-04-01 through 2026-04-30
-- 2026-03-01 through 2026-03-31
-- 2026-02-01 through 2026-02-28
-- 2026-01-01 through 2026-01-31
+> `T+1` means the immediate next **real trading day**. If that next trading day is unusable because intraday/A-flow data are contaminated or missing, the pair is invalid for analyses requiring those intraday fields. Never skip forward to a later clean day and still label the outcome `T+1`.
 
-**July 2026 must not be used.**
+This rule is part of the acceptance record and must be reused in future sequential research.
 
-Do not pool the months first. Each month must be reported independently so regime dependence and month-to-month stability remain visible.
+## 5. A19 vs 32 discovery matrix
 
-If one month has fewer than 20 C3 events, report the true count. Do not loosen C3 to manufacture 20 events. The six-month aggregate can then provide the larger event count.
+| Candidate | A19 | Other 32 | Enrichment |
+|---|---:|---:|---:|
+| C1 Structure Intact | 19/19 (100%) | 20/32 (62%) | 1.60x |
+| C2 Selling Pressure Weakening + Price Response | 13/19 (68%) | 10/32 (31%) | 2.19x |
+| C3 Prior Buy -> Light Sell -> Structure Intact | 2/19 (11%) | 0/32 (0%) | n too small |
 
-#### Per-event fields
+The discovery anchor is outcome-conditioned and is not used as standalone proof.
 
-For every qualifying event report/store:
+## 6. Correct T+1 activation validation
 
-- code / T-1 date
-- prior buy-run days
-- prior buy-run cumulative institutional buy
-- current sell-run days
-- current sell-run cumulative institutional sell
-- sellback ratio
-- T-1 1d / 3d / 5d price return
-- sell/pullback volume behavior and volume ratio
-- close vs MA5
-- close vs MA20
-- whether prior lows remain intact
-- market regime / breadth
-- sector regime / breadth / relative strength
-- T-day WATCH MODE / confirmed activation outcome
-- T-day max favorable move
-- T-day max adverse move when available
-- T-day close return
-- T-day intraday A-flow confirmation / contradiction when clean data exists
+After fixing real-trading-day adjacency, the maximum available clean T+1 activation sample produced 11 T-1 days for this branch of analysis.
 
-#### Required monthly table
+| Candidate | day-equal P(activation \| qualified) | day-equal P(activation \| not qualified) | Days qualified side better |
+|---|---:|---:|---:|
+| C1 | 34.7% | 21.4% | 7/11 |
+| C2 | **60.5%** | **28.9%** | **8/11** |
+| C3 | 31.2% | 32.5% | 3/11 |
 
-For EACH month Jan–Jun report at minimum:
+Additional C1/C2 decomposition retained from the frozen analysis:
 
-- C3 event count
-- distinct stock count
-- number of trading days containing C3 events
-- `P(T-day activation | C3)`
-- same-day eligible control activation rate
-- activation lift in percentage points
-- day-equal activation lift
-- number / share of days where C3 beats control
-- mean/median T-day MFE
-- mean/median T-day MAE when available
-- mean/median T-day close return
-- volume-contracting vs volume-expanding descriptive split
-- market / sector regime distribution
+```text
+C1 only: 29.6% activation
+C1 + C2: 64.1% activation
+```
 
-Also report one six-month summary using both:
+Interpretation:
 
-1. pooled stock-day statistics, and
-2. **month-equal** averages so one high-event month cannot dominate the conclusion.
+- C1 is primarily a structural eligibility/base condition.
+- C2 provides the meaningful incremental activation separation in this sample.
+- C3 has no evidence of T+1 activation lift in the available clean intraday sample.
 
-#### C3 acceptance logic
+## 7. C3 two-estimand record — do not conflate them
 
-C3 is not judged from one month alone.
+C3 has been tested against two different targets. They must remain separate.
 
-Mark `SUPPORTED` only if:
+### 7.1 T+1 WATCH MODE / activation
 
-- activation lift is positive in a clear majority of Jan–Jun months,
-- the month-equal activation lift is positive and economically meaningful,
-- results are not carried by one stock / one sector / one month,
-- the pattern remains coherent after viewing volume and market/sector context.
+- `n = 22` C3 events across 11 available paired days
+- day-equal activation: `31.2%` vs control `32.5%`
+- C3 side better on `3/11` days
 
-Mark `DESCRIPTIVE / WATCH` if direction is mostly positive but event count/effect size is weak.
+Final label:
 
-Mark `REJECTED` if the effect is inconsistent or negative across the Jan–Jun walkback.
+> **NOT SUPPORTED for T+1 activation — INCONCLUSIVE / DATA CEILING**
 
-No threshold rescue after the six-month result is seen.
+This is a null-looking result, but the event sample is thin; it is not labeled a decisive rejection.
 
-### Step 4 — Historical repeat of C1 / C2
+### 7.2 T+10 Net MFE >= +3%
 
-C1 and C2 remain separately frozen. Their previously observed Aug clean-day results may be reported, but do not change their definitions while C3 Jan–Jun validation is running.
+Independent long-window test, 2020–2025:
 
-Primary target:
+- `n = 2,432` C3 events
+- hit rate: `60.1%` vs baseline `60.3%`
+- average MFE: `+6.7%` vs baseline `+6.7%`
+- yearly results oscillate around baseline with no systematic positive deviation
 
-- probability of entering T-day WATCH MODE / confirmed activation
+Final label:
 
-Secondary descriptive outcomes:
+> **REJECTED for T+10 Net MFE target**
 
-- T-day max favorable move
-- T-day close return
-- whether intraday A-flow confirmed vs contradicted the T-1 structure
+This is a decisive null for that estimand only. It must not be used to claim a decisive rejection of the separate T+1 activation estimand.
 
-Use stock-day and day-equal summaries. Do not treat 5-minute snapshots as independent samples.
+## 8. C2 intraday A-flow confirmation — event/state based
 
-No threshold tuning after seeing historical results.
+Exact clock time is not used as a signal.
 
-## 6. Acceptance
+Reuse the existing event/state classes:
 
-A candidate can be marked `SUPPORTED` only if all are true:
+- `OPEN_POSITIVE`: A-flow is already positive at the first usable observation; this is left-censored with respect to the true flip event.
+- `FLOW_FLIP`: a causal negative/non-positive -> positive transition is observed during the session.
+- `NO_FLIP`: no positive transition is observed during the usable session.
 
-1. It shows material activation lift under its frozen historical validation.
-2. Historical clean-day / clean-month lift remains in the same direction across a clear majority of independent periods.
-3. The effect is not explained only by one stock, sector, month, or market-regime episode.
-4. The interpretation remains economically coherent after including market/sector context.
-5. T-day intraday A-flow behaves as a useful confirmation/contradiction layer rather than requiring future information.
+For C2-qualified stock-days:
 
-If direction persists but sample/effect is weak, mark `DESCRIPTIVE / WATCH`, do not add gates.
+| Flow class | n | Activation rate |
+|---|---:|---:|
+| OPEN_POSITIVE | 41 | 90.2% |
+| FLOW_FLIP | 16 | 62.5% |
+| NO_FLIP | 25 | **4.0%** |
 
-## 7. Explicit stop rules
+Combined confirmation comparison:
 
-During this acceptance, DO NOT:
+```text
+confirmed = OPEN_POSITIVE + FLOW_FLIP
+confirmed vs NO_FLIP day-equal activation = 89.9% vs 2.8%
+direction consistent = 8/9 days
+```
 
-- research exact clock times
-- invent earlier activation predictors
-- revive Persistent Flow Flip as the main line
-- add new indicator families because one table looks interesting
-- use current-day dynamic A19 membership as if it were T-1 selection
-- automatically penalize one or two institutional sell days
-- use July 2026 for C3 validation
-- stop C3 after June; continue month by month through January
-- loosen C3 thresholds to increase sample size
-- change Line A
-- modify production selection/entry logic
+Interpretation:
 
-Interesting results may be recorded, but unrelated branches are deferred until this acceptance closes.
+> Intraday A-flow acts as a strong confirmation / contradiction layer for the frozen C2 thesis in this sample. It is not an exact-time entry rule and does not convert `confirmed_reversal` into an automatic buy signal.
 
-## 8. Final deliverable
+Because `OPEN_POSITIVE` is left-censored, this evidence should be described as event/state confirmation rather than proof of when the flow first turned positive.
 
-One final report only:
+## 9. Market / sector conditional layer
 
-1. A19 vs 32 common-signal matrix
-2. C1 / C2 frozen historical results
-3. C3 month-by-month validation table for **June, May, April, March, February, January 2026**
-4. C3 six-month pooled + month-equal summary
-5. volume contraction / expansion interpretation inside C3
-6. market/sector conditional view
-7. intraday A-flow confirmation view
-8. final label for C1 / C2 / C3: `SUPPORTED / DESCRIPTIVE / REJECTED`
-9. one sentence on whether any finding deserves later production testing
+No acceptance conclusion is made here.
 
-No additional research branch should be opened before this report is complete.
+The available Aug validation days used for C1/C2 did not contain enough market-regime variation to identify Risk On / Risk Off conditional effects without inventing distinctions after the fact.
+
+`MARKET_ALIGNMENT` — Market -> Sector -> Stock — is explicitly deferred to the next research cycle. It is not inserted retroactively into this acceptance and it does not modify the frozen C1/C2/C3 results.
+
+## 10. Final labels
+
+| Candidate | Final acceptance label | Meaning |
+|---|---|---|
+| C1 | **DESCRIPTIVE / BASE CONDITION** | Structural base; marginal contribution weak after separating C2 overlap. |
+| C2 | **STRONG CANDIDATE / HISTORICAL SUPPORT** | Strong T+1 activation separation over available clean days; meaningful incremental lift over C1; event/state A-flow provides strong confirmation/contradiction. Not production-supported yet. |
+| C3 | **NOT SUPPORTED for T+1 activation — INCONCLUSIVE / DATA CEILING** | n=22 T+1 events show no lift, but sample is thin. |
+| C3 on T+10 opportunity target | **REJECTED** | 2020–2025, n=2,432, decisive null for Net MFE >= +3% @ T+10. |
+
+## 11. Production decision
+
+This one-shot acceptance does **not** change production rules.
+
+- Line A remains untouched.
+- C1 requires no new production feature; the existing price-structure gate already represents its role.
+- C2 is the only candidate worth continued frozen-rule observation.
+- C2 may remain `DESCRIPTIVE/WATCH` while more clean forward trading days accumulate.
+- C2 must not be promoted directly into an automatic gate or buy signal from this acceptance alone.
+- C3 is closed for T+10 opportunity prediction and remains unproven for T+1 activation.
+- No C4 or unrelated feature branch is opened by this acceptance.
+
+## 12. Closure
+
+The One-Shot Acceptance is formally closed.
+
+Research cadence after closure:
+
+1. Preserve C1/C2/C3 definitions and this result record.
+2. Do not reopen threshold rescue on these same samples.
+3. Keep the corrected real-trading-day T+1 pairing rule canonical.
+4. Keep intraday confirmation event/state based rather than clock-time based.
+5. Open `MARKET_ALIGNMENT` only as a separate next-cycle research question, not as an amendment to this report.
