@@ -121,67 +121,128 @@ Select at most THREE structures with:
 2. obvious A19 vs 32 separation,
 3. variables known at T-1 close.
 
-Examples of allowed structure shapes:
+Current candidates:
 
-- long institutional buy run -> short/light sell run -> shrinking volume -> MA20 intact
-- institutional selling -> price refuses to fall -> lows hold -> sector supportive
-- low-base accumulation -> price has not responded -> volume controlled -> sector improving
+- C1 `Structure Intact`
+- C2 `Selling Pressure Weakening + Price Response`
+- C3 `Prior Buy Run -> Short Sell -> Structure Intact`
 
-These examples are not pre-approved winners; they only illustrate the form.
+Do not open C4 before this acceptance closes.
 
-### Step 3 — Dedicated validation of `Prior Buy Run -> Short Sell -> Structure Intact`
+### Step 3 — C3 dedicated validation: June -> January, month by month
 
-This pattern gets one direct historical test before any wider feature expansion.
+C3 is now frozen and must be traced **backward from June 2026 through January 2026**. July is excluded. Do not stop after seeing June.
 
-Frozen pattern skeleton:
+#### Frozen C3 event definition
 
-- prior institutional buy run exists and is meaningfully long
-- current sell segment is short (1–3 trading days)
-- current selling gives back only a minority of the preceding buy-run accumulation
-- price structure remains intact, with MA20 as the main structural reference
-- volume behavior during the sell/pullback segment is recorded as expanding vs contracting, but is not used to loosen the event definition after results are seen
+A T-1 stock-day qualifies only when ALL are true:
 
-Primary validation month:
+1. `prior_buy_run_days >= 3`
+2. `prior_buy_run_sum > 0`
+3. `current_sell_run_days` is between **1 and 3** trading days inclusive
+4. `current_sell_run_sum < 0`
+5. `sellback_ratio = abs(current_sell_run_sum) / prior_buy_run_sum <= 0.30`
+6. T-1 close is **at or above MA20** (`close >= MA20`)
 
-> **2026-06-01 through 2026-06-30 only.**
+This is the frozen eligibility definition. Do not alter these thresholds after seeing outcomes.
 
-July 2026 is explicitly excluded from this test.
+Interpretation:
 
-Sampling rule:
+> A meaningful institutional buy run is followed by only a short/light sell segment, while the main price structure remains intact. The sell segment is treated as a possible profit-taking / turnover event, not automatically as distribution.
 
-- Scan the fixed 51-stock universe over all June trading days.
-- Collect at least **20 qualifying stock-day events** before judging the pattern.
-- Prefer distinct stocks when possible, but do not relax the definition merely to reach 20.
-- If June contains fewer than 20 qualifying events, extend **backward into May 2026** until 20 events are reached.
-- Do NOT extend forward into July.
-- Do NOT tune thresholds after seeing June outcomes.
+#### Volume is diagnostic, not eligibility
 
-For each qualifying event report:
+For every C3 event, separately record whether the sell/pullback segment is:
 
-- code / date
-- prior buy-run days and cumulative buy amount
-- current sell-run days and cumulative sell amount
+- volume contracting
+- volume normal
+- volume expanding
+
+Do **not** use volume to admit/exclude C3 events in this run. First test whether volume behavior explains which C3 cases work.
+
+#### Required calendar walkback
+
+Run the fixed 51-stock universe separately for:
+
+- 2026-06-01 through 2026-06-30
+- 2026-05-01 through 2026-05-31
+- 2026-04-01 through 2026-04-30
+- 2026-03-01 through 2026-03-31
+- 2026-02-01 through 2026-02-28
+- 2026-01-01 through 2026-01-31
+
+**July 2026 must not be used.**
+
+Do not pool the months first. Each month must be reported independently so regime dependence and month-to-month stability remain visible.
+
+If one month has fewer than 20 C3 events, report the true count. Do not loosen C3 to manufacture 20 events. The six-month aggregate can then provide the larger event count.
+
+#### Per-event fields
+
+For every qualifying event report/store:
+
+- code / T-1 date
+- prior buy-run days
+- prior buy-run cumulative institutional buy
+- current sell-run days
+- current sell-run cumulative institutional sell
 - sellback ratio
-- pullback-day volume ratio / volume contraction or expansion
-- close vs MA5 / MA20
-- whether lows remain structurally intact
+- T-1 1d / 3d / 5d price return
+- sell/pullback volume behavior and volume ratio
+- close vs MA5
+- close vs MA20
+- whether prior lows remain intact
 - market regime / breadth
-- sector regime / relative strength
-- T+1 WATCH MODE / activation outcome
-- T+1 max favorable move
-- T+1 close return
-- T+1 intraday A-flow confirmation or contradiction when clean data exists
+- sector regime / breadth / relative strength
+- T-day WATCH MODE / confirmed activation outcome
+- T-day max favorable move
+- T-day max adverse move when available
+- T-day close return
+- T-day intraday A-flow confirmation / contradiction when clean data exists
 
-Primary question:
+#### Required monthly table
 
-> Does this pattern produce a materially higher T+1 activation rate than the same-month fixed-51 baseline?
+For EACH month Jan–Jun report at minimum:
 
-Secondary question:
+- C3 event count
+- distinct stock count
+- number of trading days containing C3 events
+- `P(T-day activation | C3)`
+- same-day eligible control activation rate
+- activation lift in percentage points
+- day-equal activation lift
+- number / share of days where C3 beats control
+- mean/median T-day MFE
+- mean/median T-day MAE when available
+- mean/median T-day close return
+- volume-contracting vs volume-expanding descriptive split
+- market / sector regime distribution
 
-> When it activates, does T-day A-flow tend to confirm the prior institutional/price thesis rather than contradict it?
+Also report one six-month summary using both:
 
-### Step 4 — Historical repeat of any remaining frozen candidates
-Only after the dedicated June test above is complete, run any other frozen candidate structures on clean historical days.
+1. pooled stock-day statistics, and
+2. **month-equal** averages so one high-event month cannot dominate the conclusion.
+
+#### C3 acceptance logic
+
+C3 is not judged from one month alone.
+
+Mark `SUPPORTED` only if:
+
+- activation lift is positive in a clear majority of Jan–Jun months,
+- the month-equal activation lift is positive and economically meaningful,
+- results are not carried by one stock / one sector / one month,
+- the pattern remains coherent after viewing volume and market/sector context.
+
+Mark `DESCRIPTIVE / WATCH` if direction is mostly positive but event count/effect size is weak.
+
+Mark `REJECTED` if the effect is inconsistent or negative across the Jan–Jun walkback.
+
+No threshold rescue after the six-month result is seen.
+
+### Step 4 — Historical repeat of C1 / C2
+
+C1 and C2 remain separately frozen. Their previously observed Aug clean-day results may be reported, but do not change their definitions while C3 Jan–Jun validation is running.
 
 Primary target:
 
@@ -195,19 +256,17 @@ Secondary descriptive outcomes:
 
 Use stock-day and day-equal summaries. Do not treat 5-minute snapshots as independent samples.
 
-No threshold tuning after seeing these historical results.
+No threshold tuning after seeing historical results.
 
 ## 6. Acceptance
 
 A candidate can be marked `SUPPORTED` only if all are true:
 
-1. It is materially enriched in the A19 discovery cohort versus the other 32, OR for the dedicated prior-buy-run pattern, it shows clear lift in the frozen June historical test.
-2. Historical clean-day activation lift remains in the same direction on a clear majority of days.
-3. The effect is not explained only by one sector or one market-regime day.
+1. It shows material activation lift under its frozen historical validation.
+2. Historical clean-day / clean-month lift remains in the same direction across a clear majority of independent periods.
+3. The effect is not explained only by one stock, sector, month, or market-regime episode.
 4. The interpretation remains economically coherent after including market/sector context.
 5. T-day intraday A-flow behaves as a useful confirmation/contradiction layer rather than requiring future information.
-
-If the A19 separation disappears historically, mark `SINGLE-DAY ANOMALY / REJECTED` and stop.
 
 If direction persists but sample/effect is weak, mark `DESCRIPTIVE / WATCH`, do not add gates.
 
@@ -221,7 +280,9 @@ During this acceptance, DO NOT:
 - add new indicator families because one table looks interesting
 - use current-day dynamic A19 membership as if it were T-1 selection
 - automatically penalize one or two institutional sell days
-- use July 2026 for the dedicated prior-buy-run validation
+- use July 2026 for C3 validation
+- stop C3 after June; continue month by month through January
+- loosen C3 thresholds to increase sample size
 - change Line A
 - modify production selection/entry logic
 
@@ -232,12 +293,13 @@ Interesting results may be recorded, but unrelated branches are deferred until t
 One final report only:
 
 1. A19 vs 32 common-signal matrix
-2. dedicated June 20-event test for `Prior Buy Run -> Short Sell -> Structure Intact`
-3. the frozen top 1–3 structures
-4. historical repeat table by day
-5. market/sector conditional view
-6. intraday A-flow confirmation view
-7. final label for each candidate: `SUPPORTED / DESCRIPTIVE / REJECTED`
-8. one sentence on whether any finding deserves later production testing
+2. C1 / C2 frozen historical results
+3. C3 month-by-month validation table for **June, May, April, March, February, January 2026**
+4. C3 six-month pooled + month-equal summary
+5. volume contraction / expansion interpretation inside C3
+6. market/sector conditional view
+7. intraday A-flow confirmation view
+8. final label for C1 / C2 / C3: `SUPPORTED / DESCRIPTIVE / REJECTED`
+9. one sentence on whether any finding deserves later production testing
 
 No additional research branch should be opened before this report is complete.
