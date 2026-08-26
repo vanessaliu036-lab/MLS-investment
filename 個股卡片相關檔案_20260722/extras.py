@@ -646,6 +646,7 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
     status = ("今日盤中即時資料" if (snap or {}).get("intraday_available") else
               "今日官方盤後資料已更新" if official_ready and data_date == _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).date().isoformat()
               else "等待今日 18:00 官方更新，目前顯示前一交易日資料")
+    intraday_live = bool((snap or {}).get("intraday_available"))
     return {"ok": True, "code": code, "updated_at": _now_tw(),
             "data_date": data_date or asof_limit,
             "data_timestamp": _now_tw(),
@@ -656,7 +657,9 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
             "sector": C.SECTOR_MAP.get(code, ("其他",))[0],
             "post_market": snap or {},
             "data_source": post_source,
-            "intraday": {"available": False, "note": "盤中即時欄位：等收盤驗證；卡片只讀盤後固定資料"}}
+            "intraday": {"available": intraday_live,
+                         "note": "盤中即時行情已接入" if intraday_live
+                         else "非盤中或即時行情不可用；卡片顯示盤後固定資料"}}
 
 
 # ── /api/report ────────────────────────────────────────────

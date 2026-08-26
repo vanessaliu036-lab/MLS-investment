@@ -90,7 +90,10 @@ def seen_in_git(rel: str, digest: str) -> bool:
       · 線上內容 git 從沒見過      → 線上有沒進版控的改動,部署會抹掉它 = 必須擋
     後者就是 screen_post.py(六態分類/背離救回)差點被回捲的情況。
     """
-    log = subprocess.run(["git", "log", "--all", "--format=%H", "--", rel],
+    # --all 會把 Codex 的 turn-diff/checkpoint refs 也掃進來；那些暫存 refs
+    # 數量很大，會讓部署守門卡在單一檔案數分鐘。正式部署只需檢查分支與
+    # remote refs，仍涵蓋 main、工作分支與 origin 版本，不把暫存快照當成來源。
+    log = subprocess.run(["git", "log", "--branches", "--remotes", "--format=%H", "--", rel],
                          cwd=REPO, capture_output=True, text=True)
     for commit in log.stdout.split():
         blob = subprocess.run(["git", "show", f"{commit}:{rel}"],

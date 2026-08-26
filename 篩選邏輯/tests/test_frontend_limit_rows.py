@@ -27,6 +27,51 @@ class FrontendLimitRowTests(unittest.TestCase):
     def test_percentage_only_guess_is_removed(self):
         self.assertNotIn(">=9.8", self.html)
 
+    def test_negative_change_cannot_reuse_stale_limit_flag(self):
+        exact = self.html.split("const exactLimitUp=", 1)[1].split("};", 1)[0]
+        self.assertLess(exact.index("c<=0"), exact.index("row?.is_limit_up===true"))
+
+    def test_percent_string_cannot_reuse_stale_limit_flag(self):
+        self.assertIn("const numericValue=", self.html)
+        self.assertIn("v.replace(/[,%\\s]/g,'')", self.html)
+        exact = self.html.split("const exactLimitUp=", 1)[1].split("};", 1)[0]
+        self.assertIn("numericValue(change)", exact)
+        self.assertIn("if(c<=0)return false", exact)
+
+    def test_positive_but_non_limit_change_cannot_reuse_stale_limit_flag(self):
+        # 2026-08-25 production bug: 台勝科(+0.40%) / 晶豪科(-4.26%) both still carried a
+        # is_limit_up=true flag frozen from the pool/selection day. The old predicate only
+        # rejected c<=0 before trusting the flag, so a small *positive* stale change (like
+        # +0.40%) still fell through to `row.is_limit_up===true` and showed a false 漲停
+        # badge. Whenever price+change are both available, the tick-based self-check must
+        # be the only source of truth — the raw boolean flags may only be trusted as a
+        # fallback when price or change is missing (old historical rows).
+        exact = self.html.split("const exactLimitUp=", 1)[1].split("};", 1)[0]
+        self.assertLess(exact.index("p!=null&&c!=null"), exact.index("row?.is_limit_up===true"))
+        self.assertLess(exact.index("c<=0"), exact.index("row?.is_limit_up===true"))
+
+    def test_day_position_is_recomputed_and_clamped(self):
+        self.assertIn("const dayPositionPct=", self.html)
+        self.assertIn("Math.max(0,Math.min(100", self.html)
+        self.assertIn("row.day_position_pct=dayPositionPct", self.html)
+
+    def test_limit_pullback_copy_uses_reactivation_language(self):
+        for text in ("漲停後震盪・待突破", "重新啟動｜突破", "短線防守｜MA5", "⚠️ 賣壓增加"):
+            self.assertIn(text, self.html)
+
+    def test_post_verify_shows_institution_breakdown(self):
+        for text in ("mr-chip-detail", "三大法人", "外資", "投信", "自營"):
+            self.assertIn(text, self.html)
+        for field in ("base_foreign_net", "base_trust_net", "base_dealer_net",
+                      "t1_foreign_net", "t1_trust_net", "t1_dealer_net"):
+            self.assertIn(field, self.html)
+
+    def test_close_verification_distinguishes_strategy_hit_from_price_prediction(self):
+        for text in ("策略條件通過", "核心條件通過", "核心通過・確認轉弱",
+                     "非上漲預測命中", "這裡是策略條件驗證，不等於預測上漲勝率"):
+            self.assertIn(text, self.html)
+        self.assertNotIn("完整命中", self.html)
+
     def test_rejected_table_shows_recovery_fields(self):
         for label in ("淘汰原因", "救援訊號", "Recovery Score", "隔日觸發條件"):
             self.assertIn(label, self.html)

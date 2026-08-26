@@ -211,6 +211,10 @@ def _attach_t1_institution(items, pool_date, db_path="mls.db"):
         item["t1_verify_date"] = verify_date.isoformat()
         item["t1_inst_streak"] = streak
         item["t1_chip_status"] = status
+        item["t1_total_net"] = rec.get("total_net")
+        item["t1_foreign_net"] = rec.get("foreign_net")
+        item["t1_trust_net"] = rec.get("trust_net")
+        item["t1_dealer_net"] = rec.get("dealer_net")
         item["t1_institution_label"] = (
             screen_post._chip_label(status, streak)
             if streak is not None or net is not None else None

@@ -39,6 +39,15 @@ class IntradayClassifierSourceTests(unittest.TestCase):
         self.assertIn('streak_detail = f"法人連賣 {abs(int(streak))} 日"', self.source)
         self.assertNotIn('"detail": f"法人連買 {streak} 日"', self.source)
 
+    def test_day_position_is_clamped_to_valid_percentile(self):
+        base = Path(__file__).resolve().parents[1]
+        path = base / "screen_intraday.py"
+        if not path.exists():
+            raise unittest.SkipTest("screen_intraday.py is not installed in this tree")
+        source = path.read_text(encoding="utf-8")
+        self.assertIn("max(0, min(100", source)
+        self.assertIn("day_position_pct", source)
+
 
 if __name__ == "__main__":
     unittest.main()

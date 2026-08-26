@@ -64,6 +64,9 @@ ssh -p "${VPS_PORT_SSH}" "${VPS_USER}@${VPS_HOST}" \
 
 # 3. rsync 源碼（就地更新；資料檔全列排除，rsync --delete 不會刪被排除的檔，
 #    所以 mls.db / intraday_eod.db / 快照 / 快取會留在 VPS 原地持續累積）
+#    winning_model_backtest/ 是本機獨立的研究用 git repo(自己有 .git/.env)，
+#    8000 站程式只在註解裡引用它的凍結文件路徑，執行期不讀取；同步上去只會把
+#    160MB 研究資料與它自己的 .env 一起搬進正式站目錄，故排除。
 echo "===== 3/6 推送 8000 站源碼 (rsync) ====="
 rsync -avz --delete \
   -e "ssh -p ${VPS_PORT_SSH}" \
@@ -86,6 +89,7 @@ rsync -avz --delete \
   --exclude='card_cache/' \
   --exclude='reports/' \
   --exclude='篩選邏輯/' \
+  --exclude='winning_model_backtest/' \
   "${LOCAL_SRC}/" \
   "${VPS_USER}@${VPS_HOST}:${VPS_DEPLOY_DIR}/"
 

@@ -877,6 +877,12 @@ def build(universe: list[str], db_path: str = "mls.db",
         it["aflow_previous"] = flow_prev.get(c)
         it["margin_change"] = _margin.get("margin_change")
         it["margin_balance"] = _margin.get("margin_balance")
+        # 保留三大法人原始拆分，讓前端 B 區顯示「合計／外資／投信／自營」；
+        # 只帶 chip_label 會讓所有股票退回「法人今日買(賣)超」摘要。
+        it["total_net"] = _inst.get("total_net")
+        it["foreign_net"] = _inst.get("foreign_net")
+        it["trust_net"] = _inst.get("trust_net")
+        it["dealer_net"] = _inst.get("dealer_net")
         kept.append(it)
 
     # 排序改吃「延續機率」(明天值不值得看),而非舊單一 score;同分以追價安全高者優先。
@@ -1218,6 +1224,11 @@ def _decorate_saved_items(items: list[dict], d: _dt.date, db_path: str) -> list[
             "institution_label": item.get("chip_label") or item.get("institution_label"),
             "is_limit_up": item.get("is_limit_up"),
         }
+        # 舊池快照不可改寫，但讀取時可從同日 immutable inst_flow 補齊顯示欄位。
+        # 這讓既有日期也能看到法人拆分，不必等重新產池。
+        for field in ("total_net", "foreign_net", "trust_net", "dealer_net"):
+            if item.get(field) is None:
+                item[field] = institution.get(field)
         view = decision_view.build(item, market, item)
         item.update(view)
         item["tier"] = view["classification"]

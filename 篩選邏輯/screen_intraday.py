@@ -119,7 +119,7 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
     trigger_price = pool_row.get("trigger_price")
     chase_distance_pct = (round((price / trigger_price - 1) * 100, 2)
                           if price is not None and trigger_price else None)
-    day_position_pct = (round((price - day_low) / (day_high - day_low) * 100, 1)
+    day_position_pct = (round(max(0, min(100, (price - day_low) / (day_high - day_low) * 100)), 1)
                         if price is not None and day_high is not None and day_low is not None
                         and day_high > day_low else
                         (100.0 if price is not None and day_high is not None
