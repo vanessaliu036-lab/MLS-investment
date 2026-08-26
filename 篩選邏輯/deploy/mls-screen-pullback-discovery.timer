@@ -1,0 +1,13 @@
+[Unit]
+Description=每交易日 13:40 台北 觸發 Healthy Pullback Entry Framework 觀察快照(FROZEN_HEALTHY_PULLBACK_V1)
+
+[Timer]
+# 13:30 收盤,b_snapshot 最後一格落地後留 10 分鐘緩衝再跑。純觀察用途,
+# 不趕時間,晚一點跑比冒著資料還沒收完硬算更好——run_pullback_discovery.py
+# 自己也會用 MIN_SLOTS_FOR_FULL_SESSION 擋未收完的日期,跳過留給下次補。
+OnCalendar=Mon..Fri 13:40:00 Asia/Taipei
+Persistent=true
+Unit=mls-screen-pullback-discovery.service
+
+[Install]
+WantedBy=timers.target

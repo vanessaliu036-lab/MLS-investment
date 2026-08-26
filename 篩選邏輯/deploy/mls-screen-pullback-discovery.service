@@ -1,0 +1,13 @@
+[Unit]
+Description=Healthy Pullback Entry Framework — DISCOVERY ONLY append-only ledger(不進 UI/排序)
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/mls-screen
+Environment="HOME=/root"
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=/usr/bin/python3 run_pullback_discovery.py
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mls-screen-pullback-discovery
