@@ -61,6 +61,7 @@ def _row(r):
     ext_cls = "bad" if ext["verdict"] == "HIGH" else "ok"
     vol_txt = vol["verdict"].replace("PASS_NO_ACCEL", "PASS*")
     rvol = f'RVOL {vol["rvol"]}x' if vol.get("rvol") is not None else "RVOL —"
+    tno = (f'週轉 {vol["turnover_pct"]}%' if vol.get("turnover_pct") is not None else "週轉 —")
     acc_detail = (f'{acc.get("held_minutes", 0)}分 / 回撤 {_f(acc.get("max_drawdown_pct"),2,"%")}'
                   if acc["verdict"] in ("YES", "NO") else "—")
     sec_txt = (f'{sec.get("verdict")} {_f(sec.get("breadth_pct"),0,"%")}'
@@ -77,11 +78,11 @@ def _row(r):
   <td><span class="tag {'ok' if trig['verdict']=='YES' else ''}">{_esc(_yn(trig['verdict']))}</span>
     <div class="sub">站穩 {trig.get('hold_minutes',0)}分</div></td>
   <td><span class="tag {'ok' if vol['verdict'].startswith('PASS') else ''}">{_esc(vol_txt)}</span>
-    <div class="sub">{_esc(rvol)} · n={vol.get('rvol_base_days',0)}日</div></td>
+    <div class="sub">{_esc(rvol)} · n={vol.get('rvol_base_days',0)}日<br>{_esc(tno)}</div></td>
   <td><span class="tag {'ok' if acc['verdict']=='YES' else ''}">{_esc(_yn(acc['verdict']))}</span>
     <div class="sub">{_esc(acc_detail)}</div></td>
   <td><span class="tag {ext_cls}">{_esc(ext['verdict'])}</span>
-    <div class="sub">{_esc('、'.join(ext.get('reasons') or []) or 'MA5 '+_f(ext.get('dist_ma5_pct'),1,'%'))}</div></td>
+    <div class="sub">{_esc('、'.join(ext.get('reasons') or []) or 'MA5 '+_f(ext.get('dist_ma5_pct'),1,'%'))}<br>Gap {_f(ext.get('gap_pct'),2,'%')}</div></td>
   <td><span class="tag">{_esc(sec_txt)}</span>
     <div class="sub">{_esc(sec.get('group') or '')}{' · 領漲' if sec.get('leadership') else ''}</div></td>
   <td><span class="state {STATE_CSS.get(st['state'],'')}">{_esc(st['state'])}</span></td>
@@ -199,8 +200,10 @@ def render(ctx: dict) -> str:
     <b>DESCRIPTIVE ONLY — 這一頁不是買進推薦。</b>
     所有門檻（RVOL 1.5x、回撤 1%、乖離 8%/15% 等）都是暫定觀察值，<b>沒有經過回測驗證</b>。
     本頁目的是累積 20–30 個交易日的 forward 樣本，之後才用 T+1／T+3／MFE／MAE 判斷哪些訊號值得留。<br>
-    已知限制：<b>Turnover 無資料源</b>（沒有流通股數）一律顯示 —；<b>RVOL 母體只有 b_snapshot 累積的交易日</b>
-    （每列都標 n=幾日），天數少時基準不穩；<b>Gap 不計算</b>（沒有真開盤價，不用 proxy 硬湊）。
+    資料說明：<b>Turnover</b> = 當日成交股數 ÷ 已發行普通股數，股數取自 TWSE／TPEx 官方免費 OpenAPI
+    （51 檔全涵蓋）；<b>Gap</b> 用 daily_bar 真開盤價，當日 daily_bar 收盤後才寫入，<b>盤中顯示 —</b>
+    （不用 09:15 快照價當 proxy 硬湊）；<b>RVOL 母體只有 b_snapshot 累積的交易日</b>
+    （每列都標 n=幾日），天數少時基準不穩。
     這一頁與「買點監控」是兩套獨立計算，<b>不共用那張 77/11 校準表</b>，也不影響它。
   </div>
   {body}

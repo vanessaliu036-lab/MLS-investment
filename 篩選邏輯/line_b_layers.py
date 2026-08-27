@@ -29,10 +29,13 @@
   同理不再有 `ARMED-HIGH`:ARMED 是生命週期,HIGH 是價格風險,分兩欄各自表述。
 
 ═══ 誠實標註 ═══
-  · Turnover(成交量÷流通股數)= N/A。沒有流通股數資料源,不編。
+  · Turnover = 當日成交股數 ÷ 已發行普通股數。股數來自 TWSE/TPEx 官方免費
+    OpenAPI(見 stock_shares.py),抓不到才顯示「—」,不用估算值頂替。
+    (2026-08-27 更正:先前誤判「沒有資料源」是沒查就下結論,實際抓得到。)
+  · Gap = (今日開盤 − 昨收) ÷ 昨收,用 daily_bar.open 真開盤價。當日 daily_bar
+    要收盤後才寫,所以盤中 Gap 顯示「—」——不用 09:15 快照價當 proxy 硬湊。
   · RVOL 的歷史母體只有 b_snapshot 累積的交易日(目前約 11 個乾淨日),
     母體天數一律隨值回傳,不讓它看起來比實際可靠。
-  · 今日開盤價用當日第一格(>=0915)快照價當 proxy,不是真開盤價,欄位名標明。
   · 所有門檻都是「暫定觀察值」,不是回測出來的。這一版的用途是累積 20–30 個
     交易日的 forward 樣本,之後才用 T+1/T+3/MFE/MAE 判斷哪些訊號值得留。
 """
@@ -44,6 +47,7 @@ from pathlib import Path
 from typing import Optional
 
 import phase
+import stock_shares as _shares
 
 DB = "mls.db"
 BLIND_MIN_SLOT = "0915"   # 與 run_line_b_ledger 同一條資料品質鐵律,不是交易訊號
@@ -57,6 +61,7 @@ EXT_MA5_PCT = 8.0         # 距 MA5 乖離
 EXT_MA20_PCT = 15.0       # 距 MA20 乖離
 EXT_RET3D_PCT = 15.0      # 近 3 日累計漲幅
 EXT_NEAR_LIMIT_PCT = 9.0  # 當日漲幅接近漲停
+EXT_GAP_PCT = 3.0         # 今日跳空幅度
 ARMED_NEAR_PCT = 3.0      # 距觸發價多少 % 以內算「已就位」
 CHIP_STRONG_LOTS = 3000   # 5 日法人淨額顯著門檻
 FLOW_STRONG = 1000        # net_active 視為 STRONG 的幅度
@@ -190,9 +195,13 @@ def price_trigger_layer(price, trigger, slots, vwap) -> dict:
 
 # ────────────────────────── VOLUME QUALITY ────────────────────────────────
 
-def volume_layer(today_slots, hist_by_slot: dict, current_slot: Optional[str]) -> dict:
-    """RVOL = 今日該格累計量 ÷ 歷史同格累計量均值。b_snapshot.volume 是當日累計量。
-    Turnover 需要流通股數,沒有資料源 → 一律 N/A,不編。"""
+def volume_layer(today_slots, hist_by_slot: dict, current_slot: Optional[str],
+                 issued_shares: Optional[float] = None) -> dict:
+    """RVOL = 今日該格累計量 ÷ 歷史同格累計量均值。b_snapshot.volume 是當日累計量(張)。
+
+    Turnover = 當日累計成交股數 ÷ 已發行普通股數。股數來自 stock_shares(TWSE/TPEx
+    官方免費 OpenAPI,見該模組)。抓不到就回 None 顯示「—」,不用估算值頂替。
+    """
     vols = [(_num(s.get("volume")), s.get("slot")) for s in today_slots]
     vols = [(v, sl) for v, sl in vols if v is not None]
     cur_vol, cur_slot = (vols[-1] if vols else (None, None))
@@ -219,9 +228,15 @@ def volume_layer(today_slots, hist_by_slot: dict, current_slot: Optional[str]) -
     else:
         verdict = "THIN"
 
+    # b_snapshot.volume 單位是張(來自 Shioaji total_volume),×1000 換成股再除以發行股數
+    turnover = None
+    if cur_vol is not None and issued_shares:
+        turnover = round(cur_vol * 1000 / issued_shares * 100, 3)   # %
+
     return {"verdict": verdict, "rvol": rvol, "rvol_base_days": len(hist),
             "vol_accel": accel, "cum_volume": cur_vol, "slot": slot_key,
-            "turnover": None, "turnover_note": "N/A — 無流通股數資料源"}
+            "turnover_pct": turnover, "issued_shares": issued_shares,
+            "turnover_note": None if turnover is not None else "無該檔發行股數快取"}
 
 
 # ─────────────────────────── ACCEPTANCE ───────────────────────────────────
@@ -261,8 +276,13 @@ def acceptance_layer(slots, trigger, vwap, price) -> dict:
 
 # ────────────────────────── EXTENSION RISK ────────────────────────────────
 
-def extension_layer(price, bars, change_rate) -> dict:
-    """bars newest-first(T-1 起)。距 MA5 / MA20 / 20日高 / Gap / 3日累漲。"""
+def extension_layer(price, bars, change_rate, today_open=None) -> dict:
+    """bars newest-first(T-1 起)。距 MA5 / MA20 / 20日高 / Gap / 3日累漲。
+
+    Gap = (今日開盤 − 昨收) ÷ 昨收。today_open 來自 daily_bar.open(當日收盤後才
+    寫入)。盤中還沒有真開盤價時回 None 顯示「—」——不用第一格快照價當 proxy,
+    那是 09:15 的價格,不是開盤價。
+    """
     price = _num(price)
     b0 = bars[0] if bars else {}
     ma5, ma20 = _num(b0.get("ma5")), _num(b0.get("ma20"))
@@ -275,7 +295,7 @@ def extension_layer(price, bars, change_rate) -> dict:
 
     d_ma5, d_ma20 = _pct(price, ma5), _pct(price, ma20)
     d_high20 = _pct(price, high20)
-    gap = None  # 需要真開盤價;open_proxy 不夠準,寧可不給也不給錯
+    gap = _pct(today_open, prev_close)
 
     flags = []
     if d_ma5 is not None and d_ma5 > EXT_MA5_PCT:
@@ -286,6 +306,8 @@ def extension_layer(price, bars, change_rate) -> dict:
         flags.append(f"近3日 +{ret3:.1f}%")
     if cr is not None and cr >= EXT_NEAR_LIMIT_PCT:
         flags.append(f"today +{cr:.1f}%")
+    if gap is not None and gap > EXT_GAP_PCT:
+        flags.append(f"跳空 +{gap:.1f}%")
 
     return {"verdict": "HIGH" if flags else "NORMAL", "reasons": flags,
             "dist_ma5_pct": d_ma5, "dist_ma20_pct": d_ma20,
@@ -394,6 +416,10 @@ def compute(db_path: str = DB, T: Optional[str] = None) -> dict:
         aflows = {r["code"]: r for r in
                   _rows(conn, "SELECT * FROM aflow WHERE data_date=?", (T,))}
         inst_max = conn.execute("SELECT MAX(data_date) FROM inst_flow").fetchone()[0]
+        shares_map = _shares.load(db_path)
+        # 今日 daily_bar 收盤後才寫入;盤中沒有就是沒有,不用 proxy 頂替
+        today_open = {r['code']: r['open'] for r in _rows(
+            conn, 'SELECT code, open FROM daily_bar WHERE data_date=?', (T,))}
 
         change_map = {c: _num(q.get("change_rate")) for c, q in quotes.items()}
 
@@ -426,9 +452,10 @@ def compute(db_path: str = DB, T: Optional[str] = None) -> dict:
                               (slots[-1].get("net_active") if slots else None))
             trig = price_trigger_layer(price, trigger, slots, vwap)
             vol = volume_layer(slots, _hist_volume_by_slot(conn, code, T),
-                               slots[-1]["slot"] if slots else None)
+                               slots[-1]["slot"] if slots else None,
+                               shares_map.get(code))
             acc = acceptance_layer(slots, trigger, vwap, price)
-            ext = extension_layer(price, bars, q.get("change_rate"))
+            ext = extension_layer(price, bars, q.get("change_rate"), today_open.get(code))
             sec = sector_layer(code, group_map.get(code), change_map, group_map)
             st = trade_state(chip, flow, trig, vol, acc, ext, structure_ok, distance_pct)
 
@@ -450,6 +477,8 @@ def compute(db_path: str = DB, T: Optional[str] = None) -> dict:
         out.sort(key=lambda r: (order.get(r["state"]["state"], 9),
                                 -(r["flow"].get("net_active") or 0)))
         return {"T": T, "T1": T1, "rows": out, "inst_flow_through": inst_max,
+                "shares_coverage": sum(1 for r in out if r["volume"].get("issued_shares")),
+                "gap_available": sum(1 for r in out if r["extension"].get("gap_pct") is not None),
                 "observation_version": OBSERVATION_VERSION,
                 "counts": _counts(out)}
     finally:

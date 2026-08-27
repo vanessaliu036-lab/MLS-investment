@@ -32,7 +32,7 @@ body{visibility:visible!important}body.ready{visibility:visible!important}
 
 </style></head><body>
 <header class="topbar"><div class="brand"><div class="mark">M</div><div>MLS<small>LIVE DECISION ENGINE</small></div></div><div class="top-actions"><span class="dot"></span><span id="conn" class="muted">Shioaji 即時連線</span><button class="btn" id="pause">暫停監控</button><button class="btn primary" onclick="load()">更新資料</button></div></header>
-<div class="layout"><aside class="sidebar"><div class="nav-label">盤中決策</div><div class="nav-item active" onclick="closeHome()">決策首頁 <span class="count">LIVE</span></div><div class="nav-item" onclick="openPanel('radar')">機會雷達 <span id="navCount" class="count">—</span></div><div class="nav-item" onclick="openPanel('watch')">觀察池 51 檔 <span id="watchCount" class="count">—</span></div><div class="nav-item" onclick="openFeature('review')">盤後驗證</div><div class="nav-item" onclick="window.open((location.protocol==='file:'?'http://66.42.42.150:8000':'')+'/opportunity-ledger','_blank')">機會分層榜</div><div class="nav-item" onclick="window.open((location.protocol==='file:'?'http://66.42.42.150:8000':'')+'/line-b-ledger','_blank')">買點監控</div></aside>
+<div class="layout"><aside class="sidebar"><div class="nav-label">盤中決策</div><div class="nav-item active" onclick="closeHome()">決策首頁 <span class="count">LIVE</span></div><div class="nav-item" onclick="openPanel('radar')">機會雷達 <span id="navCount" class="count">—</span></div><div class="nav-item" onclick="openPanel('watch')">觀察池 51 檔 <span id="watchCount" class="count">—</span></div><div class="nav-item" onclick="openFeature('review')">盤後驗證</div><div class="nav-item" onclick="window.open((location.protocol==='file:'?'http://66.42.42.150:8000':'')+'/opportunity-ledger','_blank')">機會分層榜</div><div class="nav-item" onclick="location.href=(location.protocol==='file:'?'http://66.42.42.150:8000':'')+'/line-b-ledger'">買點監控</div><div class="nav-item" onclick="location.href=(location.protocol==='file:'?'http://66.42.42.150:8000':'')+'/line-b-layers'">七層交易狀態</div></aside>
 <main class="content"><div class="header-row"><div><h1>盤中決策中心</h1><p>不是看資料，而是直接判斷現在能不能做。</p></div><div id="time" class="market-time">—</div></div>
 <section class="market-row"><div class="panel market-panel"><div class="market-head"><div class="market-mode"><div class="mode-icon">↗</div><div><div class="market-title">市場作戰模式</div><div id="mode" class="market-value">讀取中…</div></div></div><div class="ring-wrap"><div id="score" class="ai-ring">—</div><div class="ring-cap">可進場占比<i class="hint">51 檔中通過盤中因子門檻的比例；0% 代表今天沒有任何一檔達標</i></div></div></div><div class="metrics metrics-3"><div class="metric"><label>強勢族群<i class="hint">盤中平均漲幅為正且資金淨流入的族群數</i></label><strong id="sectors">—</strong></div><div class="metric"><label>可操作個股<i class="hint">七因子 100 分制 ≥65 分且無缺資料，唯一可考慮進場的名單</i></label><strong id="actionable">—</strong></div><div class="metric"><label>高風險警報<i class="hint">觸發極端價／假紅／資金流出，明確不宜進場</i></label><strong id="risk" class="down">—</strong></div></div><div class="advice"><b>今日策略</b><div id="advice" class="muted">依現有規則與即時資料計算中…</div></div></div></section>
 <section class="breadth-board" id="breadthBoard">
@@ -657,27 +657,37 @@ warmMarketHistory();
 </script>
 <script>
 /* Pre-Activation 規則版 badge(2026-08-24)。只印後台算好的 stage 與依據;
+   ACTIVE 代表價格已啟動；量能確認是獨立第二層欄位。
    前端不重算、不自判。不顯示 Activation/Tradeability/Entry Confidence:模型未驗證。
    Legacy 仍負責選股與排序,這裡只貼標籤。 */
 (function(){
-  var C={EARLY:'#1d4ed8',ARMED:'#a15c00',TRIGGER:'#168447',EXTENDED:'#b91c1c'};
+  var C={EARLY:'#1d4ed8',ARMED:'#a15c00',TRIGGER:'#168447',EXTENDED:'#b91c1c',ACTIVE:'#0f766e'};
   function E(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
   window.paBadge=function(x){
     var p=x&&x.pre_activation;
     if(!p||!p.stage||p.stage==='\u2014')return '';
     var c=C[p.stage]||'#6b7280';
+    var label=p.stage==='ACTIVE'?'🟢 ACTIVE｜價格已啟動':E(p.stage);
     return '<span class="pill" style="background:'+c+'18;color:'+c+';border:1px solid '+c+'55;font-weight:800">'
-      +E(p.stage)+'</span>'+(p.do_not_chase?' <b style="color:#b91c1c">\u4e0d\u8ffd</b>':'');
+      +label+'</span>'+(p.do_not_chase?' <b style="color:#b91c1c">\u4e0d\u8ffd</b>':'');
   };
   window.paLines=function(x){
     var p=x&&x.pre_activation;
     if(!p||!p.stage||p.stage==='\u2014')return '';
     var d=p.ma5_distance_pct;
+    var dist='距 MA5：'+(d==null?'—':(d>0?'+':'')+d+'%')+'　'+E(p.ma5_state||'')+'<br>';
+    var next='下一步：'+E(p.next_step||'—')+'</div>';
+    // ACTIVE 時把價格啟動與量能確認拆開；量能未達門檻不代表價格尚未動。
+    if(p.stage==='ACTIVE'){
+      return '<div class="muted" style="line-height:1.55;margin-bottom:3px">'
+        +'價格啟動：🟢 已啟動／'+E(p.price_state||'漲停')+'<br>'
+        +'量能確認：🟡 '+E(p.volume_confirmation_state||'尚未確認')+'<br>'
+        +'外資：'+E(p.foreign_state||'—')+'<br>'+dist+next;
+    }
     return '<div class="muted" style="line-height:1.55;margin-bottom:3px">'
-      +'\u5916\u8cc7\uff1a'+E(p.foreign_state||'\u2014')+'\u3000\uff5c\u91cf\u80fd\uff1a'+E(p.volume_state||'\u2014')+'<br>'
-      +'\u8ddd MA5\uff1a'+(d==null?'\u2014':(d>0?'+':'')+d+'%')+'\u3000'+E(p.ma5_state||'')+'<br>'
-      +'\u4e0b\u4e00\u6b65\uff1a'+E(p.next_step||'\u2014')+'</div>';
+      +'價格：'+E(p.price_state||'—')+'　｜外資：'+E(p.foreign_state||'—')+'　｜量能：'+E(p.volume_state||'—')+'<br>'
+      +dist+next;
   };
 })();
 </script>
