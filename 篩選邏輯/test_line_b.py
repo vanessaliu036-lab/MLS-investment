@@ -406,12 +406,20 @@ def test_failed_when_price_falls_back_below_trigger():
     assert st["state"] == "FAILED"
 
 
-def test_turnover_is_never_fabricated():
-    """沒有流通股數資料源,Turnover 一律 None + 標註,不得編一個數字。"""
+def test_turnover_is_never_fabricated_when_shares_unknown():
+    """2026-08-27:Turnover 已改為實算(股數來自 TWSE/TPEx OpenAPI)。但抓不到
+    股數時必須回 None 顯示「—」,絕不可用估算值頂替。"""
     import line_b_layers as L
-    v = L.volume_layer([], {}, None)
-    assert v["turnover"] is None
-    assert "N/A" in v["turnover_note"]
+    # 沒有股數 → 不得編
+    v = L.volume_layer([{"slot": "1000", "volume": 500}], {}, "1000", issued_shares=None)
+    assert v["turnover_pct"] is None
+    assert v["turnover_note"]
+
+    # 有股數 → 實算(500 張 = 500,000 股 ÷ 10,000,000 股 = 5%)
+    v2 = L.volume_layer([{"slot": "1000", "volume": 500}], {}, "1000",
+                       issued_shares=10_000_000)
+    assert v2["turnover_pct"] == pytest.approx(5.0)
+    assert v2["turnover_note"] is None
 
 
 @needs_fixture
@@ -423,4 +431,9 @@ def test_layers_compute_runs_on_real_data_and_reports_rvol_base_days(db_copy):
         assert r["state"]["state"] in {"WATCH", "ARMED", "ACTIVE", "EXTENDED", "FAILED", "REJECT"}
         # RVOL 母體天數一定要回報,不能讓人以為基準比實際可靠
         assert "rvol_base_days" in r["volume"]
-        assert r["volume"]["turnover"] is None
+        # 有股數就要算得出來;沒有就必須是 None,不得捏造
+        v = r["volume"]
+        if v.get("issued_shares"):
+            assert v["turnover_pct"] is not None
+        else:
+            assert v["turnover_pct"] is None

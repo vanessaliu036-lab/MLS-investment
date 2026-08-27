@@ -388,20 +388,44 @@ def trade_state(chip, flow, trig, vol, acc, ext, structure_ok: Optional[bool],
 
 # ──────────────────────────── 主流程 ──────────────────────────────────────
 
-def _hist_volume_by_slot(conn, code: str, T: str) -> dict:
-    """歷史各 slot 的累計量清單(不含今天)。RVOL 的分母來源。"""
-    rows = _rows(conn, "SELECT slot, volume FROM b_snapshot WHERE code=? AND data_date<? "
-                       "AND slot>=? AND volume IS NOT NULL", (code, T, BLIND_MIN_SLOT))
+def _hist_volume_all(conn, T: str) -> dict:
+    """全 universe 的歷史各 slot 累計量,一次查完 → {code: {slot: [vol,...]}}。
+
+    ⚠ 效能:原本是每檔各跑一次全表掃描(51 檔 = 51 次),整頁要 14–26 秒。
+    b_snapshot 只有 (data_date, code, slot) 的 PK,以 code 起頭的查詢用不到它,
+    每次都是全表掃。改成單次查詢後在記憶體分組,頁面回到 1 秒內。"""
+    rows = _rows(conn, "SELECT code, slot, volume FROM b_snapshot "
+                       "WHERE data_date<? AND slot>=? AND volume IS NOT NULL",
+                 (T, BLIND_MIN_SLOT))
     out: dict = {}
     for r in rows:
         v = _num(r["volume"])
         if v is not None:
-            out.setdefault(r["slot"], []).append(v)
+            out.setdefault(r["code"], {}).setdefault(r["slot"], []).append(v)
     return out
 
 
-def compute(db_path: str = DB, T: Optional[str] = None) -> dict:
+# ── 短期快取:整份 compute 約 3 秒(51 檔 × 3 表查詢),而底層資料最快也只有
+# 每 30 秒(quote_snap)/每 5 分鐘(b_snapshot)才動一次。連續重新整理沒必要
+# 每次重算。TTL 內回同一份結果,盤中仍然是「當下」的資料(最多落後 CACHE_TTL 秒)。
+CACHE_TTL_SEC = 30
+_cache: dict = {}
+
+
+def compute(db_path: str = DB, T: Optional[str] = None, use_cache: bool = True) -> dict:
     T = T or phase.today_tw().isoformat()
+    key = (db_path, T)
+    if use_cache:
+        hit = _cache.get(key)
+        if hit and (_dt.datetime.now() - hit[0]).total_seconds() < CACHE_TTL_SEC:
+            return hit[1]
+    result = _compute_uncached(db_path, T)
+    if use_cache:
+        _cache[key] = (_dt.datetime.now(), result)
+    return result
+
+
+def _compute_uncached(db_path: str, T: str) -> dict:
     universe, group_map, name_map = _meta()
 
     conn = sqlite3.connect(db_path)
@@ -422,6 +446,7 @@ def compute(db_path: str = DB, T: Optional[str] = None) -> dict:
             conn, 'SELECT code, open FROM daily_bar WHERE data_date=?', (T,))}
 
         change_map = {c: _num(q.get("change_rate")) for c, q in quotes.items()}
+        hist_vol = _hist_volume_all(conn, T)   # 一次查完,不在迴圈裡逐檔掃表
 
         out = []
         for code in universe:
@@ -451,7 +476,7 @@ def compute(db_path: str = DB, T: Optional[str] = None) -> dict:
             flow = flow_layer(a.get("net_active") if a else
                               (slots[-1].get("net_active") if slots else None))
             trig = price_trigger_layer(price, trigger, slots, vwap)
-            vol = volume_layer(slots, _hist_volume_by_slot(conn, code, T),
+            vol = volume_layer(slots, hist_vol.get(code, {}),
                                slots[-1]["slot"] if slots else None,
                                shares_map.get(code))
             acc = acceptance_layer(slots, trigger, vwap, price)
