@@ -94,6 +94,14 @@ try:
         return JSONResponse(_layers.compute(DB_PATH, date),
                            headers={"Cache-Control": "no-store, max-age=0"})
 
+    # ── C1+C2 樣本 T 日收盤 verdict(唯讀,不寫 DB,見 line_b_verdict.py)──────
+    import line_b_verdict as _verdict
+
+    @router.get("/line-b-verdict.json")
+    def line_b_verdict_json(since: Optional[str] = Query(None)):
+        return JSONResponse(_verdict.forward_rates(DB_PATH, since),
+                           headers={"Cache-Control": "no-store, max-age=0"})
+
 except Exception as _exc:
     print(f"[line-b-ledger] router 建置失敗,頁面停用:{_exc}")
     router = None
