@@ -145,7 +145,7 @@ const twRound=(v,mode='nearest')=>{const t=twTick(v),u=v/t,n=mode==='down'?Math.
 const numericValue=v=>{if(typeof v==='number')return Number.isFinite(v)?v:null;if(typeof v!=='string')return null;const n=Number(v.replace(/[,%\s]/g,''));return Number.isFinite(n)?n:null};
 const exactLimitUp=(row,price=row?.price??row?.close??row?.close_price??row?.t1_price,change=row?.change_rate??row?.today_change??row?.chg??row?.pct??row?.t1_change)=>{const p=numericValue(price),c=numericValue(change);if(row?.is_limit_up===false||row?.t1_is_limit_up===false)return false;if(p!=null&&c!=null){if(c<=0)return false;const ref=twRound(p/(1+c/100)),upper=twRound(ref*1.1,'down');return p>=upper-twTick(upper)/10;}return row?.is_limit_up===true||row?.t1_is_limit_up===true};
 // 漲跌欄統一：百分比 + 漲跌點數(由現價與漲跌%回推昨收)。ch=漲跌%、price=現價。
-const chgFull=(ch,price)=>{if(ch==null||ch==='')return '—';const c=Number(ch),p=Number(price);const s=c>0?'+':'';let out=`${s}${c}%`;if(Number.isFinite(p)&&Number.isFinite(c)&&c!==0){const pt=p-p/(1+c/100);out+=` <span style="opacity:.75">(${pt>0?'+':''}${pt.toFixed(2)})</span>`;}return out;};
+const chgFull=(ch,price)=>{if(ch==null||ch==='')return '—';const c=Number(ch),p=Number(price);if(!Number.isFinite(c))return '—';const s=c>0?'+':'';let out=`${s}${c}%`;if(Number.isFinite(p)&&c!==0){const pt=p-p/(1+c/100);out+=` <span style="opacity:.75">(${pt>0?'+':''}${pt.toFixed(2)})</span>`;}return out;};
 function taipeiMinutes(){const p=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date());return Number(p.find(x=>x.type==='hour')?.value||0)*60+Number(p.find(x=>x.type==='minute')?.value||0)}
 // 非交易日(週末/國定假日)不是「盤中」。時鐘只管時段,日曆才決定今天有沒有開盤:
 // 週末前端自己判得出來;國定假日以後端為準(phase==='CLOSED' / market_closed=true)。
@@ -416,8 +416,8 @@ window.addEventListener('load',()=>{const m=location.search.match(/[?&]view=(wat
 // 舊寫法 exactLimitUp?'limit-up':group... 讓漲停股直接失去自己的分類 class,結果
 // 「觀察」的漲停股塗成淺紅底、旁邊同樣「觀察」的卻是白底,上下分類一樣視覺卻不同
 // (2026-08-17 使用者提問「漲停也算可操作?為何上下不一樣」的根因)。
-function card(x){let c=[x.group==='排除'?'risk':x.group==='觀察'?'watch':'',exactLimitUp(x)?'limit-up':''].filter(Boolean).join(' ');return `<article class="panel stock-card ${c}" data-group="${esc(x.group)}"><div class="stock-top"><div><div class="stock-code">${esc(x.code)} · ${esc(x.subgroup)}</div><div class="stock-name">${esc(x.name)} <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span>${exactLimitUp(x)?'<span class="mr-card-limit" style="margin-left:6px">漲停</span>':''}</div></div></div><div class="signal"><b>${esc(x.classification_reason||x.subgroup||x.group)}</b><span class="tag">${esc(x.group)}</span></div><div class="price-row"><div class="price-box"><label>漲跌</label><strong class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</strong></div><div class="price-box"><label>成交量</label><strong>${fmt(x.total_volume)}</strong></div><div class="price-box"><label>aflow</label><strong class="${cls(x.aflow)}">${fmt(x.aflow)}</strong></div></div><div class="stock-foot"><span><span class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</span> · <span class="${cls(x.aflow)}">aflow ${fmt(x.aflow)}</span></span><span class="muted">查看解讀 →</span></div></article>`}
-function render(){let q=(document.querySelector('#search').value||'').toLowerCase();let rs=data.filter(x=>(filter==='全部'||x.group===filter)&&(`${x.code}${x.name}`.toLowerCase().includes(q)));const cardRows=rs.slice(0,6);document.querySelector('#cards').innerHTML=cardRows.map(card).join('')||'<div class="panel" style="padding:20px">目前沒有符合條件的標的</div>';document.querySelector('#rows').innerHTML=rs.map(x=>`<tr class="${[x.group==='可操作'?'actionable-row':x.group==='觀察'?'watch-row':'risk-row',exactLimitUp(x)?'limit-up-row':''].filter(Boolean).join(' ')}"><td><b>${esc(x.code)} ${esc(x.name)}</b> <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span></td><td class="${cls(x.change_rate)}">${fmt(x.change_rate)}%</td><td class="${cls(x.aflow)}">${fmt(x.aflow)}</td><td><span class="pill">${esc(x.group)}</span></td><td class="muted">${esc(x.subgroup)}</td><td class="muted">${esc(x.ai)}</td></tr>`).join('');document.querySelectorAll('#cards .stock-card').forEach((el,i)=>el.dataset.code=String(cardRows[i].code));document.querySelectorAll('#rows tr').forEach((el,i)=>el.dataset.code=String(rs[i].code));document.querySelector('#valid').textContent=rs.filter(x=>x.filter_no_data===false).length}
+function card(x){let c=[x.group==='排除'?'risk':x.group==='觀察'?'watch':'',exactLimitUp(x)?'limit-up':''].filter(Boolean).join(' ');return `<article class="panel stock-card ${c}" data-group="${esc(x.group)}"><div class="stock-top"><div><div class="stock-code">${esc(x.code)} · ${esc(x.subgroup)}</div><div class="stock-name">${esc(x.name)} <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span>${exactLimitUp(x)?'<span class="mr-card-limit" style="margin-left:6px">漲停</span>':''}</div></div></div><div class="signal"><b>${esc(x.classification_reason||x.subgroup||x.group)}</b><span class="tag">${esc(x.group)}</span></div><div class="price-row"><div class="price-box"><label>漲跌</label><strong class="${cls(x.change_rate)}">${chgFull(x.change_rate,x.price)}</strong></div><div class="price-box"><label>成交量</label><strong>${fmt(x.total_volume)}</strong></div><div class="price-box"><label>aflow</label><strong class="${cls(x.aflow)}">${fmt(x.aflow)}</strong></div></div><div class="stock-foot"><span><span class="${cls(x.change_rate)}">${chgFull(x.change_rate,x.price)}</span> · <span class="${cls(x.aflow)}">aflow ${fmt(x.aflow)}</span></span><span class="muted">查看解讀 →</span></div></article>`}
+function render(){let q=(document.querySelector('#search').value||'').toLowerCase();let rs=data.filter(x=>(filter==='全部'||x.group===filter)&&(`${x.code}${x.name}`.toLowerCase().includes(q)));const cardRows=rs.slice(0,6);document.querySelector('#cards').innerHTML=cardRows.map(card).join('')||'<div class="panel" style="padding:20px">目前沒有符合條件的標的</div>';document.querySelector('#rows').innerHTML=rs.map(x=>`<tr class="${[x.group==='可操作'?'actionable-row':x.group==='觀察'?'watch-row':'risk-row',exactLimitUp(x)?'limit-up-row':''].filter(Boolean).join(' ')}"><td><b>${esc(x.code)} ${esc(x.name)}</b> <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span></td><td class="${cls(x.change_rate)}">${chgFull(x.change_rate,x.price)}</td><td class="${cls(x.aflow)}">${fmt(x.aflow)}</td><td><span class="pill">${esc(x.group)}</span></td><td class="muted">${esc(x.subgroup)}</td><td class="muted">${esc(x.ai)}</td></tr>`).join('');document.querySelectorAll('#cards .stock-card').forEach((el,i)=>el.dataset.code=String(cardRows[i].code));document.querySelectorAll('#rows tr').forEach((el,i)=>el.dataset.code=String(rs[i].code));document.querySelector('#valid').textContent=rs.filter(x=>x.filter_no_data===false).length}
 async function load(){if(paused)return;try{let r=await fetch(API_BASE+'/api/intraday-test',{cache:'no-store'}),d=await r.json();if(!d.ok)throw Error(d.error||'API 回報失敗');data=d.rows||[];
   // 首頁資金流(aflow)只讀 intraday-test:tick 斷線(如收盤後)這個端點的 aflow 全部變 null,
   // 表格直接顯示「—」,即使盤中最後一刻其實有真實資金流可以參考。機會雷達走
@@ -502,7 +502,7 @@ function renderRadarGroups(body,groups){
   // 每組說明各自不同；分類標籤只出現在分區標題，列內不再重複一次。
   const GROUP_NOTE={'可操作':'七因子 ≥65 分且無缺資料，唯一可考慮進場的名單','觀察':'條件尚未全過，盤中只追蹤、不作進場依據','排除':'已觸發風險訊號（極端價／假紅／資金流出），今日不進場'};
   const QUAD_NOTE={'真攻擊':'最健康，價量同向向上','休息':'價量同向向下','假紅':'背離·漲但資金流出（拉高出貨）','惜售':'背離·跌但資金流入（低接）'};
-  const groupMarkup=Object.entries(liveGroups).map(([group,rows])=>`<section class="decision-group"><div class="decision-group-head"><div><h3>${esc(group)}</h3><div class="group-note">${esc(GROUP_NOTE[group]||'盤中追蹤')}</div></div><div class="radar-count">${rows.length} 檔</div></div><div class="feature-table"><table><thead><tr><th>代碼</th><th>名稱／現價</th><th>族群</th><th>漲跌%</th><th>aflow</th><th>代理象限</th><th>盤中判讀</th><th>缺資料</th></tr></thead><tbody>${rows.map(x=>`<tr data-sec="${esc(x.sector||'其他')}" class="${exactLimitUp(x)?'radar-limit-up':''}" style="cursor:pointer" onclick="closePanel();openStock('${esc(x.code)}')"><td><b>${esc(x.code)}</b></td><td><b>${esc(x.name||'—')}</b> <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span>${exactLimitUp(x)?'<span class="mr-card-limit" style="margin-left:6px">漲停</span>':''}</td><td class="sec-col">${esc(x.sector||'—')}</td><td class="${cls(x.change_rate)}">${x.change_rate==null?'—':x.change_rate+'%'}</td><td class="${cls(x.aflow)}">${x.aflow==null?'—':fmt(x.aflow)}</td><td><b>${esc(x.quadrant||'—')}</b>${x.quadrant&&QUAD_NOTE[x.quadrant]?`<small style="display:block;color:#71809b;font-weight:600;margin-top:2px">${esc(QUAD_NOTE[x.quadrant])}</small>`:''}</td><td class="judge-cell">${esc(x.classification_reason||x.ai||'—')}</td><td class="muted">${esc((x.filter_no_data||[]).join('、')||'—')}</td></tr>`).join('')}</tbody></table></div></section>`).join('');
+const groupMarkup=Object.entries(liveGroups).map(([group,rows])=>`<section class="decision-group"><div class="decision-group-head"><div><h3>${esc(group)}</h3><div class="group-note">${esc(GROUP_NOTE[group]||'盤中追蹤')}</div></div><div class="radar-count">${rows.length} 檔</div></div><div class="feature-table"><table><thead><tr><th>代碼</th><th>名稱／現價</th><th>族群</th><th>漲跌%</th><th>aflow</th><th>代理象限</th><th>盤中判讀</th><th>缺資料</th></tr></thead><tbody>${rows.map(x=>`<tr data-sec="${esc(x.sector||'其他')}" class="${exactLimitUp(x)?'radar-limit-up':''}" style="cursor:pointer" onclick="closePanel();openStock('${esc(x.code)}')"><td><b>${esc(x.code)}</b></td><td><b>${esc(x.name||'—')}</b> <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span>${exactLimitUp(x)?'<span class="mr-card-limit" style="margin-left:6px">漲停</span>':''}</td><td class="sec-col">${esc(x.sector||'—')}</td><td class="${cls(x.change_rate)}">${chgFull(x.change_rate,x.price)}</td><td class="${cls(x.aflow)}">${x.aflow==null?'—':fmt(x.aflow)}</td><td><b>${esc(x.quadrant||'—')}</b>${x.quadrant&&QUAD_NOTE[x.quadrant]?`<small style="display:block;color:#71809b;font-weight:600;margin-top:2px">${esc(QUAD_NOTE[x.quadrant])}</small>`:''}</td><td class="judge-cell">${esc(x.classification_reason||x.ai||'—')}</td><td class="muted">${esc((x.filter_no_data||[]).join('、')||'—')}</td></tr>`).join('')}</tbody></table></div></section>`).join('');
   body.innerHTML=`<div class="radar-template"><div class="radar-summary"><div class="radar-card main"><div class="radar-k">目前狀態</div><div class="radar-v">${liveCount?'盤中行情已就緒':'等待有效盤中行情'}</div></div><div class="radar-card"><div class="radar-k">固定觀察池</div><div class="radar-v">51 檔</div></div><div class="radar-card"><div class="radar-k">有效行情</div><div class="radar-v">${liveCount} 檔</div></div><div class="radar-card"><div class="radar-k">可操作</div><div class="radar-v">${(liveGroups['可操作']||[]).length}</div></div><div class="radar-card"><div class="radar-k">資料時間</div><div class="radar-v">${stamp}</div></div></div><div class="radar-info"><div class="radar-info-title">機會雷達 · 盤中篩選邏輯</div><div class="radar-rules"><div class="radar-rule"><div class="radar-k">觀察範圍</div><div class="radar-v">固定 51 檔全部計分</div></div><div class="radar-rule"><div class="radar-k">缺值規則</div><div class="radar-v">缺資料記 0 分，不視為 FAIL</div></div><div class="radar-rule"><div class="radar-k">風險封頂</div><div class="radar-v">跌破月線／量價背離最高 60</div></div><div class="radar-rule"><div class="radar-k">盤中來源</div><div class="radar-v">Shioaji 即時行情＋昨日 DB</div></div></div><div class="radar-notice">盤中只使用 Shioaji 訂閱即時資料與昨日 DB 死值；無有效行情時保留固定池名單，不產生空白列或虛構訊號。</div></div>${(()=>{const S=window._radarSectors||{};const ks=Object.keys(S);if(!ks.length)return '';
     const rows=ks.map(k=>{const arr=S[k];const chs=arr.map(x=>Number(x.change_rate)).filter(Number.isFinite);
       const avg=chs.length?chs.reduce((a,b)=>a+b,0)/chs.length:null;
@@ -531,7 +531,8 @@ async function openPanel(kind){
       const d=await(await fetch(API_BASE+'/api/intraday-watchpool',{cache:'no-store'})).json();
       const items=d.rows||[];
       window._radarUpdated=d.updated_at;
-      status.textContent=`盤中觀察邏輯 · 固定池 51 檔 · ${items.filter(x=>x.price!=null&&Number.isFinite(Number(x.price))).length} 檔有有效行情 · 資料時間 ${dataStamp(d.updated_at)}`;
+      const fc=d.foreign_cache||{},fd=(fc.source_dates||[]).slice(-1)[0]||'—';
+      status.textContent=`盤中觀察邏輯 · 固定池 51 檔 · ${items.filter(x=>x.price!=null&&Number.isFinite(Number(x.price))).length} 檔有有效行情 · 外資 ${fc.covered??0}/${fc.total??items.length} 檔（${fd}） · 資料時間 ${dataStamp(d.updated_at)}`;
       const radarGroups={可操作:[],觀察:[],排除:[]};
       for(const x of items)(radarGroups[x.group]||radarGroups.觀察).push(x);
       window._radarSectors=(()=>{const m={};for(const x of items){if(x.price==null)continue;(m[x.sector||'其他']??=[]).push(x)}return m})();
@@ -676,17 +677,24 @@ warmMarketHistory();
     var p=x&&x.pre_activation;
     if(!p||!p.stage||p.stage==='\u2014')return '';
     var d=p.ma5_distance_pct;
+    var foreignSource=p.foreign_source_date
+      ?'（'+(String(p.foreign_source||'盤後法人').includes('FinMind')?'FinMind':'盤後')+' '+E(p.foreign_source_date)+'）'
+      :'';
+    var foreignLine='外資：'+E(p.foreign_state||'—')+foreignSource+'<br>';
+    var foreignInline='外資：'+E(p.foreign_state||'—')+foreignSource;
     var dist='距 MA5：'+(d==null?'—':(d>0?'+':'')+d+'%')+'　'+E(p.ma5_state||'')+'<br>';
     var next='下一步：'+E(p.next_step||'—')+'</div>';
-    // ACTIVE 時把價格啟動與量能確認拆開；量能未達門檻不代表價格尚未動。
-    if(p.stage==='ACTIVE'){
+    // 只要價格側已啟動就顯示綠色符號；EXTENDED 仍保留作為過熱/禁追風險，
+    // 不能因為 stage 不是 ACTIVE 就把「價格：啟動」降回沒有符號的舊格式。
+    var priceActive=p.price_activated===true || ['啟動','漲停','延伸'].includes(p.price_state);
+    if(priceActive || p.stage==='ACTIVE'){
       return '<div class="muted" style="line-height:1.55;margin-bottom:3px">'
         +'價格啟動：🟢 已啟動／'+E(p.price_state||'漲停')+'<br>'
         +'量能確認：🟡 '+E(p.volume_confirmation_state||'尚未確認')+'<br>'
-        +'外資：'+E(p.foreign_state||'—')+'<br>'+dist+next;
+        +foreignLine+dist+next;
     }
     return '<div class="muted" style="line-height:1.55;margin-bottom:3px">'
-      +'價格：'+E(p.price_state||'—')+'　｜外資：'+E(p.foreign_state||'—')+'　｜量能：'+E(p.volume_state||'—')+'<br>'
+      +'價格：'+E(p.price_state||'—')+'　｜'+foreignInline+'　｜量能：'+E(p.volume_state||'—')+'<br>'
       +dist+next;
   };
 })();
@@ -1923,7 +1931,7 @@ window.renderTomorrowGroups=function(body,rows,fallback){
       tr.innerHTML=`<td><b>${esc(row.code)} ${esc(row.name||'—')}</b> <span class="current-price ${cls(row.change_rate)}">現價 ${esc(row.price??'—')}</span></td>
         <td>${esc(row.sector||'—')}</td>
         <td class="${cls(aflow)}">${aflow==null?'—':fmt(aflow)}${row.aflow_stale?'<small style="display:block;font-weight:600;color:#9aa3b2">收盤前保留</small>':''}</td>
-        <td class="${cls(ch)}">${ch==null?'—':fmt(ch)+'%'}</td>
+        <td class="${cls(ch)}">${chgFull(ch,row.price)}</td>
         <td><span class="pill">${esc(row.group||'待回報')}</span>${window.paBadge?paBadge(row):''}</td>
         <td class="muted">${window.paLines?paLines(row):''}${esc(plain(row))}</td>`;
     });

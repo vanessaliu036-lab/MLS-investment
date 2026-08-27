@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MLS｜觀察池</title>
 <script>
-/* ── Pre-Activation 四階段(EARLY/ARMED/TRIGGER/EXTENDED)────────────────
+/* ── Pre-Activation 階段(EARLY/ARMED/TRIGGER/EXTENDED/ACTIVE)──────────────
    階段與判斷依據由盤後 AB 引擎算好、存 candidate_pool,經 /api/watchpool
    唯讀帶出。前端只負責印,不重算不自判 —— 同一份資料在不同地方算出不同
    答案,是這套系統踩過最多次的坑。 */
@@ -23,18 +23,23 @@
   window.__paLines=x=>{
     const p=pick(x); if(!p)return '';
     const d=p.ma5_distance_pct;
+    const foreignSource=p.foreign_source_date
+      ? `（${String(p.foreign_source||'盤後法人').includes('FinMind')?'FinMind':'盤後'} ${e(p.foreign_source_date)}）`
+      : '';
+    const foreignLine=`<b>外資：</b>${e(p.foreign_state||'—')}${foreignSource}<br>`;
+    const foreignInline=`<b>｜外資：</b>${e(p.foreign_state||'—')}${foreignSource}`;
     const distLine = `<b>距 MA5：</b>${d==null?'—':(d>0?'+':'')+d+'%'}　${e(p.ma5_state||'')}<br>`;
     const nextLine = `<b>下一步：</b>${e(p.next_step||'—')}</div>`;
-    // ACTIVE:價格 Activation 與量能 Confirmation 拆成兩個獨立狀態顯示,
-    // 不再合併成一行「量能：未啟動」讓人誤讀成股票還沒動(2026-08-27)。
-    if (p.stage === 'ACTIVE') {
+    // 只要價格側已啟動就顯示符號；EXTENDED 仍保留過熱／禁追語意。
+    const priceActive = p.price_activated === true || ['啟動','漲停','延伸'].includes(p.price_state);
+    if (priceActive || p.stage === 'ACTIVE') {
       return `<div class="pa-lines">`
         + `<b>價格啟動：</b>🟢 已啟動／${e(p.price_state||'漲停')}<br>`
-        + `<b>量能確認：</b>🟡 尚未確認<br>`
-        + `<b>外資：</b>${e(p.foreign_state||'—')}<br>`
+        + `<b>量能確認：</b>🟡 ${e(p.volume_confirmation_state||'尚未確認')}<br>`
+        + foreignLine
         + distLine + nextLine;
     }
-    return `<div class="pa-lines"><b>價格：</b>${e(p.price_state||'—')}　<b>｜外資：</b>${e(p.foreign_state||'—')}　<b>｜量能：</b>${e(p.volume_state||'—')}<br>`
+    return `<div class="pa-lines"><b>價格：</b>${e(p.price_state||'—')}　${foreignInline}　<b>｜量能：</b>${e(p.volume_state||'—')}<br>`
       + distLine + nextLine;
   };
   // 資料時間右邊補「Pre-Activation 快照日」——階段是盤後快照,和即時報價不同天,
@@ -55,6 +60,7 @@
   const API=location.protocol==='file:'?'http://66.42.42.150:8000':'';
   const fmtPct=v=>v==null?'—':`${Number(v)>0?'+':''}${v}%`;
   const fmt=v=>v==null?'—':(Number(v)>0?'+':'')+Number(v).toLocaleString('en-US');
+  const chgFull=(ch,price)=>{if(ch==null||ch==='')return '—';const c=Number(ch),p=Number(price);if(!Number.isFinite(c))return '—';const s=c>0?'+':'';let out=`${s}${c}%`;if(Number.isFinite(p)&&c!==0){const pt=p-p/(1+c/100);out+=` <span style="opacity:.75">(${pt>0?'+':''}${pt.toFixed(2)})</span>`;}return out;};
   const cls=v=>Number(v)>0?'up':Number(v)<0?'down':'';
   const statusOf=x=>{
     const group=x.group||'待回報';
@@ -73,7 +79,7 @@
         const ch=x.change_rate, status=statusOf(x);
         const base=card.querySelectorAll('.base-row .base-item .value');
         if(base[0])base[0].textContent=x.price??'—';
-        if(base[1]){base[1].textContent=fmtPct(ch);base[1].className=`value ${cls(ch)}`;}
+        if(base[1]){base[1].innerHTML=chgFull(ch,x.price);base[1].className=`value ${cls(ch)}`;}
         if(base[2]){base[2].textContent=x.aflow==null?'—':fmt(x.aflow);base[2].className=`value ${cls(x.aflow)}`;}
         if(base[3])base[3].textContent=status;
         const topPrice=card.querySelector('.current-price');
@@ -85,7 +91,7 @@
         }
         if(signals[1]){
           const v=signals[1].querySelector('.v');
-          if(v){v.className=`v ${cls(ch)}`;v.textContent=fmtPct(ch);}
+          if(v){v.className=`v ${cls(ch)}`;v.innerHTML=chgFull(ch,x.price);}
         }
         const decision=card.querySelector('.decision .status');
         if(decision){decision.className=`status ${status==='Ready'?'ready':status==='Risk'?'risk':'wait'}`;decision.textContent=status;}
@@ -718,6 +724,7 @@ document.querySelectorAll('.expand').forEach(btn=>{
   const API=location.protocol==='file:'?'http://66.42.42.150:8000':'';
   const esc=s=>String(s??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const fmt=v=>v==null?'—':(Number(v)>0?'+':'')+Number(v).toLocaleString('en-US');
+  const chgFull=(ch,price)=>{if(ch==null||ch==='')return '—';const c=Number(ch),p=Number(price);if(!Number.isFinite(c))return '—';const s=c>0?'+':'';let out=`${s}${c}%`;if(Number.isFinite(p)&&c!==0){const pt=p-p/(1+c/100);out+=` <span style="opacity:.75">(${pt>0?'+':''}${pt.toFixed(2)})</span>`;}return out;};
   const cls=v=>Number(v)>0?'up':Number(v)<0?'down':'';  // 正=紅(up) 負=綠(down)
   try{
     const d=await (await fetch(API+'/api/watchpool',{cache:'no-store'})).json(),items=d.items||[],groups={};
@@ -737,6 +744,15 @@ document.querySelectorAll('.expand').forEach(btn=>{
       section.innerHTML=`<div class="sector-head"><div><div class="sector-title-row"><div class="sector-title">${esc(sector)}</div><span class="sector-badge">族群固定池</span></div><div class="sector-sub">今日族群平均漲跌 <span class="sector-return ${avg>0?'up':avg<0?'down':''}">${avg==null?'—':(avg>0?'+':'')+avg.toFixed(2)+'%'}</span></div></div><div class="count">${stocks.length} 檔</div></div><div class="stock-list">${stocks.map(x=>{const ch=x.change_rate,group=x.group||'待回報',status=group==='可操作'?'Ready':group==='排除'?'Risk':group==='觀察'?'Watch':(x.data_mode==='post_market_daily_kbar'?'收盤':'待回報'),track=x.track==='engine'?'引擎軌':'攻擊軌',inst=x.inst_net_20d_lots,stk=x.inst_streak,rel=(ch!=null&&avg!=null)?ch-avg:null;return `<article class="stock-card" data-code="${esc(x.code)}"><div class="stock-main"><button class="expand" aria-label="開啟個股">▶</button><div class="identity"><div class="identity-top"><span class="code">${esc(x.code)}</span><span class="name">${esc(x.name)}</span><span class="current-price">現價 ${esc(x.price??'—')}</span><span class="sector-tag">${esc(sector)}</span></div><div class="base-row"><span class="base-item"><span class="label">現價</span><span class="value">${x.price??'—'}</span></span><span class="base-item"><span class="label">漲跌%</span><span class="value ${Number(ch)<0?'down':'up'}">${ch==null?'—':(ch>0?'+':'')+ch+'%'}</span></span><span class="base-item"><span class="label">aflow</span><span class="value ${cls(x.aflow)}">${x.aflow==null?'—':fmt(x.aflow)}</span></span><span class="base-item"><span class="label">狀態</span><span class="value">${esc(status)}</span></span></div></div></div><div class="signal-grid"><div class="signal flow"><div class="k">資金</div><div class="v ${x.aflow!=null?cls(x.aflow):cls(x.aflow_ratio)}">${x.aflow!=null?fmt(x.aflow):(x.aflow_ratio!=null?'資金比 '+x.aflow_ratio+'（'+esc(x.aflow_ratio_date||'')+'）':'盤中欄位')}</div></div><div class="signal"><div class="k">今日</div><div class="v ${Number(ch)<0?'down':'up'}">${ch==null?'—':(ch>0?'+':'')+ch+'%'}</div></div><div class="signal institutional"><div class="k">法人</div><div class="v">${inst==null?'待盤後資料':`<span class="${inst>0?'up':inst<0?'down':''}">20日 ${fmt(inst)} 張</span>${stk?` <span class="${stk>0?'up':'down'}">· 連${stk>0?'買':'賣'}${Math.abs(stk)} 日</span>`:''}`}</div></div><div class="signal relative"><div class="k">相對族群</div><div class="v ${rel>0?'up':rel<0?'down':''}">${rel==null?'待盤後計算':`${rel>0?'▲':rel<0?'▼':'━'} ${(rel>0?'+':'')+rel.toFixed(2)}%`}</div></div><div class="signal track"><div class="k">軌道</div><div class="v">${track}</div></div><div class="signal pa"><div class="k">階段</div><div class="v">${window.__paHTML(x)}</div></div></div><div class="decision"><span class="status ${status==='Ready'?'ready':status==='Risk'?'risk':'wait'}">${esc(status)}</span></div><div class="drawer">${window.__paLines(x)}第一層只顯示快速判讀資訊；點擊後開啟 ${esc(x.code)} 完整個股決策頁。</div></article>`}).join('')}</div>`;
       root.append(section);
     }
+    // 初次渲染的個股列與每 5 秒同步共用同一種「百分比＋實際點數」格式。
+    root.querySelectorAll('.stock-card').forEach(card=>{
+      const x=items.find(item=>String(item.code)===String(card.dataset.code));
+      if(!x)return;
+      const base=card.querySelectorAll('.base-row .base-item .value');
+      if(base[1])base[1].innerHTML=chgFull(x.change_rate,x.price);
+      const today=card.querySelector('.signal-grid .signal:nth-child(2) .v');
+      if(today)today.innerHTML=chgFull(x.change_rate,x.price);
+    });
     // ▶ 展開鈕：動態卡片原本沒掛 toggle(舊 handler 只綁到已被移除的靜態樣板),
     // 點下去會冒泡到整張卡的導頁 —— 抽屜裡的 Pre-Activation 三行依據因此永遠看不到。
     root.querySelectorAll('.expand').forEach(btn=>btn.addEventListener('click',ev=>{

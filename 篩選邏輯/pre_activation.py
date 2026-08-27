@@ -131,9 +131,89 @@ def describe(close, ma5, volume, vol_ma20, foreign_days,
         "stage": stage, "stage_note": STAGE_NOTE[stage], "next_step": nxt,
         "foreign_state": foreign, "foreign_days": fd,
         "volume_state": vol_state, "volume_ratio": (round(vr, 2) if vr else None),
+        "volume_confirmed": vol_state in ("抬升", "爆量") if vol_state is not None else None,
+        "volume_confirmation_state": (
+            "已確認" if vol_state in ("抬升", "爆量") else
+            "尚未確認" if vol_state == "未啟動" else None),
         "ma5_state": ma5_state, "ma5_distance_pct": (round(dist * 100, 2) if dist is not None else None),
         "price_state": price_state, "price_activated": price_activated,
         "breakout_5d_pct": (round(bo5 * 100, 2) if bo5 is not None else None),
         "do_not_chase": stage in (EXTENDED, ACTIVE),
         "rule_version": "pre_activation_rules_v1_2026-08-27",
     }
+
+
+def overlay_live_price_activation(result: dict, *, is_limit_up=None,
+                                   change_rate=None) -> dict:
+    """把盤中價格啟動疊回盤後 PA 快照,但不改寫量能確認。
+
+    ``candidate_pool`` 的 PA 是盤後快照,盤中若直接照貼,會出現「現在已漲停
+    但仍顯示 EARLY／等待 ARMED」的時間順序錯置。這個純函式只處理價格側
+    override; volume_state 仍保留原值,讓價格 Activation 與 Volume Confirmation
+    維持兩個獨立訊號。
+
+    EXTENDED 保留原狀態,因為那是更高優先級的禁追風險；若量能已是「抬升」,
+    也保留原本的 ARMED/TRIGGER 語意。只有價格已啟動且量能尚未確認時,升成
+    ACTIVE。
+    """
+    out = dict(result or {})
+    try:
+        chg = float(change_rate) if change_rate is not None else None
+    except (TypeError, ValueError):
+        chg = None
+    price_active = bool(is_limit_up) or (
+        chg is not None and chg >= PRICE_ACTIVATED_CHANGE)
+    if not price_active:
+        return out
+    if out.get("stage") == EXTENDED or out.get("volume_state") in ("抬升", "爆量"):
+        return out
+
+    out.update({
+        "stage": ACTIVE,
+        "stage_note": STAGE_NOTE[ACTIVE],
+        "next_step": "不追,觀察是否鎖停／隔日承接",
+        "price_state": "漲停",
+        "price_activated": True,
+        "volume_confirmed": out.get("volume_state") in ("抬升", "爆量"),
+        "volume_confirmation_state": (
+            "已確認" if out.get("volume_state") in ("抬升", "爆量") else
+            "尚未確認" if out.get("volume_state") == "未啟動" else None),
+        "do_not_chase": True,
+        "price_activation_source": "盤中漲停／漲幅≥9.5%",
+    })
+    return out
+
+
+def overlay_foreign_confirmation(result: dict, chip: dict) -> dict:
+    """把最新已完成交易日的外資快取疊回 PA，不改價格/量能階段。
+
+    外資是盤後日資料，盤中只讀快取；這個 overlay 只更新「外資判讀」
+    與資料來源/資料日，避免 candidate_pool 早於籌碼快取建立時留下
+    ``外資：—``。價格 Activation 與 Volume Confirmation 仍由各自規則決定。
+    """
+    out = dict(result or {})
+    chip = chip or {}
+    streak = chip.get("foreign_days", chip.get("inst_streak"))
+    if streak is None:
+        return out
+    try:
+        streak = float(streak)
+    except (TypeError, ValueError):
+        return out
+    if streak >= FOREIGN_STRONG_DAYS:
+        state = "轉強"
+    elif streak <= -FOREIGN_STRONG_DAYS:
+        state = "轉弱"
+    else:
+        state = "中性"
+    out.update({
+        "foreign_days": streak,
+        "foreign_state": state,
+        "foreign_net_d": chip.get("foreign_net_d"),
+        "foreign_net_3d": chip.get("foreign_net_3d"),
+        "foreign_net_5d": chip.get("foreign_net_5d"),
+        "foreign_net_20d": chip.get("foreign_net_20d"),
+        "foreign_source": chip.get("source"),
+        "foreign_source_date": chip.get("source_date"),
+    })
+    return out

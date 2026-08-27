@@ -61,6 +61,69 @@ def _today_key():
     return datetime.now().strftime("%Y-%m-%d")
 
 
+def summarize_finmind_institutional(rows, inst_days=INST_DAYS):
+    """把 FinMind 法人日資料整理成可供判斷的外資摘要。
+
+    FinMind 的 ``TaiwanStockInstitutionalInvestorsBuySell`` 是「股」為單位、
+    一檔股票一天多筆法人類別；這裡明確只用 ``Foreign_Investor`` 判斷
+    外資連買/連賣，不能拿三法人合計欄位冒充外資。回傳的淨額統一為張，
+    日期由資料本身決定，讓呼叫端可以把 T-1 資料日一起顯示出來。
+    """
+    by_date = {}
+    for row in rows or []:
+        date = row.get("date")
+        name = row.get("name")
+        if not date or name not in ("Foreign_Investor", "Investment_Trust"):
+            continue
+        try:
+            buy = float(row.get("buy") or 0)
+            sell = float(row.get("sell") or 0)
+        except (TypeError, ValueError):
+            continue
+        net = (buy - sell) / 1000.0  # FinMind 回傳股數，系統欄位統一用張
+        item = by_date.setdefault(date, {"total": 0.0, "foreign": 0.0})
+        item["total"] += net
+        if name == "Foreign_Investor":
+            item["foreign"] += net
+
+    dates = sorted(by_date)[-int(inst_days):]
+    if not dates:
+        return {}
+
+    def _sum(field, count):
+        return round(sum(by_date[d][field] for d in dates[-count:]))
+
+    # 由最新交易日向前數；遇到 0 或方向改變就停止，避免把中間空值
+    # 誤算成連買/連賣。
+    streak = 0
+    for date in reversed(dates):
+        value = by_date[date]["foreign"]
+        if value > 0:
+            if streak < 0:
+                break
+            streak += 1
+        elif value < 0:
+            if streak > 0:
+                break
+            streak -= 1
+        else:
+            break
+
+    latest = by_date[dates[-1]]
+    return {
+        "inst_net_20d_lots": _sum("total", inst_days),
+        "inst_streak": streak,
+        "foreign_days": streak,
+        "foreign_net_d": round(latest["foreign"]),
+        "foreign_net_3d": _sum("foreign", 3),
+        "foreign_net_5d": _sum("foreign", 5),
+        "foreign_net_20d": _sum("foreign", inst_days),
+        "source": "FinMind TaiwanStockInstitutionalInvestorsBuySell",
+        "source_date": dates[-1],
+        "days_used": len(dates),
+    }
+
+
 def _official_detail(code, asof=None):
     """讀取排程建立的 TWSE/TPEx 官方籌碼快取。
 
@@ -97,8 +160,12 @@ def get_chips(code):
     global _cache
     _load_disk()
     today = _today_key()
-    if _cache.get("date") == today and code in _cache.get("stocks", {}):
-        return _cache["stocks"][code]
+    cached = (_cache.get("stocks") or {}).get(code)
+    # 舊版會把 API 失敗的 None 寫成「今日已完成」，之後整天永遠不重試。
+    # 只有真的拿到外資連續性才算完成，避免 UI 永久顯示「外資：—」。
+    if (_cache.get("date") == today and cached and
+            cached.get("inst_streak") is not None):
+        return cached
 
     result = {
         "inst_net_20d_lots": None, "inst_streak": None,
@@ -109,31 +176,9 @@ def get_chips(code):
     try:
         start = (datetime.now() - timedelta(days=70)).strftime("%Y-%m-%d")
         rows = _finmind("TaiwanStockInstitutionalInvestorsBuySell", code, start)
-        # 欄位: date, stock_id, name(Foreign_Investor/Investment_Trust/...), buy, sell
-        by_date = {}
-        for r in rows:
-            if r.get("name") in ("Foreign_Investor", "Investment_Trust"):
-                d = r["date"]
-                by_date.setdefault(d, {"net": 0, "foreign_net": 0})
-                net = (r.get("buy", 0) - r.get("sell", 0)) / 1000  # 股→張
-                by_date[d]["net"] += net
-                if r["name"] == "Foreign_Investor":
-                    by_date[d]["foreign_net"] += net
-        dates = sorted(by_date.keys())[-INST_DAYS:]
-        if dates:
-            result["inst_net_20d_lots"] = round(sum(by_date[d]["net"] for d in dates))
-            streak = 0
-            for d in reversed(dates):
-                f = by_date[d]["foreign_net"]
-                if streak == 0:
-                    streak = 1 if f > 0 else (-1 if f < 0 else 0)
-                elif (streak > 0 and f > 0):
-                    streak += 1
-                elif (streak < 0 and f < 0):
-                    streak -= 1
-                else:
-                    break
-            result["inst_streak"] = streak
+        summary = summarize_finmind_institutional(rows)
+        if summary:
+            result.update(summary)
     except Exception as e:
         print(f"[chips] 法人 {code} 失敗: {e}")
 

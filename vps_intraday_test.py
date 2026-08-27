@@ -10,6 +10,7 @@ import os
 import sys
 import time
 import json
+import importlib.util
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -49,6 +50,39 @@ try:
     import market_breadth  # noqa: E402  (市場資金廣度：Risk On/Off 與真假行情)
 except ImportError:
     market_breadth = None
+
+try:
+    from pre_activation import (overlay_live_price_activation,
+                                overlay_foreign_confirmation)
+except ImportError:
+    # 正式 8000 服務的 cwd 不一定是「篩選邏輯」；用檔案位置載入同一份
+    # 純判定函式,避免盤中路徑另寫一套價格 Activation 規則。
+    #
+    # ⚠ 路徑要試兩個位置,而且順序不能反(2026-08-27 部署前驗出來的):
+    #   · 本機開發:repo 是 <BASE>/篩選邏輯/pre_activation.py
+    #   · VPS 正式:8000 站在 /opt/mls-intraday,但引擎正本在 /opt/mls-screen,
+    #     /opt/mls-intraday/篩選邏輯/ 根本沒有這支檔(見 memory
+    #     ab-engine-runtime-topology)。原本只找 BASE/篩選邏輯/ 會靜默 fallback
+    #     成 None,兩個 overlay 直接被跳過——不會報錯,但功能完全沒生效。
+    # 找不到就維持 None(呼叫端有 guard),但一定要印出來,不要無聲失敗。
+    _pa_mod = None
+    for _pa_path in (BASE / "篩選邏輯" / "pre_activation.py",
+                     Path("/opt/mls-screen/pre_activation.py")):
+        if not _pa_path.exists():
+            continue
+        _pa_spec = importlib.util.spec_from_file_location("_mls_pre_activation", _pa_path)
+        if _pa_spec and _pa_spec.loader:
+            _pa_mod = importlib.util.module_from_spec(_pa_spec)
+            _pa_spec.loader.exec_module(_pa_mod)
+            break
+    if _pa_mod is not None:
+        overlay_live_price_activation = _pa_mod.overlay_live_price_activation
+        overlay_foreign_confirmation = _pa_mod.overlay_foreign_confirmation
+    else:
+        print("[pre_activation] 找不到 pre_activation.py，盤中 PA overlay 停用"
+              "（外資與價格啟動將維持盤後快照原值）")
+        overlay_live_price_activation = None
+        overlay_foreign_confirmation = None
 
 router = APIRouter()
 HISTORY_DB = BASE / "intraday_eod.db"
@@ -748,8 +782,24 @@ def _attach_pre_activation(rows):
         for r in rows:
             v = pa.get(str(r.get("code")))
             if v:
-                r["pre_activation"] = v
-                r["pre_activation_stage"] = v.get("stage")
+                chip = _chip_snapshot(str(r.get("code")))
+                # FinMind/官方快取是盤後已完成資料；盤中不打 API，
+                # 只把最新快取的外資判讀補回 PA，解掉「外資：—」。
+                live_pa = (overlay_foreign_confirmation(v, chip)
+                           if overlay_foreign_confirmation else v)
+                # candidate_pool 是盤後快照；盤中價格可能已經漲停，但量能
+                # 尚未達門檻。把「價格已啟動」疊回快照，量能仍保留原值，
+                # 不讓舊的 EARLY 再把使用者送回「等待 ARMED」。
+                live_pa = (overlay_live_price_activation(
+                    live_pa, is_limit_up=r.get("is_limit_up"),
+                    change_rate=r.get("change_rate"))
+                           if overlay_live_price_activation else live_pa)
+                r["pre_activation"] = live_pa
+                r["pre_activation_stage"] = live_pa.get("stage")
+                r["foreign_net_d"] = live_pa.get("foreign_net_d")
+                r["foreign_net_20d"] = live_pa.get("foreign_net_20d")
+                r["foreign_source"] = live_pa.get("foreign_source")
+                r["foreign_source_date"] = live_pa.get("foreign_source_date")
                 n += 1
         return day, n
     except Exception as exc:
@@ -813,12 +863,23 @@ def intraday_watchpool():
                 row["has_data"] = True
                 rows.append(row)
         pa_date, pa_n = _attach_pre_activation(rows)
+        foreign_rows = [r for r in rows if r.get("foreign_source_date")]
+        foreign_dates = sorted({r["foreign_source_date"] for r in foreign_rows})
+        foreign_sources = sorted({r["foreign_source"] for r in foreign_rows
+                                  if r.get("foreign_source")})
         return {
             "ok": True,
             "source": "固定 51 檔觀察池 + VPS Shioaji 盤中觀察邏輯",
             "read_only": True,
             "pre_activation_date": pa_date,
             "pre_activation_count": pa_n,
+            "foreign_cache": {
+                "covered": len(foreign_rows),
+                "total": len(rows),
+                "source_dates": foreign_dates,
+                "sources": foreign_sources,
+                "note": "盤中只讀最新完成交易日的法人快取，不代表今日盤中法人流向",
+            },
             "updated_at": saved_updated_at or datetime.now(TW_TZ).isoformat(timespec="seconds"),
             "count": len(rows),
             "rows": rows,

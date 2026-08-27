@@ -28,6 +28,7 @@ import config as C  # 0722 自己的 config
 import stock_card
 import vps_intraday_test as VIT  # 內含 51 檔 / Shioaji 訂閱查詢
 import broker  # VPS Shioaji 訂閱 buffer
+from tw_price_limit import is_limit_up
 
 
 def _read_intraday_daily(code: str, trade_date: str, db_path: Optional[Path] = None) -> Dict[str, Any]:
@@ -756,11 +757,21 @@ def build_watchpool() -> Dict[str, Any]:
             "subscribed": code in subs,
             "price": snap.get("price"),
             "change_rate": snap.get("change_rate"),
+            # 盤中 PA overlay 需要知道價格是否已觸及漲停；量能確認仍由
+            # candidate_pool 的原始快照獨立提供，不在這裡合併。
+            "is_limit_up": is_limit_up(snap.get("price"),
+                                        change_rate=snap.get("change_rate")),
             "aflow": snap.get("aflow"),
             "aflow_ratio": ratio.get("aflow_ratio"),
             "aflow_ratio_source": ratio.get("aflow_ratio_source"),
             "aflow_ratio_date": ratio.get("aflow_ratio_date"),
             "group": snap.get("group"),
+            # 外資判斷直接沿用盤後 FinMind/官方快取；盤中不重新打 API。
+            # 這些欄位也讓第一層在 PA snapshot 尚未補齊時仍能看見最新外資事實。
+            "foreign_net_d": chip.get("foreign_net_d"),
+            "foreign_net_20d": chip.get("foreign_net_20d"),
+            "foreign_source": chip.get("source"),
+            "foreign_source_date": chip.get("source_date"),
             "inst_net_20d_lots": chip.get("inst_net_20d_lots"),
             "inst_streak": chip.get("inst_streak"),
             "volume_ratio": snap.get("volume_ratio"),
@@ -771,11 +782,22 @@ def build_watchpool() -> Dict[str, Any]:
     # Pre-Activation 四階段：盤後由 AB 引擎算好、存 candidate_pool。
     # 這裡唯讀併入，第一層 UI 只負責印，不自己重算。
     pa_date, pa_n = VIT._attach_pre_activation(items)
+    foreign_rows = [x for x in items if x.get("foreign_source_date")]
+    foreign_dates = sorted({x["foreign_source_date"] for x in foreign_rows})
+    foreign_sources = sorted({x["foreign_source"] for x in foreign_rows
+                              if x.get("foreign_source")})
     return {
         "ok": True,
         "updated_at": _now_tw(),
         "pre_activation_date": pa_date,
         "pre_activation_count": pa_n,
+        "foreign_cache": {
+            "covered": len(foreign_rows),
+            "total": len(items),
+            "source_dates": foreign_dates,
+            "sources": foreign_sources,
+            "note": "盤中只讀最新完成交易日的法人快取，不代表今日盤中法人流向",
+        },
         "count": len(items),
         "items": items,
     }

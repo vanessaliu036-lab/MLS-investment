@@ -60,6 +60,8 @@ def test_limit_up_with_unconfirmed_volume_is_not_early():
     assert r["price_state"] == "漲停"
     assert r["price_activated"] is True
     assert r["volume_state"] == "未啟動"
+    assert r["volume_confirmed"] is False
+    assert r["volume_confirmation_state"] == "尚未確認"
     assert r["do_not_chase"] is True
     assert "價格未動" not in r["stage_note"]
     assert "ARMED" not in r["next_step"]
@@ -81,6 +83,55 @@ def test_price_activation_overrides_even_without_prev_high_data():
                      foreign_days=4, prev_high=None, high5=None, is_limit_up=True)
     assert r["stage"] == pa.ACTIVE
     assert r["stage"] != pa.EARLY
+
+
+def test_live_price_overlay_upgrades_stale_snapshot_without_confirming_volume():
+    """盤中 API 貼回盤後 snapshot 時,當下價格啟動要覆蓋舊 stage,但量能不變。"""
+    snapshot = {
+        "stage": "EARLY", "stage_note": "資金先到、價格未動",
+        "next_step": "等待量能抬升 → ARMED", "price_state": "整理",
+        "price_activated": False, "volume_state": "未啟動",
+        "do_not_chase": False,
+    }
+    r = pa.overlay_live_price_activation(snapshot, is_limit_up=True,
+                                          change_rate=9.2)
+    assert r["stage"] == pa.ACTIVE
+    assert r["price_state"] == "漲停"
+    assert r["price_activated"] is True
+    assert r["volume_state"] == "未啟動"
+    assert r["next_step"] == "不追,觀察是否鎖停／隔日承接"
+    assert r["do_not_chase"] is True
+    assert snapshot["stage"] == "EARLY"  # 純函式不改寫盤後快照
+
+
+def test_live_price_overlay_uses_change_rate_fallback_and_keeps_extended():
+    r = pa.overlay_live_price_activation(
+        {"stage": "ARMED", "volume_state": "未啟動"},
+        is_limit_up=False, change_rate=9.5)
+    assert r["stage"] == pa.ACTIVE
+
+    r = pa.overlay_live_price_activation(
+        {"stage": pa.EXTENDED, "volume_state": "未啟動"},
+        is_limit_up=True, change_rate=10.0)
+    assert r["stage"] == pa.EXTENDED
+
+
+def test_foreign_confirmation_uses_finmind_foreign_streak_and_keeps_source_date():
+    snapshot = {"stage": pa.EARLY, "foreign_state": None, "volume_state": "未啟動"}
+    r = pa.overlay_foreign_confirmation(snapshot, {
+        "foreign_days": 3,
+        "foreign_net_d": 420,
+        "foreign_net_20d": 1850,
+        "source": "FinMind TaiwanStockInstitutionalInvestorsBuySell",
+        "source_date": "2026-08-26",
+    })
+    assert r["foreign_state"] == "轉強"
+    assert r["foreign_days"] == 3
+    assert r["foreign_net_d"] == 420
+    assert r["foreign_source_date"] == "2026-08-26"
+    assert "FinMind" in r["foreign_source"]
+    assert r["stage"] == pa.EARLY
+    assert snapshot["foreign_state"] is None
 
 
 def test_trigger_next_step_does_not_imply_entry():

@@ -162,9 +162,12 @@ curl -s "http://${VPS_HOST}:8000/api/intraday-test" 2>/dev/null \
 echo "[4] 個股卡片快取（開機預熱）"
 ssh -p "${VPS_PORT_SSH}" "${VPS_USER}@${VPS_HOST}" \
   "ls '${VPS_DEPLOY_DIR}/個股卡片相關檔案_20260722/card_cache' 2>/dev/null | wc -l | sed 's/^/    cached cards: /'" || true
-echo "[5] UI 標題"
+echo "[5] 外資籌碼快取（FinMind／官方盤後）"
+ssh -p "${VPS_PORT_SSH}" "${VPS_USER}@${VPS_HOST}" \
+  "python3 -c \"import json; p=json.load(open('${VPS_DEPLOY_DIR}/個股卡片相關檔案_20260722/chips_cache.json')); s=p.get('stocks',{}); v=[x for x in s.values() if x.get('inst_streak') is not None]; d=sorted({x.get('source_date') for x in v if x.get('source_date')}); print('    coverage: %d/%d | dates: %s' % (len(v), len(s), ','.join(d[-3:]) if d else '—'))\"" || true
+echo "[6] UI 標題"
 curl -s "http://${VPS_HOST}:8000/" 2>/dev/null | grep -oE "<title>[^<]+</title>" | head -1
-echo "[6] 服務日誌最後 5 行（journald）"
+echo "[7] 服務日誌最後 5 行（journald）"
 ssh -p "${VPS_PORT_SSH}" "${VPS_USER}@${VPS_HOST}" "journalctl -u mls-intraday -n 5 --no-pager -o cat"
 
 echo
