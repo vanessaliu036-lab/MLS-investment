@@ -16,15 +16,26 @@
   window.__paHTML=x=>{
     const p=pick(x); if(!p)return '<span class="pa-none">—</span>';
     const c=PA_COLOR[p.stage]||'#6b7280';
-    return `<span class="pa-badge" style="background:${c}18;color:${c};border:1px solid ${c}55">${e(p.stage)}</span>`
+    const label = p.stage==='ACTIVE' ? '🟢 ACTIVE｜價格已啟動' : e(p.stage);
+    return `<span class="pa-badge" style="background:${c}18;color:${c};border:1px solid ${c}55">${label}</span>`
          + (p.do_not_chase?' <b style="color:#b91c1c">不追</b>':'');
   };
   window.__paLines=x=>{
     const p=pick(x); if(!p)return '';
     const d=p.ma5_distance_pct;
+    const distLine = `<b>距 MA5：</b>${d==null?'—':(d>0?'+':'')+d+'%'}　${e(p.ma5_state||'')}<br>`;
+    const nextLine = `<b>下一步：</b>${e(p.next_step||'—')}</div>`;
+    // ACTIVE:價格 Activation 與量能 Confirmation 拆成兩個獨立狀態顯示,
+    // 不再合併成一行「量能：未啟動」讓人誤讀成股票還沒動(2026-08-27)。
+    if (p.stage === 'ACTIVE') {
+      return `<div class="pa-lines">`
+        + `<b>價格啟動：</b>🟢 已啟動／${e(p.price_state||'漲停')}<br>`
+        + `<b>量能確認：</b>🟡 尚未確認<br>`
+        + `<b>外資：</b>${e(p.foreign_state||'—')}<br>`
+        + distLine + nextLine;
+    }
     return `<div class="pa-lines"><b>價格：</b>${e(p.price_state||'—')}　<b>｜外資：</b>${e(p.foreign_state||'—')}　<b>｜量能：</b>${e(p.volume_state||'—')}<br>`
-      + `<b>距 MA5：</b>${d==null?'—':(d>0?'+':'')+d+'%'}　${e(p.ma5_state||'')}<br>`
-      + `<b>下一步：</b>${e(p.next_step||'—')}</div>`;
+      + distLine + nextLine;
   };
   // 資料時間右邊補「Pre-Activation 快照日」——階段是盤後快照,和即時報價不同天,
   // 不標日期會被誤讀成即時值。
