@@ -119,4 +119,5 @@ def build_live_context(db_path: str = "mls.db", T: Optional[str] = None) -> dict
     ctx = _finalize(rows, result["T"])
     ctx["is_live"] = True
     ctx["t1_used"] = result.get("T1")
+    ctx["feed_diag"] = result.get("feed_diag")
     return ctx

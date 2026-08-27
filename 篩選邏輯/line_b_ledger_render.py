@@ -144,34 +144,55 @@ def _top3_row(rank: int, r: dict) -> str:
 
 
 def _discovery_row(r: dict) -> str:
+    """⚠ 2026-08-27 修正:原本只印「距壓力 {abs(dist)}%」,把正負號吃掉了。
+    盤中發現的股票幾乎都是「已經站上」關鍵價(distance_pct > 0),印成「距壓力
+    4.79%」會被讀成「還要再漲 4.79% 才到」——方向剛好相反,看的人會以為還沒到、
+    可以慢慢等,實際上它早就突破在跑。改用跟主卡片同一支 `_quote_line()`:
+    現價/壓力都印出實際價格,並且區分「已站上 +X%」與「差 X%」。
+    要判斷何時行動,看的人需要的是真實價格,不是一個沒有方向的百分比。"""
     exp = r["explain"]
     code, name = r["code"], NAME.get(r["code"], r["code"])
-    dist = exp.get("distance_pct")
-    dist_txt = f'{abs(dist):.2f}%' if dist is not None else "—"
     return f"""
     <div class="discovery-item">
-      <div><b>{_esc(code)} {_esc(name)}</b><br>
-        <span style="color:var(--muted)">A-flow {_fmt(r.get("flow_confirm_magnitude"),0)} · 距壓力 {dist_txt}</span></div>
-      <span class="badge">INTRADAY DISCOVERY</span>
-      <span>收盤重算</span>
+      <div class="disc-main">
+        <div class="disc-name"><b>{_esc(code)} {_esc(name)}</b>
+          <span class="badge">INTRADAY DISCOVERY</span></div>
+        <div class="disc-quote">{_quote_line(exp)}</div>
+        <div class="disc-meta">今日 A-flow {_fmt(r.get("flow_confirm_magnitude"), 0)}
+          · {_esc(exp["system_sentence"])} · 收盤重算</div>
+      </div>
     </div>"""
 
 
 PAGE_CSS = """
 <style>
-:root{--bg:#0a0c0f;--panel:#11151a;--panel2:#151a20;--line:#252c34;--text:#f4f6f8;--muted:#8b96a3;
---green:#56d992;--green-soft:rgba(86,217,146,.10);--amber:#f2b95f;--amber-soft:rgba(242,185,95,.10);
---blue:#74b8ff;--red:#ff7777;--red-soft:rgba(255,119,119,.10)}
+/* 色票直接沿用主站 intraday_decision_dataflow.html 的 :root,不另立一套色系。
+   改了主站就要同步改這裡(兩邊都是手寫 CSS,沒有共用 build 流程)。 */
+:root{--bg:#f4f6fb;--panel:#fff;--panel2:#f7f9fd;--line:#e5e9f2;--text:#182033;--muted:#73809a;
+--navy:#17233f;--green:#0b9a6f;--green-soft:#e8f7f1;--red:#df4b67;--red-soft:#fff0f3;
+--amber:#c78313;--amber-soft:#fff6df;--blue:#3b6eea;--shadow:0 12px 30px #19274714}
 *{box-sizing:border-box}
-body{margin:0;background:linear-gradient(180deg,#090b0e 0%,#0d1014 100%);color:var(--text);
+body{margin:0;background:var(--bg);color:var(--text);
 font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",Roboto,Arial,sans-serif}
-.wrap{max-width:1120px;margin:0 auto;padding:28px 20px 50px}
+/* 固定選單:topbar + 分頁列都黏在頂端,捲動時不消失 */
+.topbar{height:64px;background:#fff;border-bottom:1px solid var(--line);display:flex;
+align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:20}
+.brand{font-size:15px;font-weight:850;letter-spacing:.02em;color:var(--navy)}
+.brand small{display:block;font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.09em;margin-top:2px}
+.topbar-right{font-size:12px;color:var(--muted);font-weight:700}
+.pagenav{background:#fff;border-bottom:1px solid var(--line);padding:8px 24px;display:flex;
+align-items:center;flex-wrap:wrap;gap:2px;position:sticky;top:64px;z-index:19}
+.pagenav a{padding:9px 13px;border-radius:10px;color:#65718a;font-weight:700;white-space:nowrap;
+text-decoration:none;font-size:13px}
+.pagenav a:hover{background:var(--bg)}
+.pagenav a.active{background:var(--navy);color:#fff}
+.wrap{max-width:1120px;margin:0 auto;padding:24px 20px 50px}
 .header{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:22px}
-.title{font-size:25px;font-weight:760;letter-spacing:-.3px;margin:0 0 6px}
+.title{font-size:25px;font-weight:800;letter-spacing:-.3px;margin:0 0 6px;color:var(--navy)}
 .sub{font-size:13px;color:var(--muted)}
-.live{font-size:12px;color:var(--green);padding-top:4px}
+.live{font-size:12px;color:var(--green);padding-top:4px;font-weight:800}
 .summary{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
-.summary-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px 17px}
+.summary-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px 17px;box-shadow:var(--shadow)}
 .summary-label{font-size:11px;color:var(--muted);margin-bottom:7px}
 .summary-value{font-size:27px;font-weight:800;line-height:1}
 .summary-hint{font-size:11px;color:var(--muted);margin-top:6px}
@@ -179,17 +200,17 @@ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",Roboto,Ar
 .section-title h2{font-size:14px;margin:0;font-weight:750}
 .section-title span{font-size:11px;color:var(--muted)}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-.stock-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:0 16px 30px rgba(0,0,0,.14)}
-.stock-card.confirmed{border-color:rgba(86,217,146,.42);box-shadow:inset 0 0 0 1px rgba(86,217,146,.06),0 16px 30px rgba(0,0,0,.14)}
+.stock-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow)}
+.stock-card.confirmed{border-color:#9fd9c4;box-shadow:inset 0 0 0 1px #e8f7f1,var(--shadow)}
 .stock-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:15px}
 .stock-name{font-size:18px;font-weight:800;letter-spacing:.1px}
 .stock-name small{font-size:12px;color:var(--muted);font-weight:600;margin-right:7px}
 .status{font-size:10px;font-weight:800;border:1px solid var(--line);border-radius:999px;padding:5px 8px;white-space:nowrap;color:var(--amber);background:var(--amber-soft)}
-.status.ok{color:var(--green);background:var(--green-soft);border-color:rgba(86,217,146,.28)}
-.status.watch{color:var(--blue);background:rgba(116,184,255,.10);border-color:rgba(116,184,255,.28)}
-.status.give-up{color:var(--red);background:var(--red-soft);border-color:rgba(255,119,119,.28)}
-.quote{font-size:13px;color:#dce2e8;margin-bottom:13px;line-height:1.65}
-.quote strong{font-size:15px;color:#fff}
+.status.ok{color:var(--green);background:var(--green-soft);border-color:#9fd9c4}
+.status.watch{color:var(--blue);background:#eaf0fe;border-color:#b9ccf7}
+.status.give-up{color:var(--red);background:var(--red-soft);border-color:#f3bcc7}
+.quote{font-size:13px;color:#4a5570;margin-bottom:13px;line-height:1.65}
+.quote strong{font-size:15px;color:var(--navy)}
 .row{display:flex;gap:8px;align-items:center;font-size:13px;line-height:1.8;flex-wrap:wrap}
 .row .label{color:var(--muted);min-width:44px}
 .row .value{font-weight:650}
@@ -200,23 +221,27 @@ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",Roboto,Ar
 .prob-title{font-size:12px;color:var(--muted)}
 .prob-num{font-size:19px;font-weight:850}
 .prob-state{font-size:11px;color:var(--muted);font-weight:700;margin-left:2px}
-.bar{height:6px;background:#252b32;border-radius:999px;overflow:hidden}
-.bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#6d7b89,#56d992)}
+.bar{height:6px;background:#e8ecf4;border-radius:999px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#9fb0c4,var(--green))}
 .confirm-line{font-size:12px;color:var(--muted);margin-top:9px}
 .confirm-line b{color:var(--green);font-size:14px}
-.action{margin:0 0 14px;padding:11px 12px;border:1px solid rgba(245,181,80,.28);background:var(--amber-soft);border-radius:11px;font-size:14px;font-weight:780;line-height:1.55}
-.action.ok{border-color:rgba(86,217,146,.30);background:var(--green-soft);color:var(--green)}
-.top3{margin-top:10px;background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden}
-.top3-row{display:grid;grid-template-columns:48px 1.3fr .9fr .9fr 1.4fr;gap:12px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--line);font-size:12px}
+.action{margin:0 0 14px;padding:11px 12px;border:1px solid #f0dcac;background:var(--amber-soft);color:#7a5406;border-radius:11px;font-size:14px;font-weight:780;line-height:1.55}
+.action.ok{border-color:#9fd9c4;background:var(--green-soft);color:#07714f}
+.top3{margin-top:10px;background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow-x:auto}
+.top3-row{display:grid;grid-template-columns:48px 1.3fr .9fr .9fr 1.4fr;gap:12px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--line);font-size:12px;min-width:620px}
 .top3-row:last-child{border-bottom:0}
-.top3-head{color:var(--muted);background:#0f1317;font-size:10px;font-weight:700}
-.rank{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#1b2128;font-weight:800}
+.top3-head{color:var(--muted);background:var(--bg);font-size:10px;font-weight:700}
+.rank{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--bg);font-weight:800}
 .discovery{margin-top:18px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px}
 .discovery h3{font-size:13px;margin:0 0 5px}
 .discovery p{font-size:11px;color:var(--muted);margin:0 0 12px}
-.discovery-item{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line);font-size:12px}
+.discovery-item{padding:12px 0;border-top:1px solid var(--line);font-size:12px}
 .discovery-item:first-of-type{border-top:0}
-.badge{font-size:10px;border-radius:999px;padding:4px 7px;background:rgba(116,184,255,.08);color:var(--blue);border:1px solid rgba(116,184,255,.22)}
+.disc-name{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px;margin-bottom:6px}
+.disc-quote{font-size:13px;color:#4a5570;line-height:1.6;margin-bottom:5px}
+.disc-quote strong{font-size:15px;color:var(--navy)}
+.disc-meta{font-size:11px;color:var(--muted);line-height:1.6}
+.badge{font-size:10px;border-radius:999px;padding:4px 7px;background:#eaf0fe;color:var(--blue);border:1px solid #b9ccf7}
 .empty-note{color:var(--muted);font-size:12px;padding:10px 0}
 @media(max-width:780px){.wrap{padding:20px 13px 40px}.header{flex-direction:column}
 .summary{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.top3{display:none}.title{font-size:22px}}
@@ -224,9 +249,38 @@ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",Roboto,Ar
 """
 
 
+# 固定選單(topbar + 分頁列)。連結沿用主站側欄同一組頁面,讓兩邊可以互相切換。
+# 用相對路徑,所以本機/VPS 都通;不像主站那樣需要判斷 file: 協定(這頁一定是
+# server 端算的,不會被當本機檔案直接開)。
+_NAV_PAGES = [
+    ("/", "決策首頁"),
+    ("/opportunity-ledger", "機會分層榜"),
+    ("/line-b-ledger", "買點監控"),
+]
+
+
+def _shell(ctx: dict, inner: str) -> str:
+    live = ctx.get("is_live")
+    stamp = ctx.get("data_date") or "—"
+    nav = "".join(
+        '<a href="{h}"{c}>{t}</a>'.format(
+            h=href, t=_esc(label),
+            c=' class="active"' if href == "/line-b-ledger" else "")
+        for href, label in _NAV_PAGES
+    )
+    right = ("LIVE · " if live else "") + _esc(stamp)
+    return PAGE_CSS + f"""
+<div class="topbar">
+  <div class="brand">MLS<small>LIVE BUY POINT MONITOR</small></div>
+  <div class="topbar-right">{right}</div>
+</div>
+<nav class="pagenav">{nav}</nav>
+{inner}"""
+
+
 def render(ctx: dict) -> str:
     if not ctx.get("has_data"):
-        return PAGE_CSS + '<main class="wrap"><div class="empty-note">No Line B ledger data yet.</div></main>'
+        return _shell(ctx, '<main class="wrap"><div class="empty-note">No Line B ledger data yet.</div></main>')
 
     labels = ctx["labels"]
     c1c2_html = "".join(_stock_card(r) for r in ctx["c1_c2_list"]) or \
@@ -235,7 +289,7 @@ def render(ctx: dict) -> str:
     discovery_html = "".join(_discovery_row(r) for r in ctx["intraday_discovery"]) or \
         '<div class="empty-note">今日無盤中額外發現。</div>'
 
-    return PAGE_CSS + f"""
+    return _shell(ctx, f"""
 <main class="wrap">
   <header class="header">
     <div>
@@ -272,4 +326,4 @@ def render(ctx: dict) -> str:
     <p>未在盤後主名單也可進來；只作盤中發現，收盤後寫入 ledger 並重算 EOD C1/C2，不混入既有歷史啟動率。</p>
     {discovery_html}
   </section>
-</main>"""
+</main>""")

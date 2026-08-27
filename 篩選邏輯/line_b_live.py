@@ -39,7 +39,6 @@ from typing import Optional
 
 import phase
 import run_line_b_ledger as _runner
-import snapshot_producer as _producer
 import line_b_explain as _explain
 
 DB = "mls.db"
@@ -79,6 +78,44 @@ def is_aflow_stale(quote_updated_at: Optional[str], aflow_updated_at: Optional[s
     return False
 
 
+def live_buffer(db_path: str, T: str) -> dict[str, dict]:
+    """讀今日 quote_snap + aflow,組成「當下這一筆」的 buffer。
+
+    ⚠ 2026-08-27:這段原本是呼叫 `snapshot_producer.build_buffer()` 重用。但線上
+    有一份 2026-08-04 的舊 `snapshot_producer.py` 躺在 /opt/mls-intraday/篩選邏輯/
+    (AB 引擎正本是 /opt/mls-screen,見 memory ab-engine-runtime-topology),8000
+    站的 import 會先吃到那份舊的——它沒有 updated_at 欄位,於是 aflow_updated_at
+    永遠是 None,freshness 閘門就把每一檔都判成 stale,線上整頁顯示「資金資料待
+    更新」,但資料其實是新的。這跟 43bade0 的同名 config.py 覆蓋是同一類事故。
+
+    這裡直接下 SQL,不透過任何可被同名檔覆蓋的模組,徹底斷掉這個失敗模式。
+    欄位語意與 snapshot_producer.build_buffer 一致(無價的檔跳過)。
+    """
+    c = sqlite3.connect(db_path)
+    c.row_factory = sqlite3.Row
+    try:
+        q = {r["code"]: dict(r) for r in
+             c.execute("SELECT * FROM quote_snap WHERE data_date=?", (T,))}
+        a = {r["code"]: dict(r) for r in
+             c.execute("SELECT * FROM aflow WHERE data_date=?", (T,))}
+    finally:
+        c.close()
+
+    buf: dict[str, dict] = {}
+    for code, qr in q.items():
+        if qr.get("price") is None:
+            continue
+        ar = a.get(code) or {}
+        buf[code] = {
+            "price": qr.get("price"),
+            "net_active": ar.get("net_active"),
+            "quote_updated_at": qr.get("updated_at"),
+            "aflow_updated_at": ar.get("updated_at"),
+            "aflow_method": ar.get("method"),
+        }
+    return buf
+
+
 def _latest_t1(db_path: str, T: str) -> Optional[str]:
     """T 之前最新一個有 daily_bar 收盤的日期。今天(T)自己的收盤本來就還沒有,
     這是預期行為,不是缺資料。"""
@@ -102,7 +139,7 @@ def build_live_rows(db_path: str = DB, T: Optional[str] = None) -> dict:
         return {"T": T, "T1": None, "rows": [], "skipped": "no prior daily_bar close"}
 
     codes = _runner._universe()
-    live_buf = _producer.build_buffer(db_path)  # 同一份 production feed,不另造第二套
+    live_buf = live_buffer(db_path, T)  # 同一份 production feed(quote_snap+aflow),不另造第二套
     now = _naive_now()
 
     rows_out = []
@@ -117,7 +154,14 @@ def build_live_rows(db_path: str = DB, T: Optional[str] = None) -> dict:
 
         snap_rows = list(_runner._snapshot_rows(db_path, code, T))
         tick = live_buf.get(code) or {}
-        flow_stale = is_aflow_stale(tick.get("quote_updated_at"), tick.get("aflow_updated_at"), now)
+        q_at, a_at = tick.get("quote_updated_at"), tick.get("aflow_updated_at")
+        flow_stale = is_aflow_stale(q_at, a_at, now)
+        # 診斷欄位:stale 的時候要能回答「為什麼」與「多久沒更新」,不然線上只看到
+        # 「資金資料待更新」卻查不出是 aflow 沒進來、還是 quote/aflow 脫節。
+        _a_ts = _parse_ts(a_at)
+        flow_age_sec = round((now - _a_ts).total_seconds(), 1) if _a_ts else None
+        _q_ts = _parse_ts(q_at)
+        flow_gap_sec = round(abs((_q_ts - _a_ts).total_seconds()), 1) if (_q_ts and _a_ts) else None
         if tick.get("price") is not None:
             snap_rows.append({
                 "slot": phase.now_tw().strftime("%H%M"),
@@ -149,6 +193,16 @@ def build_live_rows(db_path: str = DB, T: Optional[str] = None) -> dict:
         )
         row["explain"] = _explain.explain(row, is_eod=False, flow_stale=flow_stale)
         row["flow_confirm_magnitude"] = confirm_mag
+        row["flow_updated_at"] = a_at
+        row["quote_updated_at"] = q_at
+        row["flow_age_sec"] = flow_age_sec
+        row["flow_gap_sec"] = flow_gap_sec
         rows_out.append(row)
 
-    return {"T": T, "T1": T1, "rows": rows_out}
+    return {"T": T, "T1": T1, "rows": rows_out,
+            "feed_diag": {
+                "now": now.isoformat(timespec="seconds"),
+                "buffer_codes": len(live_buf),
+                "stale_threshold_sec": STALE_AFLOW_AGE_SEC,
+                "db_path": db_path,
+            }}

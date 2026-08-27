@@ -234,6 +234,53 @@ def test_live_merge_runs_against_real_data_without_writing(db_copy):
         assert "explain" in r
 
 
+@needs_fixture
+def test_live_buffer_carries_freshness_fields(db_copy):
+    """回歸測試:線上曾因為載到 2026-08-04 舊版 snapshot_producer(沒有 updated_at
+    欄位)而讓 aflow_updated_at 恆為 None → 每一檔都被判 stale。live_buffer 現在
+    直接下 SQL,必須永遠帶回 freshness 欄位。"""
+    import sqlite3 as _s
+    conn = _s.connect(db_copy)
+    conn.execute("INSERT OR REPLACE INTO quote_snap (code,data_date,price,updated_at)"
+                " VALUES ('2330','2026-08-27',1000.0,'2026-08-27T03:00:00')")
+    conn.execute("INSERT OR REPLACE INTO aflow (code,data_date,net_active,method,updated_at)"
+                " VALUES ('2330','2026-08-27',500.0,'bridge_8000','2026-08-27T03:00:00')")
+    conn.commit(); conn.close()
+
+    buf = live.live_buffer(db_copy, "2026-08-27")
+    assert "2330" in buf
+    tick = buf["2330"]
+    assert tick["quote_updated_at"] == "2026-08-27T03:00:00"
+    assert tick["aflow_updated_at"] == "2026-08-27T03:00:00", (
+        "aflow_updated_at 掉了 → freshness 閘門會把所有股票誤判成 stale")
+    assert tick["net_active"] == 500.0
+    # 同一時刻不得判 stale
+    assert live.is_aflow_stale(tick["quote_updated_at"], tick["aflow_updated_at"],
+                              _dt.datetime(2026, 8, 27, 3, 0, 30)) is False
+
+
+def test_discovery_row_shows_real_prices_and_keeps_direction_sign():
+    """盤中發現的股票多半『已經站上』關鍵價。舊版只印 abs(distance) 的
+    「距壓力 X%」會讓人以為還沒到、還要再漲——方向剛好相反。現在必須印出
+    真實現價/壓力,而且區分『已站上』與『差』。"""
+    import line_b_ledger_render as render
+
+    above = {"code": "2408", "flow_confirm_magnitude": 7391,
+            "explain": dict(current=547.0, resistance=522.0, distance_pct=4.79,
+                           status="CONFIRMED", system_sentence="已站上關鍵價 522.0｜啟動已發生")}
+    row = render._discovery_row(above)
+    assert "547" in row and "522" in row, "必須印出真實現價與壓力價,不能只給百分比"
+    assert "已站上" in row
+    assert "差 <strong>4.79%" not in row, "已站上卻印成『差 4.79%』=方向講反"
+
+    below = {"code": "2359", "flow_confirm_magnitude": 100,
+            "explain": dict(current=147.0, resistance=147.5, distance_pct=-0.34,
+                           status="CONFIRMED", system_sentence="已站上關鍵價 147.5｜啟動已發生")}
+    row2 = render._discovery_row(below)
+    assert "147" in row2
+    assert "差" in row2 and "已站上 <strong>+" not in row2
+
+
 def test_confirmed_flow_card_does_not_say_if_aflow_completes():
     """資金已確認的卡片不得再出現「若 A-flow 完成確認」——那會讓校準值與 89.9%
     讀起來像模型自相矛盾(Vanessa 2026-08-26 明確要求)。"""
