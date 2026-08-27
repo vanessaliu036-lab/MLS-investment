@@ -87,11 +87,18 @@ def _prob_block(exp: dict, discovery: bool) -> str:
         ref_line = 'A-flow 已完成確認：歷史參考 <b>89.9%</b>'
         title = "目前狀態"
     else:
+        # 2026-08-27 修正:資金「已經」確認的卡片不得再寫「若 A-flow 完成確認」——
+        # 它已經完成了,那句話會讓使用者把校準值(例:62%)跟歷史母體(89.9%)讀成
+        # 模型自相矛盾。已確認時 89.9% 降級成純歷史母體參考;未確認才是條件句。
+        confirmed = bool(exp.get("confirmed_so_far"))
         pct = round(prob * 100) if prob is not None else None
         color = ' style="color:var(--green)"' if (pct is not None and pct >= 70) else ""
-        prob_num_html = f'<span class="prob-num"{color}>{pct}%</span>' if pct is not None else '<span class="prob-num">—</span>'
+        num = f'<span class="prob-num"{color}>{pct}%</span>' if pct is not None else '<span class="prob-num">—</span>'
+        state = "資金已確認" if confirmed else "尚待資金確認"
+        prob_num_html = f'{num}<span class="prob-state">｜{_esc(state)}</span>'
         bar_pct = pct if pct is not None else 0
-        ref_line = f'若 A-flow 完成確認：歷史參考 <b>89.9%</b>'
+        ref_line = ('歷史母體參考 <b>89.9%</b>' if confirmed
+                    else '若 A-flow 完成確認：歷史參考 <b>89.9%</b>')
         title = "目前預估啟動機率"
 
     return f"""<div class="prob">
@@ -192,6 +199,7 @@ font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",Roboto,Ar
 .prob-top{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:9px}
 .prob-title{font-size:12px;color:var(--muted)}
 .prob-num{font-size:19px;font-weight:850}
+.prob-state{font-size:11px;color:var(--muted);font-weight:700;margin-left:2px}
 .bar{height:6px;background:#252b32;border-radius:999px;overflow:hidden}
 .bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#6d7b89,#56d992)}
 .confirm-line{font-size:12px;color:var(--muted);margin-top:9px}

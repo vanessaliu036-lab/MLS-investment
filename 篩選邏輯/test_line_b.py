@@ -234,6 +234,34 @@ def test_live_merge_runs_against_real_data_without_writing(db_copy):
         assert "explain" in r
 
 
+def test_confirmed_flow_card_does_not_say_if_aflow_completes():
+    """資金已確認的卡片不得再出現「若 A-flow 完成確認」——那會讓校準值與 89.9%
+    讀起來像模型自相矛盾(Vanessa 2026-08-26 明確要求)。"""
+    import line_b_ledger_render as render
+
+    confirmed_exp = dict(status="WATCH_CLOSELY", activation_prob=0.621,
+                        distance_pct=-0.3, confirmed_so_far=True)
+    block = render._prob_block(confirmed_exp, discovery=False)
+    assert "若 A-flow 完成確認" not in block
+    assert "歷史母體參考" in block
+    assert "資金已確認" in block
+
+    unconfirmed_exp = dict(status="WAIT", activation_prob=0.345,
+                          distance_pct=-0.3, confirmed_so_far=False)
+    block2 = render._prob_block(unconfirmed_exp, discovery=False)
+    assert "若 A-flow 完成確認" in block2
+    assert "尚待資金確認" in block2
+
+
+def test_confirmed_activated_card_shows_no_probability_number():
+    import line_b_ledger_render as render
+    exp = dict(status="CONFIRMED", activation_prob=None, distance_pct=1.2,
+              confirmed_so_far=True)
+    block = render._prob_block(exp, discovery=False)
+    assert "已站上" in block
+    assert "%</span>" not in block.split("confirm-line")[0].replace("89.9%", "")
+
+
 @needs_fixture
 def test_api_html_and_json_smoke(db_copy, monkeypatch):
     """掛進一個乾淨的 FastAPI app(不是整個 server.py,避免拉進其他外部依賴),
