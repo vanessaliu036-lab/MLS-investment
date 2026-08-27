@@ -165,8 +165,13 @@ def _rejects_on(pool_date: _dt.date, db_path: str) -> dict[str, dict]:
     fail_layer = structural_failures 併字串(淘汰因子);fail_reason = why raw。
     仍在候補池(candidate_pool)者不算真淘汰,扣掉(對齊顯示端真淘汰定義)。"""
     out: dict[str, dict] = {}
-    # 防呆:dropped_pool 必須有 pool_date 這天(或本就空表)。指到停更表會在此爆掉。
-    _assert_source_fresh("dropped_pool", pool_date, db_path)
+    # 防呆:screen_post 當天必須真的跑過(讀 candidate_pool,它每天都無條件寫)。
+    # 2026-08-27 修正:原本斷言 dropped_pool 本身的新鮮度,但 dropped_pool 是
+    # 「if dropped:」條件式寫入(screen_post.py) —— 雙分數分層上線後常整天 0 筆
+    # 真淘汰,dropped_pool 就會停在最後一次有淘汰的日期,被誤判成「接到停更表」,
+    # 進而把整條 stage2 卡死。改讀 candidate_pool 才是「pipeline 有沒有跑」的
+    # 正確訊號;dropped_pool 當天沒有 pool_date 這批,就是真的 0 筆可驗,不是停更。
+    _assert_source_fresh("candidate_pool", pool_date, db_path)
     try:
         dropped = store.read_date("dropped_pool", pool_date, db_path)
     except Exception:

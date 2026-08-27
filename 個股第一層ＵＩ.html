@@ -10,7 +10,7 @@
    唯讀帶出。前端只負責印,不重算不自判 —— 同一份資料在不同地方算出不同
    答案,是這套系統踩過最多次的坑。 */
 (()=>{
-  const PA_COLOR={EARLY:'#1d4ed8',ARMED:'#a15c00',TRIGGER:'#168447',EXTENDED:'#b91c1c'};
+  const PA_COLOR={EARLY:'#1d4ed8',ARMED:'#a15c00',TRIGGER:'#168447',EXTENDED:'#b91c1c',ACTIVE:'#0f766e'};
   const e=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   const pick=x=>{const p=x&&x.pre_activation;return (p&&p.stage&&p.stage!=='—')?p:null};
   window.__paHTML=x=>{
@@ -22,7 +22,7 @@
   window.__paLines=x=>{
     const p=pick(x); if(!p)return '';
     const d=p.ma5_distance_pct;
-    return `<div class="pa-lines"><b>外資：</b>${e(p.foreign_state||'—')}　<b>｜量能：</b>${e(p.volume_state||'—')}<br>`
+    return `<div class="pa-lines"><b>價格：</b>${e(p.price_state||'—')}　<b>｜外資：</b>${e(p.foreign_state||'—')}　<b>｜量能：</b>${e(p.volume_state||'—')}<br>`
       + `<b>距 MA5：</b>${d==null?'—':(d>0?'+':'')+d+'%'}　${e(p.ma5_state||'')}<br>`
       + `<b>下一步：</b>${e(p.next_step||'—')}</div>`;
   };

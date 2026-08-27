@@ -51,6 +51,29 @@ def test_thresholds_are_pinned():
     assert pa.MA5_HOT == 0.07      # 與引擎 HIGH_BIAS_PCT 一致
 
 
+def test_limit_up_with_unconfirmed_volume_is_not_early():
+    """2026-08-27 回報的 bug:漲停但量比未達門檻,曾被印成 EARLY
+    ('資金先到、價格未動'＋'等待量能抬升 → ARMED'),把已經啟動的價格講成
+    還沒動。價格 Activation 一旦確認(含漲停),就不可再落回 EARLY/WATCH。"""
+    r = base(foreign_days=4, volume=900, is_limit_up=True)
+    assert r["stage"] == pa.ACTIVE
+    assert r["price_state"] == "漲停"
+    assert r["price_activated"] is True
+    assert r["volume_state"] == "未啟動"
+    assert r["do_not_chase"] is True
+    assert "價格未動" not in r["stage_note"]
+    assert "ARMED" not in r["next_step"]
+
+
+def test_price_activation_overrides_even_without_prev_high_data():
+    """is_limit_up 必須能單獨判定價格已啟動,不依賴 prev_high/high5 是否齊全
+    (盤中早段這些欄位常缺)。"""
+    r = pa.describe(close=110.0, ma5=105.0, volume=900.0, vol_ma20=1000.0,
+                     foreign_days=4, prev_high=None, high5=None, is_limit_up=True)
+    assert r["stage"] == pa.ACTIVE
+    assert r["stage"] != pa.EARLY
+
+
 def test_trigger_next_step_does_not_imply_entry():
     """2026-08-24 大樣本回測(n=555)證明 TRIGGER 對 51 檔基準線沒有 entry
     edge —— 文案不得再暗示可進場(曾寫「盤中確認後可進場」)。"""

@@ -760,13 +760,14 @@ def build(universe: list[str], db_path: str = "mls.db",
         previous_bar = _strict_previous_bar(prev_rows, d)
         bar = _bar_with_live_quote(b.get(c), q.get(c), previous_bar)
         change = derivs[c].get("change_rate")
+        _is_limit_up = is_limit_up(bar.get("close"),
+                                    reference_price=(previous_bar or {}).get("close"),
+                                    change_rate=change)
         lay = layered_score.score_layered(layered_score.build_input(
             c, bar, i.get(c), previous_bar=previous_bar,
             aflow_today=(af_t.get(c) or {}).get("net_active"),
             aflow_previous=(af_y.get(c) or {}).get("net_active"),
-            is_limit_up=is_limit_up(bar.get("close"),
-                                    reference_price=(previous_bar or {}).get("close"),
-                                    change_rate=change),
+            is_limit_up=_is_limit_up,
             **derivs[c], **rels[c]))
         old_drop, old_hits = hard_drop(bar, i.get(c))   # 舊制對照,供誤刪率量測
         # 籌碼×價格背離(分類/升降級,不淘汰):抗賣壓/洗盤/反轉 → 保護不刪(治誤刪)
@@ -789,7 +790,8 @@ def build(universe: list[str], db_path: str = "mls.db",
             close=bar.get("close"), ma5=bar.get("ma5"),
             volume=bar.get("volume"), vol_ma20=bar.get("vol_ma20"),
             foreign_days=(i.get(c) or {}).get("foreign_days"),
-            prev_high=(previous_bar or {}).get("high"), high5=_hi5)
+            prev_high=(previous_bar or {}).get("high"), high5=_hi5,
+            is_limit_up=_is_limit_up)
 
         lay_fields = {
             "pre_activation": _pa,
