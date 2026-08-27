@@ -82,8 +82,13 @@ def _prob_block(exp: dict, discovery: bool) -> str:
         ref_line = "INTRADAY DISCOVERY：不套用 64.1% / 89.9% 歷史參考(母體不同)"
         title = "距離關鍵價"
     elif status == "CONFIRMED":
-        prob_num_html = '<span class="prob-num" style="color:var(--green)">已站上</span>'
-        bar_pct = 100
+        # CONFIRMED 是 A-flow/Watch Mode 已確認,不自動代表價格站上關鍵價。
+        # 價格低於 resistance 時,顯示仍差多少,避免把兩個 activation 混成一個。
+        price_above = exp.get("distance_pct") is not None and exp["distance_pct"] >= 0
+        prob_num_html = (('<span class="prob-num" style="color:var(--green)">已站上</span>'
+                          if price_above else
+                          '<span class="prob-num" style="color:var(--green)">A-flow 已確認</span>'))
+        bar_pct = 100 if price_above else _bar_pct(exp.get("distance_pct"))
         ref_line = 'A-flow 已完成確認：歷史參考 <b>89.9%</b>'
         title = "目前狀態"
     else:
@@ -235,8 +240,8 @@ text-decoration:none;font-size:13px}
 .discovery{margin-top:18px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px}
 .discovery h3{font-size:13px;margin:0 0 5px}
 .discovery p{font-size:11px;color:var(--muted);margin:0 0 12px}
-.discovery-item{padding:12px 0;border-top:1px solid var(--line);font-size:12px}
-.discovery-item:first-of-type{border-top:0}
+.discovery-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.discovery-item{padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);font-size:12px}
 .disc-name{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px;margin-bottom:6px}
 .disc-quote{font-size:13px;color:#4a5570;line-height:1.6;margin-bottom:5px}
 .disc-quote strong{font-size:15px;color:var(--navy)}
@@ -244,7 +249,7 @@ text-decoration:none;font-size:13px}
 .badge{font-size:10px;border-radius:999px;padding:4px 7px;background:#eaf0fe;color:var(--blue);border:1px solid #b9ccf7}
 .empty-note{color:var(--muted);font-size:12px;padding:10px 0}
 @media(max-width:780px){.wrap{padding:20px 13px 40px}.header{flex-direction:column}
-.summary{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.top3{display:none}.title{font-size:22px}}
+.summary{grid-template-columns:1fr 1fr}.grid,.discovery-grid{grid-template-columns:1fr}.top3{display:none}.title{font-size:22px}}
 </style>
 """
 
@@ -325,6 +330,6 @@ def render(ctx: dict) -> str:
   <section class="discovery">
     <h3>盤中資金強勢補充</h3>
     <p>未在盤後主名單也可進來；只作盤中發現，收盤後寫入 ledger 並重算 EOD C1/C2，不混入既有歷史啟動率。</p>
-    {discovery_html}
+    <div class="discovery-grid">{discovery_html}</div>
   </section>
 </main>""")

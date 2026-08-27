@@ -11,6 +11,7 @@ STATE_CSS = {"ACTIVE": "st-active", "EXTENDED": "st-ext", "ARMED": "st-armed",
 CHIP_CSS = {"CONFIRMED": "ok", "BULLISH_FOREIGN": "ok", "BULLISH_TRUST": "ok",
             "REVERSAL": "warn", "DIVERGENT": "warn", "BEARISH": "bad", "NO_DATA": ""}
 FLOW_CSS = {"STRONG": "ok", "POSITIVE": "ok", "FLAT": "", "NEGATIVE": "bad", "NO_DATA": ""}
+STATE_ORDER = ("ACTIVE", "EXTENDED", "ARMED", "WATCH", "FAILED", "REJECT")
 
 
 def _esc(s):
@@ -31,6 +32,24 @@ def _f(v, d=2, suffix=""):
         return "—"
     try:
         return f"{float(v):,.{d}f}{suffix}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _tone(v):
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return ""
+    return "num-up" if n > 0 else "num-down" if n < 0 else ""
+
+
+def _signed_pct(v, d=2):
+    if v is None:
+        return "—"
+    try:
+        n = float(v)
+        return f"{n:+.{d}f}%"
     except (TypeError, ValueError):
         return "—"
 
@@ -66,15 +85,20 @@ def _row(r):
                   if acc["verdict"] in ("YES", "NO") else "—")
     sec_txt = (f'{sec.get("verdict")} {_f(sec.get("breadth_pct"),0,"%")}'
                if sec.get("breadth_pct") is not None else "—")
-    return f"""<tr>
+    change = ext.get("change_rate")
+    return f"""<tr data-state="{_esc(st['state'])}">
   <td class="c-name"><b>{_esc(r['code'])}</b> {_esc(r['name'])}
-    <div class="sub">{_f(r['price'])} / 觸發 {_f(r['trigger_price'])}
-      · {_f(r['distance_pct'],2,'%')}</div></td>
-  <td class="num">{_esc(_chip_cell(chip))}</td>
+    <div class="quote-line">
+      <span>現價 <b class="{_tone(change)}">{_f(r['price'])}</b></span>
+      <span>漲跌 <b class="{_tone(change)}">{_signed_pct(change)}</b></span>
+      <span>觸發 <b>{_f(r['trigger_price'])}</b></span>
+    </div>
+    <div class="sub">距觸發 <span class="{_tone(r['distance_pct'])}">{_signed_pct(r['distance_pct'])}</span></div></td>
+  <td class="num {_tone(chip.get('total_5d'))}">{_esc(_chip_cell(chip))}</td>
   <td><span class="tag {CHIP_CSS.get(chip['verdict'],'')}">{_esc(chip['verdict'])}</span>
     <div class="sub">{_esc(chip.get('summary'))}</div></td>
   <td><span class="tag {FLOW_CSS.get(flow['verdict'],'')}">{_esc(flow['verdict'])}</span>
-    <div class="sub">{_lots(flow.get('net_active'))}</div></td>
+    <div class="sub {_tone(flow.get('net_active'))}">{_lots(flow.get('net_active'))}</div></td>
   <td><span class="tag {'ok' if trig['verdict']=='YES' else ''}">{_esc(_yn(trig['verdict']))}</span>
     <div class="sub">站穩 {trig.get('hold_minutes',0)}分</div></td>
   <td><span class="tag {'ok' if vol['verdict'].startswith('PASS') else ''}">{_esc(vol_txt)}</span>
@@ -117,8 +141,10 @@ padding:12px 15px;font-size:12.5px;line-height:1.7;margin-bottom:16px;font-weigh
 .banner b{color:#5c3f04}
 .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
 .chip{background:#fff;border:1px solid var(--line);border-radius:999px;padding:7px 13px;
-font-size:12px;font-weight:750;box-shadow:var(--shadow)}
+font:inherit;font-size:12px;font-weight:750;box-shadow:var(--shadow);cursor:pointer}
 .chip i{font-style:normal;color:var(--muted);font-weight:700}
+.chip:hover,.chip.active{background:#eaf0fe;border-color:#b9ccf7;color:var(--blue)}
+.chip:focus-visible{outline:3px solid #b9ccf7;outline-offset:2px}
 .tbl-wrap{background:#fff;border:1px solid var(--line);border-radius:14px;overflow-x:auto;box-shadow:var(--shadow)}
 table{border-collapse:collapse;width:100%;min-width:1500px;font-size:12px}
 th{background:var(--bg);color:var(--muted);font-size:10.5px;font-weight:800;text-align:left;
@@ -129,6 +155,9 @@ tr:last-child td{border-bottom:0}
 .c-action{min-width:190px}
 .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .sub{font-size:10.5px;color:var(--muted);margin-top:3px;font-weight:600;line-height:1.5}
+.quote-line{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px;font-size:10.5px;color:var(--muted);font-weight:650}
+.quote-line span{white-space:nowrap}.quote-line b{font-size:12px;color:var(--navy);font-variant-numeric:tabular-nums}
+.num-up{color:var(--red)!important}.num-down{color:var(--green)!important}
 .tag{display:inline-block;font-size:10.5px;font-weight:800;padding:3px 7px;border-radius:6px;
 background:var(--bg);border:1px solid var(--line);white-space:nowrap}
 .tag.ok{background:var(--green-soft);color:var(--green);border-color:#9fd9c4}
@@ -160,15 +189,21 @@ def render(ctx: dict) -> str:
         body = '<div class="foot">尚無資料（%s）。</div>' % _esc(ctx.get("skipped") or "no rows")
     else:
         counts = ctx.get("counts") or {}
-        chips = "".join(
-            f'<div class="chip">{_esc(k)} <i>{v}</i></div>'
-            for k, v in sorted(counts.items(), key=lambda x: -x[1]))
+        chips = (
+            f'<button type="button" class="chip active" data-state-filter="ALL" '
+            f'aria-pressed="true">全部 <i>{len(rows)}</i></button>'
+            + "".join(
+                f'<button type="button" class="chip" data-state-filter="{_esc(state)}" '
+                f'aria-pressed="false">{_esc(state)} <i>{counts.get(state, 0)}</i></button>'
+                for state in STATE_ORDER if counts.get(state, 0)
+            )
+        )
         fresh = rows[0]["freshness"]
         body = f"""
   <div class="chips">{chips}</div>
   <div class="tbl-wrap"><table>
     <thead><tr>
-      <th>股票 / 現價・觸發</th><th style="text-align:right">FINMIND 5D 籌碼</th>
+      <th>股票／現價／漲跌／觸發</th><th style="text-align:right">FINMIND 5D 籌碼</th>
       <th>CHIP<br><i>中期籌碼</i></th><th>FLOW<br><i>今日資金</i></th>
       <th>PRICE TRIGGER<br><i>是否突破</i></th><th>VOLUME<br><i>有無真量</i></th>
       <th>ACCEPTANCE<br><i>是否站穩</i></th><th>EXTENSION RISK<br><i>是否太晚</i></th>
@@ -207,4 +242,19 @@ def render(ctx: dict) -> str:
     這一頁與「買點監控」是兩套獨立計算，<b>不共用那張 77/11 校準表</b>，也不影響它。
   </div>
   {body}
-</main>"""
+</main>
+<script>
+(() => {{
+  const filters = [...document.querySelectorAll('[data-state-filter]')];
+  const rows = [...document.querySelectorAll('tbody tr[data-state]')];
+  filters.forEach(button => button.addEventListener('click', () => {{
+    const selected = button.dataset.stateFilter;
+    rows.forEach(row => row.hidden = selected !== 'ALL' && row.dataset.state !== selected);
+    filters.forEach(item => {{
+      const active = item === button;
+      item.classList.toggle('active', active);
+      item.setAttribute('aria-pressed', active ? 'true' : 'false');
+    }});
+  }}));
+}})();
+</script>"""

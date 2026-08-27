@@ -27,6 +27,19 @@ class FrontendLimitRowTests(unittest.TestCase):
     def test_percentage_only_guess_is_removed(self):
         self.assertNotIn(">=9.8", self.html)
 
+    def test_individual_stock_rows_show_price_points_next_to_percent(self):
+        self.assertIn("const chgFull=", self.html)
+        self.assertIn("${chgFull(x.change_rate,x.price)}", self.html)
+        self.assertIn("${chgFull(ch,row.price)}", self.html)
+
+    def test_first_layer_stock_cards_use_the_same_price_point_format(self):
+        path = Path(__file__).resolve().parents[1].parent / "個股第一層ＵＩ.html"
+        self.assertTrue(path.exists(), "first-layer observation-pool UI is missing")
+        html = path.read_text(encoding="utf-8")
+        self.assertIn("const chgFull=", html)
+        self.assertIn("base[1].innerHTML=chgFull(x.change_rate,x.price)", html)
+        self.assertIn("today.innerHTML=chgFull(x.change_rate,x.price)", html)
+
     def test_negative_change_cannot_reuse_stale_limit_flag(self):
         exact = self.html.split("const exactLimitUp=", 1)[1].split("};", 1)[0]
         self.assertLess(exact.index("c<=0"), exact.index("row?.is_limit_up===true"))
@@ -94,6 +107,17 @@ class FrontendLimitRowTests(unittest.TestCase):
         decision_block = self.html.split("// Canonical Decision View", 1)[1].split("observeSection=()=>''", 1)[0]
         self.assertNotIn("<th>來源</th>", decision_block)
         self.assertNotIn("decision-source", decision_block)
+
+    def test_decision_home_keeps_the_server_rank_contract(self):
+        # 排序由 8000 API 做，瀏覽器只渲染回傳的順位；避免不同頁面各自排序而漂移。
+        self.assertNotIn("data.sort(", self.html)
+        self.assertIn("排序：盤中達標 → 分數 → 漲跌 → 資金", self.html)
+
+    def test_opportunity_radar_uses_the_home_canonical_snapshot(self):
+        radar = self.html.split("if(kind==='radar'){", 1)[1].split("}else if(kind==='tomorrow')", 1)[0]
+        self.assertIn("const items=[...data]", radar)
+        self.assertNotIn("/api/intraday-watchpool", radar)
+        self.assertIn("首頁同步快照", radar)
 
 
 if __name__ == "__main__":

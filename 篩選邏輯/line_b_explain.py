@@ -22,7 +22,7 @@
     }
 
 status 判定(唯一規則來源,不得在別處重算):
-    CONFIRMED     : watch_mode_activated 為真(價格已站上關鍵壓力 + 資金為正)
+    CONFIRMED     : watch_mode_activated 為真(A-flow/Watch Mode 已確認;價格是否站上另行呈現)
     WATCH_CLOSELY : 未啟動,但現價距壓力 <= WATCH_DISTANCE_PCT 且今日資金
                     已出現過確認(OPEN_POSITIVE 或 FLOW_FLIP)
     GIVE_UP       : 這一列是「已收盤」的完整一天(is_eod=True),整天 NO_FLIP
@@ -176,7 +176,17 @@ def explain(row: dict, is_eod: bool = True, flow_stale: bool = False) -> dict:
                        activation_probability(distance_pct, confirmed_so_far=confirmed_today))
 
     if status == "CONFIRMED":
-        sentence = f"已站上關鍵價 {resistance:,.1f}｜啟動已發生" if resistance else "已站上關鍵價｜啟動已發生"
+        # watch_mode_activated 代表 A-flow/Watch Mode 已成立,不等於價格已站上
+        # 結構關鍵價。兩者必須分開,否則「現價低於壓力」仍會被說成已站上。
+        if distance_pct is not None and distance_pct >= 0:
+            # 已站上只證明 Price Trigger；正式 ACTIVE 還必須另有 Volume
+            # Quality 與 Acceptance，不能把舊 Watch Mode activation 說成交易啟動。
+            sentence = (f"已站上關鍵價 {resistance:,.1f}｜PRICE TRIGGER 已發生，待量能／承接確認"
+                        if resistance else "PRICE TRIGGER 已發生，待量能／承接確認")
+        elif distance_pct is not None and resistance:
+            sentence = f"A-flow 已確認｜尚差關鍵價 {abs(distance_pct):.2f}%（{resistance:,.1f}）"
+        else:
+            sentence = "A-flow 已確認｜待價格／量能／承接確認"
     elif status == "WATCH_CLOSELY":
         sentence = f"重點盯 {resistance:,.1f}，站穩 {resistance:,.1f} 且資金續強再看" if resistance else "重點盯，資金續強再看"
     elif status == "GIVE_UP":

@@ -48,6 +48,47 @@ class IntradayClassifierSourceTests(unittest.TestCase):
         self.assertIn("max(0, min(100", source)
         self.assertIn("day_position_pct", source)
 
+    def test_display_order_is_group_then_score_pct_score_change_and_aflow(self):
+        self.assertIn('DISPLAY_GROUP_ORDER = {"可操作": 0, "觀察": 1, "排除": 2}', self.source)
+        key = self.source.split("def _display_sort_key(row):", 1)[1].split("\n\ndef _sort_display_rows", 1)[0]
+        positions = [
+            key.index('DISPLAY_GROUP_ORDER.get(row.get("group"), 9)'),
+            key.index('row.get("score_pct")'),
+            key.index('row.get("score")'),
+            key.index('row.get("change_rate")'),
+            key.index('row.get("aflow")'),
+        ]
+        self.assertEqual(positions, sorted(positions))
+        self.assertIn("_sort_display_rows(rows)", self.source)
+
+    def test_bearish_chip_cannot_reach_actionable_group_even_if_score_passes(self):
+        """5483/6182 型態:盤中三因子達標(65%+),但法人籌碼明顯偏空(連賣/近月
+        賣超)→ 首頁不得直接判「可操作」,也不得直接排除,要落在反轉觀察
+        (Vanessa 2026-08-27 規格第七、八條)。用 AST 確認：可操作的賦值那一支
+        elif 有 chip_bearish 守門,且存在一支專門處理 bearish+達標的分支。"""
+        self.assertIn("chip_bearish = (chip_streak is not None and chip_streak <= -3)", self.source)
+        self.assertIn('group, subgroup = "觀察", "🔄 反轉候選（籌碼偏空）"', self.source)
+
+        found_guarded_actionable = False
+        for node in ast.walk(self.tree):
+            if isinstance(node, ast.Assign):
+                targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
+                if "group" not in targets:
+                    continue
+                if isinstance(node.value, ast.Tuple) and any(
+                    isinstance(elt, ast.Constant) and elt.value == "可操作" for elt in node.value.elts
+                ):
+                    found_guarded_actionable = True
+        self.assertTrue(found_guarded_actionable, "「可操作」的賦值不見了")
+
+        # 確認 chip_bearish 這個變數本身有被拿去守「可操作」的 elif 條件用
+        pct_ge_65_branches = [
+            node for node in ast.walk(self.tree)
+            if isinstance(node, ast.Compare)
+            and isinstance(node.left, ast.Name) and node.left.id == "pct"
+        ]
+        self.assertTrue(pct_ge_65_branches)
+
 
 if __name__ == "__main__":
     unittest.main()

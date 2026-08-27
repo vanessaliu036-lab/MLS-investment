@@ -68,6 +68,30 @@ FLOW_STRONG = 1000        # net_active 視為 STRONG 的幅度
 
 OBSERVATION_VERSION = "lineb_layers_v1_2026-08-27_descriptive_only"
 
+# 七層頁是「現在該先看誰」的觀測介面：先按可操作程度，再用即時資金、今日漲跌與
+# 距觸發位置穩定排序。這只影響顯示順序，不改任何七層判定。
+DISPLAY_STATE_ORDER = {
+    "ACTIVE": 0, "EXTENDED": 1, "ARMED": 2,
+    "WATCH": 3, "FAILED": 4, "REJECT": 5,
+}
+
+
+def _display_sort_number(value):
+    try:
+        number = float(value)
+        return number if number == number else -1e12
+    except (TypeError, ValueError):
+        return -1e12
+
+
+def display_sort_key(row: dict):
+    return (
+        DISPLAY_STATE_ORDER.get(row["state"]["state"], 9),
+        -_display_sort_number(row["flow"].get("net_active")),
+        -_display_sort_number(row["extension"].get("change_rate")),
+        -_display_sort_number(row.get("distance_pct")),
+    )
+
 
 def _num(v):
     if v is None or v == "":
@@ -335,10 +359,34 @@ def sector_layer(code, group, change_map, group_map) -> dict:
             "leadership": bool(pctile is not None and pctile >= 80)}
 
 
+def _volume_ever_passed(slots, trigger, hist_by_slot: dict) -> bool:
+    """突破後的最初站穩窗格(第一次站上 trigger 到第一次跌破為止)裡,量能是否
+    曾經達標(RVOL>=RVOL_PASS)。只看那段連續格,不看之後,回答「有沒有真的
+    帶量突破過」而不是「現在有沒有量」——這是 FAILED 前置條件要用的歷史事實。
+    """
+    trigger = _num(trigger)
+    if trigger is None:
+        return False
+    rows = [(_num(s.get("price")), _num(s.get("volume")), s.get("slot")) for s in slots]
+    rows = [(p, v, sl) for p, v, sl in rows if p is not None]
+    idx = next((i for i, (p, _, _) in enumerate(rows) if p > trigger), None)
+    if idx is None:
+        return False
+    for p, v, sl in rows[idx:]:
+        if p <= trigger:
+            break
+        hist = hist_by_slot.get(sl) or []
+        base = (sum(hist) / len(hist)) if hist else None
+        if v is not None and base and v / base >= RVOL_PASS:
+            return True
+    return False
+
+
 # ─────────────────────── TRADE STATE 狀態機 ───────────────────────────────
 
 def trade_state(chip, flow, trig, vol, acc, ext, structure_ok: Optional[bool],
-                distance_pct: Optional[float]) -> dict:
+                distance_pct: Optional[float],
+                volume_ever_passed: bool = False) -> dict:
     """EXTENSION 不參與 ACTIVE 判定,只在 ACTIVE 成立後做交易覆寫
     (2026-08-27 Vanessa 明確修正:漲太高不代表沒啟動)。"""
     if structure_ok is False:
@@ -347,17 +395,29 @@ def trade_state(chip, flow, trig, vol, acc, ext, structure_ok: Optional[bool],
 
     triggered = trig["verdict"] == "YES"
     ever_triggered = (trig.get("hold_slots") or 0) > 0 or triggered
+    # FAILED 只能從「曾經真正 ACTIVE」(Trigger + Volume + Acceptance 三者都成立過)
+    # 的股票產生。只是價格瞬間探過 trigger、量或承接從沒到位,那從未 ACTIVE,不能叫
+    # FAILED——否則會出現「PRICE TRIGGER=NO 但 TRADE STATE=FAILED」這種自相矛盾
+    # (2026-08-27 Vanessa 明確指出的 bug:5483/6182 曾經如此)。
+    ever_active = (ever_triggered and volume_ever_passed
+                   and (acc.get("held_slots") or 0) >= ACCEPT_MIN_SLOTS)
 
-    # FAILED:曾經突破,現在跌回觸發價或跌破 VWAP
-    if ever_triggered and not triggered:
+    # FAILED:曾經真正啟動,現在跌回觸發價或跌破 VWAP
+    if ever_active and not triggered:
         return {"state": "FAILED", "action": "撤退／不進", "action_code": "AVOID",
                 "why": "突破後跌回觸發價"}
-    if triggered and acc.get("vwap_held") is False:
+    if triggered and ever_active and acc.get("vwap_held") is False:
         return {"state": "FAILED", "action": "撤退／不進", "action_code": "AVOID",
                 "why": "突破後跌破 VWAP"}
 
-    # ACTIVE = Trigger + Volume + Acceptance(不看 EXTENSION)
+    # ACTIVE = Trigger + Volume + Acceptance(不看 EXTENSION)。CHIP 明顯偏空時
+    # 最高只能到 ARMED,不得判 ACTIVE/可操作——資金與量能再強,法人籌碼方向相反
+    # 就還沒到「可進場」,只到「反轉觀察」(2026-08-27 Vanessa 定案第七條)。
+    chip_bearish = chip.get("verdict") == "BEARISH"
     if triggered and vol["verdict"].startswith("PASS") and acc["verdict"] == "YES":
+        if chip_bearish:
+            return {"state": "ARMED", "action": "等籌碼轉向確認", "action_code": "WAIT",
+                    "why": "突破 + 有量 + 站穩,但法人籌碼明顯偏空,列入反轉觀察"}
         if ext["verdict"] == "HIGH":
             return {"state": "EXTENDED", "action": "DO NOT CHASE", "action_code": "NO_CHASE",
                     "why": "啟動成立,但價格位置已延伸:" + "、".join(ext["reasons"]),
@@ -405,6 +465,16 @@ def _hist_volume_all(conn, T: str) -> dict:
     return out
 
 
+def _group_by_code(rows: list[dict], limit: Optional[int] = None) -> dict[str, list[dict]]:
+    """把批次 SQL 的結果依股票分組；歷史列保留每檔最新 ``limit`` 筆。"""
+    out: dict[str, list[dict]] = {}
+    for row in rows:
+        bucket = out.setdefault(row["code"], [])
+        if limit is None or len(bucket) < limit:
+            bucket.append(row)
+    return out
+
+
 # ── 短期快取:整份 compute 約 3 秒(51 檔 × 3 表查詢),而底層資料最快也只有
 # 每 30 秒(quote_snap)/每 5 分鐘(b_snapshot)才動一次。連續重新整理沒必要
 # 每次重算。TTL 內回同一份結果,盤中仍然是「當下」的資料(最多落後 CACHE_TTL 秒)。
@@ -447,17 +517,24 @@ def _compute_uncached(db_path: str, T: str) -> dict:
 
         change_map = {c: _num(q.get("change_rate")) for c, q in quotes.items()}
         hist_vol = _hist_volume_all(conn, T)   # 一次查完,不在迴圈裡逐檔掃表
+        marks = ",".join("?" for _ in universe)
+        bars_by_code = _group_by_code(_rows(
+            conn, f"SELECT * FROM daily_bar WHERE code IN ({marks}) AND data_date<=? "
+                  "ORDER BY code, data_date DESC", (*universe, T1)), limit=25)
+        inst_by_code = _group_by_code(_rows(
+            conn, f"SELECT * FROM inst_flow WHERE code IN ({marks}) AND data_date<=? "
+                  "ORDER BY code, data_date DESC", (*universe, T1)), limit=25)
+        slots_by_code = _group_by_code(_rows(
+            conn, f"SELECT * FROM b_snapshot WHERE code IN ({marks}) AND data_date=? "
+                  "AND slot>=? ORDER BY code, slot", (*universe, T, BLIND_MIN_SLOT)))
 
         out = []
         for code in universe:
-            bars = _rows(conn, "SELECT * FROM daily_bar WHERE code=? AND data_date<=? "
-                               "ORDER BY data_date DESC LIMIT 25", (code, T1))
-            inst = _rows(conn, "SELECT * FROM inst_flow WHERE code=? AND data_date<=? "
-                               "ORDER BY data_date DESC LIMIT 25", (code, T1))
+            bars = bars_by_code.get(code, [])
+            inst = inst_by_code.get(code, [])
             if len(bars) < 6 or len(inst) < 5:
                 continue
-            slots = _rows(conn, "SELECT * FROM b_snapshot WHERE code=? AND data_date=? "
-                                "AND slot>=? ORDER BY slot", (code, T, BLIND_MIN_SLOT))
+            slots = slots_by_code.get(code, [])
 
             q = quotes.get(code) or {}
             a = aflows.get(code) or {}
@@ -482,7 +559,9 @@ def _compute_uncached(db_path: str, T: str) -> dict:
             acc = acceptance_layer(slots, trigger, vwap, price)
             ext = extension_layer(price, bars, q.get("change_rate"), today_open.get(code))
             sec = sector_layer(code, group_map.get(code), change_map, group_map)
-            st = trade_state(chip, flow, trig, vol, acc, ext, structure_ok, distance_pct)
+            vol_ever = _volume_ever_passed(slots, trigger, hist_vol.get(code, {}))
+            st = trade_state(chip, flow, trig, vol, acc, ext, structure_ok, distance_pct,
+                             volume_ever_passed=vol_ever)
 
             out.append({
                 "code": code, "name": name_map.get(code, code),
@@ -497,10 +576,8 @@ def _compute_uncached(db_path: str, T: str) -> dict:
                 },
             })
 
-        # 排序:先看交易狀態的急迫性,同狀態再看今日資金強度
-        order = {"ACTIVE": 0, "EXTENDED": 1, "ARMED": 2, "FAILED": 3, "WATCH": 4, "REJECT": 5}
-        out.sort(key=lambda r: (order.get(r["state"]["state"], 9),
-                                -(r["flow"].get("net_active") or 0)))
+        # 排序：交易狀態 → A-flow → 今日漲跌 → 距觸發位置。
+        out.sort(key=display_sort_key)
         return {"T": T, "T1": T1, "rows": out, "inst_flow_through": inst_max,
                 "shares_coverage": sum(1 for r in out if r["volume"].get("issued_shares")),
                 "gap_available": sum(1 for r in out if r["extension"].get("gap_pct") is not None),

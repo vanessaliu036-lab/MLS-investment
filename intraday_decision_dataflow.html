@@ -528,11 +528,12 @@ async function openPanel(kind){
   title.textContent=titles[kind]||kind;
   try{
     if(kind==='radar'){
-      const d=await(await fetch(API_BASE+'/api/intraday-watchpool',{cache:'no-store'})).json();
-      const items=d.rows||[];
-      window._radarUpdated=d.updated_at;
-      const fc=d.foreign_cache||{},fd=(fc.source_dates||[]).slice(-1)[0]||'—';
-      status.textContent=`盤中觀察邏輯 · 固定池 51 檔 · ${items.filter(x=>x.price!=null&&Number.isFinite(Number(x.price))).length} 檔有有效行情 · 外資 ${fc.covered??0}/${fc.total??items.length} 檔（${fd}） · 資料時間 ${dataStamp(d.updated_at)}`;
+      // 雷達是首頁 canonical snapshot 的另一個視圖，不可再自行抓一份 buffer 後重算。
+      // 否則兩頁在同一分鐘會把同檔股票判成不同 group，破壞「可操作」的唯一性。
+      const items=[...data];
+      window._radarUpdated=document.querySelector('#time')?.textContent?.split(' · ')[0]||'—';
+      const foreignRows=items.filter(x=>x.foreign_source_date),fd=[...new Set(foreignRows.map(x=>x.foreign_source_date))].sort().slice(-1)[0]||'—';
+      status.textContent=`首頁同步快照 · ${items.length} 檔 · ${items.filter(x=>x.price!=null&&Number.isFinite(Number(x.price))).length} 檔有有效行情 · 外資 ${foreignRows.length}/${items.length} 檔（${fd}） · 資料時間 ${dataStamp(window._radarUpdated)}`;
       const radarGroups={可操作:[],觀察:[],排除:[]};
       for(const x of items)(radarGroups[x.group]||radarGroups.觀察).push(x);
       window._radarSectors=(()=>{const m={};for(const x of items){if(x.price==null)continue;(m[x.sector||'其他']??=[]).push(x)}return m})();
@@ -1911,7 +1912,12 @@ window.renderTomorrowGroups=function(body,rows,fallback){
       if(ch<0)return '價跌，即時資金流資料待補 → 保守觀察。';
       return '資金流資料待補 → 續觀察。';
     }
-    if(ch>0&&af>0)return '價漲且主動買盤進場 → 量價同步走強，買氣真實。';
+    // 「買氣真實」是對進場品質的斷言，只有在後台已判「可操作」(達標+籌碼未明顯
+    // 偏空)時才能講；否則只是價漲+資金翻正，量能品質與突破承接都還沒驗證過，
+    // 講「真實」會誤導成可以追。
+    if(ch>0&&af>0)return row?.group==='可操作'
+      ? '價漲且主動買盤進場 → 量價同步走強，買氣真實。'
+      : '盤中主動資金轉正、價格走強；量能品質與突破承接尚待確認。';
     if(ch>0&&af<0)return '拉高卻主動賣超 → 主力邊拉邊出，假紅要防。';
     if(ch<0&&af<0)return '量價同步走弱 → 資金離場，避開。';
     if(ch<0&&af>0)return '下跌但有承接 → 逢低買盤進場，觀察能否止跌。';
@@ -1957,7 +1963,7 @@ window.renderTomorrowGroups=function(body,rows,fallback){
     }
   }
   const oldRender=window.render;
-  if(oldRender)window.render=function(){oldRender();cleanRows();fitSignals()};
+  if(oldRender)window.render=function(){oldRender();cleanRows();fitSignals();const advice=document.querySelector('#advice');const actionable=data.filter(x=>x.group==='可操作').length;if(advice&&actionable)advice.textContent=`目前 ${actionable} 檔可操作，排序：盤中達標 → 分數 → 漲跌 → 資金；正紅色、負綠色。`};
   let rz;addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{cleanRows();fitSignals()},150)});
   cleanRows();fitSignals();
 })();

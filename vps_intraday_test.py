@@ -101,6 +101,34 @@ FACTOR_WEIGHTS = {
     "margin": 8,
 }
 
+# 決策首頁、雷達與快照回退共用同一個排序契約。分類先決定「先看誰」，
+# 分類內才比較盤中達標程度；同分的價格／資金只做最後的穩定排序。
+DISPLAY_GROUP_ORDER = {"可操作": 0, "觀察": 1, "排除": 2}
+
+
+def _display_number(value):
+    """排序用數字；缺值永遠排在同分類的已知數值之後。"""
+    try:
+        number = float(value)
+        return number if number == number else -1e12
+    except (TypeError, ValueError):
+        return -1e12
+
+
+def _display_sort_key(row):
+    return (
+        DISPLAY_GROUP_ORDER.get(row.get("group"), 9),
+        -_display_number(row.get("score_pct")),
+        -_display_number(row.get("score")),
+        -_display_number(row.get("change_rate")),
+        -_display_number(row.get("aflow")),
+    )
+
+
+def _sort_display_rows(rows):
+    rows.sort(key=_display_sort_key)
+    return rows
+
 
 def _trade_date():
     return datetime.now(TW_TZ).date().isoformat()
@@ -309,6 +337,13 @@ def _seven_factor_score(raw, ma20, chip):
     fake_red = change > 0 and aflow < 0
     resting = change <= 0 and aflow < 0
 
+    # 法人籌碼是否明顯偏空：連賣 ≥3 日或近月賣超 ≥3,000 張（門檻對齊七層頁
+    # chip_layer 的 CHIP_STRONG_LOTS，兩套分類器各自獨立但「明顯偏空」的定義一致）。
+    chip_streak = chip.get("inst_streak")
+    chip_net20 = chip.get("inst_net_20d_lots")
+    chip_bearish = (chip_streak is not None and chip_streak <= -3) or \
+                   (chip_net20 is not None and chip_net20 <= -3000)
+
     if change > 0:
         ev.append(f"股價上漲 {change:+.2f}%")
     elif change < 0:
@@ -319,8 +354,7 @@ def _seven_factor_score(raw, ma20, chip):
     limitup_note = ""
     _cr = []
     if extreme_up:
-        _stk = chip.get("inst_streak")
-        _n20 = chip.get("inst_net_20d_lots")
+        _stk, _n20 = chip_streak, chip_net20
         if _stk is not None and _stk < 0:
             _cr.append(f"法人連賣 {abs(int(_stk))} 日")
         if _n20 is not None and _n20 < 0:
@@ -347,6 +381,18 @@ def _seven_factor_score(raw, ma20, chip):
         if resting:
             features.append(f"價弱且主動賣超 {abs(aflow):,} 張")
         reason = "、".join(features) + "｜僅為弱勢特徵，未滿四重失效，不淘汰"
+    elif not missing and pct is not None and pct >= 65 and chip_bearish:
+        # 盤中三因子達標，但法人籌碼明顯偏空：不能直接判「可操作」，也不能因為
+        # 籌碼偏空就直接否決盤中的真實資金轉強——兩者都是誤判。正確定位是
+        # 「反轉候選」：被看見、但要等籌碼／量能／承接進一步確認才可進場。
+        group, subgroup = "觀察", "🔄 反轉候選（籌碼偏空）"
+        chip_bits = []
+        if chip_streak is not None and chip_streak <= -3:
+            chip_bits.append(f"法人連賣 {abs(int(chip_streak))} 日")
+        if chip_net20 is not None and chip_net20 <= -3000:
+            chip_bits.append(f"近月賣超 {abs(int(chip_net20)):,} 張")
+        reason = (f"盤中達標 {pct:.0f}%，但{('、'.join(chip_bits) or '法人籌碼偏空')}"
+                  "→ 資金與籌碼方向分歧，列入反轉觀察，暫不可操作")
     elif not missing and pct is not None and pct >= 65:
         group, subgroup = "可操作", "🔥 A級啟動"
         facts = []
@@ -695,12 +741,8 @@ def intraday_test():
                 print(f"[intraday-test] quote_health 跳過: {_e}", flush=True)
         rows = [_row(item) for item in raw]
         _pa_date, _pa_n = _attach_pre_activation(rows)
-        # v5 分類攤平：可操作→觀察→排除；各群內仍維持漲幅優先，再按 aflow。
-        group_order = {"可操作": 0, "觀察": 1, "排除": 2}
-        rows.sort(key=lambda x: (group_order.get(x["group"], 9),
-                                 -(x.get("score_pct") or 0),
-                                 -(x.get("score") or 0),
-                                 -x["change_rate"]))
+        # 排序契約：可操作→觀察→排除；群內 score_pct→score→漲跌幅→aflow。
+        _sort_display_rows(rows)
         category_counts = {}
         for row in rows:
             category_counts[row["group"]] = category_counts.get(row["group"], 0) + 1
@@ -811,7 +853,9 @@ def _with_pre_activation(payload):
     """把 stage 貼到 payload["rows"] 上並記錄快照日。
     intraday-test 有多個快照回退出口,每個出口都要帶,否則首頁會時有時無。"""
     try:
-        day, n = _attach_pre_activation(payload.get("rows") or [])
+        rows = payload.get("rows") or []
+        _sort_display_rows(rows)
+        day, n = _attach_pre_activation(rows)
         payload["pre_activation_date"] = day
         payload["pre_activation_count"] = n
     except Exception as exc:
@@ -863,6 +907,7 @@ def intraday_watchpool():
                 row["has_data"] = True
                 rows.append(row)
         pa_date, pa_n = _attach_pre_activation(rows)
+        _sort_display_rows(rows)
         foreign_rows = [r for r in rows if r.get("foreign_source_date")]
         foreign_dates = sorted({r["foreign_source_date"] for r in foreign_rows})
         foreign_sources = sorted({r["foreign_source"] for r in foreign_rows
