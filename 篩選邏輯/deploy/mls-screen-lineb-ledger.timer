@@ -1,0 +1,15 @@
+[Unit]
+Description=每交易日收盤後觸發 Line B ledger 定案
+
+[Timer]
+# 13:30 收盤;daily_bar 當日收盤約 14:40 由 mls-screen-collect 落地(FinMind EOD)。
+# 留 10 分鐘緩衝再跑,晚一點比冒著 daily_bar 還沒到就硬跑更好——跟
+# mls-screen-pullback-discovery.timer 同一個「留緩衝」慣例。run_line_b_ledger.py
+# 自己會檢查 daily_bar 是否已有當日收盤,沒有就 no-op(見該檔 run() 開頭的 gate),
+# 所以就算打太早也不會寫髒資料,不用把固定時鐘時間當成交易訊號。
+OnCalendar=Mon..Fri 14:50:00 Asia/Taipei
+Persistent=true
+Unit=mls-screen-lineb-ledger.service
+
+[Install]
+WantedBy=timers.target

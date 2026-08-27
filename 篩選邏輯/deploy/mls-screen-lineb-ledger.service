@@ -1,0 +1,13 @@
+[Unit]
+Description=MLS Line B 觀察 ledger 收盤後定案(C1/C2 + 盤中確認 + EOD 重算,append-only)
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/mls-screen
+Environment="HOME=/root"
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+ExecStart=/usr/bin/python3 run_line_b_ledger.py
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mls-screen-lineb-ledger

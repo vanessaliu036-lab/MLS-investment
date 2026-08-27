@@ -60,7 +60,11 @@ def take(buffer: dict[str, dict], at: _dt.datetime | None = None,
 
     buffer 是你的 Shioaji 訂閱 handler 維護的記憶體 dict,格式:
         { "2330": {"price":..., "change_rate":..., "volume":...,
-                   "net_active":..., "bid_vol":..., "ask_vol":...}, ... }
+                   "net_active":..., "bid_vol":..., "ask_vol":...,
+                   "quote_updated_at":..., "aflow_updated_at":...,
+                   "freshness_gap_sec":..., "aflow_method":...}, ... }
+    後四個 freshness 欄位純觀察用(見 snapshot_producer.build_buffer 註解),
+    缺值就是 None,不用任何門檻頂替或篩掉。
 
     這支不呼叫 Shioaji,只把你已經有的東西落地。
     """
@@ -80,6 +84,10 @@ def take(buffer: dict[str, dict], at: _dt.datetime | None = None,
         "volume": v.get("volume"), "net_active": v.get("net_active"),
         "bid_vol": v.get("bid_vol"), "ask_vol": v.get("ask_vol"),
         "created_at": now,
+        "quote_updated_at": v.get("quote_updated_at"),
+        "aflow_updated_at": v.get("aflow_updated_at"),
+        "freshness_gap_sec": v.get("freshness_gap_sec"),
+        "aflow_method": v.get("aflow_method"),
     } for code, v in buffer.items()]
 
     n = store.upsert_intraday(TABLE, PLUGIN, rows, db_path)

@@ -193,6 +193,12 @@ CREATE TABLE IF NOT EXISTS b_snapshot (
     price REAL, change_rate REAL, volume INTEGER,
     net_active REAL, bid_vol INTEGER, ask_vol INTEGER,
     created_at TEXT,
+    -- 2026-08-26:source freshness 純觀察欄位,不參與任何判斷/scoring。
+    -- quote_snap/aflow 合併時原本不比對 updated_at,可能拼到「新價舊 aflow」;
+    -- 這三欄只記事實(來源各自的寫入時間、兩者相差幾秒、aflow 這輪走哪條管線),
+    -- 不設 stale 門檻、不回填 None——要等資料累積夠了才回頭研究多少秒算 stale。
+    quote_updated_at TEXT, aflow_updated_at TEXT, freshness_gap_sec REAL,
+    aflow_method TEXT,
     PRIMARY KEY (data_date, code, slot)
 );
 CREATE INDEX IF NOT EXISTS idx_b_snap ON b_snapshot(data_date, code, slot);
@@ -317,6 +323,9 @@ _COLUMN_MIGRATIONS = {
                   ("dealer_days", "INTEGER")],
     # 2026-08-18:A 卡補「距買點/日內位置/VWAP乖離」判讀,quote_snap 舊表要補欄位。
     "quote_snap": [("high", "REAL"), ("low", "REAL"), ("avg_price", "REAL")],
+    # 2026-08-26:b_snapshot 補 source freshness 觀察欄位,見上方 b_snapshot 建表註解。
+    "b_snapshot": [("quote_updated_at", "TEXT"), ("aflow_updated_at", "TEXT"),
+                   ("freshness_gap_sec", "REAL"), ("aflow_method", "TEXT")],
 }
 
 

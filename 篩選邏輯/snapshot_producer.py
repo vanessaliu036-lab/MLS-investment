@@ -8,15 +8,33 @@
       quote_snap(價量內外盤) + aflow(主動買賣淨額)。
 
 非盤中時 b_snapshot.take() 自身 no-op(phase 閘),所以 timer 打太早/太晚都安全。
+
+2026-08-26:quote_snap 與 aflow 是兩張各自獨立更新的表,合併時原本沒比對兩者
+updated_at,可能拼出「新報價 + 舊 aflow」的一格(見 memory
+b-snapshot-2026-08-05-incident——08-06/07/10 抓到 net_active 卡住數十分鐘不動、
+quote 卻正常在動的實例)。這裡只把兩邊 updated_at 與時間差算出來一起落地,純觀察,
+不做任何 stale 判斷、不因此丟資料或回填 None——要等這份 freshness_gap_sec 累積
+夠多天,才回頭研究多少秒算 stale。
 """
 from __future__ import annotations
 
 import sqlite3
+import datetime as _dt
 
 import b_snapshot
 from phase import today_tw
 
 DB = "mls.db"
+
+
+def _seconds_between(a: str | None, b: str | None) -> float | None:
+    """兩個 ISO timestamp 相差幾秒(a-b)。任一邊缺值就回傳 None,不用 0 頂替。"""
+    if not a or not b:
+        return None
+    try:
+        return (_dt.datetime.fromisoformat(a) - _dt.datetime.fromisoformat(b)).total_seconds()
+    except ValueError:
+        return None
 
 
 def build_buffer(db_path: str = DB) -> dict[str, dict]:
@@ -36,13 +54,18 @@ def build_buffer(db_path: str = DB) -> dict[str, dict]:
     for code, qr in q.items():
         if qr.get("price") is None:
             continue
+        ar = a.get(code) or {}
         buf[code] = {
             "price": qr.get("price"),
             "change_rate": qr.get("change_rate"),
             "volume": qr.get("volume"),
             "bid_vol": qr.get("bid_vol"),
             "ask_vol": qr.get("ask_vol"),
-            "net_active": (a.get(code) or {}).get("net_active"),
+            "net_active": ar.get("net_active"),
+            "quote_updated_at": qr.get("updated_at"),
+            "aflow_updated_at": ar.get("updated_at"),
+            "freshness_gap_sec": _seconds_between(qr.get("updated_at"), ar.get("updated_at")),
+            "aflow_method": ar.get("method"),
         }
     return buf
 
