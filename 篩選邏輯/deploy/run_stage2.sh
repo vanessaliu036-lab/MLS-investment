@@ -25,11 +25,16 @@ python3 run_pa_snapshot.py;   rc_pa=$?
 # Opportunity forward logging(2026-08-24 起)。frozen signal sec_rs_10d@Top10%
 # 的最終確認只能靠 8/24 之後的 forward data,每漏一天就少一天乾淨樣本。
 python3 run_opportunity_snapshot.py; rc_opp=$?
+# funnel.py 快照(2026-08-27 起)。同 run_pa_snapshot.py 的病灶:funnel.run()
+# 只從 HTTP handler 呼叫,沒人開 /ab/funnel 當天就沒有 funnel_result,
+# reject_verify 的 FNR pipeline 會斷資料。純觀察快照,失敗只告警不擋主流程。
+python3 run_funnel_snapshot.py; rc_funnel=$?
 set -e
 
 [ "$rc_verify" -ne 0 ] && echo "[stage2] ⚠ run_stage2_verify.py 失敗 rc=$rc_verify" >&2
 [ "$rc_pa" -ne 0 ] && echo "[stage2] ⚠ run_pa_snapshot.py 失敗 rc=$rc_pa（Pre-Activation 快照未寫入）" >&2
 # Opportunity 是純觀察快照,失敗只告警不擋盤後主流程(rc=2 是資料未齊的合法跳過)
 [ "$rc_opp" -ne 0 ] && [ "$rc_opp" -ne 2 ] && echo "[stage2] ⚠ run_opportunity_snapshot.py 失敗 rc=$rc_opp" >&2
+[ "$rc_funnel" -ne 0 ] && echo "[stage2] ⚠ run_funnel_snapshot.py 失敗 rc=$rc_funnel（funnel_result 未寫入，FNR pipeline 會斷這天）" >&2
 if [ "$rc_verify" -ne 0 ] || [ "$rc_pa" -ne 0 ]; then exit 1; fi
 exit 0
