@@ -126,6 +126,40 @@ def _latest_t1(db_path: str, T: str) -> Optional[str]:
     return row[0] if row else None
 
 
+def _batch_history(db_path: str, codes: list[str], T1: str, T: str) -> tuple[dict, dict]:
+    """一次讀齊歷史與今日快照，避免盤中頁每檔反覆開 SQLite 連線。
+
+    舊作法每檔呼叫三次 ``_history`` 加一次 ``_snapshot_rows``；51 檔等於
+    約 204 個連線。改成四次批次查詢後在記憶體分組，資料與後續判定不變。
+    """
+    if not codes:
+        return {}, {}
+    marks = ",".join("?" for _ in codes)
+    history = {table: {} for table in ("inst_flow", "daily_bar", "aflow")}
+    snapshots: dict[str, list[dict]] = {}
+    with sqlite3.connect(db_path) as c:
+        c.row_factory = sqlite3.Row
+        for table in history:
+            rows = c.execute(
+                f"SELECT * FROM {table} WHERE code IN ({marks}) AND data_date<=? "
+                "ORDER BY code, data_date DESC", (*codes, T1),
+            ).fetchall()
+            grouped = history[table]
+            for raw in rows:
+                row = dict(raw)
+                bucket = grouped.setdefault(row["code"], [])
+                if len(bucket) < 25:
+                    bucket.append(row)
+        rows = c.execute(
+            f"SELECT * FROM b_snapshot WHERE code IN ({marks}) AND data_date=? "
+            "ORDER BY code, slot", (*codes, T),
+        ).fetchall()
+        for raw in rows:
+            row = dict(raw)
+            snapshots.setdefault(row["code"], []).append(row)
+    return history, snapshots
+
+
 def build_live_rows(db_path: str = DB, T: Optional[str] = None) -> dict:
     """回傳 { 'T':.., 'T1':.., 'rows': [ {code, source, flow_confirm_magnitude,
     watch_mode_activated, explain} ... ] }。完全不寫 DB。
@@ -140,19 +174,20 @@ def build_live_rows(db_path: str = DB, T: Optional[str] = None) -> dict:
 
     codes = _runner._universe()
     live_buf = live_buffer(db_path, T)  # 同一份 production feed(quote_snap+aflow),不另造第二套
+    history, snapshots = _batch_history(db_path, codes, T1, T)
     now = _naive_now()
 
     rows_out = []
     for code in codes:
-        inst_rows = _runner._history(db_path, "inst_flow", code, T1)
-        bar_rows = _runner._history(db_path, "daily_bar", code, T1)
+        inst_rows = history["inst_flow"].get(code, [])
+        bar_rows = history["daily_bar"].get(code, [])
         if len(inst_rows) < 6 or len(bar_rows) < 6:
             continue
-        aflow_rows = _runner._history(db_path, "aflow", code, T1)
+        aflow_rows = history["aflow"].get(code, [])
         c1, c2, t1_fields = _runner._c1_c2(inst_rows, bar_rows, aflow_rows)
         t1_ma20, t1_prior_high = t1_fields["t1_ma20"], t1_fields["t1_prior_high"]
 
-        snap_rows = list(_runner._snapshot_rows(db_path, code, T))
+        snap_rows = list(snapshots.get(code, []))
         tick = live_buf.get(code) or {}
         q_at, a_at = tick.get("quote_updated_at"), tick.get("aflow_updated_at")
         flow_stale = is_aflow_stale(q_at, a_at, now)

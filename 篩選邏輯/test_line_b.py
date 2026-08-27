@@ -87,7 +87,8 @@ def test_confirmed_status_hides_activation_prob():
     exp = explain.explain(row, is_eod=False)
     assert exp["status"] == "CONFIRMED"
     assert exp["activation_prob"] is None
-    assert "啟動已發生" in exp["system_sentence"]
+    assert "PRICE TRIGGER 已發生" in exp["system_sentence"]
+    assert "待量能／承接確認" in exp["system_sentence"]
     assert "已站上" in exp["system_sentence"]
 
 
@@ -398,12 +399,29 @@ def test_no_armed_high_state_exists():
 
 
 def test_failed_when_price_falls_back_below_trigger():
+    """FAILED 只能從曾經真正 ACTIVE(Trigger+Volume+Acceptance 都成立過)的股票
+    產生(2026-08-27 修正)。這裡用 held_slots>=1 + volume_ever_passed=True
+    表示它真的曾經站穩過,才允許現在跌回觸發價被判 FAILED。"""
     import line_b_layers as L
     st = L.trade_state({"verdict": "CONFIRMED"}, {"verdict": "STRONG"},
                       {"verdict": "NO", "hold_slots": 4},  # 曾突破,現在沒有
-                      {"verdict": "PASS"}, {"verdict": "NO"},
-                      {"verdict": "NORMAL", "reasons": []}, True, -0.5)
+                      {"verdict": "PASS"}, {"verdict": "NO", "held_slots": 4},
+                      {"verdict": "NORMAL", "reasons": []}, True, -0.5,
+                      volume_ever_passed=True)
     assert st["state"] == "FAILED"
+
+
+def test_not_failed_when_trigger_only_briefly_touched_without_real_activation():
+    """對照組:price 曾探過 trigger,但量從沒過、也沒站穩過(acc held_slots=0,
+    volume_ever_passed=False)→ 從未真正 ACTIVE,不得判 FAILED
+    (Vanessa 2026-08-27:5483/6182 的「PRICE TRIGGER=NO 但 FAILED」自相矛盾)。"""
+    import line_b_layers as L
+    st = L.trade_state({"verdict": "BEARISH"}, {"verdict": "STRONG"},
+                      {"verdict": "NO", "hold_slots": 1},
+                      {"verdict": "THIN"}, {"verdict": "NO", "held_slots": 0},
+                      {"verdict": "NORMAL", "reasons": []}, True, -0.46,
+                      volume_ever_passed=False)
+    assert st["state"] != "FAILED"
 
 
 def test_turnover_is_never_fabricated_when_shares_unknown():

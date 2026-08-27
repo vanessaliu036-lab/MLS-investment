@@ -113,6 +113,14 @@ class FrontendLimitRowTests(unittest.TestCase):
         self.assertNotIn("data.sort(", self.html)
         self.assertIn("排序：盤中達標 → 分數 → 漲跌 → 資金", self.html)
 
+    def test_plain_reading_only_claims_real_buying_when_group_is_actionable(self):
+        # 「量價同步走強，買氣真實」是對進場品質的斷言，只有後台已判「可操作」
+        # 才能講；否則只是價漲+資金翻正，量能/承接都還沒驗證，不能講「真實」。
+        plain = self.html.split("function plain(row){", 1)[1].split("\n  function cleanRows", 1)[0]
+        self.assertIn("row?.group==='可操作'", plain)
+        self.assertIn("量價同步走強，買氣真實", plain)
+        self.assertIn("量能品質與突破承接尚待確認", plain)
+
     def test_opportunity_radar_uses_the_home_canonical_snapshot(self):
         radar = self.html.split("if(kind==='radar'){", 1)[1].split("}else if(kind==='tomorrow')", 1)[0]
         self.assertIn("const items=[...data]", radar)

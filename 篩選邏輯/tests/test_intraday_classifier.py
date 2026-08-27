@@ -69,25 +69,15 @@ class IntradayClassifierSourceTests(unittest.TestCase):
         self.assertIn("chip_bearish = (chip_streak is not None and chip_streak <= -3)", self.source)
         self.assertIn('group, subgroup = "觀察", "🔄 反轉候選（籌碼偏空）"', self.source)
 
-        found_guarded_actionable = False
-        for node in ast.walk(self.tree):
-            if isinstance(node, ast.Assign):
-                targets = [t.id for t in node.targets if isinstance(t, ast.Name)]
-                if "group" not in targets:
-                    continue
-                if isinstance(node.value, ast.Tuple) and any(
-                    isinstance(elt, ast.Constant) and elt.value == "可操作" for elt in node.value.elts
-                ):
-                    found_guarded_actionable = True
-        self.assertTrue(found_guarded_actionable, "「可操作」的賦值不見了")
-
-        # 確認 chip_bearish 這個變數本身有被拿去守「可操作」的 elif 條件用
-        pct_ge_65_branches = [
-            node for node in ast.walk(self.tree)
-            if isinstance(node, ast.Compare)
-            and isinstance(node.left, ast.Name) and node.left.id == "pct"
-        ]
-        self.assertTrue(pct_ge_65_branches)
+        # elif 鏈是循序短路的:chip_bearish 那支必須排在「可操作」那支的前面,
+        # 「可操作」才不會在籌碼明顯偏空時被賦值(兩支共用同一個 pct>=65 前提)。
+        bearish_branch_pos = self.source.index(
+            "elif not missing and pct is not None and pct >= 65 and chip_bearish:")
+        actionable_branch_pos = self.source.index(
+            'elif not missing and pct is not None and pct >= 65:\n'
+            '        group, subgroup = "可操作"')
+        self.assertLess(bearish_branch_pos, actionable_branch_pos,
+                        "chip_bearish 分支必須排在「可操作」判定之前,否則籌碼偏空會漏判成可操作")
 
 
 if __name__ == "__main__":
