@@ -391,8 +391,9 @@ def run(universe: list[str], code_group: dict[str, str],
 
     # ---------- L0 全集
     pool = [c for c in universe if c in snaps]
-    layers.append({"layer": "L0 全集", "entered": len(universe),
-                   "survived": len(pool), "reasons": {}})
+    layers.append({"layer": "L0 全集", "name": "universe", "mode": "diagnostic",
+                   "entered": len(universe), "survived": len(pool),
+                   "rejected": len(universe) - len(pool), "reasons": {}})
 
     # ---------- 舊 L1/L1.5/L2/L3 僅保留診斷；不再逐層移除
     l1_keep, l1_reasons = [], {}
@@ -408,8 +409,10 @@ def run(universe: list[str], code_group: dict[str, str],
                      "reasons": json.dumps(votes, ensure_ascii=False),
                      "detail": "", "decided_at": now})
     _log_layer(d, "L1", len(pool), len(l1_keep), l1_reasons, now, db_path)
-    layers.append({"layer": "L1 減量", "entered": len(pool),
-                   "survived": len(l1_keep), "reasons": l1_reasons})
+    layers.append({"layer": "L1 減量", "name": "l1_volume_structure",
+                   "mode": "diagnostic", "entered": len(pool),
+                   "survived": len(l1_keep), "rejected": len(pool) - len(l1_keep),
+                   "reasons": l1_reasons})
 
     # ---------- L1.5 背離否決(必須在核心層之前)
     l15_keep, l15_reasons = [], {}
@@ -423,8 +426,10 @@ def run(universe: list[str], code_group: dict[str, str],
                      "survived": int(ok), "reasons": why,
                      "detail": "", "decided_at": now})
     _log_layer(d, "L1.5", len(l1_keep), len(l15_keep), l15_reasons, now, db_path)
-    layers.append({"layer": "L1.5 背離否決", "entered": len(l1_keep),
-                   "survived": len(l15_keep), "reasons": l15_reasons})
+    layers.append({"layer": "L1.5 背離否決", "name": "l1_5_divergence",
+                   "mode": "diagnostic", "entered": len(l1_keep),
+                   "survived": len(l15_keep), "rejected": len(l1_keep) - len(l15_keep),
+                   "reasons": l15_reasons})
 
     # ---------- L2 核心（特徵診斷）
     l2_keep, l2_reasons, l2_detail = [], {}, {}
@@ -441,8 +446,10 @@ def run(universe: list[str], code_group: dict[str, str],
                      "detail": json.dumps(detail, ensure_ascii=False),
                      "decided_at": now})
     _log_layer(d, "L2", len(l15_keep), len(l2_keep), l2_reasons, now, db_path)
-    layers.append({"layer": "L2 核心", "entered": len(l15_keep),
-                   "survived": len(l2_keep), "reasons": l2_reasons})
+    layers.append({"layer": "L2 核心", "name": "l2_core_features",
+                   "mode": "diagnostic", "entered": len(l15_keep),
+                   "survived": len(l2_keep), "rejected": len(l15_keep) - len(l2_keep),
+                   "reasons": l2_reasons})
 
     final = l2_keep
     stage = "盤中定案"
@@ -463,16 +470,26 @@ def run(universe: list[str], code_group: dict[str, str],
                          "reasons": json.dumps(why, ensure_ascii=False),
                          "detail": "", "decided_at": now})
         _log_layer(d, "L3", len(l2_keep), len(l3_keep), l3_reasons, now, db_path)
-        layers.append({"layer": "L3 籌碼", "entered": len(l2_keep),
-                       "survived": len(l3_keep), "reasons": l3_reasons})
+        layers.append({"layer": "L3 籌碼", "name": "l3_chip_diagnostic",
+                       "mode": "diagnostic", "entered": len(l2_keep),
+                       "survived": len(l3_keep), "rejected": len(l2_keep) - len(l3_keep),
+                       "reasons": l3_reasons})
         l3_keep.sort(key=lambda c: -l3_score.get(c, 0))
         final = l3_keep
         stage = "盤後定案"
 
     # ---------- 中央分類器唯一去留門
+    # L1~L3 現在只記特徵、不淘汰(見上方 V3 註解)；這裡才是唯一真正把名單變短的
+    # 地方。過去這一步沒被記成 layers[] 的一員、也沒有把淘汰者寫回 funnel_result，
+    # 導致(a) API 回傳的漏斗只看得到 51→51→51→51、看不到真正的去留 (b)
+    # reject_verify 依賴 funnel_result.survived=0 撈「被淘汰的名單」算誤刪率，
+    # 這裡不寫等於那條驗證管線收不到新資料 —— 2026-08-27 盤後驗證發現
+    # reject_outcome 從 08-18 之後幾乎沒有新樣本，根源就在此。
+    pre_central_count = len(final)
     classified = {}
     market_by_code = {}
     central_final = []
+    central_reasons: dict[str, int] = {}
     recovery_pool = []
     flow_now = {c: _latest_flow(snaps.get(c, [])) for c in final}
     flow_prev = {c: (aflow_y.get(c) or {}).get("net_active") for c in final}
@@ -517,6 +534,15 @@ def run(universe: list[str], code_group: dict[str, str],
         if central_keep(lay):
             central_final.append(c)
         else:
+            fails = lay.get("structural_failures") or []
+            for w in fails:
+                central_reasons[w] = central_reasons.get(w, 0) + 1
+            rows.append({"data_date": d.isoformat(), "layer": "L4", "code": c,
+                         "survived": 0,
+                         "reasons": json.dumps(fails, ensure_ascii=False),
+                         "detail": json.dumps(lay.get("failure_gates") or {},
+                                              ensure_ascii=False),
+                         "decided_at": now})
             prev_bar = bar_y.get(c) or {}
             rec = recovery_scan.scan(lay, {
                 **current_bar,
@@ -542,6 +568,15 @@ def run(universe: list[str], code_group: dict[str, str],
             if rec["in_recovery_pool"]:
                 recovery_pool.append(recovery_row)
     final = central_final
+    _log_layer(d, "L4_CLASSIFIER", pre_central_count, len(central_final),
+              central_reasons, now, db_path)
+    # 這裡只記錄上面迴圈已經呼叫過的 layered_score.classify() 結果(central_keep),
+    # 不在此重新計算——L4 是「記錄既有分類結果」,不是第二套判準。
+    layers.append({"layer": "L4 中央分類（結構失效）", "name": "central_classifier",
+                   "mode": "hard_gate", "entered": pre_central_count,
+                   "survived": len(central_final),
+                   "rejected": pre_central_count - len(central_final),
+                   "reasons": central_reasons})
 
     store.upsert_intraday(TABLE, PLUGIN, rows, db_path)
 

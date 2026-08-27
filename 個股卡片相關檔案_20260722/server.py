@@ -1900,10 +1900,26 @@ def ab_phase():
 
 @app.get("/ab/funnel")
 def ab_funnel(phase: str = None):
-    """新版逐層淘汰漏斗(L1→L1.5→L2→L3,唯讀·對照/驗證用,2026-08-24 起並存)。
+    """新版逐層淘汰漏斗(L1→L1.5→L2→L3→L4,唯讀·對照/驗證用,2026-08-24 起並存)。
     尚未取代 /ab/watchlist —— 這條只給並排比對,不接進任何決策/顯示路徑。
+    L4=中央分類器唯一真正去留門(2026-08-27 補上,之前這步沒進 layers[] 也沒寫
+    funnel_result,漏斗看起來 51→51→51→51 且 reject_outcome 斷資料的根因)。
     參見 篩選邏輯/funnel.py 檔頭規則、memory/new-funnel-status.md。"""
     return _ab_get("/api/funnel", {"phase": phase}, timeout=20)
+
+
+@app.get("/ab/verify-attribution")
+def ab_verify_attribution(days: int = 30):
+    """規則級歸因表(唯讀)：每條造成淘汰/降級的規則配上 T+1 實際表現，
+    avg_ret 為正且樣本數夠的規則＝嫌疑犯(規則方向可能反了)。見 篩選邏輯/api.py。"""
+    return _ab_get("/api/verify/attribution", {"days": days}, timeout=15)
+
+
+@app.get("/ab/verify-reject")
+def ab_verify_reject(date: str = "", days: int = 30):
+    """淘汰名單誤刪率(False Negative Rate，唯讀)：被淘汰那批股票的隔日表現。
+    見 篩選邏輯/api.py /api/verify/reject。"""
+    return _ab_get("/api/verify/reject", {"date": date, "days": days}, timeout=15)
 
 
 if __name__ == "__main__":

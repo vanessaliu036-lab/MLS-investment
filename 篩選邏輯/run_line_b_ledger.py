@@ -131,7 +131,12 @@ def run(data_date: _dt.date | None = None, db_path: str = DB) -> dict:
                   t_high=hi, t_low=lo, t_close=close_t)
 
         # EOD C1/C2 using TODAY's own close, for tomorrow's watchlist
-        bar_rows_incl_today = [{"close": close_t, "ma20": t1_fields["t1_ma20"], "high": hi}] + bar_rows \
+        # "low" 不能漏——chip_price_divergence.scan() 的 close_position 要用
+        # (close-low)/(high-low),漏了 low 會讓 close_position 恆為 None,
+        # 導致 C2(close_position>=0.7)恆為 False,enters_next_day_watchlist
+        # 永遠算不出 1(2026-08-27 發現:當天 32 檔全數 eod_c2=0)。
+        bar_rows_incl_today = [{"close": close_t, "ma20": t1_fields["t1_ma20"],
+                                "high": hi, "low": lo}] + bar_rows \
             if close_t is not None else bar_rows
         if close_t is not None and len(bar_rows_incl_today) >= 6:
             eod_c1, eod_c2, _ = _c1_c2(inst_rows, bar_rows_incl_today, aflow_rows)
