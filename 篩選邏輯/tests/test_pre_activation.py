@@ -65,6 +65,15 @@ def test_limit_up_with_unconfirmed_volume_is_not_early():
     assert "ARMED" not in r["next_step"]
 
 
+def test_change_rate_near_limit_also_overrides_even_without_limit_up_flag():
+    """使用者要求:漲幅 >= 9.5% 就算技術上還沒鎖死漲停(盤中早段快速鎖漲停/
+    跳動可能讓 is_limit_up 判定有時差),也要視為價格已啟動,不能停在 EARLY。"""
+    r = base(foreign_days=4, volume=900, close=95, change_rate=9.6)
+    assert r["stage"] == pa.ACTIVE
+    assert r["price_state"] == "漲停"
+    assert r["price_activated"] is True
+
+
 def test_price_activation_overrides_even_without_prev_high_data():
     """is_limit_up 必須能單獨判定價格已啟動,不依賴 prev_high/high5 是否齊全
     (盤中早段這些欄位常缺)。"""

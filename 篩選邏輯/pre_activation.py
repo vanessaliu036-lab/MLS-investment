@@ -40,6 +40,9 @@ VOL_BLOWOFF = 2.5              # 量比 >= 此值視為爆量
 MA5_NEAR = 0.02                # 距 MA5 <= 2% 視為貼近
 MA5_HOT = 0.07                 # 距 MA5 >= 7% 視為過熱(與引擎 HIGH_BIAS_PCT 一致)
 BREAKOUT_EXTENDED = 0.03       # 高過前波 5 日高 3% 以上視為延伸
+PRICE_ACTIVATED_CHANGE = 9.5   # 漲幅(%) >= 此值視為價格已啟動,即使當下未技術鎖死漲停
+                                # (2026-08-27 使用者要求:盤中早段鎖漲停/跳動可能讓
+                                # is_limit_up 判定有時差,漲幅門檻當第二道保險)
 
 EARLY, ARMED, TRIGGER, EXTENDED, WATCH, ACTIVE = \
     "EARLY", "ARMED", "TRIGGER", "EXTENDED", "—", "ACTIVE"
@@ -63,22 +66,25 @@ def _num(v) -> Optional[float]:
 
 
 def describe(close, ma5, volume, vol_ma20, foreign_days,
-             prev_high=None, high5=None, is_limit_up=None) -> dict:
+             prev_high=None, high5=None, is_limit_up=None, change_rate=None) -> dict:
     """回傳四個判斷依據 + 階段。任何缺值都標 None,不猜。
 
-    is_limit_up:當日是否觸及漲停。價格 Activation 與量能 Confirmation 是
-    兩個獨立訊號 —— 曾發生「已經漲停,量能未達門檻」被印成「量能：未啟動,
-    等待量能抬升 → ARMED」,讓使用者誤讀成股票還沒動。價格側一旦確認啟動
-    (漲停或 close > prev_high),就不可再落入 EARLY/WATCH 這種「價格未動」
-    的敘述,改用獨立的 ACTIVE 階段。"""
+    is_limit_up / change_rate:價格 Activation 與量能 Confirmation 是兩個
+    獨立訊號 —— 曾發生「已經漲停,量能未達門檻」被印成「量能：未啟動,
+    等待量能抬升 → ARMED」,讓使用者誤讀成股票還沒動。只要「盤中觸及漲停
+    (is_limit_up)」或「漲幅 >= PRICE_ACTIVATED_CHANGE(9.5%)」任一成立,
+    價格側就視為已啟動,直接 override,不可再落入 EARLY/WATCH 這種
+    「價格未動」的敘述,改用獨立的 ACTIVE 階段。"""
     c, m5 = _num(close), _num(ma5)
     v, vm = _num(volume), _num(vol_ma20)
     fd = _num(foreign_days)
+    chg = _num(change_rate)
 
     dist = (c / m5 - 1) if (c is not None and m5) else None
     vr = (v / vm) if (v is not None and vm) else None
     bo5 = (c / _num(high5) - 1) if (c is not None and _num(high5)) else None
     broke_yh = (c > _num(prev_high)) if (c is not None and _num(prev_high)) else None
+    near_limit_up = (chg is not None and chg >= PRICE_ACTIVATED_CHANGE)
 
     foreign = ("轉強" if (fd is not None and fd >= FOREIGN_STRONG_DAYS)
                else "轉弱" if (fd is not None and fd <= -FOREIGN_STRONG_DAYS)
@@ -89,7 +95,7 @@ def describe(close, ma5, volume, vol_ma20, foreign_days,
     ma5_state = ("過熱" if (dist is not None and dist >= MA5_HOT)
                  else "貼近" if (dist is not None and abs(dist) <= MA5_NEAR)
                  else "正常" if dist is not None else None)
-    price_state = ("漲停" if is_limit_up
+    price_state = ("漲停" if (is_limit_up or near_limit_up)
                    else "延伸" if (bo5 is not None and bo5 >= BREAKOUT_EXTENDED)
                    else "啟動" if broke_yh
                    else "整理" if broke_yh is not None else None)

@@ -791,7 +791,7 @@ def build(universe: list[str], db_path: str = "mls.db",
             volume=bar.get("volume"), vol_ma20=bar.get("vol_ma20"),
             foreign_days=(i.get(c) or {}).get("foreign_days"),
             prev_high=(previous_bar or {}).get("high"), high5=_hi5,
-            is_limit_up=_is_limit_up)
+            is_limit_up=_is_limit_up, change_rate=change)
 
         lay_fields = {
             "pre_activation": _pa,
