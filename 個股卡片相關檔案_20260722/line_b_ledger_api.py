@@ -78,6 +78,22 @@ try:
         ctx = _build_context(date)
         return JSONResponse(ctx, headers={"Cache-Control": "no-store, max-age=0"})
 
+    # ── 七層交易狀態(獨立計算,DESCRIPTIVE ONLY)────────────────────────────
+    # 跟上面兩條路由完全分開:不共用 context、不共用校準表、不互相影響。
+    import line_b_layers as _layers
+    import line_b_layers_render as _layers_render
+
+    @router.get("/line-b-layers")
+    def line_b_layers_page(date: Optional[str] = Query(None)):
+        ctx = _layers.compute(DB_PATH, date)
+        return HTMLResponse(_layers_render.render(ctx),
+                           headers={"Cache-Control": "no-store, max-age=0"})
+
+    @router.get("/line-b-layers.json")
+    def line_b_layers_json(date: Optional[str] = Query(None)):
+        return JSONResponse(_layers.compute(DB_PATH, date),
+                           headers={"Cache-Control": "no-store, max-age=0"})
+
 except Exception as _exc:
     print(f"[line-b-ledger] router 建置失敗,頁面停用:{_exc}")
     router = None

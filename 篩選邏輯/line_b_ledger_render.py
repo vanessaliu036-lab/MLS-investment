@@ -256,6 +256,7 @@ _NAV_PAGES = [
     ("/", "決策首頁"),
     ("/opportunity-ledger", "機會分層榜"),
     ("/line-b-ledger", "買點監控"),
+    ("/line-b-layers", "七層交易狀態"),
 ]
 
 

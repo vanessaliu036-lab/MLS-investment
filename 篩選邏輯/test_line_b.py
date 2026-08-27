@@ -361,3 +361,66 @@ def test_candidate_count_matches_independently_verified_sample(db_copy):
     # 2026-08-26 獨立重跑校準時测到 77 個 C1+C2 stock-day(run_line_b_ledger.run
     # 的 candidates 計數口徑含 C1C2_PASS + INTRADAY_DISCOVERY,通常會 >= 77)
     assert total >= 77, f"候選數 {total} 明顯少於獨立校準的 77,兩套邏輯對不上帳"
+
+
+# ─────────────── 七層交易狀態(獨立頁,DESCRIPTIVE ONLY)────────────────────
+
+def test_extension_does_not_block_active_but_overrides_action():
+    """2026-08-27 Vanessa 明確修正:漲太高不代表沒啟動。EXTENSION 不參與 ACTIVE
+    判定,只在 ACTIVE 成立後把 TRADE STATE 覆寫成 EXTENDED、ACTION 改禁追。"""
+    import line_b_layers as L
+    trig = {"verdict": "YES", "hold_slots": 3}
+    vol = {"verdict": "PASS"}
+    acc = {"verdict": "YES", "vwap_held": True}
+    chip, flow = {"verdict": "CONFIRMED"}, {"verdict": "STRONG"}
+
+    normal = L.trade_state(chip, flow, trig, vol, acc,
+                          {"verdict": "NORMAL", "reasons": []}, True, 1.0)
+    assert normal["state"] == "ACTIVE"
+    assert normal["action_code"] == "ENTRY_ELIGIBLE"
+
+    high = L.trade_state(chip, flow, trig, vol, acc,
+                        {"verdict": "HIGH", "reasons": ["today +9.8%"]}, True, 1.0)
+    assert high["state"] == "EXTENDED"
+    assert high["action_code"] == "NO_CHASE"
+    # 關鍵:啟動事實仍然成立,不因為不能買就說它沒啟動
+    assert high.get("activated") is True
+
+
+def test_no_armed_high_state_exists():
+    """ARMED 是生命週期、HIGH 是價格風險,不得黏在同一欄。"""
+    import line_b_layers as L
+    st = L.trade_state({"verdict": "CONFIRMED"}, {"verdict": "STRONG"},
+                      {"verdict": "NO", "hold_slots": 0}, {"verdict": "THIN"},
+                      {"verdict": "N/A"}, {"verdict": "HIGH", "reasons": ["x"]}, True, -1.0)
+    assert st["state"] == "ARMED"
+    assert "HIGH" not in st["state"]
+
+
+def test_failed_when_price_falls_back_below_trigger():
+    import line_b_layers as L
+    st = L.trade_state({"verdict": "CONFIRMED"}, {"verdict": "STRONG"},
+                      {"verdict": "NO", "hold_slots": 4},  # 曾突破,現在沒有
+                      {"verdict": "PASS"}, {"verdict": "NO"},
+                      {"verdict": "NORMAL", "reasons": []}, True, -0.5)
+    assert st["state"] == "FAILED"
+
+
+def test_turnover_is_never_fabricated():
+    """沒有流通股數資料源,Turnover 一律 None + 標註,不得編一個數字。"""
+    import line_b_layers as L
+    v = L.volume_layer([], {}, None)
+    assert v["turnover"] is None
+    assert "N/A" in v["turnover_note"]
+
+
+@needs_fixture
+def test_layers_compute_runs_on_real_data_and_reports_rvol_base_days(db_copy):
+    import line_b_layers as L
+    res = L.compute(db_copy, T="2026-08-26")
+    assert res["rows"], "應該要有列"
+    for r in res["rows"]:
+        assert r["state"]["state"] in {"WATCH", "ARMED", "ACTIVE", "EXTENDED", "FAILED", "REJECT"}
+        # RVOL 母體天數一定要回報,不能讓人以為基準比實際可靠
+        assert "rvol_base_days" in r["volume"]
+        assert r["volume"]["turnover"] is None
