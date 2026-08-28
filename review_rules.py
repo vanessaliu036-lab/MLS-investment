@@ -40,29 +40,45 @@ def _now():
     return datetime.now(TW_TZ)
 
 
-def _conn():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("""CREATE TABLE IF NOT EXISTS rule_signals(
-        trade_date   TEXT NOT NULL,
-        code         TEXT NOT NULL,
-        name         TEXT,
-        category     TEXT NOT NULL,
-        subgroup     TEXT,
-        aflow        INTEGER,
-        signal_price REAL,
-        signal_ts    TEXT,
-        last_price   REAL,
-        result       TEXT,
-        validated_at TEXT,
-        PRIMARY KEY (trade_date, code, category))""")
+def _ensure_schema(conn):
+    """⚠ 2026-08-28 效能修:record() 在 /api/intraday-test 熱路徑裡每輪呼叫
+    (py-spy 在正式站即時抓到),原本每次都重跑一次 CREATE TABLE IF NOT EXISTS。
+    這裡只省掉那句 DDL(改成先問 sqlite_master 是否已有這張表,便宜的單筆查
+    詢),PRAGMA table_info + ALTER 遷移檢查維持每次都跑,不因為表存在就跳過
+    ——那組是防未來新增遷移欄位被漏掉的正確性保護,本身就便宜(單一 PRAGMA
+    查詢,無鎖),不是效能問題的來源,不能為了省這點時間去冒「遷移欄位悄悄
+    沒補上」的風險。"""
+    exists = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='rule_signals'"
+    ).fetchone()
+    if not exists:
+        conn.execute("""CREATE TABLE rule_signals(
+            trade_date   TEXT NOT NULL,
+            code         TEXT NOT NULL,
+            name         TEXT,
+            category     TEXT NOT NULL,
+            subgroup     TEXT,
+            aflow        INTEGER,
+            signal_price REAL,
+            signal_ts    TEXT,
+            last_price   REAL,
+            result       TEXT,
+            validated_at TEXT,
+            PRIMARY KEY (trade_date, code, category))""")
     # 遷移：T+1 隔日驗證欄（Phase 3 生效）。SQLite ADD COLUMN 無可靠
     # IF NOT EXISTS，先查 PRAGMA 再加，避免每次連線重跑報 duplicate column。
+    # 永遠執行(見上方註解),只是不再跟著一句多餘的 CREATE TABLE 一起重跑。
     existing = {r["name"] for r in conn.execute("PRAGMA table_info(rule_signals)")}
     for col, decl in (("next_close", "REAL"), ("next_result", "TEXT"),
                       ("next_relative_sector", "REAL"), ("verified_at", "TEXT")):
         if col not in existing:
             conn.execute(f"ALTER TABLE rule_signals ADD COLUMN {col} {decl}")
+
+
+def _conn():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    _ensure_schema(conn)
     return conn
 
 
