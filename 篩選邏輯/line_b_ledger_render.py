@@ -84,10 +84,14 @@ def _prob_block(exp: dict, discovery: bool) -> str:
     elif status == "CONFIRMED":
         # CONFIRMED 是 A-flow/Watch Mode 已確認,不自動代表價格站上關鍵價。
         # 價格低於 resistance 時,顯示仍差多少,避免把兩個 activation 混成一個。
+        #
+        # 2026-08-28 修:「已站上」是價格方向(站上關鍵價=漲),原本硬寫
+        # var(--green) 違反台股漲紅跌綠。這個 span 跟下面的進度條(.bar)是同一
+        # 塊「目前狀態」在講同一件事,兩者必須同色,不能一個紅一個綠自相矛盾。
         price_above = exp.get("distance_pct") is not None and exp["distance_pct"] >= 0
-        prob_num_html = (('<span class="prob-num" style="color:var(--green)">已站上</span>'
+        prob_num_html = (('<span class="prob-num up">已站上</span>'
                           if price_above else
-                          '<span class="prob-num" style="color:var(--green)">A-flow 已確認</span>'))
+                          '<span class="prob-num up">A-flow 已確認</span>'))
         bar_pct = 100 if price_above else _bar_pct(exp.get("distance_pct"))
         # 2026-08-28 修:原本每張 CONFIRMED 卡片都印「歷史參考 89.9%」,51 檔
         # 看起來就是「每一檔都有 89.9% 勝率」。89.9% 是整個歷史母體的一個數字,
@@ -100,8 +104,10 @@ def _prob_block(exp: dict, discovery: bool) -> str:
         # 模型自相矛盾。已確認時 89.9% 降級成純歷史母體參考;未確認才是條件句。
         confirmed = bool(exp.get("confirmed_so_far"))
         pct = round(prob * 100) if prob is not None else None
-        color = ' style="color:var(--green)"' if (pct is not None and pct >= 70) else ""
-        num = f'<span class="prob-num"{color}>{pct}%</span>' if pct is not None else '<span class="prob-num">—</span>'
+        # 同上:高機率=看漲訊號強,跟 CONFIRMED 分支的「已站上」是同一件事的
+        # 不同階段,顏色必須一致,不能這裡綠、那裡紅。
+        cls = ' class="prob-num up"' if (pct is not None and pct >= 70) else ' class="prob-num"'
+        num = f'<span{cls}>{pct}%</span>' if pct is not None else '<span class="prob-num">—</span>'
         state = "資金已確認" if confirmed else "尚待資金確認"
         prob_num_html = f'{num}<span class="prob-state">｜{_esc(state)}</span>'
         bar_pct = pct if pct is not None else 0
@@ -224,20 +230,23 @@ text-decoration:none;font-size:13px}
 .row{display:flex;gap:8px;align-items:center;font-size:13px;line-height:1.8;flex-wrap:wrap}
 .row .label{color:var(--muted);min-width:44px}
 .row .value{font-weight:650}
-/* 台股慣例:漲紅跌綠(與歐美相反)。.up/.down 掛在資金淨額(flow_confirm_magnitude)
-   上,+ 是資金流入 → 紅,− 是流出 → 綠。2026-08-28 修:原本寫反了,
-   「資金已轉強 ↑ +10,747」被畫成綠色。
-   ⚠ 這兩個 class 只給「數字的正負」用;頁面其他 var(--green) 是狀態語意
-   (已站上/OK/LIVE 等成功狀態),不是價格方向,不在此規則內,不要一起改。 */
+/* 台股慣例:漲紅跌綠(與歐美相反),無例外。.up/.down 掛在資金淨額
+   (flow_confirm_magnitude)上,+ 是資金流入 → 紅,− 是流出 → 綠。
+   2026-08-28 修:原本寫反了,「資金已轉強 ↑ +10,747」被畫成綠色。
+   ⚠ 2026-08-28 二次修正:下面 .prob-num.up / .bar i 也套同一個 .up 紅色 ——
+   這裡先前的註解寫「已站上是狀態語意、不算價格方向」是錯的判斷,「已站上」
+   就是價格站上關鍵價,是漲,必須紅。真正的狀態語意(跟價格漲跌無關)只有
+   .status.ok/.stock-card.confirmed 那組右上角分類 tag,那組維持不動。 */
 .up{color:var(--red)}
 .down{color:var(--green)}
 .prob{margin-top:15px;padding:13px 14px;background:var(--panel2);border:1px solid var(--line);border-radius:12px}
 .prob-top{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:9px}
 .prob-title{font-size:12px;color:var(--muted)}
 .prob-num{font-size:19px;font-weight:850}
+.prob-num.up{color:var(--red)}
 .prob-state{font-size:11px;color:var(--muted);font-weight:700;margin-left:2px}
 .bar{height:6px;background:#e8ecf4;border-radius:999px;overflow:hidden}
-.bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#9fb0c4,var(--green))}
+.bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#9fb0c4,var(--red))}
 .confirm-line{font-size:12px;color:var(--muted);margin-top:9px}
 .confirm-line b{color:var(--green);font-size:14px}
 .action{margin:0 0 14px;padding:11px 12px;border:1px solid #f0dcac;background:var(--amber-soft);color:#7a5406;border-radius:11px;font-size:14px;font-weight:780;line-height:1.55}
