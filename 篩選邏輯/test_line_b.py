@@ -284,15 +284,21 @@ def test_discovery_row_shows_real_prices_and_keeps_direction_sign():
 
 def test_confirmed_flow_card_does_not_say_if_aflow_completes():
     """資金已確認的卡片不得再出現「若 A-flow 完成確認」——那會讓校準值與 89.9%
-    讀起來像模型自相矛盾(Vanessa 2026-08-26 明確要求)。"""
+    讀起來像模型自相矛盾(Vanessa 2026-08-26 明確要求)。
+
+    2026-08-28 追加:個股卡片一律不得印出 89.9% 這個數字。它是整個歷史母體的
+    統計,印在每張卡片上會被讀成「這一檔有 89.9% 勝率」(Vanessa 定案:
+    89.9% 只保留為歷史總體參考,不顯示成個股勝率)。卡片上的大數字 pct 是
+    校準表算出的個股層級機率,那個可以留。"""
     import line_b_ledger_render as render
 
     confirmed_exp = dict(status="WATCH_CLOSELY", activation_prob=0.621,
                         distance_pct=-0.3, confirmed_so_far=True)
     block = render._prob_block(confirmed_exp, discovery=False)
     assert "若 A-flow 完成確認" not in block
-    assert "歷史母體參考" in block
+    assert "歷史母體" in block
     assert "資金已確認" in block
+    assert "89.9" not in block, "個股卡片不得出現母體統計 89.9%"
 
     unconfirmed_exp = dict(status="WAIT", activation_prob=0.345,
                           distance_pct=-0.3, confirmed_so_far=False)

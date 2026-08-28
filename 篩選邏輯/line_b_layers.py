@@ -231,8 +231,9 @@ def volume_layer(today_slots, hist_by_slot: dict, current_slot: Optional[str],
     cur_vol, cur_slot = (vols[-1] if vols else (None, None))
     slot_key = current_slot or cur_slot
 
-    hist = hist_by_slot.get(slot_key) or []
-    base = (sum(hist) / len(hist)) if hist else None
+    # hist_by_slot 已是 {slot: (歷史同格均值, 母體天數)}(_hist_volume_all 在 SQL 端聚合)
+    hist_entry = hist_by_slot.get(slot_key)
+    base, base_days = hist_entry if hist_entry else (None, 0)
     rvol = round(cur_vol / base, 2) if (cur_vol is not None and base) else None
 
     # 量加速:最近兩格增量 vs 前兩格增量(累計量差分)
@@ -257,7 +258,7 @@ def volume_layer(today_slots, hist_by_slot: dict, current_slot: Optional[str],
     if cur_vol is not None and issued_shares:
         turnover = round(cur_vol * 1000 / issued_shares * 100, 3)   # %
 
-    return {"verdict": verdict, "rvol": rvol, "rvol_base_days": len(hist),
+    return {"verdict": verdict, "rvol": rvol, "rvol_base_days": base_days,
             "vol_accel": accel, "cum_volume": cur_vol, "slot": slot_key,
             "turnover_pct": turnover, "issued_shares": issued_shares,
             "turnover_note": None if turnover is not None else "無該檔發行股數快取"}
@@ -375,8 +376,8 @@ def _volume_ever_passed(slots, trigger, hist_by_slot: dict) -> bool:
     for p, v, sl in rows[idx:]:
         if p <= trigger:
             break
-        hist = hist_by_slot.get(sl) or []
-        base = (sum(hist) / len(hist)) if hist else None
+        entry = hist_by_slot.get(sl)   # 同上:已是 (均值, 母體天數),不再是 list
+        base = entry[0] if entry else None
         if v is not None and base and v / base >= RVOL_PASS:
             return True
     return False
@@ -449,19 +450,33 @@ def trade_state(chip, flow, trig, vol, acc, ext, structure_ok: Optional[bool],
 # ──────────────────────────── 主流程 ──────────────────────────────────────
 
 def _hist_volume_all(conn, T: str) -> dict:
-    """全 universe 的歷史各 slot 累計量,一次查完 → {code: {slot: [vol,...]}}。
+    """全 universe 的歷史各 slot 累計量**均值**,一次查完 → {code: {slot: mean}}。
 
-    ⚠ 效能:原本是每檔各跑一次全表掃描(51 檔 = 51 次),整頁要 14–26 秒。
-    b_snapshot 只有 (data_date, code, slot) 的 PK,以 code 起頭的查詢用不到它,
-    每次都是全表掃。改成單次查詢後在記憶體分組,頁面回到 1 秒內。"""
-    rows = _rows(conn, "SELECT code, slot, volume FROM b_snapshot "
-                       "WHERE data_date<? AND slot>=? AND volume IS NOT NULL",
+    ⚠ 效能史(兩輪):
+      1. 原本每檔各跑一次全表掃描(51 檔 = 51 次),整頁要 14–26 秒。
+         b_snapshot 只有 (data_date, code, slot) 的 PK,以 code 起頭的查詢用不到它。
+         改成單次查詢後在記憶體分組 → 冷算約 3 秒。
+      2. 2026-08-28:單次查詢仍要把 46,498 列全部搬進 Python 建 dict,
+         佔冷算 5.2 秒中的 4.2 秒(81%),而且 b_snapshot 每個交易日都在長,
+         這個成本只會逐日惡化。兩個唯一的消費端(volume_layer /
+         _volume_ever_passed)都只拿 sum(hist)/len(hist) 這個均值,從來不看
+         個別值 —— 所以直接在 SQL 用 AVG() 聚合,回傳列數從 46,498 降到
+         約 51×54=2,754。volume 是 INTEGER 且已排除 NULL,SQL AVG 與
+         Python sum/len 在數值上完全等價,不動任何門檻或判定邏輯。
+
+    回傳 {code: {slot: (均值, 母體天數)}}。母體天數必須一起帶出來 ——
+    rvol_base_days 是前端「n=X日」那個誠實標註(見檔頭:母體天數一律隨值
+    回傳,不讓它看起來比實際可靠),不能因為改成 SQL 聚合就掉了。"""
+    rows = _rows(conn, "SELECT code, slot, AVG(volume) AS mean_volume, "
+                       "COUNT(volume) AS n_days FROM b_snapshot "
+                       "WHERE data_date<? AND slot>=? AND volume IS NOT NULL "
+                       "GROUP BY code, slot",
                  (T, BLIND_MIN_SLOT))
     out: dict = {}
     for r in rows:
-        v = _num(r["volume"])
+        v = _num(r["mean_volume"])
         if v is not None:
-            out.setdefault(r["code"], {}).setdefault(r["slot"], []).append(v)
+            out.setdefault(r["code"], {})[r["slot"]] = (v, int(r["n_days"] or 0))
     return out
 
 

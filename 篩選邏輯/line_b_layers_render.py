@@ -59,16 +59,27 @@ def _yn(v):
 
 
 def _chip_cell(c):
-    parts = [f"{_lots(c.get('total_5d'))}"]
+    """回傳已上色的 HTML —— 每個數字各自判斷正負。
+
+    ⚠ 2026-08-28 修:這一格同時放「三大法人合計」與「外資」兩個獨立數字,
+    兩者符號可能相反(實例:4979 華星光 合計 +4,126、外資 -3,937)。原本整個
+    <td> 只用 total_5d 一個值套 _tone(),外資的負值被迫跟著變紅,違反漲紅跌綠。
+    連買/連賣同理:連買=資金流入=紅,連賣=流出=綠。"""
+    def _num(v):
+        return f'<span class="{_tone(v)}">{_esc(_lots(v))}</span>'
+
+    parts = [_num(c.get("total_5d"))]
     f5 = c.get("foreign_5d")
     if f5 is not None:
-        parts.append(f"外資 {_lots(f5)}")
+        parts.append(f"外資 {_num(f5)}")
     fd = c.get("foreign_days")
     if fd:
         try:
             n = int(float(fd))
             if abs(n) >= 3:
-                parts.append(("連買" if n > 0 else "連賣") + f"{abs(n)}日")
+                label = ("連買" if n > 0 else "連賣") + f"{abs(n)}日"
+                cls = "num-up" if n > 0 else "num-down"
+                parts.append(f'<span class="{cls}">{_esc(label)}</span>')
         except (TypeError, ValueError):
             pass
     return "；".join(parts)
@@ -94,7 +105,7 @@ def _row(r):
       <span>觸發 <b>{_f(r['trigger_price'])}</b></span>
     </div>
     <div class="sub">距觸發 <span class="{_tone(r['distance_pct'])}">{_signed_pct(r['distance_pct'])}</span></div></td>
-  <td class="num {_tone(chip.get('total_5d'))}">{_esc(_chip_cell(chip))}</td>
+  <td class="num">{_chip_cell(chip)}</td>
   <td><span class="tag {CHIP_CSS.get(chip['verdict'],'')}">{_esc(chip['verdict'])}</span>
     <div class="sub">{_esc(chip.get('summary'))}</div></td>
   <td><span class="tag {FLOW_CSS.get(flow['verdict'],'')}">{_esc(flow['verdict'])}</span>

@@ -89,7 +89,10 @@ def _prob_block(exp: dict, discovery: bool) -> str:
                           if price_above else
                           '<span class="prob-num" style="color:var(--green)">A-flow 已確認</span>'))
         bar_pct = 100 if price_above else _bar_pct(exp.get("distance_pct"))
-        ref_line = 'A-flow 已完成確認：歷史參考 <b>89.9%</b>'
+        # 2026-08-28 修:原本每張 CONFIRMED 卡片都印「歷史參考 89.9%」,51 檔
+        # 看起來就是「每一檔都有 89.9% 勝率」。89.9% 是整個歷史母體的一個數字,
+        # 不是任何個股的勝率,依定案規則只保留在頁首總覽,個股卡片不再出現。
+        ref_line = 'A-flow 已完成確認（歷史母體統計見頁首，非本檔勝率）'
         title = "目前狀態"
     else:
         # 2026-08-27 修正:資金「已經」確認的卡片不得再寫「若 A-flow 完成確認」——
@@ -102,8 +105,10 @@ def _prob_block(exp: dict, discovery: bool) -> str:
         state = "資金已確認" if confirmed else "尚待資金確認"
         prob_num_html = f'{num}<span class="prob-state">｜{_esc(state)}</span>'
         bar_pct = pct if pct is not None else 0
-        ref_line = ('歷史母體參考 <b>89.9%</b>' if confirmed
-                    else '若 A-flow 完成確認：歷史參考 <b>89.9%</b>')
+        # 同上:個股卡片不再印 89.9%(頁首才是它的位置)。這一格的大數字 pct 是
+        # 校準表算出來的「這一檔」的機率,那個是個股層級的、可以留;89.9% 不是。
+        ref_line = ('資金已確認（歷史母體統計見頁首，非本檔勝率）' if confirmed
+                    else '若 A-flow 完成確認 → 見頁首歷史母體統計')
         title = "目前預估啟動機率"
 
     return f"""<div class="prob">
@@ -219,8 +224,13 @@ text-decoration:none;font-size:13px}
 .row{display:flex;gap:8px;align-items:center;font-size:13px;line-height:1.8;flex-wrap:wrap}
 .row .label{color:var(--muted);min-width:44px}
 .row .value{font-weight:650}
-.up{color:var(--green)}
-.down{color:var(--red)}
+/* 台股慣例:漲紅跌綠(與歐美相反)。.up/.down 掛在資金淨額(flow_confirm_magnitude)
+   上,+ 是資金流入 → 紅,− 是流出 → 綠。2026-08-28 修:原本寫反了,
+   「資金已轉強 ↑ +10,747」被畫成綠色。
+   ⚠ 這兩個 class 只給「數字的正負」用;頁面其他 var(--green) 是狀態語意
+   (已站上/OK/LIVE 等成功狀態),不是價格方向,不在此規則內,不要一起改。 */
+.up{color:var(--red)}
+.down{color:var(--green)}
 .prob{margin-top:15px;padding:13px 14px;background:var(--panel2);border:1px solid var(--line);border-radius:12px}
 .prob-top{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:9px}
 .prob-title{font-size:12px;color:var(--muted)}
