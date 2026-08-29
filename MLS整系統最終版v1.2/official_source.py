@@ -26,6 +26,7 @@ MLS 模組 — official_source.py(v3.1 新增,最高原則:有官方就不自己
 
 import json
 import ssl
+import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -34,6 +35,8 @@ _UA = {"User-Agent": "Mozilla/5.0 MLS/3.1 official-data"}
 _CTX = ssl.create_default_context()
 _CTX.check_hostname = False
 _CTX.verify_mode = ssl.CERT_NONE          # TWSE 憑證鏈偶有問題,放寬避免中斷
+_T86_CACHE = {}
+_T86_EMPTY_TTL_SEC = 60
 
 
 def _today_yyyymmdd(d=None):
@@ -44,6 +47,28 @@ def _get_json(url, timeout=15):
     req = urllib.request.Request(url, headers=_UA)
     with urllib.request.urlopen(req, timeout=timeout, context=_CTX) as r:
         return json.loads(r.read().decode("utf-8"))
+
+
+def _get_t86_payload(ymd, url):
+    """Cache one full-market T86 payload per date.
+
+    A successful EOD file is immutable and can be reused for every stock.
+    Empty/unpublished responses use a short TTL so a pre-publish check cannot
+    freeze yesterday's state for the rest of the day.
+    """
+    now_mono = time.monotonic()
+    cached = _T86_CACHE.get(ymd)
+    if cached:
+        payload, expires_at = cached
+        if expires_at is None or now_mono < expires_at:
+            return payload
+        _T86_CACHE.pop(ymd, None)
+
+    payload = _get_json(url)
+    has_final_data = payload.get("stat") == "OK" and bool(payload.get("data"))
+    expires_at = None if has_final_data else now_mono + _T86_EMPTY_TTL_SEC
+    _T86_CACHE[ymd] = (payload, expires_at)
+    return payload
 
 
 def _num(s):
@@ -190,7 +215,7 @@ def stock_institutional(code, date=None):
            "trust_lots": None, "dealer_lots": None, "total_lots": None,
            "source": url, "note": None}
     try:
-        j = _get_json(url)
+        j = _get_t86_payload(ymd, url)
     except Exception as e:
         out["note"] = f"T86 取得失敗:{e}"
         return out
