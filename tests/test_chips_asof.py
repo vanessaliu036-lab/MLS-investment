@@ -116,4 +116,6 @@ def test_decision_ui_exposes_chip_data_date_separately_from_quote_date():
     assert "position:fixed" in standalone
     assert "api/watchpool" in standalone
     assert "51 檔" in standalone
+    assert 'class="app-bottom-nav"' in standalone
+    assert "自選" in standalone
     assert '@app.get("/chips")' in server
