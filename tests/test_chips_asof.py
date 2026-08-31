@@ -109,6 +109,7 @@ def test_decision_ui_exposes_chip_data_date_separately_from_quote_date():
     list_path = Path(__file__).resolve().parents[1] / "個股籌碼清單UI.html"
     listing = list_path.read_text(encoding="utf-8") if list_path.exists() else ""
     server = (Path(__file__).resolve().parents[1] / "個股卡片相關檔案_20260722" / "server.py").read_text(encoding="utf-8")
+    extras = (Path(__file__).resolve().parents[1] / "個股卡片相關檔案_20260722" / "extras.py").read_text(encoding="utf-8")
 
     assert 'id="chip-data-date"' in html
     assert "chip_data_date" in html
@@ -129,4 +130,6 @@ def test_decision_ui_exposes_chip_data_date_separately_from_quote_date():
     assert "清單" in standalone
     assert "大買" in listing
     assert "大賣" in listing
+    assert '"inst_net_d_lots": inst_daily' in extras
+    assert '"inst_net_5d_lots": inst_5d' in extras
     assert '@app.get("/chips")' in server

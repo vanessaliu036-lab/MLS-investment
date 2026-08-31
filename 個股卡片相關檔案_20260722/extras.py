@@ -749,6 +749,12 @@ def build_watchpool() -> Dict[str, Any]:
                     }
             except Exception as exc:
                 print(f"[extras] watchpool {code} 日K回退失敗: {exc}", flush=True)
+        inst_daily = (sum(chip[k] for k in ("foreign_net_d", "trust_net_d", "dealer_net_d"))
+                      if all(chip.get(k) is not None for k in
+                             ("foreign_net_d", "trust_net_d", "dealer_net_d")) else None)
+        inst_5d = (sum(chip[k] for k in ("foreign_net_5d", "trust_net_5d", "dealer_net_5d"))
+                   if all(chip.get(k) is not None for k in
+                          ("foreign_net_5d", "trust_net_5d", "dealer_net_5d")) else None)
         items.append({
             "code": code,
             "name": C.NAME_MAP.get(code, code),
@@ -770,9 +776,11 @@ def build_watchpool() -> Dict[str, Any]:
             # 這些欄位也讓第一層在 PA snapshot 尚未補齊時仍能看見最新外資事實。
             "foreign_net_d": chip.get("foreign_net_d"),
             "foreign_net_20d": chip.get("foreign_net_20d"),
+            "inst_net_d_lots": inst_daily,
+            "inst_net_5d_lots": inst_5d,
+            "inst_net_20d_lots": chip.get("inst_net_20d_lots"),
             "foreign_source": chip.get("source"),
             "foreign_source_date": chip.get("source_date"),
-            "inst_net_20d_lots": chip.get("inst_net_20d_lots"),
             "inst_streak": chip.get("inst_streak"),
             "volume_ratio": snap.get("volume_ratio"),
             "has_data": bool(snap.get("price")),
