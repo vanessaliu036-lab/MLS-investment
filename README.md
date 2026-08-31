@@ -86,3 +86,7 @@ result = intraday.tick(api, config.UNIVERSE, watch_pool, meta_of, prefetch_of, d
 ```bash
 python tests/test_filter.py        # 16 項逐項驗算
 ```
+
+## 部署與 AI 交接
+
+部署主機、正式程式路徑、安全同步規則與驗證清單，請先閱讀 [`docs/AI_DEPLOYMENT.md`](docs/AI_DEPLOYMENT.md)。
