@@ -43,6 +43,7 @@ def test_each_chip_source_keeps_its_own_latest_available_date(monkeypatch, tmp_p
     monkeypatch.setattr(chips, "_cache", {"date": "", "stocks": {}})
     monkeypatch.setattr(chips, "_today_key", lambda: "2026-08-31")
     monkeypatch.setattr(chips, "_save_disk", lambda: None)
+    monkeypatch.setattr(chips, "_official_margin_snapshot", lambda asof=None: {})
 
     def fake_finmind(dataset, code, start_date):
         if dataset == "TaiwanStockInstitutionalInvestorsBuySell":
@@ -51,31 +52,33 @@ def test_each_chip_source_keeps_its_own_latest_available_date(monkeypatch, tmp_p
                 _row("2026-08-31", "Foreign_Investor", 9000, 0),
             ]
         if dataset == "TaiwanStockMarginPurchaseShortSale":
-            return [{
-                "date": "2026-08-27",
-                "MarginPurchaseTodayBalance": 100,
-                "MarginPurchaseYesterdayBalance": 95,
-                "ShortSaleTodayBalance": 20,
-                "ShortSaleYesterdayBalance": 18,
-            }, {
-                "date": "2026-08-31",
-                "MarginPurchaseTodayBalance": 999,
-                "MarginPurchaseYesterdayBalance": 1,
-                "ShortSaleTodayBalance": 999,
-                "ShortSaleYesterdayBalance": 1,
-            }]
+            return []
         if dataset == "TaiwanStockSecuritiesLending":
             return [{"date": "2026-08-26", "volume": 5000},
                     {"date": "2026-08-31", "volume": 9000}]
         if dataset == "TaiwanDailyShortSaleBalances":
             return [{
                 "date": "2026-08-26",
+                "MarginShortSalesCurrentDayBalance": 90,
+                "MarginShortSalesPreviousDayBalance": 88,
                 "SBLShortSalesCurrentDayBalance": 4000,
                 "SBLShortSalesPreviousDayBalance": 3000,
             }, {
+                "date": "2026-08-27",
+                "MarginShortSalesCurrentDayBalance": 100,
+                "MarginShortSalesPreviousDayBalance": 95,
+                "SBLShortSalesCurrentDayBalance": 6000,
+                "SBLShortSalesPreviousDayBalance": 5000,
+            }, {
                 "date": "2026-08-31",
-                "SBLShortSalesCurrentDayBalance": 9000,
+                "MarginShortSalesCurrentDayBalance": 999,
+                "MarginShortSalesPreviousDayBalance": 1,
+                "SBLShortSalesCurrentDayBalance": 999,
                 "SBLShortSalesPreviousDayBalance": 1,
+            }, {
+                "date": "2026-08-25",
+                "SBLShortSalesCurrentDayBalance": 4000,
+                "SBLShortSalesPreviousDayBalance": 3000,
             }]
         if dataset == "TaiwanStockShareholding":
             return [{
@@ -103,6 +106,8 @@ def test_decision_ui_exposes_chip_data_date_separately_from_quote_date():
     html = html_path.read_text(encoding="utf-8")
     standalone_path = Path(__file__).resolve().parents[1] / "個股籌碼獨立UI.html"
     standalone = standalone_path.read_text(encoding="utf-8") if standalone_path.exists() else ""
+    list_path = Path(__file__).resolve().parents[1] / "個股籌碼清單UI.html"
+    listing = list_path.read_text(encoding="utf-8") if list_path.exists() else ""
     server = (Path(__file__).resolve().parents[1] / "個股卡片相關檔案_20260722" / "server.py").read_text(encoding="utf-8")
 
     assert 'id="chip-data-date"' in html
@@ -112,10 +117,16 @@ def test_decision_ui_exposes_chip_data_date_separately_from_quote_date():
     assert 'target="_blank"' in html
     assert "籌碼資料日" in standalone
     assert "api/stock/" in standalone
-    assert 'class="stock-menu"' in standalone
-    assert "position:fixed" in standalone
-    assert "api/watchpool" in standalone
-    assert "51 檔" in standalone
+    assert 'class="back-link"' in standalone
+    assert 'href="/chips"' in standalone
+    assert '個股籌碼清單UI.html' in server
+    assert '@app.get("/chips/detail")' in server
+    assert "position:fixed" in listing
+    assert "api/watchpool" in listing
+    assert "51 檔個股" in listing
+    assert "/chips/detail?code=" in listing
     assert 'class="app-bottom-nav"' in standalone
-    assert "自選" in standalone
+    assert "清單" in standalone
+    assert "大買" in listing
+    assert "大賣" in listing
     assert '@app.get("/chips")' in server

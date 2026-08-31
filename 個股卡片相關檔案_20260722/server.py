@@ -1771,13 +1771,24 @@ def api_card_page(code: str = "2337"):
 
 
 @app.get("/chips")
-def chips_page():
-    """獨立籌碼頁；沿用 /api/stock/{code}，保留盤中價格與分來源日期。"""
+def chips_page(code: str = None):
+    """籌碼第一頁清單；帶 code 時保留舊連結相容，直接開單檔明細。"""
+    try:
+        filename = "個股籌碼獨立UI.html" if code else "個股籌碼清單UI.html"
+        return HTMLResponse(_read_html(filename),
+                            headers={"Cache-Control": "no-store, max-age=0"})
+    except Exception as exc:
+        return HTMLResponse(f"<h1>籌碼頁載入失敗:{exc}</h1>", status_code=500)
+
+
+@app.get("/chips/detail")
+def chips_detail_page():
+    """籌碼第二頁單檔明細；由清單頁點選進入。"""
     try:
         return HTMLResponse(_read_html("個股籌碼獨立UI.html"),
                             headers={"Cache-Control": "no-store, max-age=0"})
     except Exception as exc:
-        return HTMLResponse(f"<h1>籌碼頁載入失敗:{exc}</h1>", status_code=500)
+        return HTMLResponse(f"<h1>籌碼明細頁載入失敗:{exc}</h1>", status_code=500)
 
 
 @app.get("/api/watch-history")
