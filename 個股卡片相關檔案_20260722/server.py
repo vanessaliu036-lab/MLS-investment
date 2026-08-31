@@ -1770,6 +1770,16 @@ def api_card_page(code: str = "2337"):
         return HTMLResponse(f"<h1>個股卡片載入失敗:{exc}</h1>", status_code=500)
 
 
+@app.get("/chips")
+def chips_page():
+    """獨立籌碼頁；沿用 /api/stock/{code}，保留盤中價格與分來源日期。"""
+    try:
+        return HTMLResponse(_read_html("個股籌碼獨立UI.html"),
+                            headers={"Cache-Control": "no-store, max-age=0"})
+    except Exception as exc:
+        return HTMLResponse(f"<h1>籌碼頁載入失敗:{exc}</h1>", status_code=500)
+
+
 @app.get("/api/watch-history")
 def api_watch_history(date: str = None, days: int = 30):
     """盯盤名單歷史與準確度：每日名單的收盤結果 + 命中率，用來回頭優化篩選。"""

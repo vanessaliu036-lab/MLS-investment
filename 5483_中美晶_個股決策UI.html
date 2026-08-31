@@ -97,7 +97,7 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
  .quick-grid,.summary-grid,.data-grid,.plan-grid{grid-template-columns:1fr 1fr}.module-grid{grid-template-columns:1fr 1fr}
 }
 @media(max-width:560px){
- .name{font-size:27px}.current-price{font-size:13px;padding:4px 7px}.quick-grid,.summary-grid,.data-grid,.plan-grid,.evidence{grid-template-columns:1fr}.hero-bottom{grid-template-columns:1fr}.factor{border-right:0}.funnel{grid-template-columns:1fr}.module-grid{grid-template-columns:1fr}
+ html,body{overflow-x:hidden}.name{font-size:27px}.current-price{font-size:13px;padding:4px 7px}.quick-grid,.summary-grid,.data-grid,.plan-grid,.evidence{grid-template-columns:1fr}.hero-bottom{grid-template-columns:1fr}.factor{border-right:0}.funnel{grid-template-columns:1fr}.module-grid{grid-template-columns:1fr}.toolbar button{min-height:44px}.summary,.card,.plan{min-width:0}
 }
 </style>
 </head>
@@ -282,7 +282,7 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
 </section>
 
 <section class="section" id="chips">
-  <div class="section-head"><div class="section-title">籌碼面 · 三層閱讀</div><div class="source">TWSE/TPEx 官方或 FinMind · 第五模組</div></div>
+  <div class="section-head"><div class="section-title">籌碼面 · 三層閱讀</div><div class="source"><span id="chip-data-date">籌碼資料日：—</span> · TWSE/TPEx 官方或 FinMind · 第五模組</div></div>
   <div class="section-body">
     <div class="sub" style="padding:0 2px 10px">今日到底是「真買盤」、「融資追價」、「借券空方增加」，還是「外資持股結構正在累積」——三張卡各自給一句解讀，不只是堆數字。</div>
     <div class="data-grid">
@@ -523,9 +523,11 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
     const gmap={Ready:'可操作',Watch:'觀察',Hold:'排除'};
     const group=p.group||gmap[c.grade]||c.grade||'觀察';
     const change=c.change_rate??p.change_rate,price=c.price??p.price;
+    const chip_data_date=chip.source_date||'—';
+    set('#chip-data-date',`籌碼資料日：${chip_data_date}`);
     // 法人20日淨＝三大法人合計(外資+投信+自營)，不可只拿外資冒充。
-    const inst20=(chip.foreign_net_20d==null&&chip.trust_net_20d==null&&chip.dealer_net_20d==null)
-      ?null:((chip.foreign_net_20d||0)+(chip.trust_net_20d||0)+(chip.dealer_net_20d||0));
+    const inst20=[chip.foreign_net_20d,chip.trust_net_20d,chip.dealer_net_20d].every(v=>v!=null)
+      ?chip.foreign_net_20d+chip.trust_net_20d+chip.dealer_net_20d:null;
     const bias=(price!=null&&p.ma20)?`${((price/p.ma20-1)*100).toFixed(1)}%`:'—';
     const DEF={trend:['趨勢',25],volume:['量能',25],rs:['相對強度',20],chip:['籌碼',20],sector:['族群',10]};
     const fac=k=>{const z=dec.factors&&dec.factors[k];if(z&&typeof z==='object')return{pts:z.points??z.score,max:z.max??DEF[k][1],note:z.status||z.reason||''};if(f5f[k]!=null)return{pts:f5f[k],max:DEF[k][1],note:f5n[k]||''};return{pts:null,max:DEF[k][1],note:'資料回補中'}};

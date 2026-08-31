@@ -61,6 +61,23 @@ def _today_key():
     return datetime.now().strftime("%Y-%m-%d")
 
 
+def _asof_limit(asof=None):
+    """Return the inclusive date limit for a chip lookup.
+
+    ``asof`` is a calendar cut-off, not necessarily a trading day (for
+    example Monday's cut-off can be Sunday).  Each source therefore filters
+    its own rows and uses the latest available row on or before this limit.
+    """
+    return str(asof or _today_key())[:10]
+
+
+def _rows_on_or_before(rows, asof=None):
+    """Keep dated source rows that are available at the requested cut-off."""
+    limit = _asof_limit(asof)
+    return [row for row in (rows or [])
+            if str(row.get("date") or "")[:10] <= limit]
+
+
 def summarize_finmind_institutional(rows, inst_days=INST_DAYS):
     """把 FinMind 法人日資料整理成可供判斷的外資摘要。
 
@@ -138,7 +155,10 @@ def _official_detail(code, asof=None):
         # 資料齊全，就可安全提供，5 日欄位維持 None，絕不回退舊 FinMind。
         required = ("source_date", "inst_net_20d_lots", "foreign_net_20d",
                     "trust_net_20d", "dealer_net_20d", "inst_streak")
-        if asof and row.get("source_date") != asof:
+        # The cache can be one or more trading days behind a calendar asof
+        # (e.g. Monday before the official Monday update).  It is valid when
+        # it is the latest available cached row not later than the cut-off.
+        if row.get("source_date") and row.get("source_date") > _asof_limit(asof):
             return None
         return row if all(row.get(k) is not None for k in required) else None
     except Exception:
@@ -236,6 +256,7 @@ def get_chips_detail(code, asof=None):
     global _cache
     _load_disk()
     today = _today_key()
+    asof_limit = _asof_limit(asof)
     key = f"detail:{code}"
     official = _official_detail(code, asof=asof)
     cached = (_cache.get("stocks") or {}).get(key) or {}
@@ -247,7 +268,7 @@ def get_chips_detail(code, asof=None):
             and "dealer_self_d" in cached
             and "lending_source_date" in cached
             and "foreign_share_source_date" in cached
-            and (not asof or cached.get("source_date") == asof)
+            and (not asof or cached.get("source_date") <= asof_limit)
             and (not official or cached.get("source_date") == official.get("source_date"))):
         return cached
 
@@ -297,7 +318,9 @@ def get_chips_detail(code, asof=None):
     else:
       try:
         start = (datetime.now() - timedelta(days=70)).strftime("%Y-%m-%d")
-        rows = _finmind("TaiwanStockInstitutionalInvestorsBuySell", code, start)
+        rows = _rows_on_or_before(
+            _finmind("TaiwanStockInstitutionalInvestorsBuySell", code, start),
+            asof_limit)
         by_date = {}
         for r in rows:
             d = r["date"]
@@ -399,7 +422,9 @@ def get_chips_detail(code, asof=None):
     # ── 融資融券(日資料) ───────────────────────────────
     try:
         start = (datetime.now() - timedelta(days=20)).strftime("%Y-%m-%d")
-        rows = _finmind("TaiwanStockMarginPurchaseShortSale", code, start)
+        rows = _rows_on_or_before(
+            _finmind("TaiwanStockMarginPurchaseShortSale", code, start),
+            asof_limit)
         rows = sorted(rows, key=lambda r: r.get("date", ""))
         if rows:
             latest = rows[-1]
@@ -434,7 +459,8 @@ def get_chips_detail(code, asof=None):
     # TaiwanDailyShortSaleBalances:官方每日借券賣出餘額(SBL),取當日餘額與日增減。
     try:
         start = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
-        rows = _finmind("TaiwanStockSecuritiesLending", code, start)
+        rows = _rows_on_or_before(
+            _finmind("TaiwanStockSecuritiesLending", code, start), asof_limit)
         by_date_vol = {}
         for r in rows:
             by_date_vol[r["date"]] = by_date_vol.get(r["date"], 0) + (r.get("volume") or 0)
@@ -446,7 +472,8 @@ def get_chips_detail(code, asof=None):
         print(f"[chips] 借券成交 {code} 失敗: {e}")
     try:
         start = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
-        rows = _finmind("TaiwanDailyShortSaleBalances", code, start)
+        rows = _rows_on_or_before(
+            _finmind("TaiwanDailyShortSaleBalances", code, start), asof_limit)
         rows = sorted(rows, key=lambda r: r.get("date", ""))
         if rows:
             latest = rows[-1]
@@ -461,7 +488,8 @@ def get_chips_detail(code, asof=None):
     # ── 外資持股結構(週資料,依實際公告日更新) ─────────
     try:
         start = (datetime.now() - timedelta(days=40)).strftime("%Y-%m-%d")
-        rows = _finmind("TaiwanStockShareholding", code, start)
+        rows = _rows_on_or_before(
+            _finmind("TaiwanStockShareholding", code, start), asof_limit)
         rows = sorted(rows, key=lambda r: r.get("date", ""))
         if rows:
             latest = rows[-1]
@@ -476,40 +504,9 @@ def get_chips_detail(code, asof=None):
     except Exception as e:
         print(f"[chips] 外資持股 {code} 失敗: {e}")
 
-    # 不允許法人與融資/借券使用不同交易日卻被組成同一張「最新」卡片。
-    # FinMind 若仍停在上一週，相關欄位必須留白，不能冒充本日變化。
-    # 外資持股結構是週資料，本來就跟日資料的 source_date 不同期，不在此比對之列。
-    if (result.get("source_date") and asof and result["source_date"] != asof):
-        # 盤後報告指定的交易日尚未有完整法人資料，整組留白，避免
-        # 把前一週五日統計拼到今日價格上。
-        for field in ("foreign_net_d", "trust_net_d", "dealer_net_d",
-                      "dealer_self_d", "dealer_hedge_d",
-                      "foreign_net_3d", "trust_net_3d", "inst_net_3d_lots",
-                      "foreign_net_5d", "trust_net_5d", "dealer_net_5d",
-                      "inst_net_5d_lots", "foreign_net_20d",
-                      "trust_net_20d", "dealer_net_20d",
-                      "inst_streak", "trust_streak"):
-            result[field] = None
-        result["source"] = None
-        result["source_date"] = None
-
-    if (result.get("source_date") and result.get("margin_source_date")
-            and result["margin_source_date"] != result["source_date"]):
-        result["margin_change_d"] = None
-        result["margin_change_5d"] = None
-        result["margin_balance"] = None
-        result["margin_source_date"] = None
-        result["short_balance"] = None
-        result["short_change_d"] = None
-        result["short_change_5d"] = None
-        result["short_margin_ratio"] = None
-
-    if (result.get("source_date") and result.get("lending_source_date")
-            and result["lending_source_date"] != result["source_date"]):
-        result["lending_volume_d"] = None
-        result["lending_source_date"] = None
-        result["lending_balance"] = None
-        result["lending_balance_change_d"] = None
+    # 法人、融資融券、借券、集保是不同發布節奏的資料集，分開採用各自
+    # 的最新可用日期；某一來源落後時，只讓該來源缺少的欄位顯示「—」，
+    # 不得因日期不同而清空其他來源已取得的資料。
 
     if _cache.get("date") != today:
         _cache = {"date": today, "stocks": {}}
