@@ -123,7 +123,7 @@ def test_decision_ui_exposes_chip_data_date_separately_from_quote_date():
     assert '@app.get("/chips/detail")' in server
     assert "position:fixed" in listing
     assert "api/watchpool" in listing
-    assert "51 檔個股" in listing
+    assert "資金籌碼快覽" in listing
     assert "/chips/detail?code=" in listing
     assert 'class="app-bottom-nav"' in standalone
     assert "清單" in standalone
