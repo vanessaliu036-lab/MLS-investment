@@ -153,7 +153,7 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
 
 <nav class="toolbar">
   <a href="#summary">AI結論</a><a href="#score">五因子解釋</a><a href="#market">技術/資金/族群</a>
-  <a href="#chips">籌碼/承接</a><a href="#validation">交叉驗證</a><a href="#risk">風險紀律</a>
+  <a href="#chips">籌碼/承接</a><a id="chips-page-link" href="/chips" target="_blank" rel="noopener">籌碼獨立頁 ↗</a><a href="#validation">交叉驗證</a><a href="#risk">風險紀律</a>
   <a href="#plan">交易計畫</a><a href="#winrate">AI勝率</a>
 </nav>
 
@@ -494,6 +494,8 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
 (async()=>{
   const API=location.protocol==='file:'?'http://66.42.42.150:8000':'';
   const code=((location.search.match(/[?&]code=(\d{3,4})/)||[])[1])||(document.title.match(/\d{4}/)||[])[0]||'';
+  const chipsPageLink=document.getElementById('chips-page-link');
+  if(chipsPageLink){chipsPageLink.href=(location.protocol==='file:'?'http://66.42.42.150:8000':'')+`/chips?code=${code}`}
   const num=v=>v==null?'—':Number(v).toLocaleString('en-US');
   const pct=v=>v==null?'—':`${Number(v)>0?'+':''}${Number(v).toFixed(2)}%`;
   // 台股慣例：漲紅(pos)、跌綠(neg)。買超為正=紅、賣超為負=綠。

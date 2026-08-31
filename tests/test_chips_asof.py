@@ -108,6 +108,8 @@ def test_decision_ui_exposes_chip_data_date_separately_from_quote_date():
     assert 'id="chip-data-date"' in html
     assert "chip_data_date" in html
     assert "盤中即時行情" in html
+    assert 'href="/chips"' in html
+    assert 'target="_blank"' in html
     assert "籌碼資料日" in standalone
     assert "api/stock/" in standalone
     assert '@app.get("/chips")' in server
