@@ -25,6 +25,7 @@ FINMIND_DATA_URL = "https://api.finmindtrade.com/api/v4/data"
 CACHE_FILE = os.path.join(os.path.dirname(__file__), "chips_cache.json")
 
 _cache = {"date": "", "stocks": {}}
+_official_margin_cache = {}
 
 
 def _finmind(dataset, data_id, start_date):
@@ -76,6 +77,152 @@ def _rows_on_or_before(rows, asof=None):
     limit = _asof_limit(asof)
     return [row for row in (rows or [])
             if str(row.get("date") or "")[:10] <= limit]
+
+
+def _official_number(value, shares=False):
+    """Parse official TWSE/TPEx numbers and normalize shares to lots."""
+    if value in (None, ""):
+        return None
+    try:
+        number = float(str(value).replace(",", "").strip())
+        return round(number / 1000) if shares else round(number)
+    except (TypeError, ValueError):
+        return None
+
+
+def _official_margin_snapshot(asof=None):
+    """Fetch official margin/SBL snapshots once for the requested asof date.
+
+    TWSE TWT93U and TPEx's two JSON reports are market-wide, so one request
+    covers every stock in the 51-stock pool.  This is the no-token fallback
+    when FinMind's per-stock margin dataset is unavailable.
+    """
+    limit = _asof_limit(asof)
+    try:
+        d = datetime.strptime(limit, "%Y-%m-%d").date()
+        while d.weekday() >= 5:
+            d -= timedelta(days=1)
+        trade_date = d.isoformat()
+    except (TypeError, ValueError):
+        trade_date = limit
+    if trade_date in _official_margin_cache:
+        return _official_margin_cache[trade_date]
+
+    out = {}
+
+    def _get(url):
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                           "Chrome/120 Safari/537.36",
+            "Accept": "application/json",
+            "Referer": "https://www.twse.com.tw/zh/",
+        })
+        with urllib.request.urlopen(req, timeout=20) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    def _merge_credit(rows, shares=False):
+        for row in rows or []:
+            code = str(row[0] if isinstance(row, list) else
+                       row.get("股票代號") or row.get("代號") or "").strip()
+            if not code:
+                continue
+            if isinstance(row, list) and shares:
+                # TWSE TWT93U: credit and SBL fields are shares.
+                values = {
+                    "margin_prev": _official_number(row[2], shares=True),
+                    "margin_balance": _official_number(row[6], shares=True),
+                    "short_prev": _official_number(row[8], shares=True),
+                    "short_balance": _official_number(row[12], shares=True),
+                    "sbl_prev": _official_number(row[8], shares=True),
+                    "sbl_balance": _official_number(row[12], shares=True),
+                }
+            else:
+                # TPEx margin/balance: credit fields are already in lots.
+                values = {
+                    "margin_prev": _official_number(
+                        row[2] if isinstance(row, list)
+                        else row.get("前資餘額(張)") or row.get("融資前日餘額")),
+                    "margin_balance": _official_number(
+                        row[6] if isinstance(row, list)
+                        else row.get("資餘額") or row.get("融資今日餘額")),
+                    "short_prev": _official_number(
+                        row[10] if isinstance(row, list)
+                        else row.get("前券餘額(張)") or row.get("融券前日餘額")),
+                    "short_balance": _official_number(
+                        row[14] if isinstance(row, list)
+                        else row.get("券餘額") or row.get("融券今日餘額")),
+                }
+            out.setdefault(code, {}).update(values)
+
+    def _merge_sbl(rows):
+        for row in rows or []:
+            code = str(row[0] if isinstance(row, list) else
+                       row.get("股票代號") or row.get("代號") or "").strip()
+            if not code:
+                continue
+            # TPEx margin/sbl: second group (indices 8..12) is shares.
+            if isinstance(row, list):
+                values = {
+                    "sbl_prev": _official_number(row[8], shares=True),
+                    "sbl_balance": _official_number(row[12], shares=True),
+                }
+            else:
+                values = {}
+            out.setdefault(code, {}).update(values)
+
+    try:
+        ymd = trade_date.replace("-", "")
+        twse = None
+        twse_urls = (
+            "https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U"
+            f"?date={ymd}&response=json",
+            "https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U"
+            f"?response=json&date={ymd}&selectType=ALLBUT0999",
+        )
+        for twse_url in twse_urls:
+            try:
+                twse = _get(twse_url)
+                if twse.get("data"):
+                    break
+            except Exception:
+                continue
+        if not twse or not twse.get("data"):
+            raise ValueError("TWSE TWT93U 無資料")
+        _merge_credit(twse.get("data") or [], shares=True)
+    except Exception as exc:
+        print(f"[chips] TWSE 官方融資融券失敗: {exc}")
+        try:
+            # OpenAPI 是上市融資融券的整市場備援；數值單位已是張。
+            twse_margin = _get(
+                "https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN")
+            _merge_credit(twse_margin, shares=False)
+        except Exception as fallback_error:
+            print(f"[chips] TWSE OpenAPI 融資融券失敗: {fallback_error}")
+
+    try:
+        date_arg = urllib.parse.quote(trade_date.replace("-", "/"), safe="")
+        tpex_credit = _get(
+            "https://www.tpex.org.tw/www/zh-tw/margin/balance"
+            f"?date={date_arg}")
+        tables = tpex_credit.get("tables") or []
+        _merge_credit(tables[0].get("data") if tables else [])
+    except Exception as exc:
+        print(f"[chips] TPEx 官方融資融券失敗: {exc}")
+
+    try:
+        date_arg = urllib.parse.quote(trade_date.replace("-", "/"), safe="")
+        tpex_sbl = _get(
+            "https://www.tpex.org.tw/www/zh-tw/margin/sbl"
+            f"?date={date_arg}")
+        tables = tpex_sbl.get("tables") or []
+        _merge_sbl(tables[0].get("data") if tables else [])
+    except Exception as exc:
+        print(f"[chips] TPEx 官方借券餘額失敗: {exc}")
+
+    for record in out.values():
+        record["source_date"] = trade_date
+    _official_margin_cache[trade_date] = out
+    return out
 
 
 def summarize_finmind_institutional(rows, inst_days=INST_DAYS):
@@ -292,6 +439,26 @@ def get_chips_detail(code, asof=None):
               "foreign_share_pct": None, "foreign_share_change": None,
               "foreign_share_remain_pct": None, "foreign_share_source_date": None}
 
+    # 法人正本更新時，不得連帶洗掉其他資料源仍有效的欄位。
+    # 各來源有自己的發布日；只要既有欄位的來源日在 asof 內，就先保留，
+    # 本輪若成功取得更新資料再覆蓋，FinMind 暫時 402 時也不會整欄歸零。
+    independent_fields = (
+        "margin_change_d", "margin_change_5d", "margin_balance",
+        "margin_source_date", "short_balance", "short_change_d",
+        "short_change_5d", "short_margin_ratio", "lending_volume_d",
+        "lending_source_date", "lending_balance", "lending_balance_change_d",
+        "foreign_share_pct", "foreign_share_change",
+        "foreign_share_remain_pct", "foreign_share_source_date",
+    )
+    for field in independent_fields:
+        cached_date = cached.get(
+            "foreign_share_source_date" if field.startswith("foreign_share")
+            else "lending_source_date" if field.startswith("lending")
+            else "margin_source_date")
+        if cached.get(field) is not None and (
+                not cached_date or str(cached_date)[:10] <= asof_limit):
+            result[field] = cached[field]
+
     # ── 三大法人單日 + 滾動5/20日：官方快取優先 ─────────
     if official:
         result.update({
@@ -420,11 +587,19 @@ def get_chips_detail(code, asof=None):
         result["big1000_delta"] = None
 
     # ── 融資融券(日資料) ───────────────────────────────
+    # FinMind 的 TaiwanStockMarginPurchaseShortSale 已改為付費資料集；
+    # TaiwanDailyShortSaleBalances 是免費資料集，且同時提供融資融券餘額。
+    # 先嘗試專用資料集，失敗或無資料時回退到每日餘額資料，避免整張卡
+    # 因單一資料集付費而全部顯示「—」。
+    short_balance_rows = None
+    official_margin = None
     try:
         start = (datetime.now() - timedelta(days=20)).strftime("%Y-%m-%d")
         rows = _rows_on_or_before(
             _finmind("TaiwanStockMarginPurchaseShortSale", code, start),
             asof_limit)
+        if not rows:
+            raise ValueError("專用融資融券資料集無資料，改用每日餘額")
         rows = sorted(rows, key=lambda r: r.get("date", ""))
         if rows:
             latest = rows[-1]
@@ -453,6 +628,58 @@ def get_chips_detail(code, asof=None):
                 )
     except Exception as e:
         print(f"[chips] 融資融券 {code} 失敗: {e}")
+        try:
+            official_margin = _official_margin_snapshot(asof_limit).get(str(code))
+            if official_margin:
+                margin_now = official_margin.get("margin_balance")
+                margin_prev = official_margin.get("margin_prev")
+                short_now = official_margin.get("short_balance")
+                short_prev = official_margin.get("short_prev")
+                result["margin_source_date"] = official_margin.get("source_date", asof_limit)
+                result["margin_balance"] = margin_now
+                result["margin_change_d"] = (
+                    margin_now - margin_prev
+                    if margin_now is not None and margin_prev is not None else None)
+                result["short_balance"] = short_now
+                result["short_change_d"] = (
+                    short_now - short_prev
+                    if short_now is not None and short_prev is not None else None)
+                if margin_now:
+                    result["short_margin_ratio"] = round(
+                        (short_now or 0) / margin_now, 4)
+            else:
+                start = (datetime.now() - timedelta(days=20)).strftime("%Y-%m-%d")
+                short_balance_rows = _rows_on_or_before(
+                    _finmind("TaiwanDailyShortSaleBalances", code, start),
+                    asof_limit)
+                short_balance_rows = sorted(
+                    short_balance_rows, key=lambda r: r.get("date", ""))
+            if short_balance_rows:
+                latest = short_balance_rows[-1]
+                margin_now = latest.get("MarginShortSalesCurrentDayBalance")
+                margin_prev = latest.get("MarginShortSalesPreviousDayBalance")
+                short_now = latest.get("SBLShortSalesCurrentDayBalance")
+                short_prev = latest.get("SBLShortSalesPreviousDayBalance")
+                result["margin_source_date"] = latest.get("date")
+                result["margin_balance"] = margin_now
+                if margin_now is not None and margin_prev is not None:
+                    result["margin_change_d"] = margin_now - margin_prev
+                result["short_balance"] = short_now
+                if short_now is not None and short_prev is not None:
+                    result["short_change_d"] = short_now - short_prev
+                if margin_now:
+                    result["short_margin_ratio"] = round(
+                        (short_now or 0) / margin_now, 4)
+                if len(short_balance_rows) >= 6:
+                    old = short_balance_rows[-6]
+                    old_margin = old.get("MarginShortSalesCurrentDayBalance")
+                    old_short = old.get("SBLShortSalesCurrentDayBalance")
+                    if margin_now is not None and old_margin is not None:
+                        result["margin_change_5d"] = margin_now - old_margin
+                    if short_now is not None and old_short is not None:
+                        result["short_change_5d"] = short_now - old_short
+        except Exception as fallback_error:
+            print(f"[chips] 每日餘額回退 {code} 失敗: {fallback_error}")
 
     # ── 借券(成交量 + 賣出餘額,日資料) ─────────────────
     # TaiwanStockSecuritiesLending:單日逐筆借券成交,加總當日 volume = 借券成交量。
@@ -472,16 +699,27 @@ def get_chips_detail(code, asof=None):
         print(f"[chips] 借券成交 {code} 失敗: {e}")
     try:
         start = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
-        rows = _rows_on_or_before(
-            _finmind("TaiwanDailyShortSaleBalances", code, start), asof_limit)
-        rows = sorted(rows, key=lambda r: r.get("date", ""))
-        if rows:
-            latest = rows[-1]
-            bal = latest.get("SBLShortSalesCurrentDayBalance")
-            prev = latest.get("SBLShortSalesPreviousDayBalance")
-            result["lending_balance"] = round(bal / 1000) if bal is not None else None
+        if official_margin and official_margin.get("sbl_balance") is not None:
+            bal = official_margin.get("sbl_balance")
+            prev = official_margin.get("sbl_prev")
+            result["lending_source_date"] = official_margin.get("source_date", asof_limit)
+            result["lending_balance"] = bal
             if bal is not None and prev is not None:
-                result["lending_balance_change_d"] = round((bal - prev) / 1000)
+                result["lending_balance_change_d"] = bal - prev
+        else:
+            if short_balance_rows is None:
+                short_balance_rows = _rows_on_or_before(
+                    _finmind("TaiwanDailyShortSaleBalances", code, start),
+                    asof_limit)
+            rows = short_balance_rows
+            rows = sorted(rows, key=lambda r: r.get("date", ""))
+            if rows:
+                latest = rows[-1]
+                bal = latest.get("SBLShortSalesCurrentDayBalance")
+                prev = latest.get("SBLShortSalesPreviousDayBalance")
+                result["lending_balance"] = round(bal / 1000) if bal is not None else None
+                if bal is not None and prev is not None:
+                    result["lending_balance_change_d"] = round((bal - prev) / 1000)
     except Exception as e:
         print(f"[chips] 借券餘額 {code} 失敗: {e}")
 

@@ -58,7 +58,7 @@ def _num(s):
 def _twse_day(d):
     """TWSE T86：某日全市場個股三大法人。回 {code: {foreign, trust, dealer, total}}（張）。"""
     url = ("https://www.twse.com.tw/rwd/zh/fund/T86"
-           f"?response=json&date={d.strftime('%Y%m%d')}&selectType=ALL")
+           f"?response=json&date={d.strftime('%Y%m%d')}&selectType=ALLBUT0999")
     out = {}
     j = _get_json(url)
     if j.get("stat") != "OK" or not j.get("data"):
