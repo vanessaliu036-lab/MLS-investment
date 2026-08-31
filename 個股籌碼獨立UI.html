@@ -7,11 +7,13 @@
 <style>
 :root{--bg:#f3f5f9;--panel:#fff;--line:#dfe5ee;--soft:#f8fafc;--navy:#111a2e;--text:#172033;--muted:#6f7a8e;--red:#e54256;--green:#0a9b70;--amber:#b77908;--amber-bg:#fff7df;--blue:#3568d4;--blue-bg:#eef3ff;--shadow:0 10px 26px rgba(25,42,70,.07)}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",sans-serif;line-height:1.55}.topbar{height:60px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:4}.brand{font-weight:950;letter-spacing:.04em}.topnote{font-size:12px;color:#b8c1d4}.wrap{max-width:1480px;margin:0 auto;padding:18px}.hero,.section{background:var(--panel);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px}.hero{padding:22px}.identity{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.code{font-size:14px;color:var(--muted);font-weight:900}.name{font-size:32px;font-weight:950;letter-spacing:-.04em}.quote{padding:5px 9px;border-radius:8px;background:#fff0f2;color:var(--red);font-size:16px;font-weight:950}.tag{padding:5px 10px;border-radius:999px;background:#eef1f6;color:#5e687b;font-size:12px;font-weight:850}.meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;color:var(--muted);font-size:12px}.meta b{color:var(--text)}.chip-date{margin-top:18px;padding:12px 14px;border-radius:12px;background:var(--blue-bg);color:var(--blue);font-size:13px;font-weight:900}.toolbar{display:flex;gap:7px;overflow:auto;padding:0 0 12px}.toolbar a{white-space:nowrap;background:#fff;border:1px solid var(--line);padding:8px 12px;border-radius:999px;font-size:12px;font-weight:850;color:var(--muted)}.section-head{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px}.section-title{font-size:17px;font-weight:950}.source{font-size:11px;color:var(--muted);font-weight:800}.section-body{padding:16px 18px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}.card-head{display:flex;justify-content:space-between;gap:10px;padding:12px 14px;background:var(--soft);border-bottom:1px solid var(--line)}.card-title{font-weight:950;font-size:14px}.card-source{font-size:10px;color:var(--muted)}.rows{padding:4px 14px}.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;padding:10px 0;border-bottom:1px dashed #e8ecf2;font-size:13px}.row:last-child{border-bottom:0}.row .k{color:var(--muted)}.row .v{font-weight:850;text-align:right}.notice{margin:12px 14px 14px;padding:11px 13px;border-radius:12px;background:var(--amber-bg);color:#74510b;font-size:12px}.sub{font-size:11px;color:var(--muted);margin-top:3px}.pos{color:var(--red)}.neg{color:var(--green)}.footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}@media(max-width:700px){.topbar{padding:0 14px}.wrap{padding:10px}.name{font-size:27px}.grid{grid-template-columns:1fr}.section-head{align-items:flex-start;flex-direction:column}}
+ .stock-menu{position:fixed;top:60px;bottom:0;left:0;width:260px;padding:14px 10px;background:#fff;border-right:1px solid var(--line);overflow:auto;z-index:3}.menu-head{padding:4px 8px 12px;font-size:14px;font-weight:950}.menu-head span{display:block;margin-top:3px;font-size:11px;color:var(--muted);font-weight:700}.stock-item{display:grid;grid-template-columns:48px 1fr;gap:8px;width:100%;padding:8px;border:0;border-bottom:1px solid #edf0f5;background:#fff;color:var(--text);text-align:left;cursor:pointer;font:inherit}.stock-item:hover{background:var(--blue-bg)}.stock-item.active{background:var(--navy);color:#fff}.stock-item span{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}.stock-item.active span{color:#b8c1d4}.stock-item b{font-size:12px;font-weight:850;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.main-content{padding-top:78px}body{padding-left:260px}.topbar{position:fixed;top:0;left:0;right:0;z-index:5}@media(max-width:700px){body{padding-left:0}.stock-menu{top:60px;bottom:auto;width:100%;height:132px;padding:8px;overflow-x:auto;overflow-y:hidden;white-space:nowrap}.menu-head{display:flex;align-items:center;justify-content:space-between;padding:0 4px 6px}.menu-head span{margin:0}.stock-menu nav{display:flex;gap:5px}.stock-item{display:flex;flex:0 0 auto;width:auto;min-width:86px;flex-direction:column;gap:0;padding:7px 8px;border:1px solid var(--line);border-radius:8px}.stock-item b{font-size:11px}.stock-item span{font-size:10px}.main-content{padding-top:210px}}
 </style>
 </head>
 <body>
 <header class="topbar"><div class="brand">NEXORA · 個股籌碼</div><div class="topnote" id="topnote">籌碼資料載入中</div></header>
-<main class="wrap">
+<aside class="stock-menu"><div class="menu-head">51 檔個股<span id="menu-status">觀察池載入中</span></div><nav id="stock-menu-list" aria-label="51檔個股選單"></nav></aside>
+<main class="wrap main-content">
   <section class="hero">
     <div class="identity"><span class="code" id="code">代碼</span><span class="name" id="name">名稱</span><span class="quote" id="quote">現價 —</span><span class="tag" id="sector">族群</span></div>
     <div class="meta"><span>即時行情：<b id="quote-date">—</b></span><span>法人資料：<b id="inst-date">—</b></span><span>資料更新：<b id="updated">—</b></span></div>
@@ -28,13 +30,21 @@
 <script>
 (()=>{
   const API=location.protocol==='file:'?'http://66.42.42.150:8000':'';
-  const code=((location.search.match(/[?&]code=(\d{3,4})/)||[])[1])||'5483';
+  let code=((location.search.match(/[?&]code=(\d{3,4})/)||[])[1])||'5483';
   const n=v=>v==null?'—':Number(v).toLocaleString('en-US');
   const pct=v=>v==null?'—':`${Number(v)>0?'+':''}${Number(v).toFixed(2)}%`;
   const set=(id,v,fmt=n)=>{const e=document.getElementById(id);if(e)e.innerHTML=v==null?'—':(typeof v==='string'?v:fmt(v))};
   const date=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v||'—'};
   const sourceDate=(chip,key)=>chip[key]?`資料日 ${chip[key]}`:'資料日 —';
   const sum=(...xs)=>xs.every(v=>v!=null)?xs.reduce((a,v)=>a+v,0):null;
+  const menu=document.getElementById('stock-menu-list');
+  const menuStatus=document.getElementById('menu-status');
+  const fallbackCodes='1815,2049,2303,2327,2337,2344,2359,2383,2408,2455,2464,2481,2484,2492,3006,3016,3026,3037,3042,3189,3221,3264,3317,3363,3374,3450,3532,3707,3711,4919,4979,5328,5347,5425,5483,6173,6174,6182,6213,6223,6239,6274,6451,6488,8028,8043,8046,8150,8182,8261,8358'.split(',').map(code=>({code,name:code}));
+  const renderMenu=items=>{if(!menu)return;menu.innerHTML=items.map(x=>`<button class="stock-item${String(x.code)===String(code)?' active':''}" data-code="${x.code}" type="button"><span>${x.code}</span><b>${x.name||x.code}</b></button>`).join('');if(menuStatus)menuStatus.textContent=`${items.length} 檔｜點選查看籌碼`};
+  const setActive=()=>menu&&menu.querySelectorAll('.stock-item').forEach(x=>x.classList.toggle('active',x.dataset.code===String(code)));
+  const loadMenu=async()=>{try{const p=await fetch(API+'/api/watchpool',{cache:'no-store'}).then(r=>r.json());const items=(p.items||[]).map(x=>({code:String(x.code),name:x.name||x.code}));renderMenu(items.length?items:fallbackCodes)}catch(_){renderMenu(fallbackCodes);if(menuStatus)menuStatus.textContent='51 檔｜名稱待補'}};
+  const showLoadError=e=>{const x=document.createElement('div');x.style='position:fixed;top:0;left:0;right:0;background:#fff0f2;color:#e6465a;padding:10px 16px;z-index:9;font-weight:800';x.textContent='真實資料載入失敗：'+e.message;document.body.prepend(x)};
+  menu&&menu.addEventListener('click',event=>{const item=event.target.closest('.stock-item');if(!item)return;code=item.dataset.code;history.replaceState(null,'',`?code=${code}`);setActive();render().catch(showLoadError)});
   const render=async()=>{
     const d=await fetch(API+'/api/stock/'+code,{cache:'no-store'}).then(r=>r.json());
     if(!d.ok)throw Error(d.error||'個股 API 失敗');
@@ -52,7 +62,8 @@
     set('lending-volume',chip.lending_volume_d);set('lending-balance',chip.lending_balance);set('lending-change',chip.lending_balance_change_d);set('foreign-share',chip.foreign_share_pct,pct);set('foreign-share-change',chip.foreign_share_change,pct);set('foreign-remain',chip.foreign_share_remain_pct,pct);
     date('footer',`資料來源：${chip.source||'官方／FinMind 盤後籌碼'}｜法人 ${chip.source_date||'—'}｜融資 ${chip.margin_source_date||'—'}｜借券 ${chip.lending_source_date||'—'}｜集保 ${chip.foreign_share_source_date||'—'}`);
   };
-  render().catch(e=>{const x=document.createElement('div');x.style='position:fixed;top:0;left:0;right:0;background:#fff0f2;color:#e6465a;padding:10px 16px;z-index:9;font-weight:800';x.textContent='真實資料載入失敗：'+e.message;document.body.prepend(x)});
+  loadMenu();
+  render().catch(showLoadError);
 })();
 </script>
 </body>
