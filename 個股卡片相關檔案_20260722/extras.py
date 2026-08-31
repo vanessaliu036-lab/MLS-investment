@@ -14,6 +14,7 @@ from __future__ import annotations
 import sys
 import datetime as _dt
 import os
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -723,6 +724,11 @@ def build_watchpool() -> Dict[str, Any]:
             print(f"[extras] watchpool dec_health 讀取失敗: {exc}", flush=True)
 
     items: List[Dict[str, Any]] = []
+    # 日K回退迴圈的請求級時間預算：重啟後 Shioaji buffer 全空時，
+    # 51 檔會同時 cache miss、逐檔同步打 Shioaji，最壞情況序列疊加
+    # 到幾十秒。超過預算就放棄剩餘檔的回退（該檔這輪顯示無價），
+    # 不讓單一使用者請求被卡死；下一輪 cache 會陸續補熱。
+    fallback_deadline = time.time() + 5.0
     for code in C.UNIVERSE:
         snap = rows_map.get(str(code), {})
         ratio = ratio_map.get(str(code), {})
@@ -732,9 +738,11 @@ def build_watchpool() -> Dict[str, Any]:
         # 固定觀察池不能因 Shioaji 未回報就顯示空白；盤中回報優先，
         # 沒有即時回報時回退到該股最近完整日 K。這裡只補價格欄位，
         # 不把日 K 冒充盤中 aflow 或盤中分類。
-        if not snap.get("price"):
+        # days 對齊 stock_card._bars 預設值/line 555 的快取 key，
+        # 該股若已被個股頁面撈過就直接命中快取，不用再打一次 Shioaji。
+        if not snap.get("price") and time.time() < fallback_deadline:
             try:
-                bars = [b for b in stock_card._bars(str(code), days=3)
+                bars = [b for b in stock_card._bars(str(code), days=80)
                         if b.get("close") is not None]
                 if bars:
                     last = bars[-1]
