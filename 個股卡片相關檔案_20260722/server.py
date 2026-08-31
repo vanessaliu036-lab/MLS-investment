@@ -1739,6 +1739,51 @@ def api_stock(code: str):
         return JSONResponse({"ok": False, "code": code, "error": str(exc)}, status_code=500)
 
 
+@app.get("/api/chips/{code}")
+def api_chips(code: str, asof: str = None):
+    """籌碼明細輕量 API。
+
+    籌碼頁不是即時行情頁，不應為了顯示盤後資料等待整張個股卡片
+    (Shioaji／日 K／決策因子) 建立。這裡只讀 chips_cache.json；缺資料
+    就原樣回傳空欄位，交給前端顯示「—」，絕不在請求內打外部資料源。
+    """
+    try:
+        cache_path = _os.path.join(_os.path.dirname(__file__), "chips_cache.json")
+        with open(cache_path, encoding="utf-8") as f:
+            payload = json.load(f)
+        stocks = payload.get("stocks") or {}
+        code = str(code)
+        detail = dict(stocks.get(f"detail:{code}") or {})
+        official = stocks.get(code) or {}
+        # 詳細快取負責融資／借券／集保；官方列補法人欄位，彼此不互相覆蓋。
+        for key, value in official.items():
+            if detail.get(key) is None:
+                detail[key] = value
+        if asof:
+            source_groups = {
+                "source_date": ("foreign_net_d", "trust_net_d", "dealer_net_d",
+                                "foreign_net_5d", "trust_net_5d", "dealer_net_5d",
+                                "foreign_net_20d", "trust_net_20d", "dealer_net_20d",
+                                "inst_streak"),
+                "margin_source_date": ("margin_change_d", "margin_change_5d", "margin_balance",
+                                        "short_balance", "short_change_d", "short_change_5d",
+                                        "short_margin_ratio"),
+                "lending_source_date": ("lending_volume_d", "lending_balance",
+                                         "lending_balance_change_d"),
+                "foreign_share_source_date": ("foreign_share_pct", "foreign_share_change",
+                                                "foreign_share_remain_pct"),
+            }
+            for date_key, fields in source_groups.items():
+                if detail.get(date_key) and str(detail[date_key])[:10] > str(asof)[:10]:
+                    for field in fields:
+                        detail[field] = None
+                    detail[date_key] = None
+        return JSONResponse({"ok": True, "code": code,
+                             "cache_date": payload.get("date"), "chip": detail})
+    except Exception as exc:
+        return JSONResponse({"ok": False, "code": str(code), "error": str(exc)}, status_code=500)
+
+
 @app.get("/api/report")
 def api_report():
     """每日 / 昨日盤後報告資料。"""
@@ -1785,7 +1830,7 @@ def chips_page(code: str = None):
 def chips_detail_page():
     """籌碼第二頁單檔明細；由清單頁點選進入。"""
     try:
-        return HTMLResponse(_read_html("個股籌碼獨立UI.html"),
+        return HTMLResponse(_read_html("個股籌碼彈窗UI.html"),
                             headers={"Cache-Control": "no-store, max-age=0"})
     except Exception as exc:
         return HTMLResponse(f"<h1>籌碼明細頁載入失敗:{exc}</h1>", status_code=500)

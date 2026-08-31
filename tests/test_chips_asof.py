@@ -108,6 +108,8 @@ def test_decision_ui_exposes_chip_data_date_separately_from_quote_date():
     standalone = standalone_path.read_text(encoding="utf-8") if standalone_path.exists() else ""
     list_path = Path(__file__).resolve().parents[1] / "個股籌碼清單UI.html"
     listing = list_path.read_text(encoding="utf-8") if list_path.exists() else ""
+    modal_path = Path(__file__).resolve().parents[1] / "個股籌碼彈窗UI.html"
+    modal = modal_path.read_text(encoding="utf-8") if modal_path.exists() else ""
     server = (Path(__file__).resolve().parents[1] / "個股卡片相關檔案_20260722" / "server.py").read_text(encoding="utf-8")
     extras = (Path(__file__).resolve().parents[1] / "個股卡片相關檔案_20260722" / "extras.py").read_text(encoding="utf-8")
 
@@ -117,19 +119,29 @@ def test_decision_ui_exposes_chip_data_date_separately_from_quote_date():
     assert 'href="/chips"' in html
     assert 'target="_blank"' in html
     assert "籌碼資料日" in standalone
-    assert "api/stock/" in standalone
+    assert "api/chips/" in standalone
+    assert "api/stock/" not in standalone
     assert 'class="back-link"' in standalone
-    assert 'href="/chips"' in standalone
+    assert 'href="/"' in standalone
+    assert 'class="chip-tab active"' in standalone
+    assert "focusChipSection" in standalone
     assert '個股籌碼清單UI.html' in server
     assert '@app.get("/chips/detail")' in server
+    assert '個股籌碼彈窗UI.html' in server
+    assert 'role="dialog"' in modal
+    assert '法人當日買賣超' in modal
+    assert '近 5 日買賣超' in modal
+    assert '近 20 日累計' in modal
     assert "position:fixed" in listing
     assert "api/watchpool" in listing
     assert "資金籌碼快覽" in listing
     assert "/chips/detail?code=" in listing
-    assert 'class="app-bottom-nav"' in standalone
-    assert "清單" in standalone
+    assert 'class="app-bottom-nav"' not in standalone
+    assert 'class="front-link"' in listing
     assert "大買" in listing
     assert "大賣" in listing
     assert '"inst_net_d_lots": inst_daily' in extras
     assert '"inst_net_5d_lots": inst_5d' in extras
+    assert '"volume_history"' in extras
     assert '@app.get("/chips")' in server
+    assert '@app.get("/api/chips/{code}")' in server

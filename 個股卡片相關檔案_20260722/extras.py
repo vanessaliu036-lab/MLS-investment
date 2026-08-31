@@ -584,6 +584,11 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
                 snap["volume_ratio"] = daily["volume_ratio"]
             closes = [float(b["close"]) for b in valid[-20:]
                       if b.get("close") is not None]
+            snap["volume_history"] = [
+                {"date": b.get("date"), "close": b.get("close"),
+                 "volume": b.get("volume")}
+                for b in valid[-30:] if b.get("volume") is not None
+            ]
             if len(closes) >= 20:
                 snap["ma20"] = round(sum(closes[-20:]) / 20, 2)
             snap = _merge_intraday_quote(code, snap)
