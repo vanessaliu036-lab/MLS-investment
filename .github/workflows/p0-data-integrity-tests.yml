@@ -1,0 +1,26 @@
+name: MLS P0 data-integrity tests
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'MLS整系統最終版v1.2/**.py'
+      - '.github/workflows/p0-data-integrity-tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -q pytest
+      - name: Run P0 regression tests
+        working-directory: MLS整系統最終版v1.2
+        run: |
+          pytest -q \
+            test_broker_active_flow.py \
+            test_p0_data_integrity.py \
+            test_chips_official_priority.py \
+            test_official_source_latest.py
