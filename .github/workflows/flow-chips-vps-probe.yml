@@ -1,0 +1,38 @@
+name: Flow Chips VPS Probe
+on:
+  push:
+    branches:
+      - feature/mls-v4-1-flow-chips-preview
+    paths:
+      - '.github/workflows/flow-chips-vps-probe.yml'
+      - 'mls_v4_1_flow_chips_preview/**'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Probe live MLS APIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='http://66.42.42.150:8000'
+          echo '===== HEALTH ====='
+          curl -fsS --connect-timeout 8 --max-time 15 "$BASE/healthz" || true
+          echo
+          for path in /api/intraday-watchpool /api/intraday-test /ab/watchlist; do
+            echo "===== $path ====="
+            curl -fsS --connect-timeout 8 --max-time 30 "$BASE$path" -o /tmp/payload.json || true
+            if [ -s /tmp/payload.json ]; then
+              echo '--- top-level keys ---'
+              jq -r 'if type=="object" then keys[] else "ARRAY" end' /tmp/payload.json 2>/dev/null | head -80 || true
+              echo '--- selected symbols ---'
+              jq -c '.. | objects | select((.code? // .symbol? // .stock_id? // "") as $c | ["6182","8150","3532","3374","2303","2408","8358","3026","6173","2344","3006","3450"] | index(($c|tostring)))' /tmp/payload.json 2>/dev/null | head -200 || true
+            fi
+          done
+          echo '===== CARD 2303 ====='
+          curl -fsS --connect-timeout 8 --max-time 30 "$BASE/api/card_page?code=2303" -o /tmp/card2303.html || true
+          grep -Eo 'BULLISH_FOREIGN|BEARISH|POSITIVE|NEGATIVE|FAILED|ARMED|WATCH|資金[^<]{0,40}|外資[^<]{0,40}|ACCEPTANCE[^<]{0,80}|PRICE TRIGGER[^<]{0,80}|ACTION[^<]{0,80}' /tmp/card2303.html | head -120 || true
+          echo '===== CARD 2408 ====='
+          curl -fsS --connect-timeout 8 --max-time 30 "$BASE/api/card_page?code=2408" -o /tmp/card2408.html || true
+          grep -Eo 'BULLISH_FOREIGN|BEARISH|POSITIVE|NEGATIVE|FAILED|ARMED|WATCH|資金[^<]{0,40}|外資[^<]{0,40}|ACCEPTANCE[^<]{0,80}|PRICE TRIGGER[^<]{0,80}|ACTION[^<]{0,80}' /tmp/card2408.html | head -120 || true
