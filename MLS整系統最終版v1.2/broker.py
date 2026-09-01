@@ -8,11 +8,55 @@ MLS 標準版 — broker.py
 
 import os
 import time
+from datetime import datetime, timezone, timedelta
 import shioaji as sj
 
 _api = None
 _last_login = 0
 RELOGIN_SEC = 20 * 3600   # Shioaji 需每24h重登,提前於20h重連
+TW_TZ = timezone(timedelta(hours=8))
+
+
+def _aggregate_tick_flow(ticks):
+    """彙總當日逐筆成交內外盤。
+
+    Shioaji Ticks.tick_type: 1=外盤(主動買),2=內盤(主動賣),0=無法判定。
+    無法判定的成交不納入 classified_volume，也不硬猜方向。
+    """
+    buy = sell = 0
+    volumes = getattr(ticks, "volume", None) or []
+    sides = getattr(ticks, "tick_type", None) or []
+    for volume, side in zip(volumes, sides):
+        try:
+            v = int(volume or 0)
+        except (TypeError, ValueError):
+            continue
+        sval = str(getattr(side, "value", side))
+        if sval in ("1", "Buy", "TickType.Buy"):
+            buy += v
+        elif sval in ("2", "Sell", "TickType.Sell"):
+            sell += v
+    return {
+        "active_buy_volume": buy,
+        "active_sell_volume": sell,
+        "active_diff": buy - sell,
+        "classified_volume": buy + sell,
+    }
+
+
+def active_flow_today(code, date=None):
+    """個股卡用：由真實逐筆成交計算全日主動買／賣與買賣差。
+
+    不使用 Snapshot.buy_volume / sell_volume，因官方定義是最佳委買／委賣掛單量，
+    並不是累積的主動買／賣成交量。此查詢只供單一個股按需取得，避免全市場輪詢。
+    """
+    api = get_api()
+    trade_date = date or datetime.now(TW_TZ).strftime("%Y-%m-%d")
+    contract = api.Contracts.Stocks[code]
+    ticks = api.ticks(contract=contract, date=trade_date)
+    out = _aggregate_tick_flow(ticks)
+    out.update({"date": trade_date, "source": "shioaji_ticks"})
+    return out
 
 
 def get_api():
@@ -60,9 +104,20 @@ def batch_snapshots(codes):
     """
     批次快照(不佔訂閱額度)。回傳 list[dict] 統一欄位:
     code, price, open, high, low, change_rate(%), volume_ratio,
-    total_volume(股), total_amount(元), avg_price, tick_type
+    total_volume, total_amount, avg_price, tick_type。
+
+    單一個股查詢時，既有 buy_volume / sell_volume 欄位改接當日 ticks 的
+    真實外盤／內盤成交量，另用 bid_volume / ask_volume 保留快照掛單量。
+    多檔掃描維持既有行為，避免本修正改動凍結中的主引擎計算。
     """
     api = get_api()
+    single_flow = None
+    if len(codes) == 1:
+        try:
+            single_flow = active_flow_today(codes[0])
+        except Exception as e:
+            print(f"[broker] active flow {codes[0]} 失敗: {e}")
+
     contracts = []
     for c in codes:
         try:
@@ -79,19 +134,29 @@ def batch_snapshots(codes):
             time.sleep(1)
             continue
         for s in snaps:
+            quote_buy = getattr(s, "buy_volume", 0) or 0
+            quote_sell = getattr(s, "sell_volume", 0) or 0
+            is_single = len(codes) == 1
             out.append({
                 "code": s.code,
                 "price": s.close,
                 "open": s.open, "high": s.high, "low": s.low,
                 "change_rate": s.change_rate,
                 "volume_ratio": getattr(s, "volume_ratio", 0) or 0,
-                "total_volume": (s.total_volume or 0),      # 股
-                "total_amount": (s.total_amount or 0),      # 元
+                "total_volume": (s.total_volume or 0),
+                "total_amount": (s.total_amount or 0),
                 "avg_price": getattr(s, "average_price", None),
                 "tick_type": getattr(s, "tick_type", None),
-                # 內外盤累積量(BS Ratio 用;Shioaji 快照提供,單位:股)
-                "buy_volume": getattr(s, "buy_volume", 0) or 0,    # 外盤(主動買)
-                "sell_volume": getattr(s, "sell_volume", 0) or 0,  # 內盤(主動賣)
+                "bid_volume": quote_buy,
+                "ask_volume": quote_sell,
+                "buy_volume": ((single_flow or {}).get("active_buy_volume")
+                               if is_single else quote_buy),
+                "sell_volume": ((single_flow or {}).get("active_sell_volume")
+                                if is_single else quote_sell),
+                "active_flow_diff": ((single_flow or {}).get("active_diff")
+                                     if is_single else None),
+                "active_flow_source": ((single_flow or {}).get("source")
+                                       if is_single else None),
             })
         time.sleep(0.3)
     return out
