@@ -226,39 +226,60 @@ def _official_margin_snapshot(asof=None):
 
 
 def summarize_finmind_institutional(rows, inst_days=INST_DAYS):
-    """把 FinMind 法人日資料整理成可供判斷的外資摘要。
+    """Normalize FinMind institutional rows to canonical lots.
 
-    FinMind 的 ``TaiwanStockInstitutionalInvestorsBuySell`` 是「股」為單位、
-    一檔股票一天多筆法人類別；這裡明確只用 ``Foreign_Investor`` 判斷
-    外資連買/連賣，不能拿三法人合計欄位冒充外資。回傳的淨額統一為張，
-    日期由資料本身決定，讓呼叫端可以把 T-1 資料日一起顯示出來。
+    Canonical definitions:
+      foreign = Foreign_Investor
+      trust   = Investment_Trust
+      dealer  = Dealer_self + Dealer_Hedging + other Dealer* rows
+      institution = foreign + trust + dealer
+
+    All net values are lots (張). ``inst_streak`` is kept for compatibility
+    but its semantic is FOREIGN streak; callers must label it 外資連買/連賣.
     """
     by_date = {}
     for row in rows or []:
         date = row.get("date")
-        name = row.get("name")
-        if not date or name not in ("Foreign_Investor", "Investment_Trust"):
+        name = row.get("name") or ""
+        if not date:
             continue
         try:
             buy = float(row.get("buy") or 0)
             sell = float(row.get("sell") or 0)
         except (TypeError, ValueError):
             continue
-        net = (buy - sell) / 1000.0  # FinMind 回傳股數，系統欄位統一用張
-        item = by_date.setdefault(date, {"total": 0.0, "foreign": 0.0})
-        item["total"] += net
+        net = (buy - sell) / 1000.0
+        item = by_date.setdefault(date, {
+            "foreign": 0.0, "trust": 0.0, "dealer": 0.0,
+            "dealer_self": 0.0, "dealer_hedge": 0.0,
+        })
         if name == "Foreign_Investor":
             item["foreign"] += net
+        elif name == "Investment_Trust":
+            item["trust"] += net
+        elif name == "Dealer_self":
+            item["dealer"] += net
+            item["dealer_self"] += net
+        elif name == "Dealer_Hedging":
+            item["dealer"] += net
+            item["dealer_hedge"] += net
+        elif name.startswith("Dealer") or name == "Foreign_Dealer_Self":
+            item["dealer"] += net
 
     dates = sorted(by_date)[-int(inst_days):]
     if not dates:
         return {}
 
-    def _sum(field, count):
+    def institutional(date):
+        x = by_date[date]
+        return x["foreign"] + x["trust"] + x["dealer"]
+
+    def sum_field(field, count):
         return round(sum(by_date[d][field] for d in dates[-count:]))
 
-    # 由最新交易日向前數；遇到 0 或方向改變就停止，避免把中間空值
-    # 誤算成連買/連賣。
+    def sum_inst(count):
+        return round(sum(institutional(d) for d in dates[-count:]))
+
     streak = 0
     for date in reversed(dates):
         value = by_date[date]["foreign"]
@@ -275,16 +296,30 @@ def summarize_finmind_institutional(rows, inst_days=INST_DAYS):
 
     latest = by_date[dates[-1]]
     return {
-        "inst_net_20d_lots": _sum("total", inst_days),
+        "inst_net_20d_lots": sum_inst(inst_days),
+        "inst_net_5d_lots": sum_inst(5),
+        "inst_net_3d_lots": sum_inst(3),
         "inst_streak": streak,
         "foreign_days": streak,
         "foreign_net_d": round(latest["foreign"]),
-        "foreign_net_3d": _sum("foreign", 3),
-        "foreign_net_5d": _sum("foreign", 5),
-        "foreign_net_20d": _sum("foreign", inst_days),
+        "trust_net_d": round(latest["trust"]),
+        "dealer_net_d": round(latest["dealer"]),
+        "dealer_self_d": round(latest["dealer_self"]),
+        "dealer_hedge_d": round(latest["dealer_hedge"]),
+        "foreign_net_3d": sum_field("foreign", 3),
+        "trust_net_3d": sum_field("trust", 3),
+        "dealer_net_3d": sum_field("dealer", 3),
+        "foreign_net_5d": sum_field("foreign", 5),
+        "trust_net_5d": sum_field("trust", 5),
+        "dealer_net_5d": sum_field("dealer", 5),
+        "foreign_net_20d": sum_field("foreign", inst_days),
+        "trust_net_20d": sum_field("trust", inst_days),
+        "dealer_net_20d": sum_field("dealer", inst_days),
         "source": "FinMind TaiwanStockInstitutionalInvestorsBuySell",
         "source_date": dates[-1],
         "days_used": len(dates),
+        "unit": "lots",
+        "schema_version": "chip_ssot_v1",
     }
 
 
@@ -315,7 +350,7 @@ def _official_detail(code, asof=None):
 def get_chips(code):
     """
     回傳該股籌碼摘要 dict:
-      inst_net_20d_lots   法人(外資+投信)近20日合計買賣超(張,+買超/-賣超)
+      inst_net_20d_lots   三大法人(外資+投信+自營)近20日合計買賣超(張,+買超/-賣超)
       inst_streak         外資連續買超天數(負值=連賣)
       big_holder_pct      千張大戶持股比例(%)
       big_holder_trend    大戶比例近4週變化(百分點)
@@ -349,33 +384,12 @@ def get_chips(code):
     except Exception as e:
         print(f"[chips] 法人 {code} 失敗: {e}")
 
-    # ── 大戶比例(股權分散,週資料) ─────────────────────
-    # v2.4 修正:TaiwanStockHoldingSharesPer 是 FinMind 付費層 API,
-    # 免費層(無 token)回 400 error。改用「法人 20 日合計淨買賣超」當
-    # 大戶級距代理訊號 — 這不是真的大戶持股%,但能反映機構級買賣方向。
-    # **前端顯示時機加註單位 "張" 避免誤讀為 %**。
-    try:
-        inst_20d = result.get("inst_net_20d_lots")
-        if inst_20d is not None:
-            result["big_holder_pct"] = float(inst_20d)
-            # 趨勢:近 10 日 vs 遠 10 日法人淨買賣,>0 表示近期加速買進
-            try:
-                start = (datetime.now() - timedelta(days=70)).strftime("%Y-%m-%d")
-                rows = _finmind("TaiwanStockInstitutionalInvestorsBuySell", code, start)
-                bd = {}
-                for r in rows:
-                    if r.get("name") in ("Foreign_Investor", "Investment_Trust"):
-                        bd.setdefault(r["date"], 0)
-                        bd[r["date"]] += (r.get("buy", 0) - r.get("sell", 0)) / 1000
-                ds = sorted(bd.keys())
-                if len(ds) >= 20:
-                    recent = sum(bd[d] for d in ds[-10:])
-                    older = sum(bd[d] for d in ds[-20:-10])
-                    result["big_holder_trend"] = round(recent - older)
-            except Exception:
-                pass
-    except Exception as e:
-        print(f"[chips] 大戶 {code} 失敗: {e}")
+    # ── 大戶持股：禁止用法人張數冒充百分比 ────────────────
+    # get_chips() is the lightweight scoring path and does not fetch TDCC here.
+    # Keep the field unavailable rather than pollute the schema with a lot-count
+    # proxy.  UI detail uses its dedicated source/date path when available.
+    result["big_holder_pct"] = None
+    result["big_holder_trend"] = None
 
     if _cache.get("date") != today:
         _cache = {"date": today, "stocks": {}}

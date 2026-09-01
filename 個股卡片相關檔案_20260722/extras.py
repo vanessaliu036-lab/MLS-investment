@@ -146,10 +146,14 @@ def _decision_factors(card: Dict[str, Any], live: Dict[str, Any]) -> Dict[str, A
     score = round(raw_score / available * 100, 1) if available else None
     missing = [k for k, v in factors.items() if v["points"] is None]
     confidence = "High" if not missing else ("Medium" if available >= 50 else "Low")
+    net_active_ok = active is not None
     return {"factors": factors, "score": score, "score_raw": raw_score, "score_max": 100,
             "score_available": available,
             "missing": missing, "confidence": confidence,
-            "rule": "只以已取得因子正規化計分；缺資料降低可信度，不當作 0 分。"}
+            "data_status": "OK" if net_active_ok else "DATA_INCOMPLETE",
+            "action_gate": "ALLOW" if net_active_ok else "WATCH",
+            "gate_reason": None if net_active_ok else "缺 net_active，禁止正式進場",
+            "rule": "只以已取得因子正規化計分；net_active 缺失時正式 Action 強制 WATCH。"}
 
 
 def _now_tw() -> str:
@@ -292,10 +296,10 @@ def _five_factors(snap, chip, sector_avg, market_pct, sector_name):
         parts = []
         if f20 is not None:
             pts += 10 if f20 > 0 else 0
-            parts.append(f"法人近月{'買超' if f20 > 0 else '賣超'} {abs(int(f20)):,} 張")
+            parts.append(f"外資20日{'買超' if f20 > 0 else '賣超'} {abs(int(f20)):,} 張")
         if streak is not None:
             pts += 5 if streak >= 3 else 2 if streak >= 1 else 0
-            parts.append(f"法人連{'買' if streak >= 0 else '賣'} {abs(int(streak))} 日")
+            parts.append(f"外資連{'買' if streak >= 0 else '賣'} {abs(int(streak))} 日")
         if m5 is not None:
             pts += 5 if m5 <= 0 else 0
             parts.append(f"融資5日 {int(m5):+,} 張")
@@ -330,12 +334,16 @@ def _post_market_asof() -> tuple[str, bool]:
 
 
 def _raw_rows() -> List[Dict[str, Any]]:
-    """從 broker buffer 拿真實 snap、餵給 vps_intraday_test._row 計算 group/aflow。
-    跟 /api/intraday-test endpoint 共用同一邏輯。"""
+    """Read the canonical intraday snapshot used by every MLS screen.
+
+    No screen is allowed to resample broker independently: that was the source
+    of same-symbol / same-time A-flow contradictions.
+    """
     try:
-        raw = broker.raw_buffer_snapshots()
-        return [VIT._row(item) for item in raw]
-    except Exception:
+        payload = VIT.intraday_test() or {}
+        return list(payload.get("rows") or [])
+    except Exception as exc:
+        print(f"[extras] canonical intraday snapshot 讀取失敗: {exc}", flush=True)
         return []
 
 
@@ -794,6 +802,9 @@ def build_watchpool() -> Dict[str, Any]:
             "inst_net_20d_lots": chip.get("inst_net_20d_lots"),
             "foreign_source": chip.get("source"),
             "foreign_source_date": chip.get("source_date"),
+            "chip_data_date": chip.get("source_date"),
+            "chip_source_table": "chips_cache.json",
+            "chip_source_version": chip.get("schema_version") or "chip_ssot_v1",
             "inst_streak": chip.get("inst_streak"),
             "volume_ratio": snap.get("volume_ratio"),
             "has_data": bool(snap.get("price")),

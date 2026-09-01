@@ -252,7 +252,11 @@ def _seven_factor_score(raw, ma20, chip):
     """
     price = float(raw.get("price") or 0)
     change = float(raw.get("change_rate") or 0)
-    aflow = int(raw.get("buy_volume") or 0) - int(raw.get("sell_volume") or 0)
+    aflow_unavailable = (bool(raw.get("_aflow_unavailable")) or
+                         raw.get("buy_volume") is None or
+                         raw.get("sell_volume") is None)
+    aflow = None if aflow_unavailable else (
+        int(raw.get("buy_volume") or 0) - int(raw.get("sell_volume") or 0))
     volume = int(raw.get("total_volume") or 0)
     points = 0.0
     missing = []
@@ -264,7 +268,7 @@ def _seven_factor_score(raw, ma20, chip):
         factors[key] = {"points": None, "max": FACTOR_WEIGHTS[key], "status": "盤後驗證"}
 
     # ── 主動買賣差 22 分：用佔成交量比例，≥8% 給滿分 ──
-    ratio = (aflow / volume) if volume > 0 else None
+    ratio = (aflow / volume) if aflow is not None and volume > 0 else None
     if ratio is not None:
         p_na = FACTOR_WEIGHTS["net_active"] * _norm(ratio, 0.0, 0.08)
         points += p_na
@@ -298,27 +302,27 @@ def _seven_factor_score(raw, ma20, chip):
         factors["vs_ma20"] = {"points": None, "max": 12, "status": "缺資料"}
         missing.append("MA20")
 
-    # ── 法人連買 10 分 ──
+    # ── 外資連買 10 分 ──
     streak = chip.get("inst_streak")
     if streak is not None:
         p_st = FACTOR_WEIGHTS["inst_streak"] * _norm(streak, 0, 5)
         points += p_st
         if streak >= 2:
-            streak_detail = f"法人連買 {int(streak)} 日"
+            streak_detail = f"外資連買 {int(streak)} 日"
         elif streak <= -2:
-            streak_detail = f"法人連賣 {abs(int(streak))} 日"
+            streak_detail = f"外資連賣 {abs(int(streak))} 日"
         elif streak > 0:
-            streak_detail = "法人今日買超"
+            streak_detail = "外資今日買超"
         elif streak < 0:
-            streak_detail = "法人今日賣超"
+            streak_detail = "外資今日賣超"
         else:
-            streak_detail = "法人中性"
+            streak_detail = "外資中性"
         factors["inst_streak"] = {
             "points": round(p_st, 1), "max": 10, "status": "已接入",
             "detail": streak_detail,
         }
         if streak >= 3:
-            ev.append(f"法人連買 {streak} 日")
+            ev.append(f"外資連買 {streak} 日")
     else:
         factors["inst_streak"] = {"points": None, "max": 10,
                                   "status": "籌碼快取重建中"}
@@ -334,8 +338,8 @@ def _seven_factor_score(raw, ma20, chip):
     # （2026-08-07 依實測：上銀+8.7%/聯茂+3.46% 漲停隔日續漲，一刀切「漲停排除」會漏掉。）
     extreme_up = is_limit_up(price, change_rate=change)
     extreme_down = change <= -9.0
-    fake_red = change > 0 and aflow < 0
-    resting = change <= 0 and aflow < 0
+    fake_red = aflow is not None and change > 0 and aflow < 0
+    resting = aflow is not None and change <= 0 and aflow < 0
 
     # 法人籌碼是否明顯偏空：連賣 ≥3 日或近月賣超 ≥3,000 張（門檻對齊七層頁
     # chip_layer 的 CHIP_STRONG_LOTS，兩套分類器各自獨立但「明顯偏空」的定義一致）。
@@ -349,14 +353,14 @@ def _seven_factor_score(raw, ma20, chip):
     elif change < 0:
         against.append(f"股價下跌 {change:+.2f}%")
 
-    # 漲停分級：法人連賣/近月賣超（拉高無承接）→ 真追高，排除；
+    # 漲停分級：外資連賣/近月賣超（拉高無承接）→ 真追高，排除；
     # 法人買 or 無籌碼資料 → 不排除，照七因子走可操作/觀察，只附追高提醒。
     limitup_note = ""
     _cr = []
     if extreme_up:
         _stk, _n20 = chip_streak, chip_net20
         if _stk is not None and _stk < 0:
-            _cr.append(f"法人連賣 {abs(int(_stk))} 日")
+            _cr.append(f"外資連賣 {abs(int(_stk))} 日")
         if _n20 is not None and _n20 < 0:
             _cr.append(f"近月賣超 {abs(int(_n20)):,} 張")
         limitup_note = ("⚠漲停追高；" + "、".join(_cr) + " → 拉高無承接，短打不留倉") if _cr \
@@ -367,7 +371,7 @@ def _seven_factor_score(raw, ma20, chip):
     if extreme_up:
         group, subgroup = "觀察", "⏳ 強勢但不追"
         reason = limitup_note + "｜股票維持強勢，進場狀態：禁止追高"
-    elif (aflow > 0 and change <= 0) or (fake_red and change >= 0):
+    elif (aflow is not None and aflow > 0 and change <= 0) or (fake_red and change >= 0):
         group, subgroup = "觀察", "🔄 反轉候選"
         reason = (f"價格 {change:+.2f}%／主動資金 {aflow:+,} 張出現背離轉折，"
                   "保留等待價格與資金同步確認")
@@ -388,7 +392,7 @@ def _seven_factor_score(raw, ma20, chip):
         group, subgroup = "觀察", "🔄 反轉候選（籌碼偏空）"
         chip_bits = []
         if chip_streak is not None and chip_streak <= -3:
-            chip_bits.append(f"法人連賣 {abs(int(chip_streak))} 日")
+            chip_bits.append(f"外資連賣 {abs(int(chip_streak))} 日")
         if chip_net20 is not None and chip_net20 <= -3000:
             chip_bits.append(f"近月賣超 {abs(int(chip_net20)):,} 張")
         reason = (f"盤中達標 {pct:.0f}%，但{('、'.join(chip_bits) or '法人籌碼偏空')}"
@@ -398,7 +402,7 @@ def _seven_factor_score(raw, ma20, chip):
         facts = []
         if change > 0:
             facts.append(f"上漲 {change:+.2f}%")
-        if aflow > 0:
+        if aflow is not None and aflow > 0:
             facts.append(f"主動買超 {aflow:,} 張")
         facts.extend(ev[:2])
         reason = f"盤中達標 {pct:.0f}%｜" + "｜".join(dict.fromkeys(facts))
@@ -425,7 +429,7 @@ def _seven_factor_score(raw, ma20, chip):
         "score": round(points, 1), "score_max": 100,
         "score_pct": round(pct, 1) if pct is not None else None,
         "score_available": round(avail, 1),
-        "score_rule": "盤中可計算三因子（主動買賣差22＋MA20 12＋法人連買10）；達可計算分數 65% 且無缺資料才可操作",
+        "score_rule": "盤中可計算三因子（主動買賣差22＋MA20 12＋外資連買10）；達可計算分數 65% 且無缺資料才可操作",
         "factors": factors, "score_missing": missing,
         "evidence": ev, "against": against,
         "group": group, "subgroup": subgroup, "reason": reason,
@@ -494,7 +498,7 @@ def _row(raw):
         track="engine" if code in getattr(config, "ENGINE_STOCKS", set()) else "attack",
         price=price,
         change_rate=change,
-        aflow=aflow,
+        aflow=aflow_out,
         total_volume=int(raw.get("total_volume") or 0),
         ma20=ma20,
     )
@@ -533,7 +537,9 @@ def _row(raw):
         "raw_bid_side_total_vol": None if aflow_unavail else buy,
         "raw_ask_side_total_vol": None if aflow_unavail else sell,
         "aflow": aflow_out,
-        "quadrant": F.proxy_quadrant(aflow_out if aflow_out is not None else 0, change),
+        "aflow_source": "Shioaji TickSTKv1 bid_side_total_vol - ask_side_total_vol",
+        "aflow_unit": "張",
+        "quadrant": F.proxy_quadrant(aflow_out, change) if aflow_out is not None else None,
         # 資料品質標記（§6）：讓畫面一眼看出是即時 Shioaji 還是 MIS 備援、aflow 是否停用
         "price_source": raw.get("_price_source"),
         "quote_status": raw.get("_quote_status"),
@@ -740,6 +746,14 @@ def intraday_test():
             except Exception as _e:
                 print(f"[intraday-test] quote_health 跳過: {_e}", flush=True)
         rows = [_row(item) for item in raw]
+        snapshot_time = datetime.now(TW_TZ).isoformat(timespec="seconds")
+        snapshot_id = f"{_trade_date()}:{snapshot_time}:aflow_tick_side_v1"
+        for row in rows:
+            row["data_date"] = _trade_date()
+            row["snapshot_time"] = snapshot_time
+            row["snapshot_id"] = snapshot_id
+            row["source_table"] = "broker._QUOTE_BUF"
+            row["source_version"] = "aflow_tick_side_v1"
         _pa_date, _pa_n = _attach_pre_activation(rows)
         # 排序契約：可操作→觀察→排除；群內 score_pct→score→漲跌幅→aflow。
         _sort_display_rows(rows)
@@ -757,8 +771,13 @@ def intraday_test():
             "source": ("VPS persisted last intraday state" if fallback_source
                         else "VPS Shioaji subscription buffer"),
             "read_only": True,
-            "updated_at": datetime.now(TW_TZ).isoformat(timespec="seconds"),
+            "updated_at": snapshot_time,
             "trade_date": _trade_date(),
+            "data_date": _trade_date(),
+            "snapshot_time": snapshot_time,
+            "snapshot_id": snapshot_id,
+            "source_table": "broker._QUOTE_BUF",
+            "source_version": "aflow_tick_side_v1",
             "count": len(rows),
             "rows": rows,
             "pre_activation_date": _pa_date,
