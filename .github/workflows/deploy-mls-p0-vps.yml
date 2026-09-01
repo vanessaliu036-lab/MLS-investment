@@ -1,0 +1,160 @@
+name: Deploy MLS P0 SSOT to VPS
+
+on:
+  push:
+    branches:
+      - feat/screen-logic-canonical
+    paths:
+      - '.github/workflows/deploy-mls-p0-vps.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VPS_HOST: 66.42.42.150
+      VPS_USER: root
+      VPS_PORT: '22'
+      KEY_MLS: ${{ secrets.MLS_VPS_SSH_KEY }}
+      KEY_VPS: ${{ secrets.VPS_SSH_KEY }}
+      KEY_GENERIC: ${{ secrets.SSH_PRIVATE_KEY }}
+      KEY_VULTR: ${{ secrets.VULTR_SSH_KEY }}
+      KEY_VULTR_PRIVATE: ${{ secrets.VULTR_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/screen-logic-canonical
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Pre-deploy P0 source verification
+        run: |
+          python -m pip install -q pytest fastapi shioaji
+          python -m py_compile \
+            '個股卡片相關檔案_20260722/chips.py' \
+            '個股卡片相關檔案_20260722/stock_card.py' \
+            '個股卡片相關檔案_20260722/extras.py' \
+            '個股卡片相關檔案_20260722/money_health_api.py' \
+            'vps_intraday_test.py'
+          pytest -q \
+            tests/test_chip_p0_canonical.py \
+            tests/test_engine_missing_chips.py \
+            tests/test_scoring_aflow_direction.py \
+            tests/test_dashboard_observer_contract.py \
+            tests/test_new_version_wiring.py
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY="${KEY_MLS:-}"
+          [ -n "$KEY" ] || KEY="${KEY_VPS:-}"
+          [ -n "$KEY" ] || KEY="${KEY_GENERIC:-}"
+          [ -n "$KEY" ] || KEY="${KEY_VULTR:-}"
+          [ -n "$KEY" ] || KEY="${KEY_VULTR_PRIVATE:-}"
+          if [ -z "$KEY" ]; then
+            echo 'No configured MLS/VPS SSH private-key secret was found in this repository.'
+            exit 78
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" >> ~/.ssh/known_hosts
+          ssh -p "$VPS_PORT" -o BatchMode=yes "$VPS_USER@$VPS_HOST" \
+            'echo SSH_OK; hostname; systemctl is-active mls-intraday'
+
+      - name: Backup and deploy P0 files
+        shell: bash
+        run: |
+          set -euo pipefail
+          REMOTE=/opt/mls-intraday
+          MOD="$REMOTE/個股卡片相關檔案_20260722"
+          TS=$(date +%Y%m%d-%H%M%S)
+          SSH="ssh -p $VPS_PORT -o BatchMode=yes"
+
+          $SSH "$VPS_USER@$VPS_HOST" "set -e; mkdir -p '$REMOTE/.p0-backup/$TS'; \
+            cp -a '$REMOTE/vps_intraday_test.py' '$REMOTE/.p0-backup/$TS/' 2>/dev/null || true; \
+            cp -a '$REMOTE/個股籌碼彈窗UI.html' '$REMOTE/.p0-backup/$TS/' 2>/dev/null || true; \
+            for f in chips.py stock_card.py extras.py money_health_api.py; do \
+              cp -a \"$MOD/\$f\" '$REMOTE/.p0-backup/$TS/' 2>/dev/null || true; \
+            done; echo BACKUP=$REMOTE/.p0-backup/$TS"
+
+          rsync -az -e "$SSH" 'vps_intraday_test.py' \
+            "$VPS_USER@$VPS_HOST:$REMOTE/vps_intraday_test.py"
+          rsync -az -e "$SSH" '個股籌碼彈窗UI.html' \
+            "$VPS_USER@$VPS_HOST:$REMOTE/個股籌碼彈窗UI.html"
+          for f in chips.py stock_card.py extras.py money_health_api.py; do
+            rsync -az -e "$SSH" "個股卡片相關檔案_20260722/$f" \
+              "$VPS_USER@$VPS_HOST:$MOD/$f"
+          done
+
+          $SSH "$VPS_USER@$VPS_HOST" "set -e; \
+            python3 -m py_compile \
+              '$REMOTE/vps_intraday_test.py' \
+              '$MOD/chips.py' '$MOD/stock_card.py' '$MOD/extras.py' '$MOD/money_health_api.py'; \
+            systemctl restart mls-intraday; \
+            n=0; until curl -fsS --max-time 4 http://127.0.0.1:8000/ >/dev/null; do \
+              n=\$((n+1)); [ \"\$n\" -ge 45 ] && { \
+                systemctl status mls-intraday --no-pager -l; \
+                journalctl -u mls-intraday -n 80 --no-pager -o cat; exit 1; }; sleep 1; \
+            done; systemctl is-active mls-intraday"
+
+      - name: Production API verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, urllib.request
+          base='http://66.42.42.150:8000'
+          def get(path):
+              with urllib.request.urlopen(base+path, timeout=20) as r:
+                  if r.status != 200:
+                      raise SystemExit(f'{path}: HTTP {r.status}')
+                  return json.load(r)
+
+          intra=get('/api/intraday-test')
+          assert intra.get('ok') is True, intra
+          for key in ('data_date','snapshot_time','snapshot_id','source_table','source_version'):
+              assert intra.get(key), f'intraday missing {key}'
+          rows={str(r.get('code')):r for r in intra.get('rows',[]) if r.get('code')}
+          assert rows, 'intraday rows empty'
+          for code,row in list(rows.items())[:5]:
+              for key in ('snapshot_time','snapshot_id','source_table','source_version'):
+                  assert row.get(key), f'{code} missing {key}'
+
+          pool=get('/api/watchpool')
+          items={str(r.get('code')):r for r in pool.get('items',[]) if r.get('code')}
+          assert items, 'watchpool items empty'
+          for code in ('3532','8358','2303'):
+              if code in items:
+                  assert 'chip_data_date' in items[code], f'{code} missing chip_data_date key'
+
+          if '8358' in rows and '8358' in items:
+              # Sequential endpoints can have a newer snapshot, but each value must
+              # be accompanied by explicit identity instead of masquerading as same-time data.
+              assert rows['8358'].get('snapshot_id'), '8358 intraday snapshot identity missing'
+
+          stock=get('/api/stock/3532')
+          assert stock.get('ok') is True, stock
+          card=stock.get('card') or {}
+          decision=card.get('decision') or {}
+          if decision.get('data_status') == 'DATA_INCOMPLETE':
+              assert decision.get('action_gate') == 'WATCH', decision
+
+          print('PROD_VERIFY_OK')
+          print('snapshot_id=', intra.get('snapshot_id'))
+          print('intraday_rows=', len(rows), 'watchpool_items=', len(items))
+          print('3532_data_status=', decision.get('data_status'), 'action_gate=', decision.get('action_gate'))
+          PY
+
+      - name: Production service log tail
+        if: always()
+        run: |
+          ssh -p "$VPS_PORT" -o BatchMode=yes "$VPS_USER@$VPS_HOST" \
+            "journalctl -u mls-intraday -n 20 --no-pager -o cat" || true
