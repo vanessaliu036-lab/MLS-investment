@@ -1,0 +1,60 @@
+name: Reversal Lab Live Contract
+on:
+  push:
+    branches: [feature/mls-v4-1-flow-chips-preview]
+    paths:
+      - 'mls_v4_1_flow_chips_preview/mls_v4_1_flow_chips/**'
+      - '.github/workflows/reversal-lab-live-contract.yml'
+jobs:
+  validate-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build Reversal Lab view from production read-only API
+        working-directory: mls_v4_1_flow_chips_preview
+        env:
+          PYTHONPATH: .
+        run: |
+          python -m mls_v4_1_flow_chips.live_run --json /tmp/reversal.json --html /tmp/reversal.html
+          python - <<'PY'
+          import json
+          v=json.load(open('/tmp/reversal.json', encoding='utf-8'))
+          rows={c['symbol']:c for bucket in ('inflow','outflow','reversal') for c in v[bucket]}
+          expected={
+            '6182':('REVERSAL_DAY1','A+'),
+            '8150':('REVERSAL_DAY1','A'),
+            '3532':('REVERSAL_DAY1','B+'),
+            '3026':('OUTFLOW_WATCH',None),
+            '8358':('REVERSAL_FAILURE_CONTROL',None),
+            '2408':('TREND_CONTROL',None),
+          }
+          errors=[]
+          print('\n===== SIX-SAMPLE REVERSAL LAB CONTRACT =====')
+          for code,(role,grade) in expected.items():
+              c=rows.get(code)
+              if not c:
+                  errors.append(f'{code}: missing from live view')
+                  continue
+              actual=(c.get('lab_role'),c.get('reversal_grade'))
+              print(code,c.get('name'),actual,c.get('reversal_state'),
+                    'aflow=',c.get('aflow'),'chg=',c.get('change_rate'),
+                    'price=',c.get('price'),'vwap=',c.get('avg_price'),
+                    '5d=',c.get('foreign_net_5d'),'20d=',c.get('foreign_net_20d'),
+                    'price_confirmation=',c.get('price_confirmation'),
+                    'sector=',c.get('sector_confirmation'),
+                    'persistence=',c.get('flow_persistence'),
+                    'day2=',c.get('day2_ready'))
+              if c.get('lab_role') != role:
+                  errors.append(f'{code}: role {c.get("lab_role")} != {role}')
+              if grade is not None and c.get('reversal_grade') != grade:
+                  errors.append(f'{code}: grade {c.get("reversal_grade")} != {grade}')
+          if v.get('model_scope') != 'FORWARD_TEST_ONLY':
+              errors.append('model_scope is not FORWARD_TEST_ONLY')
+          if errors:
+              raise SystemExit('LIVE CONTRACT FAILED\n'+'\n'.join(errors))
+          print('LIVE CONTRACT PASS')
+          PY
