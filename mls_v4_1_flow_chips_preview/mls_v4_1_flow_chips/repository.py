@@ -156,10 +156,10 @@ def current_latest_rows(conn: sqlite3.Connection, trade_date: str):
 
 
 def institutional_outflow_summary(conn: sqlite3.Connection, symbol: str, trade_date: str) -> dict:
-    """Standardized prior institutional flow for the reversal research track.
+    """Prior institutional flow for the reversal research track.
 
-    Ratios are institutional net lots / total traded lots over 5D and 20D.
-    A ratio is only emitted when the full requested window exists.
+    Returns both signed net sums and standardized ratios. Ratios are only
+    emitted when the full requested window exists and traded volume is valid.
     """
     rows = conn.execute(
         """SELECT * FROM chip_daily
@@ -167,6 +167,11 @@ def institutional_outflow_summary(conn: sqlite3.Connection, symbol: str, trade_d
            ORDER BY trade_date DESC LIMIT 20""",
         (symbol, trade_date),
     ).fetchall()
+
+    def window_net(n: int):
+        if len(rows) < n:
+            return None
+        return sum(float(r["institutional_net_lots"] or 0) for r in rows[:n])
 
     def window_ratio(n: int):
         if len(rows) < n:
@@ -179,6 +184,9 @@ def institutional_outflow_summary(conn: sqlite3.Connection, symbol: str, trade_d
         return net / volume
 
     return {
+        "institutional_net_1d": window_net(1),
+        "institutional_net_5d": window_net(5),
+        "institutional_net_20d": window_net(20),
         "institutional_net_5d_ratio": window_ratio(5),
         "institutional_net_20d_ratio": window_ratio(20),
         "n_days": len(rows),
