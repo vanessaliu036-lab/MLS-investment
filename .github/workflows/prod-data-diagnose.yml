@@ -15,33 +15,16 @@ jobs:
           BASE="http://66.42.42.150:8000"
           echo "=== time ==="
           date -u
-          for path in \
-            /healthz \
-            /api/state \
-            /api/stock/2303 \
-            /api/chips/2303 \
-            /api/volume-history/2303 \
-            /api/stock/2344 \
-            /api/chips/2344 \
-            /api/volume-history/2344 \
-            /api/stock/8358 \
-            /api/chips/8358 \
-            /api/volume-history/8358; do
+          for path in /healthz /api/state /api/stock/2303 /api/chips/2303 /api/volume-history/2303 /api/stock/2344 /api/chips/2344 /api/volume-history/2344 /api/stock/8358 /api/chips/8358 /api/volume-history/8358; do
             echo "===== GET $path ====="
             rm -f /tmp/body
             code=$(curl -sS --connect-timeout 6 --max-time 20 -o /tmp/body -w '%{http_code}' "$BASE$path" || true)
-            echo "HTTP=$code bytes=$(wc -c </tmp/body 2>/dev/null || echo 0)"
-            python - <<'PY'
-import json
-p='/tmp/body'
-try:
-    raw=open(p,'r',encoding='utf-8').read()
-except Exception as e:
-    print('NO_BODY',e); raise SystemExit
-try:
-    obj=json.loads(raw)
-    print(json.dumps(obj,ensure_ascii=False,indent=2)[:12000])
-except Exception:
-    print(raw[:12000])
-PY
+            bytes=$(wc -c </tmp/body 2>/dev/null || echo 0)
+            echo "HTTP=$code bytes=$bytes"
+            if jq -e . /tmp/body >/dev/null 2>&1; then
+              jq . /tmp/body | head -c 12000
+            else
+              head -c 12000 /tmp/body 2>/dev/null || true
+            fi
+            echo
           done
