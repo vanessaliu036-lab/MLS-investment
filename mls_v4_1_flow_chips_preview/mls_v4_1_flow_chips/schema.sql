@@ -95,3 +95,29 @@ CREATE TABLE IF NOT EXISTS false_kill_kpi (
     note TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Research-only Day-1 reversal samples. Future returns are deliberately
+-- separate from decision_history because this track validates T+1/T+2/T+3.
+CREATE TABLE IF NOT EXISTS reversal_day1_history (
+    trade_date TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    first_signal_ts TEXT,
+    first_signal_price REAL,
+    first_signal_change_pct REAL,
+    institutional_net_5d_ratio REAL,
+    institutional_net_20d_ratio REAL,
+    aflow_at_signal REAL,
+    aflow_ratio_at_signal REAL,
+    persistence_confirm_ts TEXT,
+    persistence_aflow_delta REAL,
+    persistence_price_delta REAL,
+    day1_close_return REAL,
+    t1_return REAL,
+    t2_return REAL,
+    t3_return REAL,
+    mfe_3d REAL,
+    mae_3d REAL,
+    market_regime TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (trade_date, symbol)
+);
