@@ -8,20 +8,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     steps:
-      - name: Probe production card implementation
+      - name: Probe production mapping sources
         shell: bash
         run: |
           set -u
           BASE="http://66.42.42.150:8000"
-          echo "=== health ==="
           curl -sS --connect-timeout 6 --max-time 10 "$BASE/healthz" || true
           echo
-          for code in 2303 2344 8358; do
-            echo "===== CARD PAGE $code ====="
-            curl -sS --connect-timeout 6 --max-time 20 "$BASE/api/card_page?code=$code" -o "/tmp/card-$code.html" || true
-            echo "bytes=$(wc -c </tmp/card-$code.html 2>/dev/null || echo 0)"
-            grep -nE 'foreign_net_[d35]|foreign_net_5d|外資|法人當日|成交量歷史|volume-history|margin|融資|/api/stock|/api/chips' "/tmp/card-$code.html" | head -240 || true
+          for path in /api/intraday-watchpool /api/intraday-test /ab/watchlist; do
+            echo "===== $path selected rows ====="
+            curl -sS --connect-timeout 6 --max-time 30 "$BASE$path" -o /tmp/payload || true
+            jq -c '.. | objects | select(.code? == "2303" or .code? == "2344" or .code? == "6173" or .code? == "1815" or .code? == "8358" or .code? == "2408" or .code? == "3264" or .code? == "3016")' /tmp/payload 2>/dev/null | head -80 || true
           done
-          echo "===== ROOT RELEVANT ====="
+          echo "===== card JS context ====="
+          curl -sS --connect-timeout 6 --max-time 20 "$BASE/api/card_page?code=2344" -o /tmp/card.html || true
+          sed -n '510,630p' /tmp/card.html
+          echo "===== root JS context 800-850 ====="
           curl -sS --connect-timeout 6 --max-time 20 "$BASE/" -o /tmp/root.html || true
-          grep -nE 'foreign_net_[d35]|foreign_net_5d|BULLISH_FOREIGN|昨日法人|外資|/api/chips|/api/stock' /tmp/root.html | head -300 || true
+          sed -n '800,850p' /tmp/root.html
+          echo "===== root JS context 2060-2140 ====="
+          sed -n '2060,2140p' /tmp/root.html
