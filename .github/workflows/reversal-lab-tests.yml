@@ -19,4 +19,4 @@ jobs:
         working-directory: mls_v4_1_flow_chips_preview
         env:
           PYTHONPATH: .
-        run: pytest -q tests/test_live_bridge.py tests/test_reversal_lab_contract.py
+        run: pytest -q tests/test_live_bridge.py tests/test_reversal_lab_contract.py tests/test_live_page.py
