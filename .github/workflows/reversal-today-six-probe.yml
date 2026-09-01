@@ -1,0 +1,24 @@
+name: Reversal Lab Six-Sample Validation
+on:
+  push:
+    branches: [feature/mls-v4-1-flow-chips-preview]
+    paths: ['.github/workflows/reversal-today-six-probe.yml']
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Read official live and intraday daily rows
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='http://66.42.42.150:8000'
+          CODES='["6182","8150","3532","3026","8358","2408"]'
+          curl -fsS --max-time 30 "$BASE/api/intraday-watchpool" -o /tmp/live.json
+          curl -fsS --max-time 30 "$BASE/api/intraday-daily?date=2026-09-01" -o /tmp/daily.json
+          echo '===== LIVE SIX ====='
+          jq --argjson codes "$CODES" -c '.rows[] | select(.code as $c | $codes | index($c)) | {code,name,price,high,low,avg_price,change_rate,aflow,total_volume,quadrant,pre_activation}' /tmp/live.json
+          echo '===== DAILY SIX ====='
+          jq --argjson codes "$CODES" -c '.. | objects | select((.code? // .stock_id? // "") as $c | $codes | index(($c|tostring)))' /tmp/daily.json
+          echo '===== DAILY TOP LEVEL ====='
+          jq -c '{ok,trade_date,date,source,count,updated_at}' /tmp/daily.json
