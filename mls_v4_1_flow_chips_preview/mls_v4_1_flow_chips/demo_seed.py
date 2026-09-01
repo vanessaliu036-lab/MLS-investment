@@ -19,7 +19,6 @@ def seed(path: str | Path) -> None:
         c.execute("INSERT INTO market_regime_daily VALUES(?,?,?,?,?)", ("2026-09-01", "RISK_ON", -0.2, 0.50, "2026-09-01T09:00:00+08:00"))
 
         stocks = [
-            # symbol, name, flow, chg, close, high, low, vwap, volume/ma5, foreign4d, trigger_failed, trigger_passed
             ("2455","全新", 47_300_000, 4.2, 110,112,100,106,1.1, 1800,0,1),
             ("2344","華邦電", 38_500_000, 1.6, 104,106,100,102,1.0, 1200,0,1),
             ("3037","欣興", 31_200_000, 2.1, 108,110,100,105,1.2,-2500,0,1),
@@ -48,8 +47,6 @@ def seed(path: str | Path) -> None:
             c.execute("INSERT INTO trigger_context VALUES(?,?,?,?,?,?,?,?,?)",
                       ("2026-08-31",symbol,105,103,tf,tp,"2026-08-31","2026-08-31T15:10:00+08:00","DEMO"))
 
-        # Research-only Day-1 reversal examples. Observed values are kept where known;
-        # supporting VWAP/volume fields are layout-only demo inputs until the VPS DB is connected.
         reversal_examples = [
             ("6182", "合晶", [("10:59:00", 112.5, 8872, 6.63, 111.8)],
              "A+ RESULT: 10:59 A-flow +8,872 at about +6.6%; 11:45 price 116, +9.95% limit-up. R4 second A-flow sample not observed, so do not fabricate Persistence."),
@@ -80,8 +77,41 @@ def seed(path: str | Path) -> None:
                       ("2026-08-31",symbol,None,None,None,None,"2026-08-31",
                        "2026-08-31T15:10:00+08:00",note))
 
-        # UMC 2303 is deliberately a control, not a reversal success. We only have one
-        # verified prior-day chip observation, so R1 5D/20D must remain NO_DATA/false.
+        # 8358 金居: long-window outflow, but latest 5D has already turned positive.
+        # The chip_daily lot values below are synthetic sign-pattern data for UI/state testing;
+        # the actual observed currency values remain in source_note and are not converted to lots.
+        for i, d in enumerate(chip_dates):
+            inst = 1000 if i >= 15 else -2000
+            c.execute("INSERT OR REPLACE INTO chip_daily VALUES(?,?,?,?,?,?,?,?)",
+                      (d,"8358",inst/2,inst,10000,.1,d,d+"T16:00:00+08:00"))
+        c.execute("""INSERT INTO intraday_snapshot(
+            trade_date,symbol,stock_name,ts,open,high,low,close,prev_close,volume,ma5_volume,
+            vwap,a_flow,net_active,bid_ask_ratio,net_flow_amount,turnover_ratio,price_change_pct,
+            price_data_date,flow_data_time,as_of)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            ("2026-09-01","8358","金居","13:21:00",541,542,526,528,540,100000,100000,
+             540.16,None,None,None,None,.08,-2.22,"2026-09-01","13:21:00","2026-09-01T13:21:00+08:00"))
+        c.execute("INSERT OR REPLACE INTO trigger_context VALUES(?,?,?,?,?,?,?,?,?)",
+                  ("2026-08-31","8358",None,None,None,None,"2026-08-31","2026-08-31T15:10:00+08:00",
+                   "CONTROL: observed 8/31 institutional day +21.14B TWD, 5D +40.16B, 20D -158.15B; foreign already inflow 1 day. 9/1 13:21 price 528 (-2.22%) below VWAP 540.16. Financing 20D average 396.82; 8/31 price about 36.1% above it. High financing-profit divergence is a research note only, not a formal penalty rule."))
+
+        # 3026 禾伸堂: 20D/5D remain negative; single-day improvement is not enough.
+        for i, d in enumerate(chip_dates):
+            inst = 500 if i == 19 else -1000
+            c.execute("INSERT OR REPLACE INTO chip_daily VALUES(?,?,?,?,?,?,?,?)",
+                      (d,"3026",inst/2,inst,10000,.1,d,d+"T16:00:00+08:00"))
+        c.execute("""INSERT INTO intraday_snapshot(
+            trade_date,symbol,stock_name,ts,open,high,low,close,prev_close,volume,ma5_volume,
+            vwap,a_flow,net_active,bid_ask_ratio,net_flow_amount,turnover_ratio,price_change_pct,
+            price_data_date,flow_data_time,as_of)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            ("2026-09-01","3026","禾伸堂","13:21:00",769,770,728,731,742,100000,100000,
+             763.80,None,None,None,None,.08,-1.48,"2026-09-01","13:21:00","2026-09-01T13:21:00+08:00"))
+        c.execute("INSERT OR REPLACE INTO trigger_context VALUES(?,?,?,?,?,?,?,?,?)",
+                  ("2026-08-31","3026",None,None,None,None,"2026-08-31","2026-08-31T15:10:00+08:00",
+                   "CONTROL: observed 8/31 institutional day +3.70B TWD, 5D -3.74B, 20D -59.72B; foreign still outflow. 9/1 13:21 price 731 (-1.48%) below VWAP 763.80. OUTFLOW WATCH only; Day-1 trigger not established."))
+
+        # UMC 2303 control: strong A-flow but Acceptance failed.
         c.execute("INSERT OR REPLACE INTO chip_daily VALUES(?,?,?,?,?,?,?,?)",
                   ("2026-08-31","2303",-12716,-7502,None,None,"2026-08-31","2026-08-31T16:00:00+08:00"))
         c.execute("""INSERT INTO intraday_snapshot(
