@@ -94,6 +94,24 @@ def test_3374_negative_aflow_is_not_day1_reversal():
     assert card["state"] == "OUTFLOW_REVERSAL_WATCH"
 
 
+def test_2303_control_keeps_strong_aflow_but_does_not_fake_reversal_without_5d_20d_history():
+    c = make_db()
+    c.execute("INSERT INTO chip_daily VALUES(?,?,?,?,?,?,?,?)",
+              ("2026-08-31", "2303", -12716, -7502, None, None,
+               "2026-08-31", "2026-08-31T16:00:00+08:00"))
+    seed_snap(c, "2303", "聯電", "11:00:00", 129, 17963, 0.0, 129, volume=165000)
+    c.execute("INSERT INTO trigger_context VALUES(?,?,?,?,?,?,?,?,?)",
+              ("2026-08-31", "2303", 129, 129, 0, 1, "2026-08-31",
+               "2026-08-31T15:10:00+08:00",
+               "CONTROL: RVOL 1.65x; A-flow +17,963; trigger 129 hit; Acceptance FAILED; final action NO_ENTRY"))
+    c.commit()
+    card = next(x for x in build_reversal_day1(c, "2026-09-01")["results"] if x["symbol"] == "2303")
+    assert card["current_aflow"] == 17963
+    assert card["r1_prior_outflow"] is False
+    assert card["state"] == "NOT_REVERSAL"
+    assert "Acceptance FAILED" in card["control_note"]
+
+
 def test_stale_price_never_becomes_reversal_signal():
     c = make_db(); seed_chips(c, "6182")
     seed_snap(c, "6182", "合晶", "10:20:00", 109, 5000, 3.3, 107)
