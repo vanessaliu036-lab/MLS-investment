@@ -25,12 +25,22 @@ jobs:
         run: python -m pip install -q pytest fastapi shioaji
       - name: Apply P0 SSOT patch
         run: python .github/scripts/apply_chip_p0_ssot.py
+      - name: Compile changed Python modules
+        run: |
+          python -m py_compile \
+            '個股卡片相關檔案_20260722/chips.py' \
+            '個股卡片相關檔案_20260722/stock_card.py' \
+            '個股卡片相關檔案_20260722/extras.py' \
+            '個股卡片相關檔案_20260722/money_health_api.py' \
+            'vps_intraday_test.py'
       - name: Run P0 regression tests
         run: |
           pytest -q \
             tests/test_chip_p0_canonical.py \
-            tests/test_chips_asof.py \
-            tests/test_nexora_stock_data_accuracy.py
+            tests/test_engine_missing_chips.py \
+            tests/test_scoring_aflow_direction.py \
+            tests/test_dashboard_observer_contract.py \
+            tests/test_new_version_wiring.py
       - name: Commit verified source changes
         run: |
           git config user.name 'github-actions[bot]'
