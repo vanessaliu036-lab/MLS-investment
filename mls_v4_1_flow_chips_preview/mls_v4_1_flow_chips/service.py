@@ -8,6 +8,7 @@ from .repository import (
     chip_4d_summary,
     consecutive_flow_ticks,
     current_top_rows,
+    expected_chip_date,
     latest_trigger_context,
     market_regime,
     threshold_for_symbol,
@@ -18,11 +19,13 @@ def build_top10(conn, trade_date: str, direction: str, top_n: int = 10) -> dict:
     rows = current_top_rows(conn, trade_date, direction, limit=max(top_n * 2, 20))
     regime = market_regime(conn, trade_date)
     rescue_ok = rescue_validation(conn)["approved"]
+    expected_chip = expected_chip_date(conn, trade_date)
     cards = []
     for row in rows:
         threshold, configured_ticks = threshold_for_symbol(conn, row["symbol"])
         consecutive = consecutive_flow_ticks(conn, row["symbol"], trade_date, threshold)
         chip = chip_4d_summary(conn, row["symbol"], trade_date)
+        chip_is_fresh = bool(expected_chip and chip["chip_data_date"] == expected_chip)
         trig = latest_trigger_context(conn, row["symbol"], trade_date)
         inp = AnalysisInput(
             symbol=row["symbol"],
@@ -40,7 +43,8 @@ def build_top10(conn, trade_date: str, direction: str, top_n: int = 10) -> dict:
             vwap=row["vwap"], volume=row["volume"], ma5_volume=row["ma5_volume"],
             net_active=row["net_active"],
             aflow_positive_2_samples=aflow_positive_two_samples(conn, row["symbol"], trade_date),
-            foreign_net_4d=chip["foreign_net_4d"], volume_4d=chip["volume_4d"],
+            foreign_net_4d=chip["foreign_net_4d"] if chip_is_fresh else None,
+            volume_4d=chip["volume_4d"] if chip_is_fresh else None,
             big_holder_trend=chip["big_holder_trend"],
             trigger_failed=trig["trigger_failed"], trigger_passed=trig["trigger_passed"],
             market_regime=regime["regime"], rescue_rule_approved=rescue_ok,
@@ -54,6 +58,8 @@ def build_top10(conn, trade_date: str, direction: str, top_n: int = 10) -> dict:
             "required_ticks": configured_ticks,
             "flow_consecutive_ticks": consecutive,
             "chip_data_date": chip["chip_data_date"],
+            "chip_expected_date": expected_chip,
+            "chip_stale_data": not chip_is_fresh,
             "price_data_date": row["price_data_date"],
             "flow_data_time": row["flow_data_time"] or row["ts"],
             "snapshot_time": row["as_of"],
