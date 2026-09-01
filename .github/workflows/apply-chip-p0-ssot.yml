@@ -1,0 +1,47 @@
+name: Apply MLS chip P0 SSOT
+on:
+  push:
+    branches:
+      - feat/screen-logic-canonical
+    paths:
+      - '.github/scripts/apply_chip_p0_ssot.py'
+      - '.github/workflows/apply-chip-p0-ssot.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install test dependencies
+        run: python -m pip install -q pytest fastapi shioaji
+      - name: Apply P0 SSOT patch
+        run: python .github/scripts/apply_chip_p0_ssot.py
+      - name: Run P0 regression tests
+        run: |
+          pytest -q \
+            tests/test_chip_p0_canonical.py \
+            tests/test_chips_asof.py \
+            tests/test_nexora_stock_data_accuracy.py
+      - name: Commit verified source changes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            '個股卡片相關檔案_20260722/chips.py' \
+            '個股卡片相關檔案_20260722/stock_card.py' \
+            '個股卡片相關檔案_20260722/extras.py' \
+            '個股卡片相關檔案_20260722/money_health_api.py' \
+            'vps_intraday_test.py' \
+            '個股籌碼彈窗UI.html'
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix: enforce MLS chip and A-flow single source of truth'
+          git push origin HEAD:feat/screen-logic-canonical
