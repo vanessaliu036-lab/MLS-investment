@@ -19,6 +19,7 @@ def seed(path: str | Path) -> None:
         c.execute("INSERT INTO market_regime_daily VALUES(?,?,?,?,?)", ("2026-09-01", "RISK_ON", -0.2, 0.50, "2026-09-01T09:00:00+08:00"))
 
         stocks = [
+            # symbol, name, flow, chg, close, high, low, vwap, volume/ma5, foreign4d, trigger_failed, trigger_passed
             ("2455","全新", 47_300_000, 4.2, 110,112,100,106,1.1, 1800,0,1),
             ("2344","華邦電", 38_500_000, 1.6, 104,106,100,102,1.0, 1200,0,1),
             ("3037","欣興", 31_200_000, 2.1, 108,110,100,105,1.2,-2500,0,1),
@@ -41,11 +42,34 @@ def seed(path: str | Path) -> None:
                      100+i,10,1.2,flow*(.92 if i==0 else 1),.08,chg,"2026-09-01",ts,
                      f"2026-09-01T{ts}+08:00"))
             per_day = f4 / 4
-            for d in ("2026-08-25","2026-08-26","2026-08-27","2026-08-28"):
+            chip_dates = [f"2026-08-{d:02d}" for d in range(9, 29)]
+            for d in chip_dates:
                 c.execute("INSERT INTO chip_daily VALUES(?,?,?,?,?,?,?,?)",
                           (d,symbol,per_day,per_day,25000,.1,d,d+"T16:00:00+08:00"))
             c.execute("INSERT INTO trigger_context VALUES(?,?,?,?,?,?,?,?,?)",
                       ("2026-08-28",symbol,105,103,tf,tp,"2026-08-28","2026-08-28T15:10:00+08:00","DEMO"))
+
+        # Research-only Day-1 reversal examples based on the observed 09/01 pattern.
+        reversal_examples = [
+            ("8150", "南茂", [("10:59:00", 93.9, 13107, 5.2, 92.8),
+                               ("11:41:00", 94.6, 15779, 6.0, 93.1)]),
+            ("3532", "台勝科", [("10:59:00", 400.5, 604, 5.5, 398.0),
+                                  ("11:41:00", 405.0, 1061, 6.7, 401.0)]),
+        ]
+        for symbol, name, snaps in reversal_examples:
+            for d in [f"2026-08-{x:02d}" for x in range(9, 29)]:
+                c.execute("INSERT OR REPLACE INTO chip_daily VALUES(?,?,?,?,?,?,?,?)",
+                          (d, symbol, -500, -1000, 10000, -.1, d, d+"T16:00:00+08:00"))
+            for ts, close, aflow, chg, vwap in snaps:
+                prev_close = close / (1 + chg/100)
+                c.execute("""INSERT INTO intraday_snapshot(
+                    trade_date,symbol,stock_name,ts,open,high,low,close,prev_close,volume,ma5_volume,
+                    vwap,a_flow,net_active,bid_ask_ratio,net_flow_amount,turnover_ratio,price_change_pct,
+                    price_data_date,flow_data_time,as_of)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    ("2026-09-01",symbol,name,ts,prev_close,close+1,close-2,close,prev_close,100000,200000,
+                     vwap,aflow,100,1.2,aflow*1000,.08,chg,"2026-09-01",ts,
+                     f"2026-09-01T{ts}+08:00"))
 
         rates = {
             "INFLOW_STRONG__CHIP_GOOD": .70,
