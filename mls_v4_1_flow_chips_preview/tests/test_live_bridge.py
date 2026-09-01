@@ -43,9 +43,10 @@ def test_previous_reversal_day23_failure():
 def test_outflow_watch_not_triggered():
     p = {"ok": True, "rows": [row("3026", "禾伸堂", price=731, avg=761, change=-1.48, aflow=-3045, vol=12000, f5=110, f20=-11047)]}
     c = build_live_view(p)["reversal"][0]
-    assert c["reversal_state"] == "PREVIOUS_FLOW_REVERSAL_DAY2_3_FAILURE"
-    # 5D is slightly positive in the verified VPS payload, so this is not a pure
-    # 5D+20D outflow case. It is correctly treated as a recent-flow-turn control.
+    assert c["reversal_state"] == "OUTFLOW_WATCH_NOT_TRIGGERED"
+    assert c["lab_role"] == "OUTFLOW_WATCH"
+    # +110 over five days repairs only ~1% of the -11,047 twenty-day outflow.
+    # Reversal Lab must not call this a meaningful prior flow reversal.
 
 
 def test_strong_prior_chips_with_intraday_outflow_is_no_entry():
