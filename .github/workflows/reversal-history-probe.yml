@@ -1,0 +1,30 @@
+name: Reversal History Probe
+on:
+  push:
+    branches: [feature/mls-v4-1-flow-chips-preview]
+    paths: ['.github/workflows/reversal-history-probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Inspect selected route schemas and payloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='http://66.42.42.150:8000'
+          curl -fsS "$BASE/openapi.json" -o /tmp/o.json
+          for path in '/api/intraday-daily' '/api/watch-history' '/api/watch-history/stamp' '/api/liv/snapshot' '/api/volume-history/{code}'; do
+            echo "===== SCHEMA $path ====="
+            jq --arg p "$path" '.paths[$p]' /tmp/o.json
+          done
+          for url in \
+            "$BASE/api/intraday-daily" \
+            "$BASE/api/watch-history" \
+            "$BASE/api/watch-history/stamp" \
+            "$BASE/api/liv/snapshot?code=6182" \
+            "$BASE/api/volume-history/6182"; do
+            echo "===== GET $url ====="
+            curl -sS --connect-timeout 8 --max-time 30 "$url" | head -c 12000 || true
+            echo
+          done
