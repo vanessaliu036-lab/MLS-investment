@@ -31,6 +31,7 @@
 - `flow_threshold_config`: 既有「站上設定金額」門檻；支援 `symbol:股票代號` override，再 fallback `default`。
 - `decision_history`: 相似情境勝率、+3/+5、MFE/MAE、baseline。
 - `false_kill_kpi`: 錯殺率與 freshness pass rate。
+- `reversal_day1_history`: 反轉 Day-1 首次訊號、Persistence、T+1/T+2/T+3、3 日 MFE/MAE。
 
 ## DB-only source contract
 
@@ -40,7 +41,27 @@
 `trade_date, symbol, stock_name, ts, high, low, close, prev_close, volume, ma5_volume, vwap, a_flow, net_active, net_flow_amount, price_change_pct, price_data_date, flow_data_time, as_of`。
 
 籌碼最低欄位：
-`trade_date, symbol, foreign_net_lots, volume_lots, chip_data_date, as_of`。
+`trade_date, symbol, foreign_net_lots, institutional_net_lots, volume_lots, chip_data_date, as_of`。
+
+## Extreme Outflow → REVERSAL DAY-1 研究軌
+
+這條軌與 `False-Fail Rescue` 完全分離，也不依賴 C1+C2 是否把股票留在前一日候選池。它直接掃 plugin DB 的全體盤中 snapshot，專門抓「前期籌碼很差，因此舊系統根本沒監控；但 Day-1 早盤資金突然翻正」的 False Negative。
+
+狀態：
+
+- `OUTFLOW_REVERSAL_WATCH`：近 5D 或 20D 法人標準化 flow 為負，先保留。
+- `REVERSAL_DAY1_EARLY`：R1 前期流出 + R2 漲幅至少 +1.5% + R3 A-flow > 0 + 站上 VWAP。這一層故意不等 30–90 分鐘，避免漲到尾段才發現。
+- `REVERSAL_PRIORITY`：EARLY 之後，再確認 R4 A-flow 在 30–90 分鐘持續增加、R5 同期間價格同步墊高。
+
+R1–R5：
+
+1. 前期流出：5D / 20D institutional net flow 以成交量標準化，不直接比較絕對張數。
+2. Day-1 價格反轉：預覽門檻 +1.5%（研究參數，後續依樣本校準）。
+3. A-flow Flip：當前 A-flow > 0；跨日意義為「昨日籌碼負 → 今日主動流正」。
+4. A-flow Persistence：找 30–90 分鐘前最近一筆 snapshot，要求當時 A-flow > 0 且最新 A-flow 更高。
+5. Price Confirmation：同一 Persistence window 價格同步提高，且目前仍在 VWAP 上方。
+
+此軌目前固定 `OBSERVE_ONLY`。即使狀態為 `REVERSAL_PRIORITY` 也不取得正式 ACTION 權限，先累積 T+1 / T+2 / T+3、MFE、MAE 與 regime 對照。
 
 ## 本機預覽
 
@@ -59,4 +80,4 @@ MLS_FLOW_CHIPS_DB=demo.db python -m mls_v4_1_flow_chips.preview_server
 PYTHONPATH=. pytest -q
 ```
 
-目前測試涵蓋 Freshness、CLV、Volume Quality、四象限、Rescue、歷史樣本門檻、TOP 排名、連續 flow ticks、A-flow 兩次確認與 DB bridge 欄位驗證。
+測試涵蓋 Freshness、CLV、Volume Quality、四象限、Rescue、歷史樣本門檻、TOP 排名、連續 flow ticks、A-flow 兩次確認、DB bridge 欄位驗證，以及 8150/3532/3374 類型的 REVERSAL DAY-1 / Persistence 對照。
