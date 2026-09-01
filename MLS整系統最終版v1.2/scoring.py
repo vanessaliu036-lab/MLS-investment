@@ -49,42 +49,28 @@ def tnvr(total_volume, avg5_volume, now=None):
 # 修法:優先用 broker 已在抓的 buy_volume/sell_volume(外盤/內盤累積量)
 # 兩輪增量差,這是快照 API 真正可靠的欄位;tick_type 僅在兩者缺值時
 # 當退回法(相容舊呼叫)。
-_prev_vol = {}       # code → 上一輪累積總量(tick_type 退回法用)
-_prev_buy = {}       # code → 上一輪外盤(主動買)累積量
-_prev_sell = {}      # code → 上一輪內盤(主動賣)累積量
-_aflow = {}          # code → 主動淨流(股;+主動買 −主動賣)
-_ratio_hist = {}      # code → 最近 N 輪 aflow_ratio(供資金流速計算)
+VERIFIED_AFLOW_SOURCES = {"shioaji_ticks", "canonical_active_flow"}
+_aflow = {}           # code -> verified active buy - active sell
+_ratio_hist = {}      # code -> recent verified aflow_ratio
 
 
 def update_aflow(code, total_volume, tick_type=None,
-                 buy_volume=None, sell_volume=None):
+                 buy_volume=None, sell_volume=None, source=None):
+    """Update canonical A-flow only from an explicitly verified source.
+
+    Missing data and snapshot quote queues are not zero flow. They are
+    unavailable and cannot satisfy an entry/BS gate.
     """
-    每輪掃描呼叫。
-    優先法:buy_volume/sell_volume(broker 快照已提供的外盤/內盤累積量)
-           兩輪增量差 → 可靠,不受快照 tick_type 限制。
-    退回法:兩者缺值時才用舊 tick_type 記號法(相容舊呼叫/測試)。
-    """
-    if buy_volume is not None and sell_volume is not None:
-        pb = _prev_buy.get(code, buy_volume)
-        ps = _prev_sell.get(code, sell_volume)
-        db_ = max(0, (buy_volume or 0) - pb)
-        ds_ = max(0, (sell_volume or 0) - ps)
-        _prev_buy[code] = buy_volume or 0
-        _prev_sell[code] = sell_volume or 0
-        _aflow[code] = _aflow.get(code, 0) + (db_ - ds_)
-        return _aflow[code]
-    # ── 退回法(舊邏輯,保留相容) ──
-    prev = _prev_vol.get(code, total_volume)
-    delta = max(0, (total_volume or 0) - prev)
-    _prev_vol[code] = total_volume or 0
-    sign = 0
-    t = str(tick_type)
-    if t in ("2", "TickType.Buy"):
-        sign = 1
-    elif t in ("1", "TickType.Sell"):
-        sign = -1
-    _aflow[code] = _aflow.get(code, 0) + delta * sign
-    return _aflow[code]
+    if source not in VERIFIED_AFLOW_SOURCES or buy_volume is None or sell_volume is None:
+        _aflow.pop(code, None)
+        return None
+    try:
+        value = int(buy_volume or 0) - int(sell_volume or 0)
+    except (TypeError, ValueError):
+        _aflow.pop(code, None)
+        return None
+    _aflow[code] = value
+    return value
 
 
 def push_flow_ratio(code, ratio, maxlen=6):
@@ -104,16 +90,13 @@ def flow_velocity(code):
 
 
 def reset_aflow():
-    """每日開盤前清空。"""
-    _prev_vol.clear()
-    _prev_buy.clear()
-    _prev_sell.clear()
+    """Clear verified A-flow state before each trading day."""
     _aflow.clear()
     _ratio_hist.clear()
 
 
 def get_aflow(code):
-    return _aflow.get(code, 0)
+    return _aflow.get(code)
 
 
 # ── BS Ratio 主動買賣盤濾網(第四道關卡) ─────────────────
@@ -132,7 +115,10 @@ def bs_ratio(buy_vol, sell_vol):
 
 
 def bs_recent(code, buy_vol, sell_vol):
-    """近端主動買賣比(用兩輪快照增量近似『近幾分鐘』;非逐筆,標 approx)。"""
+    """Recent active buy/sell ratio. Missing data stays unavailable."""
+    if buy_vol is None or sell_vol is None:
+        _bs_prev.pop(code, None)
+        return None
     pb, ps = _bs_prev.get(code, (buy_vol, sell_vol))
     _bs_prev[code] = (buy_vol or 0, sell_vol or 0)
     db = max(0, (buy_vol or 0) - pb)
@@ -187,7 +173,7 @@ def divergence(change_rate, aflow, total_volume):
     pull_sell: 價漲但主動淨流為負 → 邊拉邊賣(拉高出貨)
     淨流須達當日量 8% 才算顯著,避免雜訊。
     """
-    if not total_volume:
+    if aflow is None or not total_volume:
         return None, ""
     ratio = aflow / total_volume
     if change_rate <= -1.0 and ratio > 0.08:

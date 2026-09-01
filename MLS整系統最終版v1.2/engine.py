@@ -260,10 +260,11 @@ def eval_stock(s, locked_sectors, *, sector_median=0.0, market_pct=0.0,
         rules.append("站上均價線")
 
     # ── 五因子評分(TNVR/aflow/RS/籌碼/懲罰) ──
-    aflow = scoring.update_aflow(s["code"], s.get("total_volume"),
-                                 s.get("tick_type"),
-                                 buy_volume=s.get("buy_volume"),
-                                 sell_volume=s.get("sell_volume"))
+    aflow = scoring.update_aflow(
+        s["code"], s.get("total_volume"), s.get("tick_type"),
+        buy_volume=s.get("active_buy_volume"),
+        sell_volume=s.get("active_sell_volume"),
+        source=s.get("active_flow_source"))
     tnvr_val = scoring.tnvr(s.get("total_volume"), _avg5_volume(s["code"]))
     chip = chips.get_chips(s["code"])
     in_locked = s.get("sector") in locked_sectors and s.get("sector_type") == "attack"
@@ -273,9 +274,14 @@ def eval_stock(s, locked_sectors, *, sector_median=0.0, market_pct=0.0,
         tnvr_val=tnvr_val, aflow_val=aflow, mode=mode)
 
     # ── 第四道關卡:BS Ratio 主動買賣盤濾網 ──
-    _bs_recent = scoring.bs_recent(s["code"], s.get("buy_volume"), s.get("sell_volume"))
+    active_buy = s.get("active_buy_volume")
+    active_sell = s.get("active_sell_volume")
+    verified_flow = s.get("active_flow_source") in scoring.VERIFIED_AFLOW_SOURCES
+    if not verified_flow:
+        active_buy = active_sell = None
+    _bs_recent = scoring.bs_recent(s["code"], active_buy, active_sell)
     bs_pass, bs_detail = scoring.bs_filter(
-        s.get("buy_volume"), s.get("sell_volume"), market_pct,
+        active_buy, active_sell, market_pct,
         intraday=True, recent_pct=_bs_recent)
 
     risk = []

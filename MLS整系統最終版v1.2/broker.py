@@ -101,23 +101,13 @@ def market_scan_codes():
 
 
 def batch_snapshots(codes):
-    """
-    批次快照(不佔訂閱額度)。回傳 list[dict] 統一欄位:
-    code, price, open, high, low, change_rate(%), volume_ratio,
-    total_volume, total_amount, avg_price, tick_type。
+    """Batch snapshots with unambiguous data semantics.
 
-    單一個股查詢時，既有 buy_volume / sell_volume 欄位改接當日 ticks 的
-    真實外盤／內盤成交量，另用 bid_volume / ask_volume 保留快照掛單量。
-    多檔掃描維持既有行為，避免本修正改動凍結中的主引擎計算。
+    Snapshot.buy_volume/sell_volume are best bid/ask quote-queue quantities,
+    not active-trade flow. Never overload them as A-flow, and never call the
+    full-day ticks endpoint synchronously from the card/request path.
     """
     api = get_api()
-    single_flow = None
-    if len(codes) == 1:
-        try:
-            single_flow = active_flow_today(codes[0])
-        except Exception as e:
-            print(f"[broker] active flow {codes[0]} 失敗: {e}")
-
     contracts = []
     for c in codes:
         try:
@@ -126,7 +116,7 @@ def batch_snapshots(codes):
             continue
 
     out = []
-    for i in range(0, len(contracts), 400):      # snapshots 分批,控節奏防超限
+    for i in range(0, len(contracts), 400):
         try:
             snaps = api.snapshots(contracts[i:i + 400])
         except Exception as e:
@@ -136,7 +126,6 @@ def batch_snapshots(codes):
         for s in snaps:
             quote_buy = getattr(s, "buy_volume", 0) or 0
             quote_sell = getattr(s, "sell_volume", 0) or 0
-            is_single = len(codes) == 1
             out.append({
                 "code": s.code,
                 "price": s.close,
@@ -149,14 +138,14 @@ def batch_snapshots(codes):
                 "tick_type": getattr(s, "tick_type", None),
                 "bid_volume": quote_buy,
                 "ask_volume": quote_sell,
-                "buy_volume": ((single_flow or {}).get("active_buy_volume")
-                               if is_single else quote_buy),
-                "sell_volume": ((single_flow or {}).get("active_sell_volume")
-                                if is_single else quote_sell),
-                "active_flow_diff": ((single_flow or {}).get("active_diff")
-                                     if is_single else None),
-                "active_flow_source": ((single_flow or {}).get("source")
-                                       if is_single else None),
+                # Legacy ambiguous fields are deliberately unavailable.
+                "buy_volume": None,
+                "sell_volume": None,
+                # Canonical A-flow is injected by a dedicated verified source.
+                "active_buy_volume": None,
+                "active_sell_volume": None,
+                "active_flow_diff": None,
+                "active_flow_source": None,
             })
         time.sleep(0.3)
     return out

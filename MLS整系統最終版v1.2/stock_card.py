@@ -8,7 +8,7 @@ MLS 模組 — stock_card.py(v2.3 新增)
 區塊與資料來源:
   籌碼面   chips.get_chips_detail(外資/投信/自營=日資料;
            400張/千張大戶=集保週資料);主力分點=premium 介面,現階段 None
-  資金     主動買/賣% = 快照 buy_volume/sell_volume(外/內盤累積);
+  資金     主動買/賣% = 僅限已驗證 active_buy_volume/active_sell_volume;
            5日/10日資金流 = 日K帶方向量能(收漲日+量、收跌日−量)加總方向
   技術     indicators.py(MA5/10/20、MACD、KD、RSI、ATR;
            low 缺真值時 KD/ATR 標 approx)
@@ -104,14 +104,17 @@ def build_card(code, snap=None, health=None, grade=None,
     }
 
     # ── 資金 ────────────────────────────────────────────
-    bv = (snap or {}).get("buy_volume") or 0
-    sv = (snap or {}).get("sell_volume") or 0
-    tot = bv + sv
+    flow_source = (snap or {}).get("active_flow_source")
+    verified_flow = flow_source in {"shioaji_ticks", "canonical_active_flow"}
+    bv = (snap or {}).get("active_buy_volume") if verified_flow else None
+    sv = (snap or {}).get("active_sell_volume") if verified_flow else None
+    tot = ((bv or 0) + (sv or 0)) if bv is not None and sv is not None else 0
     flow_block = {
         "active_buy_pct": round(bv / tot * 100, 1) if tot else None,
         "active_sell_pct": round(sv / tot * 100, 1) if tot else None,
         "flow_5d": _flow_days(bars, 5),
         "flow_10d": _flow_days(bars, 10),
+        "source": flow_source if verified_flow else None,
     }
 
     # ── 技術 ────────────────────────────────────────────
