@@ -1,0 +1,22 @@
+name: Reversal Lab Tests
+on:
+  push:
+    branches: [feature/mls-v4-1-flow-chips-preview]
+    paths:
+      - 'mls_v4_1_flow_chips_preview/**'
+      - '.github/workflows/reversal-lab-tests.yml'
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -q pytest
+      - name: Reversal Lab unit and contract tests
+        working-directory: mls_v4_1_flow_chips_preview
+        env:
+          PYTHONPATH: .
+        run: pytest -q tests/test_live_bridge.py tests/test_reversal_lab_contract.py
