@@ -387,9 +387,9 @@ def score_chip(chip_data: Optional[Dict]) -> tuple:
     neg = ((net or 0) < 0 and (streak or 0) <= -3)
     chip_ok = 1 if (pos and not neg) else (0 if neg else None)
 
-    note = f"法人近月{(net or 0):+,}張"
+    note = f"三大法人20日合計{(net or 0):+,}張"
     if streak:
-        note += f",連{'買' if streak > 0 else '賣'}{abs(streak)}日"
+        note += f",外資連{'買' if streak > 0 else '賣'}{abs(streak)}日"
     if big is not None:
         note += f",大戶{big:+.1f}pp"
     ev = {"net20": net, "streak": streak, "big": big}
@@ -489,6 +489,7 @@ def risk_flags(snap: Dict, tech_ev: Dict, cap_ev: Dict, data_quality: Dict) -> D
     resistance = int(price is not None and prev_high is not None and prev_high > 0 and
                      0 <= (prev_high - price) / prev_high * 100 <= PARAMS.RESIST_NEAR)
     data_incomplete = int(any(v != "ok" for v in data_quality.values()))
+    net_active_missing = int(data_quality.get("capital") != "ok")
 
     return {
         "ma_break": ma_break,
@@ -499,11 +500,13 @@ def risk_flags(snap: Dict, tech_ev: Dict, cap_ev: Dict, data_quality: Dict) -> D
         "no_breakout": no_breakout,
         "resistance": resistance,
         "data_incomplete": data_incomplete,
+        "net_active_missing": net_active_missing,
     }
 
 
 def hard_hits(risk: Dict) -> List[str]:
-    names = {"ma_break": "跌破 MA20", "divergence": "量價背離", "proxy": "資金為代理"}
+    names = {"ma_break": "跌破 MA20", "divergence": "量價背離", "proxy": "資金為代理",
+             "net_active_missing": "缺 net_active"}
     return [v for k, v in names.items() if risk.get(k)]
 
 
@@ -513,6 +516,8 @@ def hard_hits(risk: Dict) -> List[str]:
 def grade_and_reason(health: int, quad: str, chip_ok: Optional[int],
                      risk: Dict, track: str, above_ma20: bool = False) -> tuple:
     hard = hard_hits(risk)
+    if risk.get("net_active_missing"):
+        return "Watch", True, "DATA_INCOMPLETE｜缺 net_active，禁止正式進場", hard
     if track == "engine":
         base = "Ready" if (above_ma20 and health >= PARAMS.WATCH_MIN and chip_ok != 0) \
             else ("Watch" if (above_ma20 or health >= PARAMS.WATCH_MIN) else "Hold")
@@ -688,6 +693,7 @@ def build_row(snap: Dict, *,
         "ai": ai,
         "grade": grade,
         "grade_reason": reason,
+        "data_status": "DATA_INCOMPLETE" if risk.get("net_active_missing") else "OK",
         "_capped": capped,
     }
 
