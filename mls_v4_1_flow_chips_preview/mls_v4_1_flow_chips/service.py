@@ -79,6 +79,16 @@ def build_top10(conn, trade_date: str, direction: str, top_n: int = 10) -> dict:
     }
 
 
+def _control_note(conn, symbol: str, trade_date: str) -> str | None:
+    row = conn.execute(
+        """SELECT source_note FROM trigger_context
+           WHERE symbol=? AND trade_date <= ?
+           ORDER BY trade_date DESC LIMIT 1""",
+        (symbol, trade_date),
+    ).fetchone()
+    return row["source_note"] if row and row["source_note"] else None
+
+
 def build_reversal_day1(conn, trade_date: str, top_n: int = 20) -> dict:
     """Build the separate Extreme Outflow -> Day-1 reversal research list.
 
@@ -124,6 +134,7 @@ def build_reversal_day1(conn, trade_date: str, top_n: int = 20) -> dict:
             "symbol": row["symbol"], "name": row["stock_name"],
             "state": state, "action": "OBSERVE_ONLY", "scenario": scenario,
             "summary": reversal_summary(state),
+            "control_note": _control_note(conn, row["symbol"], trade_date),
             "r1_prior_outflow": prior_outflow,
             "r1_extreme_outflow": extreme_outflow,
             "r2_price_reversal": price_reversal,
