@@ -1,0 +1,20 @@
+name: Flow Chips Route Probe
+on:
+  push:
+    branches: [feature/mls-v4-1-flow-chips-preview]
+    paths: ['.github/workflows/flow-chips-route-probe.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Inspect OpenAPI routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='http://66.42.42.150:8000'
+          curl -fsS --connect-timeout 8 --max-time 20 "$BASE/openapi.json" -o /tmp/openapi.json
+          echo '===== routes ====='
+          jq -r '.paths | keys[]' /tmp/openapi.json | sort
+          echo '===== flow/history candidates ====='
+          jq -r '.paths | keys[]' /tmp/openapi.json | grep -Ei 'flow|history|snapshot|intraday|watch|reversal|timeline|series' || true
