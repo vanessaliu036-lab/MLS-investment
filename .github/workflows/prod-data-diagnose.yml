@@ -6,21 +6,22 @@ on:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
     steps:
-      - name: Probe production data APIs
+      - name: Probe production card implementation
         shell: bash
         run: |
           set -u
           BASE="http://66.42.42.150:8000"
-          echo "=== time ==="
-          date -u
-          for path in /healthz /api/stock/2303 /api/chips/2303 /api/volume-history/2303 /api/stock/2344 /api/chips/2344 /api/volume-history/2344 /api/stock/8358 /api/chips/8358 /api/volume-history/8358; do
-            echo "===== GET $path ====="
-            rm -f /tmp/body
-            code=$(curl -sS --connect-timeout 6 --max-time 20 -o /tmp/body -w '%{http_code}' "$BASE$path" || true)
-            bytes=$(wc -c </tmp/body 2>/dev/null || echo 0)
-            echo "HTTP=$code bytes=$bytes"
-            head -c 16000 /tmp/body 2>/dev/null || true
-            echo
+          echo "=== health ==="
+          curl -sS --connect-timeout 6 --max-time 10 "$BASE/healthz" || true
+          echo
+          for code in 2303 2344 8358; do
+            echo "===== CARD PAGE $code ====="
+            curl -sS --connect-timeout 6 --max-time 20 "$BASE/api/card_page?code=$code" -o "/tmp/card-$code.html" || true
+            echo "bytes=$(wc -c </tmp/card-$code.html 2>/dev/null || echo 0)"
+            grep -nE 'foreign_net_[d35]|foreign_net_5d|外資|法人當日|成交量歷史|volume-history|margin|融資|/api/stock|/api/chips' "/tmp/card-$code.html" | head -240 || true
           done
+          echo "===== ROOT RELEVANT ====="
+          curl -sS --connect-timeout 6 --max-time 20 "$BASE/" -o /tmp/root.html || true
+          grep -nE 'foreign_net_[d35]|foreign_net_5d|BULLISH_FOREIGN|昨日法人|外資|/api/chips|/api/stock' /tmp/root.html | head -300 || true
