@@ -136,3 +136,114 @@ def market_regime(conn: sqlite3.Connection, trade_date: str) -> dict:
 def expected_chip_date(conn: sqlite3.Connection, trade_date: str) -> str | None:
     row = conn.execute("SELECT MAX(trade_date) d FROM chip_daily WHERE trade_date < ?", (trade_date,)).fetchone()
     return row["d"] if row else None
+
+
+def current_latest_rows(conn: sqlite3.Connection, trade_date: str):
+    """Latest snapshot for every symbol on the requested trade date."""
+    return conn.execute(
+        """WITH latest AS (
+                SELECT symbol, MAX(ts) ts
+                FROM intraday_snapshot
+                WHERE trade_date=?
+                GROUP BY symbol
+            )
+            SELECT s.*
+            FROM intraday_snapshot s
+            JOIN latest l ON l.symbol=s.symbol AND l.ts=s.ts
+            WHERE s.trade_date=?""",
+        (trade_date, trade_date),
+    ).fetchall()
+
+
+def institutional_outflow_summary(conn: sqlite3.Connection, symbol: str, trade_date: str) -> dict:
+    """Standardized prior institutional flow for the reversal research track.
+
+    Ratios are institutional net lots / total traded lots over 5D and 20D.
+    A ratio is only emitted when the full requested window exists.
+    """
+    rows = conn.execute(
+        """SELECT * FROM chip_daily
+           WHERE symbol=? AND trade_date < ?
+           ORDER BY trade_date DESC LIMIT 20""",
+        (symbol, trade_date),
+    ).fetchall()
+
+    def window_ratio(n: int):
+        if len(rows) < n:
+            return None
+        sub = rows[:n]
+        volume = sum(float(r["volume_lots"] or 0) for r in sub)
+        if volume <= 0:
+            return None
+        net = sum(float(r["institutional_net_lots"] or 0) for r in sub)
+        return net / volume
+
+    return {
+        "institutional_net_5d_ratio": window_ratio(5),
+        "institutional_net_20d_ratio": window_ratio(20),
+        "n_days": len(rows),
+        "chip_data_date": (rows[0]["chip_data_date"] or rows[0]["trade_date"]) if rows else None,
+    }
+
+
+def _snapshot_dt(trade_date: str, ts: str):
+    from datetime import datetime
+    text = str(ts)
+    if "T" in text:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).replace(tzinfo=None)
+    return datetime.fromisoformat(f"{trade_date}T{text}")
+
+
+def aflow_persistence_metrics(
+    conn: sqlite3.Connection,
+    symbol: str,
+    trade_date: str,
+    *,
+    min_minutes: int = 30,
+    max_minutes: int = 90,
+) -> dict:
+    """Compare latest snapshot with the nearest sample 30-90 minutes earlier."""
+    rows = conn.execute(
+        """SELECT ts, close, a_flow, volume, vwap
+           FROM intraday_snapshot
+           WHERE symbol=? AND trade_date=?
+           ORDER BY ts""",
+        (symbol, trade_date),
+    ).fetchall()
+    if not rows:
+        return {
+            "reference_ts": None, "elapsed_minutes": None,
+            "aflow_delta": None, "price_delta": None,
+            "aflow_persistence": False, "price_confirmation": False,
+        }
+    latest = rows[-1]
+    latest_dt = _snapshot_dt(trade_date, latest["ts"])
+    candidates = []
+    for row in rows[:-1]:
+        dt = _snapshot_dt(trade_date, row["ts"])
+        elapsed = (latest_dt - dt).total_seconds() / 60
+        if min_minutes <= elapsed <= max_minutes:
+            candidates.append((dt, elapsed, row))
+    if not candidates:
+        return {
+            "reference_ts": None, "elapsed_minutes": None,
+            "aflow_delta": None, "price_delta": None,
+            "aflow_persistence": False, "price_confirmation": False,
+        }
+    _, elapsed, ref = max(candidates, key=lambda x: x[0])
+    la, ra = latest["a_flow"], ref["a_flow"]
+    lc, rc = latest["close"], ref["close"]
+    aflow_delta = (float(la) - float(ra)) if la is not None and ra is not None else None
+    price_delta = (float(lc) - float(rc)) if lc is not None and rc is not None else None
+    aflow_persistence = bool(
+        la is not None and ra is not None and float(ra) > 0 and float(la) > float(ra)
+    )
+    price_confirmation = bool(price_delta is not None and price_delta > 0)
+    return {
+        "reference_ts": ref["ts"],
+        "elapsed_minutes": round(elapsed, 1),
+        "aflow_delta": aflow_delta,
+        "price_delta": price_delta,
+        "aflow_persistence": aflow_persistence,
+        "price_confirmation": price_confirmation,
+    }
