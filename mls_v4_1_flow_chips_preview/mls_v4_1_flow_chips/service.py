@@ -108,11 +108,17 @@ def build_reversal_day1(conn, trade_date: str, top_n: int = 20) -> dict:
         chip_fresh = bool(expected_chip and flow["chip_data_date"] == expected_chip)
         r5 = flow["institutional_net_5d_ratio"] if chip_fresh else None
         r20 = flow["institutional_net_20d_ratio"] if chip_fresh else None
+        n1 = flow["institutional_net_1d"] if chip_fresh else None
+        n5 = flow["institutional_net_5d"] if chip_fresh else None
+        n20 = flow["institutional_net_20d"] if chip_fresh else None
         prior_outflow = any(v is not None and v < 0 for v in (r5, r20))
         extreme_outflow = bool(r5 is not None and r20 is not None and r5 < 0 and r20 < 0)
+        five_day_flow_positive = bool(n5 is not None and n5 > 0)
+        twenty_day_flow_negative = bool(n20 is not None and n20 < 0)
         stale_price = price_freshness(row["price_data_date"], trade_date) != "OK"
         price_change = row["price_change_pct"]
         price_reversal = bool(price_change is not None and float(price_change) >= 1.5)
+        price_weak = bool(price_change is not None and float(price_change) < 0)
         aflow = row["a_flow"]
         aflow_flip = bool(aflow is not None and float(aflow) > 0)
         above_vwap = bool(row["close"] is not None and row["vwap"] is not None and float(row["close"]) > float(row["vwap"]))
@@ -126,6 +132,9 @@ def build_reversal_day1(conn, trade_date: str, top_n: int = 20) -> dict:
             price_confirmation=persistence["price_confirmation"],
             above_vwap=above_vwap,
             stale_price=stale_price,
+            five_day_flow_positive=five_day_flow_positive,
+            twenty_day_flow_negative=twenty_day_flow_negative,
+            price_weak=price_weak,
         )
         volume = float(row["volume"] or 0)
         aflow_ratio = (float(aflow) / volume) if aflow is not None and volume > 0 else None
@@ -142,10 +151,14 @@ def build_reversal_day1(conn, trade_date: str, top_n: int = 20) -> dict:
             "r4_aflow_persistence": persistence["aflow_persistence"],
             "r5_price_confirmation": persistence["price_confirmation"] and above_vwap,
             "above_vwap": above_vwap,
+            "price_weak": price_weak,
             "price_change_pct": row["price_change_pct"],
             "current_price": row["close"],
             "current_aflow": aflow,
             "aflow_ratio": aflow_ratio,
+            "institutional_net_1d": n1,
+            "institutional_net_5d": n5,
+            "institutional_net_20d": n20,
             "institutional_net_5d_ratio": r5,
             "institutional_net_20d_ratio": r20,
             "chip_data_date": flow["chip_data_date"],
@@ -162,9 +175,11 @@ def build_reversal_day1(conn, trade_date: str, top_n: int = 20) -> dict:
     priority = {
         "REVERSAL_PRIORITY": 0,
         "REVERSAL_DAY1_EARLY": 1,
-        "OUTFLOW_REVERSAL_WATCH": 2,
-        "STALE_PRICE_DATA": 3,
-        "NOT_REVERSAL": 4,
+        "PREVIOUS_FLOW_REVERSAL_DAY2_3_FAILURE": 2,
+        "OUTFLOW_WATCH_NOT_TRIGGERED": 3,
+        "OUTFLOW_REVERSAL_WATCH": 4,
+        "STALE_PRICE_DATA": 5,
+        "NOT_REVERSAL": 6,
     }
     out.sort(key=lambda x: (
         priority.get(x["state"], 9),
