@@ -72,14 +72,21 @@ def test_active_flow_today_reads_today_ticks_and_returns_source(monkeypatch):
     assert api.calls == [(api.Contracts.Stocks["2330"], "2026-09-01")]
 
 
-def test_single_stock_snapshot_exposes_tick_active_flow_not_quote_queue(monkeypatch):
+def test_single_stock_snapshot_never_blocks_on_full_day_ticks(monkeypatch):
     api = FakeBatchApi()
     monkeypatch.setattr(broker, "get_api", lambda: api)
     monkeypatch.setattr(broker.time, "sleep", lambda *_: None)
     got = broker.batch_snapshots(["2330"])[0]
-    assert got["buy_volume"] == 17
-    assert got["sell_volume"] == 5
-    assert got["active_flow_diff"] == 12
-    assert got["active_flow_source"] == "shioaji_ticks"
+
+    # Snapshot buy/sell are quote-queue quantities, not active-trade flow.
+    # They must never be overloaded as A-flow and a card request must not call
+    # the expensive full-day ticks endpoint synchronously.
+    assert api.calls == []
     assert got["bid_volume"] == 524
     assert got["ask_volume"] == 103
+    assert got["buy_volume"] is None
+    assert got["sell_volume"] is None
+    assert got["active_buy_volume"] is None
+    assert got["active_sell_volume"] is None
+    assert got["active_flow_diff"] is None
+    assert got["active_flow_source"] is None
