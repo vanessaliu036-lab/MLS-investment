@@ -94,6 +94,42 @@ def test_3374_negative_aflow_is_not_day1_reversal():
     assert card["state"] == "OUTFLOW_REVERSAL_WATCH"
 
 
+def test_8358_previous_flow_reversal_then_price_failure_is_separate_control_state():
+    c = make_db()
+    dates = [f"2026-08-{d:02d}" for d in range(9, 29)]
+    for i, d in enumerate(dates):
+        inst = 1000 if i >= 15 else -2000
+        c.execute("INSERT INTO chip_daily VALUES(?,?,?,?,?,?,?,?)",
+                  (d, "8358", inst/2, inst, 10000, .1, d, d+"T16:00:00+08:00"))
+    seed_snap(c, "8358", "金居", "13:21:00", 528, -1200, -2.22, 540.16)
+    c.execute("INSERT INTO trigger_context VALUES(?,?,?,?,?,?,?,?,?)",
+              ("2026-08-31","8358",None,None,None,None,"2026-08-31","2026-08-31T15:10:00+08:00",
+               "CONTROL: 20D flow negative, latest 5D already positive; financing 20D average 396.82 and price about 36.1% above it on 8/31."))
+    c.commit()
+    card = next(x for x in build_reversal_day1(c, "2026-09-01")["results"] if x["symbol"] == "8358")
+    assert card["institutional_net_20d"] < 0
+    assert card["institutional_net_5d"] > 0
+    assert card["above_vwap"] is False
+    assert card["state"] == "PREVIOUS_FLOW_REVERSAL_DAY2_3_FAILURE"
+
+
+def test_3026_outflow_watch_without_day1_trigger_is_not_buy_signal():
+    c = make_db()
+    dates = [f"2026-08-{d:02d}" for d in range(9, 29)]
+    for i, d in enumerate(dates):
+        inst = 500 if i == 19 else -1000
+        c.execute("INSERT INTO chip_daily VALUES(?,?,?,?,?,?,?,?)",
+                  (d, "3026", inst/2, inst, 10000, .1, d, d+"T16:00:00+08:00"))
+    seed_snap(c, "3026", "禾伸堂", "13:21:00", 731, -300, -1.48, 763.80)
+    c.commit()
+    card = next(x for x in build_reversal_day1(c, "2026-09-01")["results"] if x["symbol"] == "3026")
+    assert card["institutional_net_20d"] < 0
+    assert card["institutional_net_5d"] < 0
+    assert card["r2_price_reversal"] is False
+    assert card["above_vwap"] is False
+    assert card["state"] == "OUTFLOW_WATCH_NOT_TRIGGERED"
+
+
 def test_2303_control_keeps_strong_aflow_but_does_not_fake_reversal_without_5d_20d_history():
     c = make_db()
     c.execute("INSERT INTO chip_daily VALUES(?,?,?,?,?,?,?,?)",
