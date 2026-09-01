@@ -1,0 +1,36 @@
+name: Flow Chips VPS SSH Check
+on:
+  push:
+    branches:
+      - feature/mls-v4-1-flow-chips-preview
+    paths:
+      - '.github/workflows/flow-chips-vps-ssh-check.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      KEY1: ${{ secrets.VPS_SSH_KEY }}
+      KEY2: ${{ secrets.SSH_PRIVATE_KEY }}
+      KEY3: ${{ secrets.VPS_PRIVATE_KEY }}
+      KEY4: ${{ secrets.MLS_SSH_KEY }}
+    steps:
+      - name: Check SSH secret and connection
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY="$KEY1"
+          [ -n "$KEY" ] || KEY="$KEY2"
+          [ -n "$KEY" ] || KEY="$KEY3"
+          [ -n "$KEY" ] || KEY="$KEY4"
+          if [ -z "$KEY" ]; then
+            echo 'NO_SSH_SECRET'
+            exit 0
+          fi
+          echo 'SSH_SECRET_FOUND'
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H 66.42.42.150 >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -o BatchMode=yes -o ConnectTimeout=8 root@66.42.42.150 'echo SSH_OK; hostname; pwd'
