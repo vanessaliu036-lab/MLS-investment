@@ -117,6 +117,11 @@ def _reason_tags(classified: dict, market: dict, trigger_price=None) -> list[str
     sector_rel = _num(market.get("sector_rel"))
     change = _num(market.get("change_rate"))
     volume, vol_ma20 = _num(market.get("volume")), _num(market.get("vol_ma20"))
+    # 盤中優先吃 screen_intraday 已算好的 canonical ratio，避免 quote.volume=張
+    # 與 daily_bar.vol_ma20=股被直接相除。只有沒有盤中 ratio 的舊/盤後呼叫才 fallback。
+    volume_ratio = _num(market.get("intraday_volume_ratio"))
+    if volume_ratio is None and volume is not None and vol_ma20:
+        volume_ratio = volume / vol_ma20
     tags = []
     resistance = _num(trigger_price)
     weak_watch = (classified.get("classification") == layered_score.TIER_CANDIDATE and
@@ -134,8 +139,7 @@ def _reason_tags(classified: dict, market: dict, trigger_price=None) -> list[str
         tags.append("族群轉強")
     if low is not None and close is not None and ma20 is not None and low < ma20 <= close:
         tags.append("站回 MA20")
-    if (change is not None and change > 0 and volume is not None and vol_ma20 and
-            volume / vol_ma20 >= 1.2):
+    if change is not None and change > 0 and volume_ratio is not None and volume_ratio >= 1.2:
         tags.append("量價同步")
     if not tags and classified.get("classification") != layered_score.TIER_REJECTED:
         tags.append("結構尚未失效")
