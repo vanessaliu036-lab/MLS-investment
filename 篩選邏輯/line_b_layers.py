@@ -21,7 +21,7 @@
 ═══ 狀態機(EXTENSION 不參與 ACTIVE 判定,只做交易覆寫) ═══
     WATCH → ARMED → ACTIVE
                      ├─ EXTENSION NORMAL → ACTION 可評估進場
-                     ├─ EXTENSION HIGH   → TRADE STATE EXTENDED → 禁追
+                     ├─ EXTENSION HIGH   → TRADE STATE EXTENDED → 小部位可追
                      └─ 跌回 Trigger/VWAP → FAILED
 
   一檔股票就算漲太高,它仍然「真的啟動了」。不能因為不能買就說它沒 ACTIVE——
@@ -48,6 +48,7 @@ from typing import Optional
 
 import phase
 import stock_shares as _shares
+import store
 
 DB = "mls.db"
 BLIND_MIN_SLOT = "0915"   # 與 run_line_b_ledger 同一條資料品質鐵律,不是交易訊號
@@ -66,13 +67,14 @@ ARMED_NEAR_PCT = 3.0      # 距觸發價多少 % 以內算「已就位」
 CHIP_STRONG_LOTS = 3000   # 5 日法人淨額顯著門檻
 FLOW_STRONG = 1000        # net_active 視為 STRONG 的幅度
 
-OBSERVATION_VERSION = "lineb_layers_v1_2026-08-27_descriptive_only"
+FAILURE_CONDITIONS = ("跌 VWAP", "A-flow 翻負", "爆量滯漲", "跌破關鍵價")
+OBSERVATION_VERSION = "lineb_layers_v2_2026-09-02_participation_judgment"
 
 # 七層頁是「現在該先看誰」的觀測介面：先按可操作程度，再用即時資金、今日漲跌與
 # 距觸發位置穩定排序。這只影響顯示順序，不改任何七層判定。
 DISPLAY_STATE_ORDER = {
     "ACTIVE": 0, "EXTENDED": 1, "ARMED": 2,
-    "WATCH": 3, "FAILED": 4, "REJECT": 5,
+    "WATCH": 3, "FAILED": 4, "REJECT": 5, "DATA_BLOCKED": 6,
 }
 
 
@@ -121,6 +123,24 @@ def _rows(conn, sql, params):
     return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
+def _read_aflow_date(T: str, db_path: str) -> dict:
+    """讀取指定交易日每檔最新的盤中資金流，保持七層頁只讀。"""
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT code, active_buy, active_sell, net_active, method, updated_at "
+            "FROM aflow WHERE data_date=? ORDER BY updated_at DESC",
+            (T,),
+        ).fetchall()
+    finally:
+        conn.close()
+    out = {}
+    for row in rows:
+        out.setdefault(row["code"], dict(row))
+    return out
+
+
 # ────────────────────────────────── CHIP ──────────────────────────────────
 
 def chip_layer(inst_rows: list[dict]) -> dict:
@@ -163,10 +183,17 @@ def chip_layer(inst_rows: list[dict]) -> dict:
 
 # ────────────────────────────────── FLOW ──────────────────────────────────
 
-def flow_layer(net_active: Optional[float]) -> dict:
+def flow_layer(net_active: Optional[float], slots=None) -> dict:
+    """今天資金方向,並判斷資金是回流、增強、持續、減速或翻空。
+
+    ``net_active`` 是最新 aflow；slots 只用來比較前一個盤中快照,不改變
+    aflow 的來源口徑。沒有前值時,正值視為「增強」而不是保守地降成中性。
+    """
     na = _num(net_active)
     if na is None:
-        return {"verdict": "NO_DATA", "net_active": None}
+        return {"verdict": "NO_DATA", "net_active": None,
+                "flow_state": "翻空", "previous_net_active": None,
+                "flow_change": None}
     if na >= FLOW_STRONG:
         v = "STRONG"
     elif na > 0:
@@ -175,7 +202,26 @@ def flow_layer(net_active: Optional[float]) -> dict:
         v = "FLAT"
     else:
         v = "NEGATIVE"
-    return {"verdict": v, "net_active": na}
+
+    points = [_num(s.get("net_active")) for s in (slots or [])]
+    points = [p for p in points if p is not None]
+    previous = None
+    if points:
+        # aflow 最新值通常就是最後一格；若不是,最後一格仍是可用的前值。
+        previous = points[-2] if points[-1] == na and len(points) >= 2 else points[-1]
+    if na < 0:
+        state = "翻空"
+    elif previous is not None and previous < 0 < na:
+        state = "回流"
+    elif previous is None or na > previous:
+        state = "增強"
+    elif na < previous:
+        state = "減速"
+    else:
+        state = "持續"
+    return {"verdict": v, "net_active": na, "flow_state": state,
+            "previous_net_active": previous,
+            "flow_change": round(na - previous, 2) if previous is not None else None}
 
 
 # ─────────────────────────── PRICE TRIGGER ────────────────────────────────
@@ -385,14 +431,116 @@ def _volume_ever_passed(slots, trigger, hist_by_slot: dict) -> bool:
 
 # ─────────────────────── TRADE STATE 狀態機 ───────────────────────────────
 
+def _flow_state(flow: dict) -> str:
+    if flow.get("flow_state"):
+        return flow["flow_state"]
+    return {"NEGATIVE": "翻空", "STRONG": "持續", "POSITIVE": "持續",
+            "FLAT": "減速", "NO_DATA": "翻空"}.get(flow.get("verdict"), "持續")
+
+
+def _trade_judgment(trig, vol, acc, ext, flow, state, distance_pct,
+                    structure_ok: Optional[bool]) -> dict:
+    """把「啟動事實」翻譯成可參與的交易判斷。
+
+    EXTENSION 只影響部位大小,不會把已成立的主升段改成不追；只有失效、
+    資金翻空或資料衝突才撤掉參與資格。
+    """
+    flow_state = _flow_state(flow)
+    triggered = trig.get("verdict") == "YES"
+    confirmed = (triggered and vol.get("verdict", "").startswith("PASS")
+                 and acc.get("verdict") == "YES")
+    failed = state in ("FAILED", "REJECT", "DATA_BLOCKED")
+
+    if failed:
+        trend_stage = "衰竭／失敗"
+    elif confirmed:
+        accel = _num(vol.get("vol_accel"))
+        is_acceleration = (
+            flow_state == "增強"
+            and (trig.get("above_intraday_prior_high") is True
+                 or (accel is not None and accel >= 1.2))
+        )
+        trend_stage = "加速攻擊" if is_acceleration else "主升續攻"
+    elif triggered:
+        trend_stage = "啟動中"
+    elif (distance_pct is not None and distance_pct >= -ARMED_NEAR_PCT
+          and flow_state in ("回流", "增強", "持續")):
+        trend_stage = "準備啟動"
+    else:
+        trend_stage = "未啟動"
+
+    # 明顯偏空的中期籌碼仍然是參與限制,但不抹掉「價格已啟動」這個事實。
+    chip_blocked = flow.get("chip_blocked") is True
+    if failed or flow_state == "翻空" or chip_blocked:
+        chase_permission = "不追"
+    elif trend_stage == "加速攻擊":
+        chase_permission = "可追"
+    elif trend_stage in ("啟動中",):
+        chase_permission = "可追"
+    elif trend_stage == "主升續攻":
+        chase_permission = "小部位可追"
+    elif trend_stage == "準備啟動":
+        chase_permission = "等回踩"
+    else:
+        chase_permission = "不追"
+
+    if trend_stage == "加速攻擊":
+        entry_method = "突破追"
+    elif trend_stage == "主升續攻":
+        entry_method = "VWAP承接" if trig.get("above_vwap") is not False else "回踩接"
+    elif trend_stage == "啟動中":
+        entry_method = "突破追"
+    elif trend_stage == "準備啟動":
+        entry_method = "資金再加速" if flow_state in ("回流", "增強") else "回踩接"
+    else:
+        entry_method = "回踩接"
+
+    alerts = []
+    if triggered and trig.get("above_vwap") is False:
+        alerts.append("跌 VWAP")
+    if flow_state == "翻空":
+        alerts.append("A-flow 翻負")
+    accel = _num(vol.get("vol_accel"))
+    if (triggered and vol.get("verdict", "").startswith("PASS")
+            and acc.get("verdict") != "YES" and accel is not None and accel >= 1.2):
+        alerts.append("爆量滯漲")
+    if state == "FAILED" or (not triggered and (trig.get("hold_slots") or 0) > 0):
+        alerts.append("跌破關鍵價")
+
+    return {
+        "trend_stage": trend_stage,
+        "flow_state": flow_state,
+        "chase_permission": chase_permission,
+        "entry_method": entry_method,
+        "failure_conditions": list(FAILURE_CONDITIONS),
+        "failure_alerts": alerts,
+    }
+
+
 def trade_state(chip, flow, trig, vol, acc, ext, structure_ok: Optional[bool],
                 distance_pct: Optional[float],
-                volume_ever_passed: bool = False) -> dict:
+                volume_ever_passed: bool = False,
+                flow_conflict: bool = False) -> dict:
     """EXTENSION 不參與 ACTIVE 判定,只在 ACTIVE 成立後做交易覆寫
     (2026-08-27 Vanessa 明確修正:漲太高不代表沒啟動)。"""
+    def finish(result):
+        # 將籌碼限制傳給新判斷,但保留既有 state 狀態機供舊頁與回測相容。
+        flow_for_judgment = dict(flow or {})
+        flow_for_judgment["chip_blocked"] = chip.get("verdict") == "BEARISH"
+        result.update(_trade_judgment(trig, vol, acc, ext, flow_for_judgment,
+                                      result["state"], distance_pct, structure_ok))
+        # action 是新的人話輸出；舊 action_code 仍保留給相容消費端。
+        if result["chase_permission"] in ("可追", "小部位可追"):
+            result["action"] = result["chase_permission"]
+        return result
+
+    if flow_conflict:
+        return finish({"state": "DATA_BLOCKED", "action": "暫不判定",
+                       "action_code": "DATA_BLOCKED",
+                       "why": "A-flow 來源數值衝突,等待一致資料"})
     if structure_ok is False:
-        return {"state": "REJECT", "action": "淘汰", "action_code": "REJECT",
-                "why": "T-1 收盤跌破 MA20,結構不合格"}
+        return finish({"state": "REJECT", "action": "淘汰", "action_code": "REJECT",
+                       "why": "T-1 收盤跌破 MA20,結構不合格"})
 
     triggered = trig["verdict"] == "YES"
     ever_triggered = (trig.get("hold_slots") or 0) > 0 or triggered
@@ -405,11 +553,11 @@ def trade_state(chip, flow, trig, vol, acc, ext, structure_ok: Optional[bool],
 
     # FAILED:曾經真正啟動,現在跌回觸發價或跌破 VWAP
     if ever_active and not triggered:
-        return {"state": "FAILED", "action": "撤退／不進", "action_code": "AVOID",
-                "why": "突破後跌回觸發價"}
+        return finish({"state": "FAILED", "action": "撤退／不進", "action_code": "AVOID",
+                       "why": "突破後跌回觸發價"})
     if triggered and ever_active and acc.get("vwap_held") is False:
-        return {"state": "FAILED", "action": "撤退／不進", "action_code": "AVOID",
-                "why": "突破後跌破 VWAP"}
+        return finish({"state": "FAILED", "action": "撤退／不進", "action_code": "AVOID",
+                       "why": "突破後跌破 VWAP"})
 
     # ACTIVE = Trigger + Volume + Acceptance(不看 EXTENSION)。CHIP 明顯偏空時
     # 最高只能到 ARMED,不得判 ACTIVE/可操作——資金與量能再強,法人籌碼方向相反
@@ -417,14 +565,14 @@ def trade_state(chip, flow, trig, vol, acc, ext, structure_ok: Optional[bool],
     chip_bearish = chip.get("verdict") == "BEARISH"
     if triggered and vol["verdict"].startswith("PASS") and acc["verdict"] == "YES":
         if chip_bearish:
-            return {"state": "ARMED", "action": "等籌碼轉向確認", "action_code": "WAIT",
-                    "why": "突破 + 有量 + 站穩,但法人籌碼明顯偏空,列入反轉觀察"}
+            return finish({"state": "ARMED", "action": "等籌碼轉向確認", "action_code": "WAIT",
+                           "why": "突破 + 有量 + 站穩,但法人籌碼明顯偏空,列入反轉觀察"})
         if ext["verdict"] == "HIGH":
-            return {"state": "EXTENDED", "action": "DO NOT CHASE", "action_code": "NO_CHASE",
-                    "why": "啟動成立,但價格位置已延伸:" + "、".join(ext["reasons"]),
-                    "activated": True}
-        return {"state": "ACTIVE", "action": "可評估進場", "action_code": "ENTRY_ELIGIBLE",
-                "why": "突破 + 有量 + 站穩", "activated": True}
+            return finish({"state": "EXTENDED", "action": "小部位可追", "action_code": "SMALL_POSITION_CHASE",
+                           "why": "啟動成立,高位延伸只縮小部位:" + "、".join(ext["reasons"]),
+                           "activated": True})
+        return finish({"state": "ACTIVE", "action": "可評估進場", "action_code": "ENTRY_ELIGIBLE",
+                       "why": "突破 + 有量 + 站穩", "activated": True})
 
     # 已突破但量/承接沒到位 → 仍在 ARMED,不升 ACTIVE
     if triggered:
@@ -433,18 +581,17 @@ def trade_state(chip, flow, trig, vol, acc, ext, structure_ok: Optional[bool],
             miss.append("量未達標")
         if acc["verdict"] != "YES":
             miss.append("尚未站穩")
-        return {"state": "ARMED", "action": "等站穩確認", "action_code": "WAIT",
-                "why": "已突破但" + "、".join(miss)}
+        return finish({"state": "ARMED", "action": "等站穩確認", "action_code": "WAIT",
+                       "why": "已突破但" + "、".join(miss)})
 
     near = distance_pct is not None and distance_pct >= -ARMED_NEAR_PCT
     if near and flow["verdict"] in ("STRONG", "POSITIVE"):
-        act = ("等回撤，不追高" if ext["verdict"] == "HIGH" else "等突破")
-        return {"state": "ARMED", "action": act,
-                "action_code": "WAIT_PULLBACK" if ext["verdict"] == "HIGH" else "WAIT",
-                "why": "距觸發價 %.2f%%,資金%s" % (distance_pct, flow["verdict"])}
+        return finish({"state": "ARMED", "action": "等回踩",
+                       "action_code": "WAIT_PULLBACK" if ext["verdict"] == "HIGH" else "WAIT",
+                       "why": "距觸發價 %.2f%%,資金%s" % (distance_pct, flow["verdict"])})
 
-    return {"state": "WATCH", "action": "等", "action_code": "WAIT",
-            "why": "尚未接近觸發價"}
+    return finish({"state": "WATCH", "action": "等", "action_code": "WAIT",
+                   "why": "尚未接近觸發價"})
 
 
 # ──────────────────────────── 主流程 ──────────────────────────────────────
@@ -522,8 +669,7 @@ def _compute_uncached(db_path: str, T: str) -> dict:
 
         quotes = {r["code"]: r for r in
                   _rows(conn, "SELECT * FROM quote_snap WHERE data_date=?", (T,))}
-        aflows = {r["code"]: r for r in
-                  _rows(conn, "SELECT * FROM aflow WHERE data_date=?", (T,))}
+        aflows = _read_aflow_date(T, db_path)
         inst_max = conn.execute("SELECT MAX(data_date) FROM inst_flow").fetchone()[0]
         shares_map = _shares.load(db_path)
         # 今日 daily_bar 收盤後才寫入;盤中沒有就是沒有,不用 proxy 頂替
@@ -566,7 +712,7 @@ def _compute_uncached(db_path: str, T: str) -> dict:
 
             chip = chip_layer(inst)
             flow = flow_layer(a.get("net_active") if a else
-                              (slots[-1].get("net_active") if slots else None))
+                              (slots[-1].get("net_active") if slots else None), slots)
             trig = price_trigger_layer(price, trigger, slots, vwap)
             vol = volume_layer(slots, hist_vol.get(code, {}),
                                slots[-1]["slot"] if slots else None,
@@ -576,13 +722,24 @@ def _compute_uncached(db_path: str, T: str) -> dict:
             sec = sector_layer(code, group_map.get(code), change_map, group_map)
             vol_ever = _volume_ever_passed(slots, trigger, hist_vol.get(code, {}))
             st = trade_state(chip, flow, trig, vol, acc, ext, structure_ok, distance_pct,
-                             volume_ever_passed=vol_ever)
+                             volume_ever_passed=vol_ever,
+                             flow_conflict=bool(a.get("aflow_conflict")))
 
             out.append({
                 "code": code, "name": name_map.get(code, code),
                 "price": price, "trigger_price": trigger, "distance_pct": distance_pct,
                 "chip": chip, "flow": flow, "trigger": trig, "volume": vol,
                 "acceptance": acc, "extension": ext, "sector": sec, "state": st,
+                "trade_judgment": {
+                    "trend_stage": st["trend_stage"],
+                    "flow_state": st["flow_state"],
+                    "chase_permission": st["chase_permission"],
+                    "entry_method": st["entry_method"],
+                    "failure_conditions": st["failure_conditions"],
+                    "failure_alerts": st["failure_alerts"],
+                },
+                "flow_conflict": bool(a.get("aflow_conflict")),
+                "flow_candidates": a.get("aflow_candidates") or [],
                 "freshness": {
                     "inst_flow_through": inst_max,
                     "quote_updated_at": q.get("updated_at"),

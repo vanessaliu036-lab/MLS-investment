@@ -18,6 +18,8 @@
 from __future__ import annotations
 import html as _html
 
+from navigation import NAV_CSS, nav_html
+
 
 def _load_name_map() -> dict:
     import importlib.util
@@ -52,6 +54,19 @@ def _fmt(v, decimals=1) -> str:
         return "—"
 
 
+def _direction_class(value) -> str:
+    """台股方向色:上漲／流入為紅,下跌／流出為綠,零值不帶方向色。"""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if number > 0:
+        return "up"
+    if number < 0:
+        return "down"
+    return ""
+
+
 def _bar_pct(distance_pct) -> int:
     """距離關鍵價轉成 0-100 的長條寬度。>=0(已站上)封頂 100;
     <=-6% 記為 0;中間線性內插。純距離,不是機率。"""
@@ -67,9 +82,19 @@ def _quote_line(exp: dict) -> str:
     if res is None:
         return f'現價 <strong>{_fmt(cur)}</strong>'
     if dist is not None and dist >= 0:
-        return f'現價 <strong>{_fmt(cur)}</strong>｜壓力 <strong>{_fmt(res)}</strong>｜已站上 <strong>+{dist:.2f}%</strong>'
+        return (f'現價 <strong>{_fmt(cur)}</strong>｜壓力 <strong>{_fmt(res)}</strong>｜'
+                f'<span class="quote-direction up">已站上 +{dist:.2f}%</span>')
     d = f'{abs(dist):.2f}%' if dist is not None else '—'
-    return f'現價 <strong>{_fmt(cur)}</strong>｜壓力 <strong>{_fmt(res)}</strong>｜差 <strong>{d}</strong>'
+    return (f'現價 <strong>{_fmt(cur)}</strong>｜壓力 <strong>{_fmt(res)}</strong>｜'
+            f'<span class="quote-direction near">差 {d}</span>')
+
+
+def _flow_display_html(r: dict) -> str:
+    """保留 explain 的單一文字來源,只在渲染層補上方向色。"""
+    exp = r["explain"]
+    direction = _direction_class(r.get("flow_confirm_magnitude"))
+    cls = f' class="value {direction}"' if direction else ' class="value"'
+    return f'<span{cls}>{_esc(exp["flow_display"])}</span>'
 
 
 def _prob_block(exp: dict, discovery: bool) -> str:
@@ -130,7 +155,8 @@ def _stock_card(r: dict, discovery: bool = False) -> str:
     exp = r["explain"]
     status = exp["status"]
     css = STATUS_CSS.get(status, "")
-    badge_text = "盤中發現" if discovery else STATUS_BADGE_TEXT.get(status, exp["status_label"])
+    badge_text = ("INTRADAY DISCOVERY" if discovery
+                  else STATUS_BADGE_TEXT.get(status, exp["status_label"]))
     card_css = "confirmed" if status == "CONFIRMED" else ""
     action_css = "ok" if status == "CONFIRMED" else ""
 
@@ -138,12 +164,12 @@ def _stock_card(r: dict, discovery: bool = False) -> str:
     <article class="stock-card {card_css}">
       <div class="stock-top">
         <div class="stock-name"><small>{_esc(code)}</small>{_esc(name)}</div>
-        <div class="status {css}">{_esc(badge_text)}</div>
+        <div class="status {'discovery' if discovery else css}">{_esc(badge_text)}</div>
       </div>
       <div class="action {action_css}">{_esc(exp["system_sentence"])}</div>
       <div class="quote">{_quote_line(exp)}</div>
       <div class="row"><span class="label">昨日</span><span class="value">{_esc(exp["chip_summary"])}</span></div>
-      <div class="row"><span class="label">今日</span><span class="value">{_esc(exp["flow_display"])}</span></div>
+      <div class="row"><span class="label">今日</span>{_flow_display_html(r)}</div>
       {_prob_block(exp, discovery)}
     </article>"""
 
@@ -151,7 +177,7 @@ def _stock_card(r: dict, discovery: bool = False) -> str:
 def _top3_row(rank: int, r: dict) -> str:
     exp = r["explain"]
     code, name = r["code"], NAME.get(r["code"], r["code"])
-    flow_css = "up" if (r.get("flow_confirm_magnitude") or 0) >= 0 else "down"
+    flow_css = _direction_class(r.get("flow_confirm_magnitude"))
     return (f'<div class="top3-row"><div class="rank">{rank}</div>'
            f'<div><b>{_esc(code)} {_esc(name)}</b></div>'
            f'<div>{_fmt(exp.get("current"))} / {_fmt(exp.get("resistance"))}</div>'
@@ -188,26 +214,27 @@ PAGE_CSS = """
 --navy:#17233f;--green:#0b9a6f;--green-soft:#e8f7f1;--red:#df4b67;--red-soft:#fff0f3;
 --amber:#c78313;--amber-soft:#fff6df;--blue:#3b6eea;--shadow:0 12px 30px #19274714}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);
+body{margin:0;padding-top:122px;background:var(--bg);color:var(--text);
 font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",Roboto,Arial,sans-serif}
+html,body{overflow-x:hidden}
 /* 固定選單:topbar + 分頁列都黏在頂端,捲動時不消失 */
 .topbar{height:64px;background:#fff;border-bottom:1px solid var(--line);display:flex;
-align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:20}
+align-items:center;justify-content:space-between;padding:0 24px;position:fixed;top:0;left:0;right:0;z-index:20}
 .brand{font-size:15px;font-weight:850;letter-spacing:.02em;color:var(--navy)}
 .brand small{display:block;font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.09em;margin-top:2px}
 .topbar-right{font-size:12px;color:var(--muted);font-weight:700}
 .pagenav{background:#fff;border-bottom:1px solid var(--line);padding:8px 24px;display:flex;
-align-items:center;flex-wrap:wrap;gap:2px;position:sticky;top:64px;z-index:19}
+align-items:center;flex-wrap:wrap;gap:2px;position:fixed;top:64px;left:0;right:0;z-index:19}
 .pagenav a{padding:9px 13px;border-radius:10px;color:#65718a;font-weight:700;white-space:nowrap;
 text-decoration:none;font-size:13px}
 .pagenav a:hover{background:var(--bg)}
 .pagenav a.active{background:var(--navy);color:#fff}
-.wrap{max-width:1120px;margin:0 auto;padding:24px 20px 50px}
+.wrap{max-width:1600px;margin:0 auto;padding:24px 20px 50px}
 .header{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:22px}
 .title{font-size:25px;font-weight:800;letter-spacing:-.3px;margin:0 0 6px;color:var(--navy)}
 .sub{font-size:13px;color:var(--muted)}
 .live{font-size:12px;color:var(--green);padding-top:4px;font-weight:800}
-.summary{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+.summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:20px}
 .summary-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px 17px;box-shadow:var(--shadow)}
 .summary-label{font-size:11px;color:var(--muted);margin-bottom:7px}
 .summary-value{font-size:27px;font-weight:800;line-height:1}
@@ -225,20 +252,20 @@ text-decoration:none;font-size:13px}
 .status.ok{color:var(--green);background:var(--green-soft);border-color:#9fd9c4}
 .status.watch{color:var(--blue);background:#eaf0fe;border-color:#b9ccf7}
 .status.give-up{color:var(--red);background:var(--red-soft);border-color:#f3bcc7}
+.status.discovery{color:var(--blue);background:#eaf0fe;border-color:#b9ccf7}
 .quote{font-size:13px;color:#4a5570;margin-bottom:13px;line-height:1.65}
 .quote strong{font-size:15px;color:var(--navy)}
 .row{display:flex;gap:8px;align-items:center;font-size:13px;line-height:1.8;flex-wrap:wrap}
 .row .label{color:var(--muted);min-width:44px}
 .row .value{font-weight:650}
-/* 台股慣例:漲紅跌綠(與歐美相反),無例外。.up/.down 掛在資金淨額
-   (flow_confirm_magnitude)上,+ 是資金流入 → 紅,− 是流出 → 綠。
-   2026-08-28 修:原本寫反了,「資金已轉強 ↑ +10,747」被畫成綠色。
-   ⚠ 2026-08-28 二次修正:下面 .prob-num.up / .bar i 也套同一個 .up 紅色 ——
-   這裡先前的註解寫「已站上是狀態語意、不算價格方向」是錯的判斷,「已站上」
-   就是價格站上關鍵價,是漲,必須紅。真正的狀態語意(跟價格漲跌無關)只有
-   .status.ok/.stock-card.confirmed 那組右上角分類 tag,那組維持不動。 */
+/* 台股慣例:漲紅跌綠(與歐美相反)。方向色只套在價格／資金數值；
+   .status.ok 與 .stock-card.confirmed 是流程狀態,維持綠色以表示確認成功。 */
 .up{color:var(--red)}
 .down{color:var(--green)}
+.quote-direction{font-weight:800;white-space:nowrap}
+.quote-direction.near{color:var(--amber)}
+.row .value.up,.top3-row .up{color:var(--red)}
+.row .value.down,.top3-row .down{color:var(--green)}
 .prob{margin-top:15px;padding:13px 14px;background:var(--panel2);border:1px solid var(--line);border-radius:12px}
 .prob-top{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:9px}
 .prob-title{font-size:12px;color:var(--muted)}
@@ -267,8 +294,33 @@ text-decoration:none;font-size:13px}
 .disc-meta{font-size:11px;color:var(--muted);line-height:1.6}
 .badge{font-size:10px;border-radius:999px;padding:4px 7px;background:#eaf0fe;color:var(--blue);border:1px solid #b9ccf7}
 .empty-note{color:var(--muted);font-size:12px;padding:10px 0}
-@media(max-width:780px){.wrap{padding:20px 13px 40px}.header{flex-direction:column}
-.summary{grid-template-columns:1fr 1fr}.grid,.discovery-grid{grid-template-columns:1fr}.top3{display:none}.title{font-size:22px}}
+@media(max-width:780px){
+  body{padding-top:118px}
+  .topbar{height:62px;padding:0 14px}
+  .pagenav{top:62px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding:6px 12px;gap:3px}
+  .pagenav::-webkit-scrollbar{display:none}
+  .pagenav a{min-height:44px;display:inline-flex;align-items:center;padding:9px 13px;font-size:12px}
+  .wrap{padding:14px 13px 40px}.header{flex-direction:column}
+  .summary{grid-template-columns:1fr 1fr}.grid,.discovery-grid{grid-template-columns:1fr}
+  .filters{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -13px 12px;padding:0 13px}
+  .filters::-webkit-scrollbar{display:none}.filter{min-height:44px;flex:0 0 auto;display:inline-flex;align-items:center}
+  .stock-card{padding:14px}.title{font-size:22px}
+  .top3{display:block;overflow-x:auto}.top3-row{min-width:560px}
+}
+/* 全站固定主選單：與決策首頁、Reversal Lab 使用同一版型。 */
+body{padding-top:128px}
+.topbar{height:72px;padding:0 28px}
+.brand{display:flex;align-items:center;gap:12px;font-size:15px;color:var(--navy)}
+.brand .mark{width:34px;height:34px;border-radius:11px;background:linear-gradient(135deg,#17233f,#4f6ea8);display:grid;place-items:center;color:#fff;font-size:13px}
+.brand small{font-size:11px;letter-spacing:.04em}
+.pagenav{top:72px;padding:8px 28px;flex-wrap:wrap;gap:2px}
+.pagenav a{min-height:42px;display:inline-flex;align-items:center;padding:9px 13px;border-radius:10px;font-size:12px}
+.pagenav .nav-label{font-size:11px;color:#9aa4b8;padding:0 12px 0 2px;font-weight:800;letter-spacing:.08em}
+.pagenav .nav-item{font-size:12px;font-weight:700}
+.pagenav .nav-item.active{background:var(--navy);color:#fff}
+.pagenav .count{margin-left:6px;font-size:11px;padding:2px 7px;border-radius:99px;background:#eef1f7}
+.pagenav .count.live{background:#dff7ec;color:#087f5b;border:1px solid #a9e8cc}
+@media(max-width:780px){body{padding-top:120px}.topbar{height:64px;padding:0 14px}.pagenav{top:64px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding:6px 12px;gap:3px}.pagenav::-webkit-scrollbar{display:none}.pagenav a{min-height:44px;padding:9px 12px;font-size:12px}.pagenav .nav-label{flex:none;padding:0 9px 0 2px}}
 </style>
 """
 
@@ -277,30 +329,28 @@ text-decoration:none;font-size:13px}
 # 用相對路徑,所以本機/VPS 都通;不像主站那樣需要判斷 file: 協定(這頁一定是
 # server 端算的,不會被當本機檔案直接開)。
 _NAV_PAGES = [
-    ("/", "決策首頁"),
-    ("/opportunity-ledger", "機會分層榜"),
-    ("/line-b-ledger", "買點監控"),
-    ("/line-b-layers", "七層交易狀態"),
+    ("/", "決策首頁", "OFF"), ("/", "機會雷達", "51"),
+    ("/chips", "觀察池 51 檔", "51"), ("/chips", "籌碼", "51"),
+    ("/reversal-lab", "資金反轉驗證", "LIVE"),
+    ("/", "盤後驗證", None), ("/opportunity-ledger", "機會分層榜", None),
+    ("/line-b-ledger", "買點監控", None), ("/line-b-layers", "七層交易狀態", None),
 ]
 
 
 def _shell(ctx: dict, inner: str) -> str:
-    live = ctx.get("is_live")
-    stamp = ctx.get("data_date") or "—"
-    nav = "".join(
-        '<a href="{h}"{c}>{t}</a>'.format(
-            h=href, t=_esc(label),
-            c=' class="active"' if href == "/line-b-ledger" else "")
-        for href, label in _NAV_PAGES
-    )
-    right = ("LIVE · " if live else "") + _esc(stamp)
-    return PAGE_CSS + f"""
-<div class="topbar">
-  <div class="brand">MLS<small>LIVE BUY POINT MONITOR</small></div>
-  <div class="topbar-right">{right}</div>
-</div>
-<nav class="pagenav">{nav}</nav>
-{inner}"""
+    return f"""<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>MLS 買點監控</title>
+  {PAGE_CSS}{NAV_CSS}
+</head>
+<body>
+{nav_html("line-b")}
+{inner}
+</body>
+</html>"""
 
 
 def render(ctx: dict) -> str:
@@ -308,11 +358,29 @@ def render(ctx: dict) -> str:
         return _shell(ctx, '<main class="wrap"><div class="empty-note">No Line B ledger data yet.</div></main>')
 
     labels = ctx["labels"]
-    c1c2_html = "".join(_stock_card(r) for r in ctx["c1_c2_list"]) or \
+    key_hold = ctx.get("key_price_hold") or {}
+    key_hold_rate = key_hold.get("hold_rate")
+    key_hold_value = f'{key_hold_rate:.1f}%' if key_hold_rate is not None else '資料累積中'
+    key_hold_note = (
+        f'觸及 {key_hold.get("triggered", 0)} 檔、守住 {key_hold.get("held", 0)} 檔 · '
+        f'{key_hold.get("n_days", 0)} 個交易日 · 同條件 C1+C2 母體'
+        + (' · 單日初始統計' if key_hold.get("n_days", 0) <= 1 else '')
+    ) if key_hold.get("scored", 0) else '尚無足夠的關鍵價觸發收盤資料'
+    observation_rows = ctx.get("observation_list", ctx["c1_c2_list"])
+    observation_html = "".join(
+        _stock_card(r, discovery=r.get("source") == "INTRADAY_DISCOVERY")
+        for r in observation_rows
+    ) or \
         '<div class="empty-note">今晚無 C1+C2 通過名單。</div>'
     top3_rows = "".join(_top3_row(i + 1, r) for i, r in enumerate(ctx["flow_confirmed_top3"]))
-    discovery_html = "".join(_discovery_row(r) for r in ctx["intraday_discovery"]) or \
-        '<div class="empty-note">今日無盤中額外發現。</div>'
+    discovery_note = (
+        '<section class="discovery discovery-note">'
+        '<h3>盤中發現說明</h3>'
+        '<p>已將盤中突破但昨晚未通過 C1+C2 的股票併入上方觀察清單；'
+        '仍保留 INTRADAY DISCOVERY 標籤，且不納入 64.1%／89.9% 歷史統計。</p>'
+        '</section>'
+        if ctx["intraday_discovery"] else ''
+    )
 
     return _shell(ctx, f"""
 <main class="wrap">
@@ -335,10 +403,15 @@ def render(ctx: dict) -> str:
       <div class="summary-value" style="color:var(--green)">{_esc(labels["flow_confirmed_rate"])}</div>
       <div class="summary-hint">OPEN_POSITIVE / FLOW_FLIP · NO_FLIP 僅 {_esc(labels["flow_no_flip_rate"])}</div>
     </div>
+    <div class="summary-card">
+      <div class="summary-label">關鍵價觸發後收盤守住率</div>
+      <div class="summary-value" style="color:var(--green)">{_esc(key_hold_value)}</div>
+      <div class="summary-hint">{_esc(key_hold_note)} · 非本檔個股勝率</div>
+    </div>
   </section>
 
-  <div class="section-title"><h2>今日重點觀察</h2><span>排序：即時資金強度 + 距離關鍵價</span></div>
-  <section class="grid">{c1c2_html}</section>
+  <div class="section-title"><h2>今日重點觀察</h2><span>盤後候選 + 盤中已站上 · 依狀態與資金強度排序</span></div>
+  <section class="grid">{observation_html}</section>
 
   <div class="section-title"><h2>A-flow CONFIRMED TOP 3</h2><span>只看已確認，依 A-flow 幅度排序</span></div>
   <section class="top3">
@@ -346,9 +419,5 @@ def render(ctx: dict) -> str:
     {top3_rows or '<div class="empty-note" style="padding:16px">尚無確認候選。</div>'}
   </section>
 
-  <section class="discovery">
-    <h3>盤中資金強勢補充</h3>
-    <p>未在盤後主名單也可進來；只作盤中發現，收盤後寫入 ledger 並重算 EOD C1/C2，不混入既有歷史啟動率。</p>
-    <div class="discovery-grid">{discovery_html}</div>
-  </section>
+  {discovery_note}
 </main>""")

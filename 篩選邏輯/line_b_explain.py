@@ -95,6 +95,7 @@ def activation_probability(distance_pct: Optional[float], confirmed_so_far: bool
 STATUS_LABEL = {
     "WAIT": "現在等", "WATCH_CLOSELY": "重點盯",
     "CONFIRMED": "已確認", "GIVE_UP": "放棄",
+    "DATA_BLOCKED": "資料阻擋",
 }
 
 
@@ -157,12 +158,16 @@ def explain(row: dict, is_eod: bool = True, flow_stale: bool = False) -> dict:
     chip_summary = _chip_summary(_num(row.get("t1_price_5d")), _num(row.get("t1_close_position")),
                                  _num(row.get("t1_inst_5d")))
     flow_class = row.get("flow_class")
-    flow_display = _flow_display(flow_class, _num(row.get("flow_confirm_magnitude")), stale=flow_stale)
+    flow_conflict = bool(row.get("flow_conflict") or row.get("aflow_conflict"))
+    flow_display = ("資金資料衝突，暫不判定" if flow_conflict else
+                    _flow_display(flow_class, _num(row.get("flow_confirm_magnitude")), stale=flow_stale))
 
     activated = bool(row.get("watch_mode_activated"))
     confirmed_today = flow_class in ("OPEN_POSITIVE", "FLOW_FLIP")
 
-    if activated:
+    if flow_conflict:
+        status = "DATA_BLOCKED"
+    elif activated:
         status = "CONFIRMED"
     elif is_eod and flow_class == "NO_FLIP":
         status = "GIVE_UP"
@@ -175,7 +180,9 @@ def explain(row: dict, is_eod: bool = True, flow_stale: bool = False) -> dict:
     activation_prob = (None if activated else
                        activation_probability(distance_pct, confirmed_so_far=confirmed_today))
 
-    if status == "CONFIRMED":
+    if status == "DATA_BLOCKED":
+        sentence = "A-flow 來源數值衝突｜暫不判定今日資金方向，等待一致資料"
+    elif status == "CONFIRMED":
         # watch_mode_activated 代表 A-flow/Watch Mode 已成立,不等於價格已站上
         # 結構關鍵價。兩者必須分開,否則「現價低於壓力」仍會被說成已站上。
         if distance_pct is not None and distance_pct >= 0:
