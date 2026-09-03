@@ -36,9 +36,6 @@ class DecisionViewTests(unittest.TestCase):
             self.assertEqual(dv.build(classified(tier), market(), {})["display_pool"], pool)
 
     def test_signal_type_is_never_blank_even_when_rejected(self):
-        # 前端「今日型態」只在 track=attack/engine 時繞過這欄；track=觀察(無二元
-        # 訊號)時完全靠這欄，尤其 TIER_REJECTED 的 entry_rule 是死板的「維持結構
-        # 失效」文案，關鍵字比對不到任何型態，過去因此顯示成看似資料缺失的「待更新」。
         expected = {ls.TIER_CORE: "強勢突破", ls.TIER_REVERSAL: "反轉訊號",
                     ls.TIER_NO_CHASE: "強勢不追", ls.TIER_CANDIDATE: "觀察訊號",
                     ls.TIER_REJECTED: "結構轉弱"}
@@ -137,6 +134,35 @@ class DecisionViewTests(unittest.TestCase):
                          "結構尚未失效，因此保留觀察。")
         self.assertFalse(any(term in "".join(result["reason_tags"])
                              for term in ("資金健康", "融資", "溫和放量")))
+
+    def test_metric_contract_separates_volume_aflow_and_prior_day_institution(self):
+        result = dv.build(classified(), market(
+            volume=18726,
+            intraday_volume_ratio=.96,
+            aflow_today=2845,
+            active_buy=7200,
+            active_sell=4355,
+            institution_label="法人連買 3 日",
+            chip_data_date="2026-09-02",
+        ), {})
+        self.assertEqual(result["volume_lots"], 18726)
+        self.assertEqual(result["aflow_lots"], 2845)
+        self.assertEqual(result["volume_ratio"], .96)
+        self.assertEqual(result["flow_label"], "A-flow +2,845 張")
+        self.assertEqual(result["volume_label"], "成交量 18,726 張 · 累計/20日均量 0.96x")
+        self.assertEqual(result["institution_metric_label"], "法人籌碼（截至 2026-09-02）")
+        self.assertFalse(result["metric_contract"]["aflow_is_institutional"])
+        self.assertFalse(result["metric_contract"]["institution_is_intraday"])
+
+    def test_aflow_conflict_blocks_directional_decision_value(self):
+        result = dv.build(classified(), market(
+            aflow_today=1500,
+            active_buy=5200,
+            active_sell=5000,
+        ), {})
+        self.assertIsNone(result["aflow_lots"])
+        self.assertEqual(result["metric_contract"]["aflow_status"], "CONFLICT")
+        self.assertEqual(result["flow_label"], "A-flow —")
 
 
 if __name__ == "__main__":
