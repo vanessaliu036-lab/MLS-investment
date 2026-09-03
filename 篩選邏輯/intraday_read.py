@@ -2,7 +2,7 @@
 intraday_read.py — 盤中白話解析(程式模板,不呼叫 AI)
 
 你要看到的不是一堆數字讓你自己猜,是一句話說清楚現在的狀況。
-最重要的那一句:「股價漲、資金流出、大戶邊買邊拉」。
+最重要的那一句:「股價漲、主動買賣差流出、推估有大單拉抬」。
 
 ===== 為什麼盤中不能廢掉 =====
 
@@ -10,9 +10,9 @@ intraday_read.py — 盤中白話解析(程式模板,不呼叫 AI)
 法人買超 2000 張,可能是買 5000 賣 3000,也可能是買 2100 賣 100。
 同一個數字,兩種完全不同的意義 —— 淨額把「誰在賣」這個資訊消掉了。
 
-盤中資金流補的正是這個。
-漲停但資金流出,意思是價格被少數買盤推上去,整體有人趁高出貨。
-這個矛盾在盤後數字上完全看不出來。
+盤中 A-flow 補的是成交積極度方向,不是法人身分。
+漲停但 A-flow 流出,代表可觀察到的主動賣成交量大於主動買成交量；
+不能直接翻譯成「法人出貨」,仍需等盤後官方籌碼蓋章。
 
 ===== 誠實聲明:抓不到「大戶」 =====
 
@@ -24,15 +24,17 @@ Shioaji 給的是價、量、內外盤、逐筆成交,裡面沒有身分。
 
 ===== 四種狀態,只有兩種需要跳出來 =====
 
-    價漲 + 資金流出  →  邊拉邊出 ⚠  (籌碼再漂亮也不追)
-    價跌 + 資金流入  →  下殺有人接 ⚠ (6/17 形狀)
-    價漲 + 資金流入  →  正常,不特別提示
-    價跌 + 資金流出  →  正常走弱,不特別提示
+    價漲 + A-flow流出  →  邊拉邊出 ⚠  (籌碼再漂亮也不追)
+    價跌 + A-flow流入  →  下殺有人接 ⚠ (6/17 形狀)
+    價漲 + A-flow流入  →  價流一致偏多,不特別提示
+    價跌 + A-flow流出  →  價流一致偏空,不特別提示
 """
 
 from __future__ import annotations
 
 import datetime as _dt
+
+import intraday_metric_contract
 
 BLIND_MIN = 15              # 鐵律1:開盤 15 分鐘的資料不納入判讀
 UP_PCT = 1.0                # 視為「漲」的門檻
@@ -46,11 +48,11 @@ def _usable(series: list[dict]) -> list[dict]:
             if int(s["slot"][:2]) * 60 + int(s["slot"][2:]) >= 9 * 60 + BLIND_MIN]
 
 
-def _wan(x: float | None) -> str:
-    """金額轉萬元,帶正負號。"""
+def _lots(x: float | None) -> str:
+    """A-flow 為主動買量−主動賣量,單位固定用張,不得格式化成金額。"""
     if x is None:
         return "—"
-    return f"{x/1e4:+,.0f} 萬"
+    return f"{x:+,.0f} 張"
 
 
 def _big_order_slots(series: list[dict]) -> list[dict]:
@@ -84,18 +86,23 @@ def read_one(code: str, name: str | None, series: list[dict],
     na = last.get("net_active")
     price = last.get("price")
     mins = int(last["slot"][:2]) * 60 + int(last["slot"][2:]) - 9 * 60
+    metrics = intraday_metric_contract.normalize({
+        "volume": last.get("volume"),
+        "aflow": na,
+        "aflow_status": last.get("aflow_status") or "LIVE",
+    })
 
     missing = []
     if cr is None:
         missing.append("漲跌幅")
     if na is None:
-        missing.append("資金流")
+        missing.append("主動買賣差(A-flow)")
 
     if cr is None or na is None:
         return {"code": code, "name": name, "state": "NO_DATA", "flag": False,
                 "headline": "缺少" + "、".join(missing) + ",不判讀",
                 "detail": "", "price": price, "change_rate": cr,
-                "net_active": na, "missing": missing}
+                "net_active": na, "metric_contract": metrics, "missing": missing}
 
     # ---- 資金流轉折時點
     turn = None
@@ -114,50 +121,51 @@ def read_one(code: str, name: str | None, series: list[dict],
     # ---------------------------------------------------------- 四種狀態
     if cr >= UP_PCT and na < 0:
         state, flag = "邊拉邊出", True
-        head = f"股價漲 {cr:+.1f}%,但資金淨流出 {_wan(na)}"
+        head = f"股價漲 {cr:+.1f}%,但 A-flow {_lots(na)}"
         parts = []
         if big_on_up >= 2:
             parts.append(f"漲幅推估來自 {big_on_up} 個大單時段,"
-                         f"而整體主動賣壓大於買盤")
+                         f"而整體主動賣成交量大於主動買成交量")
         else:
-            parts.append("價格上行但主動賣壓大於買盤")
+            parts.append("價格上行但主動賣成交量大於主動買成交量")
         if turn:
-            parts.append(f"{turn[:2]}:{turn[2:]} 起資金轉為流出")
+            parts.append(f"{turn[:2]}:{turn[2:]} 起 A-flow 轉負")
         if cr >= SURGE_PCT:
-            parts.append("注意:接近漲停時的委賣掛單也會造成流出讀數,"
-                         "此處為推估,需盤後法人蓋章確認")
+            parts.append("注意:接近漲停時委賣結構也可能造成負讀數,"
+                         "此處為盤中推估,需盤後法人蓋章確認")
         else:
-            parts.append("籌碼面再漂亮也不宜追價,待盤後確認誰在賣")
+            parts.append("A-flow 只代表成交積極度,非法人出貨證據;待盤後確認")
         detail = "。".join(parts) + "。"
 
     elif cr <= DOWN_PCT and na > 0:
         state, flag = "下殺有人接", True
-        head = f"股價跌 {cr:+.1f}%,但資金淨流入 {_wan(na)}"
-        parts = ["下殺過程有人主動承接"]
+        head = f"股價跌 {cr:+.1f}%,但 A-flow {_lots(na)}"
+        parts = ["下殺過程主動買成交量大於主動賣成交量"]
         if mins < 30:
             parts.append("開盤初期壓低,可能是吸籌,但時間尚短")
-        parts.append("這是推估值,非法人買賣超,須待盤後蓋章")
+        parts.append("這是盤中主動買賣差,非法人買賣超,須待盤後蓋章")
         detail = "。".join(parts) + "。"
 
     elif cr >= UP_PCT and na >= 0:
-        state, flag = "量價一致偏多", False
-        head = f"股價漲 {cr:+.1f}%,資金淨流入 {_wan(na)}"
-        detail = "價格與資金方向一致,漲勢有主動買盤支撐。"
+        state, flag = "價流一致偏多", False
+        head = f"股價漲 {cr:+.1f}%,A-flow {_lots(na)}"
+        detail = "價格與主動買賣差方向一致,漲勢有主動買成交支撐。"
 
     elif cr <= DOWN_PCT and na <= 0:
-        state, flag = "量價一致偏空", False
-        head = f"股價跌 {cr:+.1f}%,資金淨流出 {_wan(na)}"
-        detail = "價格與資金方向一致,單純走弱,無人承接。"
+        state, flag = "價流一致偏空", False
+        head = f"股價跌 {cr:+.1f}%,A-flow {_lots(na)}"
+        detail = "價格與主動買賣差方向一致,短線成交積極度偏弱。"
 
     else:
         state, flag = "盤整", False
-        head = f"股價 {cr:+.1f}%,資金 {_wan(na)}"
-        detail = "價格與資金皆無明顯方向。"
+        head = f"股價 {cr:+.1f}%,A-flow {_lots(na)}"
+        detail = "價格與主動買賣差皆無明顯方向。"
 
     return {
         "code": code, "name": name, "state": state, "flag": flag,
         "headline": head, "detail": detail,
         "price": price, "change_rate": cr, "net_active": na,
+        "metric_contract": metrics,
         "big_order_slots": [x["slot"] for x in big],
         "missing": missing,
     }
@@ -169,7 +177,7 @@ def read_all(snaps: dict[str, list[dict]], names: dict[str, str] | None = None,
     全體判讀。
 
     only_flagged=True → 只回傳需要注意的兩種(邊拉邊出、下殺有人接)。
-                        量價一致的不佔版面。
+                        其餘狀態不佔版面。
     """
     names = names or {}
     out = [read_one(c, names.get(c), ser) for c, ser in snaps.items()]
@@ -187,7 +195,8 @@ def read_all(snaps: dict[str, list[dict]], names: dict[str, str] | None = None,
         "generated_at": _dt.datetime.now().isoformat(timespec="seconds"),
         "state_counts": counts,
         "flagged": len(items),
-        "note": ("「大戶」為行為推估(大單時段佔比),資料中無身分欄位;"
-                 "資金流為主動買賣推估,非法人買賣超。"),
+        "note": ("A-flow 為主動買量−主動賣量,單位張,非法人買賣超;"
+                 "「大戶」為行為推估,資料中無身分欄位。"),
+        "field_contract_version": "intraday-metrics-v1",
         "items": items,
     }
