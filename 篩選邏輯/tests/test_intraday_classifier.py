@@ -14,6 +14,9 @@ class IntradayClassifierSourceTests(unittest.TestCase):
             raise unittest.SkipTest("8000 main-site module is not installed in the AB engine tree")
         cls.source = cls.path.read_text(encoding="utf-8")
         cls.tree = ast.parse(cls.source)
+        cls.screen_path = base / "screen_intraday.py"
+        cls.screen_source = (cls.screen_path.read_text(encoding="utf-8")
+                             if cls.screen_path.exists() else "")
 
     def test_intraday_service_has_no_limitup_exclude_switch(self):
         names = {node.id for node in ast.walk(self.tree) if isinstance(node, ast.Name)}
@@ -40,13 +43,10 @@ class IntradayClassifierSourceTests(unittest.TestCase):
         self.assertNotIn('"detail": f"法人連買 {streak} 日"', self.source)
 
     def test_day_position_is_clamped_to_valid_percentile(self):
-        base = Path(__file__).resolve().parents[1]
-        path = base / "screen_intraday.py"
-        if not path.exists():
+        if not self.screen_source:
             raise unittest.SkipTest("screen_intraday.py is not installed in this tree")
-        source = path.read_text(encoding="utf-8")
-        self.assertIn("max(0, min(100", source)
-        self.assertIn("day_position_pct", source)
+        self.assertIn("max(0, min(100", self.screen_source)
+        self.assertIn("day_position_pct", self.screen_source)
 
     def test_display_order_is_group_then_score_pct_score_change_and_aflow(self):
         self.assertIn('DISPLAY_GROUP_ORDER = {"可操作": 0, "觀察": 1, "排除": 2}', self.source)
@@ -69,8 +69,6 @@ class IntradayClassifierSourceTests(unittest.TestCase):
         self.assertIn("chip_bearish = (chip_streak is not None and chip_streak <= -3)", self.source)
         self.assertIn('group, subgroup = "觀察", "🔄 反轉候選（籌碼偏空）"', self.source)
 
-        # elif 鏈是循序短路的:chip_bearish 那支必須排在「可操作」那支的前面,
-        # 「可操作」才不會在籌碼明顯偏空時被賦值(兩支共用同一個 pct>=65 前提)。
         bearish_branch_pos = self.source.index(
             "elif not missing and pct is not None and pct >= 65 and chip_bearish:")
         actionable_branch_pos = self.source.index(
@@ -78,6 +76,21 @@ class IntradayClassifierSourceTests(unittest.TestCase):
             '        group, subgroup = "可操作"')
         self.assertLess(bearish_branch_pos, actionable_branch_pos,
                         "chip_bearish 分支必須排在「可操作」判定之前,否則籌碼偏空會漏判成可操作")
+
+    def test_screen_passes_live_volume_and_aflow_sides_to_decision_view(self):
+        """決策首頁不可把昨日 daily_bar.volume 再當成今天盤中成交量。"""
+        if not self.screen_source:
+            raise unittest.SkipTest("screen_intraday.py is not installed in this tree")
+        self.assertIn('"volume": it.get("volume")', self.screen_source)
+        self.assertIn('"intraday_volume_ratio": it.get("intraday_volume_ratio")', self.screen_source)
+        self.assertIn('"active_buy": it.get("active_buy")', self.screen_source)
+        self.assertIn('"active_sell": it.get("active_sell")', self.screen_source)
+
+    def test_screen_never_calls_aflow_institutional_buy_sell(self):
+        if not self.screen_source:
+            raise unittest.SkipTest("screen_intraday.py is not installed in this tree")
+        self.assertIn('conds["A-flow 轉正"] = na > 0', self.screen_source)
+        self.assertNotIn('conds["主動買超"]', self.screen_source)
 
 
 if __name__ == "__main__":
