@@ -1,13 +1,14 @@
 """Canonical presentation model for stock classification and entry timing.
 
-This module is deliberately pure.  It does not read databases and never
-changes the four structural-failure gates.  Pipelines provide facts; this
-module produces one consistent view for every API and UI.
+This module is deliberately pure. It does not read databases and never
+changes the structural-failure gates. Pipelines provide facts; this module
+produces one consistent view for every API and UI.
 """
 
 from __future__ import annotations
 
 import layered_score
+import intraday_metric_contract
 
 
 POOL_MAP = {
@@ -18,12 +19,6 @@ POOL_MAP = {
     layered_score.TIER_REJECTED: "rejected",
 }
 
-# 前端「今日型態」的保底字典：track=attack/engine 時前端直接吃 track、不看這欄；
-# 只有 track=觀察（無二元觸發訊號可講）時才會落到這裡。舊版靠 entry_rule/reasons
-# 文字關鍵字猜型態，TIER_REJECTED 的 next_upgrade 文案(「維持結構失效；等待
-# Recovery Scan」)、Risk Off 的 entry_rule(「市場 Risk Off·禁新倉」)都猜不中，
-# 於是顯示「待更新」——讀起來像資料缺失，其實是「這檔目前沒有型態」的正常狀態。
-# 直接给明確中文分類，不必再猜(2026-08-19)。
 _PATTERN_FALLBACK = {
     layered_score.TIER_CORE: "強勢突破",
     layered_score.TIER_REVERSAL: "反轉訊號",
@@ -87,8 +82,6 @@ def ranking_factors(market: dict) -> dict:
 
     buying = None
     if flow is not None and flow > 0 and change is not None:
-        # Measures price response, not raw money size. Large inflow with little
-        # movement is deliberately less efficient than a smaller decisive move.
         buying = round(min(100.0, max(0.0, change) * 25.0), 1)
 
     acceleration = None
@@ -159,10 +152,6 @@ def _next_upgrade(classification: str, market: dict, trigger_price=None,
     if resistance is None:
         resistance = prior_high
     flow = _num(market.get("aflow_today"))
-    # 進場條件必須指向 canonical trigger 的那個價位。引擎軌的 trigger 是 MA20,
-    # 規則文字卻寫 MA5,同一張卡就出現兩個支撐價(6213 聯茂:trigger 380.2/MA20、
-    # 規則寫 488.6/MA5,差 108 元,2026-08-21 使用者抓到)。MA5 是防守價,另走
-    # defense_price 欄位,不再冒充進場價。
     if classification in (layered_score.TIER_CORE, layered_score.TIER_NO_CHASE):
         if trigger_source == "ma20" and resistance is not None:
             return f"回測月線 {_fmt(resistance)} 不破 → 可進"
@@ -243,11 +232,29 @@ def _summary(classification: str, market: dict, trigger_price) -> str:
 def build(classified: dict, market: dict | None, trigger: dict | None) -> dict:
     market = dict(market or {})
     trigger = dict(trigger or {})
+
+    # One data contract for every intraday surface. A-flow is a directional
+    # executed-volume estimate in lots; institutions remain prior-day official context.
+    metrics = intraday_metric_contract.normalize({
+        "volume": market.get("volume"),
+        "aflow": market.get("aflow_today"),
+        "active_buy": market.get("active_buy"),
+        "active_sell": market.get("active_sell"),
+        "aflow_status": market.get("aflow_status") or "LIVE",
+        "institution_label": market.get("institution_label"),
+        "chip_data_date": (market.get("chip_data_date") or
+                           market.get("institution_data_date") or
+                           market.get("source_date")),
+    })
+    flow = _num(metrics.get("aflow_lots"))
+    safe_market = dict(market)
+    safe_market["aflow_today"] = flow
+    safe_market["volume"] = metrics.get("volume_lots")
+
     classification = classified.get("classification") or layered_score.TIER_CANDIDATE
-    close = _num(market.get("close"))
-    prior_high = _num(market.get("prior_high"))
-    ma20 = _num(market.get("ma20"))
-    flow = _num(market.get("aflow_today"))
+    close = _num(safe_market.get("close"))
+    prior_high = _num(safe_market.get("prior_high"))
+    ma20 = _num(safe_market.get("ma20"))
     confirmed_reversal = (classification in (
                               layered_score.TIER_REVERSAL,
                               layered_score.TIER_NO_CHASE,
@@ -257,22 +264,33 @@ def build(classified: dict, market: dict | None, trigger: dict | None) -> dict:
     if confirmed_reversal:
         classification = layered_score.TIER_CORE
 
-    canonical_price, trigger_source = _canonical_trigger(market, trigger)
+    canonical_price, trigger_source = _canonical_trigger(safe_market, trigger)
     canonical_trigger = {**trigger, "trigger_price": canonical_price}
-    state, state_label, quality = _entry_state(classification, market, canonical_trigger)
-    factors = ranking_factors(market)
-    margin_label = margin_tag(market)
-    institution = market.get("institution_label") or "法人 —"
-    flow_label = "資金 —" if flow is None else f"資金 {flow:+,.0f}"
-    flow_status_label = ("資金 —" if flow is None else
-                         (f"資金 {flow:+,.0f} · 轉弱待翻正" if flow < 0 else flow_label))
-    volume, vol_ma20 = _num(market.get("volume")), _num(market.get("vol_ma20"))
-    volume_ratio = (volume / vol_ma20) if volume is not None and vol_ma20 else None
-    volume_label = f"量能 {volume_ratio:.1f}x" if volume_ratio is not None else "量能 —"
+    state, state_label, quality = _entry_state(classification, safe_market, canonical_trigger)
+    factors = ranking_factors(safe_market)
+    margin_label = margin_tag(safe_market)
+
+    institution = metrics.get("institution_label") or "—"
+    institution_metric_label = metrics["institution_metric_label"]
+    institution_tag = (f"{institution_metric_label}：{institution}"
+                       if institution != "—" else f"{institution_metric_label} —")
+    flow_label = "A-flow —" if flow is None else f"A-flow {flow:+,.0f} 張"
+    flow_status_label = (flow_label if flow is None or flow >= 0
+                         else f"{flow_label} · 轉弱待翻正")
+
+    volume = _num(metrics.get("volume_lots"))
+    vol_ma20 = _num(safe_market.get("vol_ma20"))
+    explicit_intraday_ratio = _num(safe_market.get("intraday_volume_ratio"))
+    volume_ratio = (explicit_intraday_ratio if explicit_intraday_ratio is not None else
+                    ((volume / vol_ma20) if volume is not None and vol_ma20 else None))
+    volume_lots_text = "—" if volume is None else f"{volume:,.0f} 張"
+    volume_label = (f"成交量 {volume_lots_text} · 累計/20日均量 {volume_ratio:.2f}x"
+                    if volume_ratio is not None else f"成交量 {volume_lots_text}")
+
     low_priority = (classification == layered_score.TIER_CANDIDATE and flow is not None and
                     flow < 0 and canonical_price is not None and
                     (close is None or close <= canonical_price))
-    next_upgrade = _next_upgrade(classification, market, canonical_price, trigger_source)
+    next_upgrade = _next_upgrade(classification, safe_market, canonical_price, trigger_source)
     result = {
         "classification": classification,
         "display_pool": POOL_MAP[classification],
@@ -287,22 +305,26 @@ def build(classified: dict, market: dict | None, trigger: dict | None) -> dict:
         "trigger_source": trigger_source,
         "entry_rule": next_upgrade,
         "next_upgrade_condition": next_upgrade,
-        "reason_tags": _reason_tags(classified, market, canonical_price),
+        "reason_tags": _reason_tags(classified, safe_market, canonical_price),
         "decision_priority": "low" if low_priority else "normal",
         "priority_label": "👀 低優先觀察" if low_priority else "",
-        "decision_summary": _summary(classification, market, canonical_price),
-        "chip_tags": [institution, flow_status_label, margin_label, volume_label],
+        "decision_summary": _summary(classification, safe_market, canonical_price),
+        "chip_tags": [institution_tag, flow_status_label, margin_label, volume_label],
         "institution_label": institution,
+        "institution_metric_label": institution_metric_label,
+        "institution_asof": metrics.get("institution_asof"),
         "flow_label": flow_label,
         "flow_status_label": flow_status_label,
+        "aflow_lots": metrics.get("aflow_lots"),
         "margin_label": margin_label,
         "volume_label": volume_label,
+        "volume_lots": metrics.get("volume_lots"),
         "volume_ratio": round(volume_ratio, 2) if volume_ratio is not None else None,
-        # 防守價 = MA5,與進場價(trigger_price)分開兩個欄位,避免顯示端從規則字串
-        # 用正則撈 MA5 又把它讀成進場價。
-        "defense_price": _num(market.get("ma5")),
-        "defense_label": (f"MA5 {_fmt(_num(market.get('ma5')))}"
-                          if _num(market.get("ma5")) is not None else None),
+        "metric_contract": metrics,
+        "field_contract_version": metrics["field_contract_version"],
+        "defense_price": _num(safe_market.get("ma5")),
+        "defense_label": (f"MA5 {_fmt(_num(safe_market.get('ma5')))}"
+                          if _num(safe_market.get("ma5")) is not None else None),
     }
     result.update(factors)
     return result
