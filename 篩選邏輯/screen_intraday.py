@@ -14,11 +14,15 @@ screen_intraday.py — 盤中嚴判(三態燈號)
     實際持倉
 
 資料來源(只有兩個,沒有第三個):
-  1. Shioaji 訂閱串流 —— 價、量、aflow、內外盤、當日漲跌幅
-  2. DB 昨日死值 —— 昨高、月線、量能基準
+  1. Shioaji 訂閱串流 —— 價、成交量、A-flow、內外盤、當日漲跌幅
+  2. DB 昨日死值 —— 昨高、月線、量能基準、法人/融資官方盤後籌碼
 
 盤中一次都不打 FinMind。所有法人/融資欄位都是昨日死值,早躺在 DB 裡。
 把 FinMind key 清空,盤中燈號照樣出 —— 這是驗收條件。
+
+欄位鐵律:
+  成交量 = 今日累計成交張數；A-flow = 主動買張數 − 主動賣張數；
+  法人籌碼 = 前一交易日官方盤後資料。三者不得共用「買賣超」名稱。
 
 系統只給燈號,永不下單。綠燈的意思是「到你預設條件了」,
 實際進場仍由你按 ATR 規則決定。系統不替你扣扳機。
@@ -72,11 +76,7 @@ OPEN_BUY_BLIND_MIN = 10     # 鐵律4:09:00–09:10 一律禁新倉(禁 Open Buy
 SURGE_PCT = 8.0             # 鐵律2:漲幅超過此值視為噴漲,aflow 負數不判紅燈
 
 # ---------------------------------------------------------------- 盤中大盤 regime 閘(2026-08-11)
-# 命中率暴起暴落的主因是「隔天 T+1 大盤方向」(只做多動能策略的 beta):大盤大漲整批命中、
-# 大盤下殺整批熄火。盤後 regime 閘看的是選股當天寬度,預測不了 T+1;真正能擋的位置在這裡——
-# T+1 盤中大盤寬度轉弱時,攻擊軌(追突破)綠燈自動降續盯,不追進正在跌的市場。
-# 只擋攻擊軌(突破追價,最吃 beta);引擎軌是回月線低接、不在此列。
-RISK_OFF_BREADTH_PCT = 30.0   # 盤中大盤上漲占比 < 此值 = Risk Off → 攻擊軌不追突破(對齊盤後 risk_off 定義)
+RISK_OFF_BREADTH_PCT = 30.0
 
 
 def _minutes_since_open(at: _dt.datetime | None = None) -> int:
@@ -86,9 +86,7 @@ def _minutes_since_open(at: _dt.datetime | None = None) -> int:
 
 def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
               bar_y: dict | None, at: _dt.datetime | None = None) -> dict:
-    """
-    單檔嚴判。任何參數為 None 都不會爆,只是該條件不成立(不是判紅燈)。
-    """
+    """單檔嚴判。任何參數為 None 都不會爆,只是該條件不成立(不是判紅燈)。"""
     mins = _minutes_since_open(at)
     price = (quote or {}).get("price")
     cr = (quote or {}).get("change_rate")
@@ -104,18 +102,12 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
     y_high = (bar_y or {}).get("high")
     ma20 = (bar_y or {}).get("ma20")
     y_vol = (bar_y or {}).get("volume")
-    # 盤中量比:池日 daily_bar 的 volume_ratio 是「昨天的量比」,盤中拿它當今天的量能
-    # 等於用昨天的數字冒充今天(前端兩欄印出同一個 4.86x,2026-08-21 抓到)。
-    # 口徑:今日累計成交量(Shioaji quote 單位=張) x1000 → 股,除以 20 日均量(股)。
-    # 實測 1815 8/20 quote volume 133,016 張 vs daily_bar 134,497,060 股,確認 1000 倍。
-    # 這是「累計量 vs 20日均量」,不是同時段比較,標籤要講清楚,別再冒充「同期」。
+    # 盤中量比口徑:今日累計成交量(Shioaji quote 單位=張) x1000 → 股,
+    # 除以 20 日均量(股)。這是「累計量 vs 20日均量」,不是同時段比較。
     vol_ma20 = (bar_y or {}).get("vol_ma20")
     intraday_vr = (round(vol * 1000 / vol_ma20, 2)
                    if vol is not None and vol_ma20 else None)
 
-    # 距買點:現價相對觸發價的乖離%。>0 = 已站上、追多少;<0 = 還沒到。
-    # 日內位置:現價落在今日高低區間的百分位,0=最低、100=最高。
-    # VWAP乖離:現價相對今日均價(交易所口徑,非估算)的%,判斷是不是站在多數成交成本之上。
     trigger_price = pool_row.get("trigger_price")
     chase_distance_pct = (round((price / trigger_price - 1) * 100, 2)
                           if price is not None and trigger_price else None)
@@ -131,30 +123,26 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
     notes: list[str] = []
     missing: list[str] = []
 
-    # 條件1:站上昨高
     if price is not None and y_high:
         conds["站上昨高"] = price >= y_high
     else:
         conds["站上昨高"] = None
         missing.append("昨高")
 
-    # 條件2:aflow 轉正
     if na is not None:
-        conds["主動買超"] = na > 0
+        conds["A-flow 轉正"] = na > 0
     else:
-        conds["主動買超"] = None
-        missing.append("aflow")
+        conds["A-flow 轉正"] = None
+        missing.append("A-flow")
 
-    # 條件3:內外盤比 > 1.2
     if bid and ask:
         conds["內外盤比"] = (bid / ask) >= BID_ASK_MIN
     else:
         conds["內外盤比"] = None
         missing.append("內外盤")
 
-    # 條件4:量能較昨日同時段放大
     if vol is not None and y_vol and mins > 0:
-        session_frac = min(1.0, mins / 270)   # 09:00–13:30 共 270 分鐘
+        session_frac = min(1.0, mins / 270)
         pace = vol / max(1.0, y_vol * session_frac)
         conds["量能跟上"] = pace >= VOLUME_PACE_MIN
     else:
@@ -163,19 +151,6 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
 
     hit = sum(1 for v in conds.values() if v is True)
 
-    # ---------------------------------------------------------- 紅燈判定
-    #
-    # 鐵律1:開盤前 15 分鐘的 aflow 負值一律忽略。
-    #        6/17 被動元件案例:9:05 顯示 −171.12 卻是主力開盤壓低吸貨,
-    #        個股隨後 V 轉漲停。開盤負值是壓低吸籌,不是出貨。
-    #
-    # 鐵律2:噴漲檔的 aflow 負數不判紅燈。
-    #        接近漲停時委賣掛單造成的 aflow 負數是排隊要買,不是出貨。
-    #        這種標黃燈續盯。
-    #
-    # 鐵律3(盤中總則):intraday 的資金流向是主動買賣推估,不是法人買賣超。
-    #        盤中 outflow ≠ 出貨。要等盤後法人蓋章才算數。
-
     red = False
     if price is not None and ma20 and price < ma20:
         red = True
@@ -183,18 +158,16 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
 
     if na is not None and na < 0:
         if mins < OPENING_BLIND_MIN:
-            notes.append(f"開盤{mins}分內 aflow 負值,依鐵律忽略(可能是壓低吸籌)")
+            notes.append(f"開盤{mins}分內 A-flow 負值,依鐵律忽略(可能是壓低吸籌)")
         elif cr is not None and cr >= SURGE_PCT:
-            notes.append("噴漲中 aflow 負數 = 排隊掛買,不判死")
+            notes.append("噴漲中 A-flow 負數不直接判死")
         else:
-            # 持續且帶量的負值才算真的轉弱
             if vol is not None and y_vol and vol > y_vol * 0.8:
                 red = True
-                notes.append("aflow 持續轉負且帶量")
+                notes.append("A-flow 持續轉負且帶量")
             else:
-                notes.append("aflow 負但量未放大,續觀察")
+                notes.append("A-flow 負但量未放大,續觀察")
 
-    # ---------------------------------------------------------- 燈號
     if red:
         light = "🔴"
         action = "移出今日視線"
@@ -213,17 +186,12 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
         "post_score": pool_row.get("score"),
         "trigger_price": pool_row.get("trigger_price"),
         "entry_rule": pool_row.get("entry_rule"),
-        # 盤後入選理由（screen_post 六因子）帶進盤中，供判斷持續/變化、盤後驗證準度
         "reasons": pool_row.get("reasons") or [],
-        # net_active = Shioaji 盤中主動買賣差(資金流)。前端(cardA/aRows/決策清單)
-        # 一律讀 `aflow`,故同值加別名,否則「盤中資金流」欄恆顯示「—」(2026-08-05)。
         "price": price, "change_rate": cr, "net_active": na, "aflow": na,
         "volume": vol, "active_buy": active_buy, "active_sell": active_sell,
         "intraday_volume_ratio": intraday_vr,
         "intraday_volume_label": (f"累計 {intraday_vr}x(對20日均量)"
                                   if intraday_vr is not None else "待盤中量比"),
-        # 「現在這個價格能不能買」四件事(2026-08-18 補,A 卡原本只判「有沒有突破」,
-        # 沒判「突破後現在追不追得下去」):
         "intraday_high": day_high, "intraday_low": day_low, "vwap": vwap,
         "chase_distance_pct": chase_distance_pct,
         "day_position_pct": day_position_pct,
@@ -235,8 +203,7 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
 
 
 def _intraday_breadth(quotes: dict) -> dict:
-    """盤中大盤寬度(上漲占比)。優先用全市場真實寬度(與盤後 regime 同定義 market_regime);
-    取數失敗退回候選池 51 檔即時漲跌占比(至少反映手上這批是不是普跌)。缺資料 → risk_off=False,不亂擋。"""
+    """盤中大盤寬度(上漲占比)。優先用全市場真實寬度；取數失敗退回候選池。"""
     try:
         import market_regime
         b = market_regime.fetch_breadth()
@@ -258,12 +225,7 @@ def _intraday_breadth(quotes: dict) -> dict:
 
 
 def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
-    """
-    盤中只盯昨日盤後產出的候選池,不掃全市場。
-    任何一格資料缺失都不會導致燈號出不來。
-    """
-    # 這支從頭到尾只讀 SQLite,不呼叫任何取數函式 —— 所以不需要守門。
-    # 守門(assert_can_fetch_finmind)裝在 FinMind 取數函式那一端。
+    """盤中只盯昨日盤後產出的候選池,不掃全市場。"""
     today = today_tw()
     yday = prev_trading_day()
 
@@ -291,10 +253,7 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
     b = envs["bar_y"].get({}) or {}
     prev = envs["prev"].get({}) or {}
     now = at or now_tw()
-    # 盤中大盤 regime:寬度轉弱(Risk Off)時,攻擊軌不追突破(見上方常數說明)
     regime = _intraday_breadth(q)
-    # 鐵律4 禁 Open Buy：09:00–09:10 一律不開新倉。此窗內綠燈也只標「待9:10重確認」，
-    # 不得可進（9:10 後的 VWAP/量/大盤重確認＝使用者定暫緩，先落地禁新倉時窗）。
     open_blind = _dt.time(9, 0) <= now.time() < _dt.time(9, OPEN_BUY_BLIND_MIN)
 
     cg = screen_post._code_group()
@@ -307,8 +266,8 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
             except Exception:
                 pass
         it = judge_one(code, pr, q.get(code), a.get(code), b.get(code), at)
-        it["name"] = config.NAME.get(code)   # 名稱注入(事實,不參與判斷)
-        it["sector"] = cg.get(code)          # 族群注入(事實對照,同 screen_post 手法);缺了顯示端全灰「其他」
+        it["name"] = config.NAME.get(code)
+        it["sector"] = cg.get(code)
         quote = q.get(code) or {}
         aflow = (a.get(code) or {}).get("net_active")
         prior_market = b.get(code) or {}
@@ -322,18 +281,23 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
             "aflow_today": aflow,
             "aflow_previous": (pr.get("aflow_today") if pr.get("aflow_today") is not None
                                else (a_y.get(code) or {}).get("net_active")),
+            # SSOT: today's live volume/active sides override yesterday daily_bar facts.
+            "volume": it.get("volume"),
+            "intraday_volume_ratio": it.get("intraday_volume_ratio"),
+            "active_buy": it.get("active_buy"),
+            "active_sell": it.get("active_sell"),
+            "aflow_status": "LIVE" if aflow is not None else "NO_DATA",
             "margin_change": pr.get("margin_change"),
             "margin_balance": pr.get("margin_balance"),
             "institution_label": pr.get("institution_label") or pr.get("chip_label"),
+            "chip_data_date": (pr.get("chip_data_date") or pr.get("institution_data_date") or
+                               pr.get("source_date") or yday.isoformat()),
             "is_limit_up": is_limit_up(it.get("price"), change_rate=it.get("change_rate")),
         }
         view = decision_view.build(pr, market, it)
         it.update(view)
         it["reasons"] = view["reason_tags"]
 
-        # step 3a 延遲確認:讀前次 first_green_at,綠燈須持穩 CONFIRM_MINUTES 才可進
-        # 順便讀前一輪的資金流(na),跟這輪比出「資金趨勢」——不新開表,沿用同一筆
-        # A 鏈自己的 intraday_signal.note,B 鏈的 b_snapshot 不可讀(見檔頭鐵律)。
         pf, prev_na = None, None
         if prev.get(code):
             try:
@@ -358,13 +322,11 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
         it["confirm_note"] = cnote
         it["first_green_at"] = fg
         if regime["risk_off"] and it["light"] == "🟢" and it.get("track") == "攻擊軌":
-            # 大盤 Risk Off:攻擊軌(追突破)綠燈降續盯,不追進正在跌的市場;標記供驗證不計命中
             it["light"] = "🟡"
             it["confirm_state"] = "大盤RiskOff禁追"
             it["regime_blocked"] = True
             it["action"] = f"大盤 Risk Off(上漲占比 {regime['pct']}%)·攻擊軌不追突破,降續盯"
         elif it["light"] == "🟢" and open_blind:
-            # 禁 Open Buy 時窗：綠燈退回續盯，明標禁新倉，不得可進
             it["light"] = "🟡"
             it["confirm_state"] = "禁新倉"
             it["action"] = "09:00–09:10 禁新倉,待 9:10 重確認"
@@ -372,10 +334,10 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
             if state == "已確認":
                 it["action"] = f"✅ {cnote}"
             elif state == "確認失敗":
-                it["light"] = "🟡"        # 跌破觸發 → 退回續盯,不得當進場
+                it["light"] = "🟡"
                 it["action"] = f"確認未過:{cnote}"
             else:
-                it["action"] = f"🟢 {cnote}"   # 綠燈但未確認,不等於可進場
+                it["action"] = f"🟢 {cnote}"
         items.append(it)
 
     order = {"🟢": 0, "🟡": 1, "🔴": 2}
@@ -407,5 +369,6 @@ def build(db_path: str = "mls.db", at: _dt.datetime | None = None) -> dict:
         "confirmed_count": confirmed,
         "regime": regime,
         "regime_blocked_count": sum(1 for i in items if i.get("regime_blocked")),
+        "field_contract_version": "intraday-metrics-v1",
         "items": items,
     }
