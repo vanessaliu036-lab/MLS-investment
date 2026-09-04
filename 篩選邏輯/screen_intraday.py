@@ -91,6 +91,9 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
     price = (quote or {}).get("price")
     cr = (quote or {}).get("change_rate")
     vol = (quote or {}).get("volume")
+    # Shioaji 盤中整股 volume 單位=張；daily_bar volume/vol_ma20 單位=股。
+    # 所有跨盤中/日線的量能比較先統一成股，禁止直接拿張除股。
+    vol_shares = vol * 1000 if vol is not None else None
     bid = (quote or {}).get("bid_vol")
     ask = (quote or {}).get("ask_vol")
     day_high = (quote or {}).get("high")
@@ -102,11 +105,9 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
     y_high = (bar_y or {}).get("high")
     ma20 = (bar_y or {}).get("ma20")
     y_vol = (bar_y or {}).get("volume")
-    # 盤中量比口徑:今日累計成交量(Shioaji quote 單位=張) x1000 → 股,
-    # 除以 20 日均量(股)。這是「累計量 vs 20日均量」,不是同時段比較。
     vol_ma20 = (bar_y or {}).get("vol_ma20")
-    intraday_vr = (round(vol * 1000 / vol_ma20, 2)
-                   if vol is not None and vol_ma20 else None)
+    intraday_vr = (round(vol_shares / vol_ma20, 2)
+                   if vol_shares is not None and vol_ma20 else None)
 
     trigger_price = pool_row.get("trigger_price")
     chase_distance_pct = (round((price / trigger_price - 1) * 100, 2)
@@ -141,9 +142,9 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
         conds["內外盤比"] = None
         missing.append("內外盤")
 
-    if vol is not None and y_vol and mins > 0:
+    if vol_shares is not None and y_vol and mins > 0:
         session_frac = min(1.0, mins / 270)
-        pace = vol / max(1.0, y_vol * session_frac)
+        pace = vol_shares / max(1.0, y_vol * session_frac)
         conds["量能跟上"] = pace >= VOLUME_PACE_MIN
     else:
         conds["量能跟上"] = None
@@ -162,7 +163,7 @@ def judge_one(code: str, pool_row: dict, quote: dict | None, aflow: dict | None,
         elif cr is not None and cr >= SURGE_PCT:
             notes.append("噴漲中 A-flow 負數不直接判死")
         else:
-            if vol is not None and y_vol and vol > y_vol * 0.8:
+            if vol_shares is not None and y_vol and vol_shares > y_vol * 0.8:
                 red = True
                 notes.append("A-flow 持續轉負且帶量")
             else:
