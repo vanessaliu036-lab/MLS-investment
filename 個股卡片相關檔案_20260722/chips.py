@@ -307,12 +307,29 @@ def summarize_finmind_institutional(rows, inst_days=INST_DAYS):
         else:
             break
 
+    institution_streak = 0
+    for date in reversed(dates):
+        value = institutional(date)
+        if value > 0:
+            if institution_streak < 0:
+                break
+            institution_streak += 1
+        elif value < 0:
+            if institution_streak > 0:
+                break
+            institution_streak -= 1
+        else:
+            break
+
     latest = by_date[dates[-1]]
+    foreign_abs_avg_20d = sum(abs(by_date[d]["foreign"]) for d in dates) / len(dates)
+    foreign_abnormal_threshold = max(3000, round(foreign_abs_avg_20d * 2))
     return {
         "inst_net_20d_lots": sum_inst(inst_days),
         "inst_net_5d_lots": sum_inst(5),
         "inst_net_3d_lots": sum_inst(3),
         "inst_streak": streak,
+        "institution_streak": institution_streak,
         "foreign_days": streak,
         "foreign_net_d": round(latest["foreign"]),
         "trust_net_d": round(latest["trust"]),
@@ -330,10 +347,83 @@ def summarize_finmind_institutional(rows, inst_days=INST_DAYS):
         "dealer_net_20d": sum_field("dealer", inst_days),
         "source": "FinMind TaiwanStockInstitutionalInvestorsBuySell",
         "source_date": dates[-1],
+        "foreign_abs_avg_20d": round(foreign_abs_avg_20d, 1),
+        "foreign_abnormal_threshold": foreign_abnormal_threshold,
+        "foreign_abnormal_buy": latest["foreign"] >= foreign_abnormal_threshold,
+        "foreign_abnormal_sell": latest["foreign"] <= -foreign_abnormal_threshold,
         "days_used": len(dates),
         "unit": "lots",
         "schema_version": "chip_ssot_v1",
     }
+
+
+def _rollup_official_history(row, history, asof_limit):
+    """從官方 21 日原始序列重建指定 asof 的法人窗口。"""
+    dates = sorted(str(date)[:10] for date in history if str(date)[:10] <= asof_limit)
+    if not dates:
+        return None
+    dates = dates[-INST_DAYS:]
+    latest_date = dates[-1]
+
+    def value(date, field):
+        try:
+            return float((history.get(date) or {}).get(field) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def total(date):
+        return value(date, "total")
+
+    def streak(field):
+        result = 0
+        for date in reversed(dates):
+            current = value(date, field)
+            if result == 0:
+                result = 1 if current > 0 else (-1 if current < 0 else 0)
+                if result == 0:
+                    break
+            elif (result > 0 and current > 0) or (result < 0 and current < 0):
+                result += 1 if result > 0 else -1
+            else:
+                break
+        return result
+
+    latest = history.get(latest_date) or {}
+    recent3, recent5 = dates[-3:], dates[-5:]
+    out = dict(row)
+    out.update({
+        "foreign_net_d": round(value(latest_date, "foreign")),
+        "trust_net_d": round(value(latest_date, "trust")),
+        "dealer_net_d": round(value(latest_date, "dealer")),
+        "dealer_self_d": round(value(latest_date, "dealer_self")),
+        "dealer_hedge_d": round(value(latest_date, "dealer_hedge")),
+        "foreign_net_3d": round(sum(value(date, "foreign") for date in recent3)),
+        "trust_net_3d": round(sum(value(date, "trust") for date in recent3)),
+        "inst_net_3d_lots": round(sum(total(date) for date in recent3)),
+        "foreign_net_5d": round(sum(value(date, "foreign") for date in recent5)),
+        "trust_net_5d": round(sum(value(date, "trust") for date in recent5)),
+        "dealer_net_5d": round(sum(value(date, "dealer") for date in recent5)),
+        "inst_net_5d_lots": round(sum(total(date) for date in recent5)),
+        "foreign_net_20d": round(sum(value(date, "foreign") for date in dates)),
+        "trust_net_20d": round(sum(value(date, "trust") for date in dates)),
+        "dealer_net_20d": round(sum(value(date, "dealer") for date in dates)),
+        "inst_net_20d_lots": round(sum(total(date) for date in dates)),
+        "inst_streak": streak("foreign"),
+        "trust_streak": streak("trust"),
+        "institution_streak": streak("total"),
+        "source_date": latest_date,
+        "days_used": len(dates),
+        "source": row.get("source") or "TWSE T86 / TPEx 官方三大法人",
+    })
+    average = sum(abs(value(date, "foreign")) for date in dates) / len(dates)
+    threshold = max(3000, round(average * 2))
+    out.update({
+        "foreign_abs_avg_20d": round(average, 1),
+        "foreign_abnormal_threshold": threshold,
+        "foreign_abnormal_buy": value(latest_date, "foreign") >= threshold,
+        "foreign_abnormal_sell": value(latest_date, "foreign") <= -threshold,
+    })
+    return out
 
 
 def _official_detail(code, asof=None):
@@ -346,6 +436,13 @@ def _official_detail(code, asof=None):
         with open(CACHE_FILE, encoding="utf-8") as f:
             payload = json.load(f)
         row = (payload.get("stocks") or {}).get(str(code)) or {}
+        asof_limit = _asof_limit(asof)
+        # 官方快取在 18:00 後可能已切到今天；若頁面仍在盤前／盤中，
+        # 用保存的第 21 日原始資料還原 asof，而不是退回舊 FinMind 數字。
+        if row.get("source_date") and row.get("source_date") > asof_limit:
+            row = _rollup_official_history(row, row.get("inst_history") or {}, asof_limit)
+            if row is None:
+                return None
         # 舊版官方快取可能尚未保存 5 日欄位；只要單日、20 日與連買
         # 資料齊全，就可安全提供，5 日欄位維持 None，絕不回退舊 FinMind。
         required = ("source_date", "inst_net_20d_lots", "foreign_net_20d",
@@ -353,7 +450,7 @@ def _official_detail(code, asof=None):
         # The cache can be one or more trading days behind a calendar asof
         # (e.g. Monday before the official Monday update).  It is valid when
         # it is the latest available cached row not later than the cut-off.
-        if row.get("source_date") and row.get("source_date") > _asof_limit(asof):
+        if row.get("source_date") and row.get("source_date") > asof_limit:
             return None
         return row if all(row.get(k) is not None for k in required) else None
     except Exception:
@@ -458,6 +555,7 @@ def get_chips_detail(code, asof=None):
 
     result = {"foreign_net_d": None, "trust_net_d": None, "dealer_net_d": None,
               "dealer_self_d": None, "dealer_hedge_d": None,
+              "inst_net_d_lots": None,
               "foreign_net_3d": None, "trust_net_3d": None, "inst_net_3d_lots": None,
               "foreign_net_5d": None, "trust_net_5d": None,
               "dealer_net_5d": None, "inst_net_5d_lots": None,
@@ -504,6 +602,9 @@ def get_chips_detail(code, asof=None):
             "dealer_net_d": official.get("dealer_net_d", official.get("dealer")),
             "dealer_self_d": official.get("dealer_self_d"),
             "dealer_hedge_d": official.get("dealer_hedge_d"),
+            # 三大法人「單日合計」正本；缺此欄會讓下游只能用
+            # foreign+trust+dealer 巧合同名欄位兜出合計，一改欄位命名就斷。
+            "inst_net_d_lots": official.get("inst_net_d_lots"),
             "foreign_net_3d": official.get("foreign_net_3d"),
             "trust_net_3d": official.get("trust_net_3d"),
             "inst_net_3d_lots": official.get("inst_net_3d_lots"),
@@ -553,6 +654,7 @@ def get_chips_detail(code, asof=None):
             result["dealer_net_d"] = round(last["dl"])
             result["dealer_self_d"] = round(last["ds"])
             result["dealer_hedge_d"] = round(last["dh"])
+            result["inst_net_d_lots"] = round(last["f"] + last["t"] + last["dl"])
             recent3 = dates[-3:]
             result["foreign_net_3d"] = round(sum(by_date[d]["f"] for d in recent3))
             result["trust_net_3d"] = round(sum(by_date[d]["t"] for d in recent3))

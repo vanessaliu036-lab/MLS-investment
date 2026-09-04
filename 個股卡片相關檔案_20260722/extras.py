@@ -339,6 +339,212 @@ def _raw_rows() -> List[Dict[str, Any]]:
         return []
 
 
+def _watchpool_rows_map() -> Dict[str, Dict[str, Any]]:
+    """取觀察池行情；即時 buffer 空時先用已落地的上一份快照。"""
+    rows = _raw_rows()
+    if rows:
+        return {str(row.get("code", "")): row for row in rows}
+    try:
+        saved = VIT._read_intraday_snapshot(allow_prev_day=True) or {}
+        saved_date = saved.get("data_date") or saved.get("trade_date")
+        return {
+            str(row.get("code")): {
+                **row,
+                "has_data": True,
+                "data_mode": "vps_persisted_intraday_snapshot",
+                "source_date": row.get("source_date") or saved_date,
+            }
+            for row in saved.get("rows") or [] if row.get("code")
+        }
+    except Exception as exc:
+        print(f"[extras] 觀察池快照讀取略過: {exc}", flush=True)
+        return {}
+
+
+def chip_signal(chip: Dict[str, Any]) -> Dict[str, Any]:
+    """將已定案的法人快取翻成可掃讀的籌碼訊號。
+
+    反轉只在「最新一日」與「近 5 日」方向相反時成立；連買/連賣只是
+    延續佐證，絕不把它誤標成反轉。所有數字皆為張，來源維持 chips_cache。
+    """
+    def number(key: str) -> Optional[float]:
+        value = chip.get(key)
+        try:
+            return float(value) if value is not None and value != "" else None
+        except (TypeError, ValueError):
+            return None
+
+    daily = number("inst_net_d_lots")
+    if daily is None:
+        parts = [number(key) for key in ("foreign_net_d", "trust_net_d", "dealer_net_d")]
+        daily = sum(parts) if all(value is not None for value in parts) else None
+    five = number("inst_net_5d_lots")
+    if five is None:
+        parts = [number(key) for key in ("foreign_net_5d", "trust_net_5d", "dealer_net_5d")]
+        five = sum(parts) if all(value is not None for value in parts) else None
+    twenty = number("inst_net_20d_lots")
+    streak = number("inst_streak")
+    institution_streak = number("institution_streak")
+    foreign = number("foreign_net_d")
+    trust = number("trust_net_d")
+    dynamics = []
+    if institution_streak and abs(institution_streak) >= 2:
+        dynamics.append(
+            f"法人連{'買' if institution_streak > 0 else '賣'}{abs(int(institution_streak))}日"
+        )
+    elif streak and abs(streak) >= 2:
+        # 舊快取沒有 aggregate streak 時，至少保留可辨識的外資連續性。
+        dynamics.append(
+            f"外資連{'買' if streak > 0 else '賣'}{abs(int(streak))}日"
+        )
+    if chip.get("foreign_abnormal_buy") is True:
+        dynamics.append("外資異常大買")
+    elif chip.get("foreign_abnormal_sell") is True:
+        dynamics.append("外資異常大賣")
+    if foreign is not None and trust is not None:
+        if foreign > 0 and trust > 0:
+            dynamics.append("土洋同買")
+        elif foreign < 0 and trust < 0:
+            dynamics.append("土洋同賣")
+
+    result = {
+        "label": "資料不足",
+        "direction": "neutral",
+        "reversal": None,
+        "reason": "法人資料尚未完整",
+        "priority": 9,
+        "daily_lots": round(daily) if daily is not None else None,
+        "five_day_lots": round(five) if five is not None else None,
+        "twenty_day_lots": round(twenty) if twenty is not None else None,
+        "dynamics": dynamics,
+    }
+    if daily is None or five is None:
+        return result
+
+    if daily > 0 and five < 0:
+        return {**result, "label": "翻多訊號", "direction": "bullish", "reversal": True,
+                "reason": "近 5 日賣超，最新一日轉為買超", "priority": 0}
+    if daily < 0 and five > 0:
+        return {**result, "label": "翻空訊號", "direction": "bearish", "reversal": True,
+                "reason": "近 5 日買超，最新一日轉為賣超", "priority": 1}
+    if daily > 0 and five > 0 and twenty is not None and twenty > 0:
+        suffix = f"外資連買 {int(streak)} 日" if streak and streak >= 2 else "5／20 日皆買超"
+        return {**result, "label": "多方延續", "direction": "bullish", "reversal": False,
+                "reason": suffix, "priority": 2}
+    if daily < 0 and five < 0 and twenty is not None and twenty < 0:
+        suffix = f"外資連賣 {abs(int(streak))} 日" if streak and streak <= -2 else "5／20 日皆賣超"
+        return {**result, "label": "空方延續", "direction": "bearish", "reversal": False,
+                "reason": suffix, "priority": 3}
+    if daily > 0:
+        return {**result, "label": "短線偏多", "direction": "bullish", "reversal": False,
+                "reason": "最新一日買超，趨勢尚未一致", "priority": 4}
+    if daily < 0:
+        return {**result, "label": "短線偏空", "direction": "bearish", "reversal": False,
+                "reason": "最新一日賣超，趨勢尚未一致", "priority": 5}
+    return {**result, "label": "方向未定", "reversal": False,
+            "reason": "最新一日法人買賣超持平", "priority": 6}
+
+
+def build_chip_watchpool() -> Dict[str, Any]:
+    """籌碼清單的盤後固定資料。
+
+    這條路徑只讀 chips_cache.json 與已落地的行情快照，不呼叫
+    broker.raw_buffer_snapshots()、Shioaji 或日 K API。法人資料本來就是
+    前一個完成交易日的資料，不應因即時行情尚未訂閱而阻塞整頁。
+    """
+    import json
+
+    cache_path = _BASE / "chips_cache.json"
+    payload = {}
+    try:
+        with cache_path.open(encoding="utf-8") as fh:
+            payload = json.load(fh)
+    except (FileNotFoundError, OSError, ValueError):
+        payload = {}
+    stocks = payload.get("stocks") or {}
+
+    # 只讀已存在的快照；即使快照不存在，法人動態仍可完整顯示。
+    snapshot_rows = {}
+    snapshot_date = None
+    try:
+        saved = VIT._read_intraday_snapshot(allow_prev_day=True) or {}
+        snapshot_date = saved.get("data_date") or saved.get("trade_date")
+        snapshot_rows = {
+            str(row.get("code")): row for row in saved.get("rows") or []
+            if row.get("code")
+        }
+    except Exception as exc:
+        print(f"[extras] chip watchpool 快照讀取略過: {exc}", flush=True)
+
+    items = []
+    source_dates = []
+    for code in C.UNIVERSE:
+        code = str(code)
+        chip = dict(stocks.get(code) or {})
+        detail = stocks.get(f"detail:{code}") or {}
+        for key, value in detail.items():
+            if chip.get(key) is None:
+                chip[key] = value
+        source_date = chip.get("source_date")
+        if source_date:
+            source_dates.append(str(source_date)[:10])
+        daily = chip.get("inst_net_d_lots")
+        if daily is None:
+            daily_parts = [chip.get(key) for key in
+                           ("foreign_net_d", "trust_net_d", "dealer_net_d")]
+            daily = sum(daily_parts) if all(value is not None for value in daily_parts) else None
+        five = chip.get("inst_net_5d_lots")
+        if five is None:
+            five_parts = [chip.get(key) for key in
+                          ("foreign_net_5d", "trust_net_5d", "dealer_net_5d")]
+            five = sum(five_parts) if all(value is not None for value in five_parts) else None
+        summary = chip_signal({**chip, "inst_net_d_lots": daily,
+                               "inst_net_5d_lots": five})
+        snap = snapshot_rows.get(code) or {}
+        items.append({
+            "code": code,
+            "name": C.NAME_MAP.get(code, code),
+            "sector": C.SECTOR_MAP.get(code, ("其他",))[0],
+            "price": snap.get("price"),
+            "change_rate": snap.get("change_rate"),
+            "price_source_date": snap.get("data_date") or snapshot_date,
+            "foreign_net_d": chip.get("foreign_net_d"),
+            "trust_net_d": chip.get("trust_net_d"),
+            "dealer_net_d": chip.get("dealer_net_d"),
+            "inst_net_d_lots": daily,
+            "foreign_net_5d": chip.get("foreign_net_5d"),
+            "trust_net_5d": chip.get("trust_net_5d"),
+            "dealer_net_5d": chip.get("dealer_net_5d"),
+            "inst_net_5d_lots": five,
+            "inst_net_20d_lots": chip.get("inst_net_20d_lots"),
+            "inst_streak": chip.get("inst_streak"),
+            "institution_streak": chip.get("institution_streak"),
+            "trust_streak": chip.get("trust_streak"),
+            "foreign_abnormal_buy": chip.get("foreign_abnormal_buy"),
+            "foreign_abnormal_sell": chip.get("foreign_abnormal_sell"),
+            "foreign_abnormal_threshold": chip.get("foreign_abnormal_threshold"),
+            "disposition": chip.get("disposition") or chip.get("treatment"),
+            "foreign_source": chip.get("source"),
+            "foreign_source_date": source_date,
+            "chip_signal": summary,
+        })
+    source_dates = sorted(set(source_dates))
+    return {
+        "ok": bool(stocks),
+        "source": "chips_cache",
+        "data_date": source_dates[-1] if source_dates else None,
+        "price_data_date": snapshot_date,
+        "foreign_cache": {
+            "covered": sum(1 for item in items if item.get("foreign_source_date")),
+            "total": len(items),
+            "source_dates": source_dates,
+            "note": "前一完成交易日官方法人資料；不等待即時行情訂閱",
+        },
+        "count": len(items),
+        "items": items,
+    }
+
+
 # ── 個股卡片快取 ──────────────────────────────────────────
 # 卡片吃的是盤後固定資料（收盤日K＋FinMind＋已落地健康度），同一個交易日
 # 算出來的結果不會變。但每次 systemd 重啟後第一次點個股都要重跑 Shioaji
@@ -346,7 +552,7 @@ def _raw_rows() -> List[Dict[str, Any]]:
 # 因此：同一 (code, 盤後有效日) 只算一次，並寫到磁碟，重啟後直接沿用。
 _CARD_MEM: Dict[str, Dict[str, Any]] = {}
 _CARD_DIR = _BASE / "card_cache"
-_CARD_CACHE_VERSION = 2  # v2: 正確 VWAP、週期籌碼、可用分母計分與族群成分
+_CARD_CACHE_VERSION = 4  # v4: TPEx 歷史月份改用 date 參數，補齊成交量圖表
 
 
 def _card_cache_path(code: str, asof: str) -> Path:
@@ -403,9 +609,105 @@ def _card_cache_stale(code: str) -> Optional[Dict[str, Any]]:
             return None
         import json
         with files[-1].open(encoding="utf-8") as fh:
-            return json.load(fh)
+            data = json.load(fh)
+        # 失效的舊快取不能在官方資料暫時不可用時又從 stale fallback
+        # 偷渡回畫面，否則本次資料契約修正仍會顯示錯誤收盤價／成交量。
+        return data if data.get("_card_cache_version") == _CARD_CACHE_VERSION else None
     except Exception:
         return None
+
+
+def _authoritative_daily_bars(code: str, asof: str, days: int = 80):
+    """讀取盤後卡片用的官方日K，回傳成交量單位為張。
+
+    Shioaji 的日K在斷線、合約或快取狀態異常時可能拿到錯誤標的／不完整
+    成交量；個股卡片又是以收盤後資料呈現，因此這裡固定優先走既有的
+    TWSE/TPEx 官方 adapter，FinMind 只在官方端點不可用時由 adapter 備援。
+    """
+    try:
+        import eod_source
+        end = _dt.datetime.strptime(str(asof)[:10], "%Y-%m-%d").date()
+    except (ImportError, TypeError, ValueError):
+        return [], None
+
+    by_date: Dict[str, Dict[str, Any]] = {}
+    sources = set()
+    history_filled = False
+    # 一個月端點只回傳該月資料；最多往前抓 6 個月，足以涵蓋 80 根交易日。
+    first_month = end.replace(day=1)
+    for month_offset in range(6):
+        # 不能用「每月減 32 天」：9/1 減 32 天會落到 7/31，整個 8 月
+        # 會被跳過，進而讓昨收、漲跌幅與 30 日圖缺資料。
+        month_index = first_month.year * 12 + first_month.month - 1 - month_offset
+        month_year, month_number = divmod(month_index, 12)
+        month_day = _dt.date(month_year, month_number + 1, 28)
+        month_start = month_day.replace(day=1).isoformat()
+        try:
+            rows = eod_source._price_rows(
+                str(code), month_start, trade_date=month_day.isoformat()) or []
+        except Exception as exc:
+            print(f"[extras] 官方日K {code} {month_start} 讀取失敗: {exc}", flush=True)
+            continue
+        for row in rows:
+            date = str(row.get("date") or "")[:10]
+            if not date or date > str(asof)[:10]:
+                continue
+            try:
+                close = float(row.get("close"))
+                volume_shares = float(row.get("Trading_Volume") or 0)
+            except (TypeError, ValueError):
+                continue
+            if close <= 0:
+                continue
+            high = row.get("max") if row.get("max") is not None else row.get("high")
+            low = row.get("min") if row.get("min") is not None else row.get("low")
+            try:
+                high = float(high) if high is not None else close
+                low = float(low) if low is not None else close
+            except (TypeError, ValueError):
+                high, low = close, close
+            source = str(row.get("source") or "")
+            if source:
+                sources.add(source)
+            # TWSE/TPEx 與 FinMind 的 Trading_Volume 都是股；畫面和 Shioaji
+            # 日K的成交量欄位則是張，只有在這個邊界轉換一次。
+            by_date[date] = {
+                "date": date,
+                "open": row.get("open"),
+                "close": close,
+                "change": row.get("change"),
+                "high": high,
+                "low": low,
+                "volume": round(volume_shares / 1000),
+                "amount": row.get("Trading_money"),
+            }
+        if len(by_date) >= days:
+            break
+
+    bars = [by_date[date] for date in sorted(by_date)[-days:]]
+    if not bars:
+        return [], None
+    if len(bars) < days:
+        # TPEx 的日成交端點目前只回當月；用既有 Shioaji 日K補足歷史窗口，
+        # 但同日期一律由官方列覆蓋，尤其是最新收盤與成交量不可被 fallback
+        # 改寫。這讓昨收、30日圖可用，同時維持本次修正的官方 SSOT。
+        try:
+            for fallback in stock_card._bars(code, days=days):
+                date = str(fallback.get("date") or "")[:10]
+                if date and date <= str(asof)[:10] and date not in by_date:
+                    by_date[date] = fallback
+                    history_filled = True
+            bars = [by_date[date] for date in sorted(by_date)[-days:]]
+        except Exception as exc:
+            print(f"[extras] 官方日K歷史補足 {code} 失敗: {exc}", flush=True)
+    if sources and all(source.startswith("official_") for source in sources):
+        source_label = ("TWSE/TPEx 官方日K＋Shioaji歷史補足"
+                        if history_filled else "TWSE/TPEx 官方日K")
+    elif sources:
+        source_label = "TWSE/TPEx 官方日K＋FinMind備援"
+    else:
+        source_label = "官方日K"
+    return bars, source_label
 
 
 # ── /api/stock/{code} ──────────────────────────────────────
@@ -432,9 +734,15 @@ def build_stock_card(code: str, refresh: bool = False) -> Dict[str, Any]:
             return stale
         raise
     if result.get("ok"):
-        _card_cache_write(code, asof_limit, result)
+        # 快取 key 必須用內容本身的實際資料日(data_date)，不能一律套用
+        # asof_limit(18:00 前固定看前一交易日)。盤中合併即時報價後
+        # data_date 會被推進到今天，若仍用 asof_limit 當 key，會把
+        # 「今天的即時漲跌」凍結進標成「昨天」的快取檔，收盤後到 18:00
+        # 這段時間會原樣吐回去，卡片日期跟漲跌%就對不上。
+        cache_key = str(result.get("data_date") or asof_limit)[:10]
+        _card_cache_write(code, cache_key, result)
         result = dict(result)
-        result["cache"] = {"hit": False, "asof": asof_limit}
+        result["cache"] = {"hit": False, "asof": cache_key}
     return result
 
 
@@ -553,26 +861,42 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
     except Exception as exc:
         print(f"[extras] eod_state {code} 失敗: {exc}", flush=True)
     try:
-        bars = stock_card._bars(code, days=80)
+        bars, bar_source = _authoritative_daily_bars(code, asof_limit, days=80)
+        if not bars:
+            # 官方端點與 FinMind 都不可用時才保留既有 Shioaji fallback；
+            # fallback 的來源會明確標記在 payload，不讓它冒充官方數據。
+            bars = stock_card._bars(code, days=80)
+            bar_source = "Shioaji 日K fallback" if bars else None
         valid = [b for b in bars
                  if b.get("close") is not None and str(b.get("date") or "")[:10] <= asof_limit]
         if valid:
             last = valid[-1]
             prev = valid[-2] if len(valid) > 1 else None
             close = float(last["close"])
-            prev_close = float(prev["close"]) if prev else None
+            # TPEx 官方日成交列本身帶「漲跌」；歷史補足暫時不可用時，
+            # 仍可由收盤價−漲跌還原昨收，不把漲跌幅留成空值。
+            if prev:
+                prev_close = float(prev["close"])
+            else:
+                try:
+                    absolute_change = float(last.get("change"))
+                    prev_close = close - absolute_change
+                except (TypeError, ValueError):
+                    prev_close = None
             daily = _read_intraday_daily(code, str(last.get("date") or "")[:10])
             snap = {
                 "code": str(code), "price": close,
                 "prev_close": prev_close,
                 "change_rate": round((close / prev_close - 1) * 100, 2)
                 if prev_close else None,
-                "high": daily.get("high") or last.get("high"),
-                "low": daily.get("low") or last.get("low"),
+                "high": last.get("high") or daily.get("high"),
+                "low": last.get("low") or daily.get("low"),
                 "avg_price": daily.get("avg_price"),
-                "total_volume": daily.get("volume") or last.get("volume") or 0,
+                "total_volume": last.get("volume") or 0,
                 "buy_volume": None, "sell_volume": None,
-                "data_mode": "post_market_daily_kbar",
+                "data_mode": "post_market_official_daily_kbar" if bar_source and "官方" in bar_source
+                else "post_market_daily_kbar",
+                "price_source": bar_source,
                 "source_date": last.get("date"),
                 "aflow": eod_flow,
                 "aflow_ratio": post_ratio,
@@ -581,8 +905,11 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
                 "quadrant": eod_quadrant,
                 "group": eod_group,
             }
-            if daily.get("volume_ratio") is not None:
-                snap["volume_ratio"] = daily["volume_ratio"]
+            prior_volumes = [b.get("volume") for b in valid[-6:-1]
+                             if b.get("volume") is not None]
+            if last.get("volume") and prior_volumes:
+                snap["volume_ratio"] = round(
+                    float(last["volume"]) / (sum(prior_volumes) / len(prior_volumes)), 2)
             closes = [float(b["close"]) for b in valid[-20:]
                       if b.get("close") is not None]
             snap["volume_history"] = [
@@ -601,6 +928,7 @@ def _build_stock_card(code: str) -> Dict[str, Any]:
         grade_map = {"可操作": "Ready", "觀察": "Watch", "排除": "Hold"}
         grade = grade_map.get((snap or {}).get("group"))
         card = stock_card.build_card(code, snap=snap, health=health, grade=grade,
+                                     injected_bars=bars if bars else None,
                                      chip_asof=asof_limit)
         card["decision"] = _decision_factors(card, snap or {})
     except Exception as e:
@@ -693,7 +1021,7 @@ def build_report() -> Dict[str, Any]:
 def build_watchpool() -> Dict[str, Any]:
     """51 檔觀察池全集 — 從 broker buffer 抓真實 rows，
     沒回報的檔用 config 補上 name/sector。"""
-    rows_map = {str(r.get("code", "")): r for r in _raw_rows()}
+    rows_map = _watchpool_rows_map()
     try:
         subs = set(getattr(broker, "_SUBSCRIBED", set())) or set(C.UNIVERSE)
     except Exception:
@@ -762,12 +1090,21 @@ def build_watchpool() -> Dict[str, Any]:
                     }
             except Exception as exc:
                 print(f"[extras] watchpool {code} 日K回退失敗: {exc}", flush=True)
-        inst_daily = (sum(chip[k] for k in ("foreign_net_d", "trust_net_d", "dealer_net_d"))
-                      if all(chip.get(k) is not None for k in
-                             ("foreign_net_d", "trust_net_d", "dealer_net_d")) else None)
-        inst_5d = (sum(chip[k] for k in ("foreign_net_5d", "trust_net_5d", "dealer_net_5d"))
-                   if all(chip.get(k) is not None for k in
-                          ("foreign_net_5d", "trust_net_5d", "dealer_net_5d")) else None)
+        inst_daily = chip.get("inst_net_d_lots")
+        if inst_daily is None:
+            inst_daily = (sum(chip[k] for k in ("foreign_net_d", "trust_net_d", "dealer_net_d"))
+                          if all(chip.get(k) is not None for k in
+                                 ("foreign_net_d", "trust_net_d", "dealer_net_d")) else None)
+        inst_5d = chip.get("inst_net_5d_lots")
+        if inst_5d is None:
+            inst_5d = (sum(chip[k] for k in ("foreign_net_5d", "trust_net_5d", "dealer_net_5d"))
+                       if all(chip.get(k) is not None for k in
+                              ("foreign_net_5d", "trust_net_5d", "dealer_net_5d")) else None)
+        chip_summary = chip_signal({
+            **chip,
+            "inst_net_d_lots": inst_daily,
+            "inst_net_5d_lots": inst_5d,
+        })
         items.append({
             "code": code,
             "name": C.NAME_MAP.get(code, code),
@@ -795,6 +1132,8 @@ def build_watchpool() -> Dict[str, Any]:
             "foreign_source": chip.get("source"),
             "foreign_source_date": chip.get("source_date"),
             "inst_streak": chip.get("inst_streak"),
+            "disposition": chip.get("disposition") or chip.get("treatment"),
+            "chip_signal": chip_summary,
             "volume_ratio": snap.get("volume_ratio"),
             "has_data": bool(snap.get("price")),
             "data_mode": snap.get("data_mode") or ("intraday_shioaji" if snap.get("price") else None),
