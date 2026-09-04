@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NEXORA 個股籌碼</title>
+<title>MLS 個股籌碼</title>
 <style>
 :root{--bg:#f3f5f9;--panel:#fff;--line:#dfe5ee;--soft:#f8fafc;--navy:#111a2e;--text:#172033;--muted:#6f7a8e;--red:#e54256;--green:#0a9b70;--amber:#b77908;--amber-bg:#fff7df;--blue:#3568d4;--blue-bg:#eef3ff;--shadow:0 10px 26px rgba(25,42,70,.07)}
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC","PingFang TC",sans-serif;line-height:1.55}.topbar{height:60px;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:4}.brand{font-weight:950;letter-spacing:.04em}.topnote{font-size:12px;color:#b8c1d4}.wrap{max-width:1480px;margin:0 auto;padding:18px}.hero,.section{background:var(--panel);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px}.hero{padding:22px}.identity{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.code{font-size:14px;color:var(--muted);font-weight:900}.name{font-size:32px;font-weight:950;letter-spacing:-.04em}.quote{padding:5px 9px;border-radius:8px;background:#fff0f2;color:var(--red);font-size:16px;font-weight:950}.tag{padding:5px 10px;border-radius:999px;background:#eef1f6;color:#5e687b;font-size:12px;font-weight:850}.meta{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;color:var(--muted);font-size:12px}.meta b{color:var(--text)}.chip-date{margin-top:18px;padding:12px 14px;border-radius:12px;background:var(--blue-bg);color:var(--blue);font-size:13px;font-weight:900}.toolbar{display:flex;gap:7px;overflow:auto;padding:0 0 12px}.toolbar a{white-space:nowrap;background:#fff;border:1px solid var(--line);padding:8px 12px;border-radius:999px;font-size:12px;font-weight:850;color:var(--muted)}.section-head{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px}.section-title{font-size:17px;font-weight:950}.source{font-size:11px;color:var(--muted);font-weight:800}.section-body{padding:16px 18px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff}.card-head{display:flex;justify-content:space-between;gap:10px;padding:12px 14px;background:var(--soft);border-bottom:1px solid var(--line)}.card-title{font-weight:950;font-size:14px}.card-source{font-size:10px;color:var(--muted)}.rows{padding:4px 14px}.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;padding:10px 0;border-bottom:1px dashed #e8ecf2;font-size:13px}.row:last-child{border-bottom:0}.row .k{color:var(--muted)}.row .v{font-weight:850;text-align:right}.notice{margin:12px 14px 14px;padding:11px 13px;border-radius:12px;background:var(--amber-bg);color:#74510b;font-size:12px}.sub{font-size:11px;color:var(--muted);margin-top:3px}.pos{color:var(--red)}.neg{color:var(--green)}.footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}@media(max-width:700px){.topbar{padding:0 14px}.wrap{padding:10px}.name{font-size:27px}.grid{grid-template-columns:1fr}.section-head{align-items:flex-start;flex-direction:column}}
@@ -14,6 +14,17 @@
 <style>
 .stock-menu{display:none!important}body{padding-left:0!important}.main-content{padding-top:78px!important}.topbar .brand{display:flex;align-items:center;gap:2px}.back-link{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;margin-right:4px;color:#fff;text-decoration:none;font-size:14px;font-weight:900}.back-link::before{content:'‹';font-size:28px;line-height:1;margin-right:2px}
 </style>
+<style data-mls-error-state>
+.page-error{max-width:760px;margin:48px auto;padding:28px;display:grid;grid-template-columns:52px minmax(0,1fr);gap:18px;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}
+.page-error-mark{width:52px;height:52px;display:grid;place-items:center;border-radius:16px;background:var(--amber-bg);color:var(--amber);font-size:24px;font-weight:950}
+.page-error-kicker{color:var(--blue);font-size:12px;font-weight:900;letter-spacing:.1em}
+.page-error h1{margin:5px 0 8px;font-size:24px;letter-spacing:-.03em}
+.page-error p{margin:0;color:var(--muted);font-size:14px;line-height:1.7}
+.page-error-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.page-error-action{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 16px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--text);font:inherit;font-weight:850;text-decoration:none;cursor:pointer}
+.page-error-action.primary{border-color:var(--navy);background:var(--navy);color:#fff}
+@media(max-width:700px){.page-error{margin:28px 14px;padding:22px;grid-template-columns:1fr;gap:12px}.page-error-mark{width:44px;height:44px;border-radius:13px}}
+</style>
 <style>
 .toolbar button{white-space:nowrap;background:#fff;border:1px solid var(--line);padding:8px 12px;border-radius:999px;font-size:12px;font-weight:850;color:var(--muted);font:inherit;cursor:pointer}.toolbar button.active{background:var(--navy);border-color:var(--navy);color:#fff}.section{scroll-margin-top:74px}
 </style>
@@ -21,9 +32,31 @@
 /* 明細頁手機版對齊示意圖：維持單檔閱讀節奏，所有互動至少 44px。 */
 @media(max-width:700px){.topbar{height:60px;padding:0 14px}.topbar .brand{font-size:16px}.topnote{max-width:132px;overflow:hidden;text-overflow:ellipsis}.wrap{padding:20px 14px 12px}.hero{padding:20px 18px;border-radius:24px;margin-bottom:18px}.identity{gap:8px}.code{font-size:14px}.name{font-size:29px}.quote{font-size:16px;padding:6px 10px}.tag{padding:6px 10px}.hero-flow{margin-top:14px}.meta{gap:10px 14px;margin-top:14px;font-size:12px}.chip-date{margin-top:18px;padding:13px 14px;border-radius:14px}.toolbar{gap:8px;padding:0 0 16px}.toolbar button{min-height:44px;padding:8px 15px;border-radius:23px}.section{border-radius:24px;margin-bottom:16px}.section-head{padding:18px 18px 16px}.section-title{font-size:20px}.section-body{padding:14px 16px}.card{border-radius:16px}.card-head{padding:13px 14px}.rows{padding:4px 14px}.row{min-height:44px;padding:11px 0}.row .v{font-size:15px}.notice{margin:12px 0 14px;border-radius:12px}.footer{padding-bottom:24px}}
 </style>
+<style data-mls-mobile-ui-final>
+/* 2026-09-02：個股明細手機版守住卡片與分隔線的共同邊界。 */
+html,body{width:100%;max-width:100%;min-width:0;overflow-x:hidden}
+.wrap,.main-content,.hero,.section,.toolbar,.section-head,.section-body,.grid,.card,.row{min-width:0;max-width:100%}
+.main-content{overflow:clip}
+.topbar{gap:10px}
+.topbar .brand,.topnote{min-width:0}
+.topnote{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.toolbar{overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.toolbar::-webkit-scrollbar{display:none}
+.row .k,.row .v{min-width:0;overflow-wrap:anywhere}
+@media(max-width:700px){
+  .wrap{padding-inline:14px!important}
+  .section-head,.section-body{padding-inline:14px!important}
+  .card-head,.rows{padding-inline:12px!important}
+  .topnote{max-width:132px}
+}
+</style>
 </head>
 <body>
-<header class="topbar"><div class="brand"><a class="back-link" href="/" aria-label="返回前台菜單">前台</a><span>NEXORA · 個股籌碼</span></div><div class="topnote" id="topnote">籌碼資料載入中</div></header>
+<header class="topbar"><div class="brand"><a class="back-link" href="/" aria-label="返回決策首頁">前台</a><span>MLS · 個股籌碼</span></div><div class="topnote" id="topnote">籌碼資料載入中</div></header>
+<section class="page-error" id="pageError" hidden role="alert" aria-live="polite">
+  <div class="page-error-mark" aria-hidden="true">!</div>
+  <div><div class="page-error-kicker">個股籌碼</div><h1>籌碼資料暫時無法載入</h1><p>目前沒有回傳完整的個股籌碼資料，請稍後再試，或先回到籌碼清單。</p><div class="page-error-actions"><a class="page-error-action primary" href="/chips">回到籌碼清單</a><button class="page-error-action" id="pageErrorReload" type="button">重新整理</button></div></div>
+</section>
 <main class="wrap main-content">
   <section class="hero">
     <div class="identity"><span class="code" id="code">代碼</span><span class="name" id="name">名稱</span><span class="quote" id="quote">現價 —</span><span class="tag" id="sector">族群</span></div>
@@ -61,10 +94,12 @@
   const renderMenu=items=>{if(!menu)return;menu.innerHTML=items.map(x=>{const ch=Number(x.change_rate);const tone=ch>0?'up':ch<0?'down':'';return `<button class="stock-item ${tone}${String(x.code)===String(code)?' active':''}" data-code="${x.code}" type="button"><span class="stock-code">${x.code}</span><b class="stock-name">${x.name||x.code}</b><strong class="stock-price">${x.price==null?'—':x.price}</strong><small class="stock-change">${rate(x.change_rate)}</small>${flowMarkup(x.foreign_net_d)}</button>`}).join('');if(menuStatus)menuStatus.textContent=`${items.length} 檔｜點選查看籌碼`};
   const setActive=()=>menu&&menu.querySelectorAll('.stock-item').forEach(x=>x.classList.toggle('active',x.dataset.code===String(code)));
   const loadMenu=async()=>{try{const p=await fetch(API+'/api/watchpool',{cache:'no-store'}).then(r=>r.json());const items=(p.items||[]).map(x=>({code:String(x.code),name:x.name||x.code,price:x.price,change_rate:x.change_rate,foreign_net_d:x.foreign_net_d}));renderMenu(items.length?items:fallbackCodes)}catch(_){renderMenu(fallbackCodes);if(menuStatus)menuStatus.textContent='51 檔｜名稱待補'}};
-  const showLoadError=e=>{const x=document.createElement('div');x.style='position:fixed;top:0;left:0;right:0;background:#fff0f2;color:#e6465a;padding:10px 16px;z-index:9;font-weight:800';x.textContent='真實資料載入失敗：'+e.message;document.body.prepend(x)};
+  const showLoadError=e=>{console.warn('chips standalone load',e);document.querySelector('.wrap')?.setAttribute('hidden','');document.getElementById('pageError')?.removeAttribute('hidden')};
+  document.getElementById('pageErrorReload')?.addEventListener('click',()=>location.reload());
+  const fetchJson=async url=>{const response=await fetch(url,{cache:'no-store'});let payload;try{payload=await response.json()}catch(_){throw Error('資料服務暫時無法回應')}if(!response.ok||payload?.ok===false)throw Error(payload?.error||'個股籌碼資料暫時無法載入');return payload};
   menu&&menu.addEventListener('click',event=>{const item=event.target.closest('.stock-item');if(!item)return;code=item.dataset.code;history.replaceState(null,'',`?code=${code}`);setActive();render().catch(showLoadError)});
   const render=async()=>{
-    const d=await fetch(API+'/api/stock/'+code,{cache:'no-store'}).then(r=>r.json());
+    const d=await fetchJson(API+'/api/stock/'+code);
     if(!d.ok)throw Error(d.error||'個股 API 失敗');
     const c=d.card||{},p=d.post_market||{},chip=c.chip||{};
     const live=!!p.intraday_available, price=c.price??p.price;

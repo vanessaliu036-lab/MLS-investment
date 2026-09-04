@@ -38,6 +38,37 @@ def test_official_cache_uses_latest_date_on_or_before_asof(monkeypatch, tmp_path
     assert result["source_date"] == "2026-08-28"
 
 
+def test_future_official_cache_reconstructs_previous_asof_from_history(monkeypatch, tmp_path):
+    """18:00 後快取已切到今天時，盤前仍要顯示前一交易日官方法人值。"""
+    cache = tmp_path / "chips_cache.json"
+    history = {}
+    for day in range(5, 27):
+        date = f"2026-08-{day:02d}"
+        history[date] = {"foreign": 0, "trust": 0, "dealer": 0,
+                         "dealer_self": 0, "dealer_hedge": 0, "total": 0}
+    history["2026-09-01"] = {"foreign": 4974.118, "trust": -68.85,
+                             "dealer": 418.053, "dealer_self": 123,
+                             "dealer_hedge": 295.053, "total": 5323.321}
+    history["2026-09-02"] = {"foreign": -1844.95, "trust": -44,
+                             "dealer": 51.983, "dealer_self": 111.04,
+                             "dealer_hedge": -59.057, "total": -1836.967}
+    cache.write_text(json.dumps({"stocks": {"5483": {
+        "source_date": "2026-09-02", "inst_net_20d_lots": -34420,
+        "foreign_net_20d": -32716, "trust_net_20d": -999,
+        "dealer_net_20d": -705, "inst_streak": -1,
+        "inst_history": history,
+    }}}, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(chips, "CACHE_FILE", str(cache))
+
+    result = chips._official_detail("5483", asof="2026-09-01")
+
+    assert result["source_date"] == "2026-09-01"
+    assert result["foreign_net_d"] == 4974
+    assert result["trust_net_d"] == -69
+    assert result["dealer_net_d"] == 418
+    assert result["inst_net_5d_lots"] == 5323
+
+
 def test_each_chip_source_keeps_its_own_latest_available_date(monkeypatch, tmp_path):
     cache = tmp_path / "chips_cache.json"
     cache.write_text('{"date":"","stocks":{}}', encoding="utf-8")
@@ -103,6 +134,115 @@ def test_each_chip_source_keeps_its_own_latest_available_date(monkeypatch, tmp_p
     assert result["foreign_share_source_date"] == "2026-08-29"
 
 
+def test_chip_signal_exposes_capital_dynamics_without_relabeling_foreign_streak():
+    signal = extras.chip_signal({
+        "foreign_net_d": 8500,
+        "trust_net_d": 1200,
+        "dealer_net_d": -100,
+        "inst_net_d_lots": 9600,
+        "inst_net_5d_lots": 11000,
+        "inst_net_20d_lots": 18000,
+        "inst_streak": 4,
+        "institution_streak": 3,
+        "foreign_abnormal_buy": True,
+    })
+
+    assert signal["dynamics"] == ["法人連買3日", "外資異常大買", "土洋同買"]
+    assert signal["label"] == "多方延續"
+
+
+def test_chip_listing_renders_all_available_capital_signals():
+    listing = (Path(__file__).resolve().parents[1] / "個股籌碼清單UI.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert "signal-strip" in listing
+    assert "chip_signal" in listing
+    assert "處置" in listing
+    assert "大買" in listing and "大賣" in listing
+    assert "dynamics" in listing
+
+
+def test_chip_watchpool_does_not_initialize_realtime_broker(monkeypatch, tmp_path):
+    cache = tmp_path / "chips_cache.json"
+    cache.write_text(json.dumps({"date": "2026-09-01", "stocks": {
+        "1815": {
+            "source_date": "2026-09-01", "foreign_net_d": 8000,
+            "trust_net_d": 1000, "dealer_net_d": 500,
+            "foreign_net_5d": 9000, "trust_net_5d": 2000,
+            "dealer_net_5d": 1000, "inst_net_5d_lots": 12000,
+            "inst_net_20d_lots": 20000, "inst_streak": 3,
+            "institution_streak": 3, "foreign_abnormal_buy": True,
+        }
+    }}), encoding="utf-8")
+    monkeypatch.setattr(extras, "_BASE", tmp_path)
+    monkeypatch.setattr(extras.C, "UNIVERSE", ["1815"])
+    monkeypatch.setattr(extras.VIT, "_read_intraday_snapshot",
+                        lambda allow_prev_day=False: {"data_date": "2026-09-01", "rows": []})
+    monkeypatch.setattr(extras.broker, "raw_buffer_snapshots",
+                        lambda: (_ for _ in ()).throw(AssertionError("realtime broker called")))
+
+    result = extras.build_chip_watchpool()
+
+    assert result["source"] == "chips_cache"
+    assert result["data_date"] == "2026-09-01"
+    assert result["items"][0]["chip_signal"]["dynamics"] == [
+        "法人連買3日", "外資異常大買", "土洋同買"
+    ]
+
+
+def test_chip_watchpool_merges_partial_base_with_detail_ssot(monkeypatch, tmp_path):
+    cache = tmp_path / "chips_cache.json"
+    cache.write_text(json.dumps({"date": "2026-09-01", "stocks": {
+        "1815": {
+            "source_date": "2026-08-31", "foreign_net_d": 8000,
+            "foreign_net_5d": 9000, "inst_net_20d_lots": 20000,
+        },
+        "detail:1815": {
+            "trust_net_d": 1000, "dealer_net_d": 500,
+            "trust_net_5d": 2000, "dealer_net_5d": 1000,
+            "source": "FinMind 盤後法人", "source_date": "2026-08-31",
+        },
+    }}), encoding="utf-8")
+    monkeypatch.setattr(extras, "_BASE", tmp_path)
+    monkeypatch.setattr(extras.C, "UNIVERSE", ["1815"])
+    monkeypatch.setattr(extras.VIT, "_read_intraday_snapshot",
+                        lambda allow_prev_day=False: {"data_date": "2026-09-01", "rows": []})
+
+    item = extras.build_chip_watchpool()["items"][0]
+
+    assert item["inst_net_d_lots"] == 9500
+    assert item["inst_net_5d_lots"] == 12000
+
+
+def test_chip_watchpool_prefers_official_total_over_rounded_parts(monkeypatch, tmp_path):
+    cache = tmp_path / "chips_cache.json"
+    cache.write_text(json.dumps({"date": "2026-09-03", "stocks": {
+        "2303": {
+            "source": "TWSE T86 / TPEx 官方三大法人",
+            "source_date": "2026-09-03",
+            "foreign_net_d": 22021,
+            "trust_net_d": -3756,
+            "dealer_net_d": 2779,
+            "inst_net_d_lots": 21043,
+            "foreign_net_5d": 39001,
+            "trust_net_5d": -101,
+            "dealer_net_5d": 1973,
+            "inst_net_5d_lots": 40874,
+            "inst_net_20d_lots": -35501,
+        }
+    }}), encoding="utf-8")
+    monkeypatch.setattr(extras, "_BASE", tmp_path)
+    monkeypatch.setattr(extras.C, "UNIVERSE", ["2303"])
+    monkeypatch.setattr(extras.VIT, "_read_intraday_snapshot",
+                        lambda allow_prev_day=False: {"data_date": "2026-09-03", "rows": []})
+
+    item = extras.build_chip_watchpool()["items"][0]
+
+    assert item["inst_net_d_lots"] == 21043
+    assert item["inst_net_5d_lots"] == 40874
+
+
 def test_decision_ui_exposes_chip_data_date_separately_from_quote_date():
     html_path = Path(__file__).resolve().parents[1] / "5483_中美晶_個股決策UI.html"
     html = html_path.read_text(encoding="utf-8")
@@ -121,8 +261,11 @@ def test_decision_ui_exposes_chip_data_date_separately_from_quote_date():
     assert 'href="/chips"' in html
     assert 'target="_blank"' in html
     assert "籌碼資料日" in standalone
-    assert "api/chips/" in standalone
-    assert "api/stock/" not in standalone
+    # SSOT 整併後籌碼獨立頁改走 /api/stock/{code} 單一入口(跟即時報價同一份
+    # data，不再各自重打 /api/chips/)；build_stock_card() 本身盤後有快取、
+    # 盤中才重算，不是無節制重打 broker。
+    assert "api/stock/" in standalone
+    assert "api/chips/" not in standalone
     assert 'class="back-link"' in standalone
     assert 'href="/"' in standalone
     assert 'class="chip-tab active"' in standalone
@@ -143,13 +286,18 @@ def test_decision_ui_exposes_chip_data_date_separately_from_quote_date():
     # route（那個 shim 本身就是舊 bug 的來源，見 chips_official SSOT 修復）。
     assert 'api/stock/' in modal
     assert 'role="dialog"' in modal
-    assert '法人當日買賣超' in modal
+    assert '三大法人當日資金（億）' in modal
     assert '近 5 日' in modal
     assert '近 20 日' in modal
     assert 'ch.source_date' in modal
     assert "position:fixed" in listing
     assert "api/watchpool" in listing
+    assert "api/watchpool?mode=chips" in listing
+    assert "__CHIP_WATCHPOOL__" in server
     assert "資金籌碼快覽" in listing
+    assert "法人（資金／億）" in listing
+    assert "data-mls-chip-layout-v2" in listing
+    assert "const money=" in listing
     assert "/chips/detail?code=" in listing
     assert 'class="app-bottom-nav"' not in standalone
     assert 'class="front-link"' in listing
@@ -168,6 +316,15 @@ def test_decision_ui_exposes_chip_data_date_separately_from_quote_date():
     # it now reads volume_history bundled in the same /api/stock/ response
     # as source_date, so the two can no longer drift out of sync.
     assert 'p.volume_history' in modal
+
+
+def test_chip_listing_does_not_fire_duplicate_live_watchpool_request():
+    listing = (Path(__file__).resolve().parents[1] / "個股籌碼清單UI.html").read_text(
+        encoding="utf-8"
+    )
+
+    assert "fetch(API+'/api/watchpool',{cache:'no-store',signal:ctrl.signal})" not in listing
+    assert "fetch(API+'/api/watchpool?mode=chips',{cache:'no-store'})" in listing
 
 
 def test_watchpool_reuses_persisted_intraday_snapshot_before_daily_kbar(monkeypatch):

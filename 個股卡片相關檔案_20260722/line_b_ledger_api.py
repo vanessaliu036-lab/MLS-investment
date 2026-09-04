@@ -48,6 +48,7 @@ try:
     import line_b_ledger_view as _view
     import line_b_ledger_render as _render
     import line_b_audit_log as _audit
+    import line_b_research as _research
 
     router = APIRouter()
 
@@ -100,6 +101,12 @@ try:
     @router.get("/line-b-verdict.json")
     def line_b_verdict_json(since: Optional[str] = Query(None)):
         return JSONResponse(_verdict.forward_rates(DB_PATH, since),
+                           headers={"Cache-Control": "no-store, max-age=0"})
+
+    # ── C2 + A-flow forward research(唯讀,DESCRIPTIVE ONLY)──────────────
+    @router.get("/line-b-research.json")
+    def line_b_research_json(since: Optional[str] = Query(None)):
+        return JSONResponse(_research.summary(DB_PATH, since),
                            headers={"Cache-Control": "no-store, max-age=0"})
 
 except Exception as _exc:

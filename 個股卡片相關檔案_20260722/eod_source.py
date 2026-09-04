@@ -45,6 +45,7 @@ def _official_month_rows(code, trade_date=None):
     target = datetime.strptime(trade_date, "%Y-%m-%d") if trade_date else now
     ymd = target.strftime("%Y%m%d")
     roc = f"{target.year - 1911:03d}/{target.month:02d}/{target.day:02d}"
+    month_start = target.replace(day=1).strftime("%Y/%m/%d")
 
     def num(value):
         try:
@@ -62,8 +63,10 @@ def _official_month_rows(code, trade_date=None):
         ("twse", "https://www.twse.com.tw/exchangeReport/STOCK_DAY?" +
          urllib.parse.urlencode({"response": "json", "date": ymd,
                                  "stockNo": str(code)})),
+        # TPEx 的新版 tradingStock API 使用西元 month-start 的 `date`；
+        # `d` 是舊頁面參數，帶 `d` 會被忽略並固定回目前月份，導致歷史圖只剩 1–2 根。
         ("tpex", "https://www.tpex.org.tw/www/zh-tw/afterTrading/tradingStock?" +
-         urllib.parse.urlencode({"response": "json", "d": roc,
+         urllib.parse.urlencode({"response": "json", "date": month_start,
                                  "code": str(code)})),
     ]
     for source, url in urls:
@@ -85,6 +88,7 @@ def _official_month_rows(code, trade_date=None):
                     amount *= 1000       # 櫃買回傳成交仟元
                 out.append({"date": date_text(row[0]), "close": close,
                             "max": high, "min": low,
+                            "change": num(row[7]) if len(row) > 7 else None,
                             "Trading_Volume": volume,
                             "Trading_money": amount,
                             "source": f"official_{source}"})

@@ -558,12 +558,15 @@ def review_outcomes(trade_date):
                 "group_at_pick": w.get("open_group") or o.get("open_group"),
                 "close_group": o.get("close_group"), "close_price": o.get("close_price"),
                 "change_rate": o.get("change_rate"), "verdict": o.get("verdict"),
-                "note": o.get("note"), "watch_reason": o.get("watch_reason"),
+                "note": o.get("note"),
+                "watch_reason": o.get("watch_reason") or w.get("watch_reason") or w.get("reason"),
                 # 昨日訊號型態 + 今日觸發狀態 + 未觸發明確原因（B 卡直接讀）
                 "signal_type": o.get("signal_type") or w.get("signal_type"),
                 "trigger_price": o.get("trigger_price") or w.get("trigger_price"),
                 "trigger_status": o.get("trigger_status"),
                 "non_trigger_reason": o.get("non_trigger_reason"),
+                "intraday_breakout": o.get("intraday_breakout"),
+                "close_confirmed": o.get("close_confirmed"),
             })
     else:
         for sid, w in sorted(wl.items()):
@@ -579,6 +582,7 @@ def review_outcomes(trade_date):
                 "signal_type": w.get("signal_type"),
                 "trigger_price": w.get("trigger_price"),
                 "trigger_status": None, "non_trigger_reason": None,
+                "intraday_breakout": None, "close_confirmed": None,
             })
     return rows
 

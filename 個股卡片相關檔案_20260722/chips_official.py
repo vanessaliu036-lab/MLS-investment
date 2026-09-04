@@ -18,6 +18,7 @@
 import json
 import ssl
 import time
+from urllib.error import HTTPError
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -26,6 +27,7 @@ TW_TZ = timezone(timedelta(hours=8))
 BASE = Path(__file__).resolve().parent
 CACHE_FILE = BASE / "chips_cache.json"
 INST_DAYS = 20            # 近月 = 20 個交易日
+HISTORY_DAYS = INST_DAYS + 1  # 讓盤前／18:00 切換仍能還原前一交易日的20日窗
 LOOKBACK_DAYS = 34        # 往回找的日曆天數（含假日）
 UA = "Mozilla/5.0 (compatible; MLS/1.0)"
 
@@ -42,10 +44,26 @@ _TPEX_CTX.verify_mode = ssl.CERT_NONE
 
 
 def _get_json(url, timeout=20):
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
-    ctx = _TPEX_CTX if "tpex.org.tw" in url else None
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    # 官方 CDN 偶爾會對 T86 回 307；短暫重試並補上正式尾斜線路徑，
+    # 避免單次導向把整個 20 日窗口截斷成舊快取。
+    urls = [url]
+    if "twse.com.tw/rwd/zh/fund/T86?" in url:
+        urls.append(url.replace("/T86?", "/T86/?"))
+    retryable = {307, 308, 429, 500, 502, 503, 504}
+    last_error = None
+    for attempt in range(3):
+        for candidate in urls:
+            req = urllib.request.Request(candidate, headers={"User-Agent": UA})
+            ctx = _TPEX_CTX if "tpex.org.tw" in candidate else None
+            try:
+                with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except HTTPError as exc:
+                last_error = exc
+                if exc.code not in retryable:
+                    raise
+        time.sleep(0.5 * (attempt + 1))
+    raise last_error
 
 
 def _num(s):
@@ -160,9 +178,15 @@ def _trading_days_data(max_days=INST_DAYS):
 def build_cache(codes, merge=True):
     """建立 / 更新 chips_cache.json 的法人欄位。回傳成功檔數。"""
     codes = [str(c) for c in codes]
-    days = _trading_days_data()
+    days = _trading_days_data(max_days=HISTORY_DAYS)
     if not days:
         print("[chips_official] 官方無任何交易日資料，快取未更新", flush=True)
+        return 0
+    # 5/20 日欄位只有在完整窗口取得時才可寫入；官方端暫時只回
+    # 少數日期時，保留舊快取比把 3 日合計冒充 20 日安全。
+    if len(days) < INST_DAYS:
+        print(f"[chips_official] 官方資料窗口不足 {len(days)}/{INST_DAYS} 日，快取未更新",
+              flush=True)
         return 0
 
     payload = {"date": _today().isoformat(), "stocks": {}}
@@ -179,7 +203,8 @@ def build_cache(codes, merge=True):
         series = [(d, m[code]) for d, m in days if code in m]      # 新→舊
         if not series:
             continue
-        net20 = round(sum(x["total"] for _, x in series))
+        metric_series = series[:INST_DAYS]
+        net20 = round(sum(x["total"] for _, x in metric_series))
 
         def _streak(field):
             s = 0
@@ -197,19 +222,27 @@ def build_cache(codes, merge=True):
                     break
             return s
 
+        # 目前的欄位維持「最近 20 個交易日」語意；多抓的第 21 日只
+        # 用來讓 asof 回看上一交易日時，仍有完整 20 日窗口可重算。
+        series = metric_series
         streak = _streak("foreign")
         trust_streak = _streak("trust")
+        institution_streak = _streak("total")
         latest_date, latest = series[0]
         recent3 = [x for _, x in series[:3]]
         recent5 = [x for _, x in series[:5]]
+        foreign_abs_avg_20d = sum(abs(x["foreign"]) for _, x in series) / len(series)
+        foreign_abnormal_threshold = max(3000, round(foreign_abs_avg_20d * 2))
         rec = dict(payload["stocks"].get(code) or {})
         rec.update({
             "inst_net_20d_lots": net20,
             "inst_streak": streak,
+            "institution_streak": institution_streak,
             "trust_streak": trust_streak,
             "foreign_net_d": round(latest["foreign"]),
             "trust_net_d": round(latest["trust"]),
             "dealer_net_d": round(latest["dealer"]),
+            "inst_net_d_lots": round(latest["total"]),
             "dealer_self_d": round(latest.get("dealer_self", 0)),
             "dealer_hedge_d": round(latest.get("dealer_hedge", 0)),
             "foreign_net_3d": round(sum(x["foreign"] for x in recent3)),
@@ -218,18 +251,53 @@ def build_cache(codes, merge=True):
             "foreign_net_5d": round(sum(x["foreign"] for x in recent5)),
             "trust_net_5d": round(sum(x["trust"] for x in recent5)),
             "dealer_net_5d": round(sum(x["dealer"] for x in recent5)),
+            "dealer_self_net_5d": round(sum(x.get("dealer_self", 0) for x in recent5)),
+            "dealer_hedge_net_5d": round(sum(x.get("dealer_hedge", 0) for x in recent5)),
             "inst_net_5d_lots": round(sum(x["total"] for x in recent5)),
             "foreign_net_20d": round(sum(x["foreign"] for _, x in series)),
             "trust_net_20d": round(sum(x["trust"] for _, x in series)),
             "dealer_net_20d": round(sum(x["dealer"] for _, x in series)),
+            "dealer_self_net_20d": round(sum(x.get("dealer_self", 0) for _, x in series)),
+            "dealer_hedge_net_20d": round(sum(x.get("dealer_hedge", 0) for _, x in series)),
             "foreign": round(latest["foreign"]),
             "trust": round(latest["trust"]),
             "dealer": round(latest["dealer"]),
+            # 「異常大買」只在相對自身近 20 個交易日的法人買賣超分布
+            # 明顯放大時成立；沒有把固定張數門檻冒充成異常判定。
+            "foreign_abs_avg_20d": round(foreign_abs_avg_20d, 1),
+            "foreign_abnormal_threshold": foreign_abnormal_threshold,
+            "foreign_abnormal_buy": latest["foreign"] >= foreign_abnormal_threshold,
+            "foreign_abnormal_sell": latest["foreign"] <= -foreign_abnormal_threshold,
+            # 保留 21 日官方原始序列，供盤前 asof=前一交易日精確重建
+            # 單日、5 日與 20 日法人欄位，不使用較新的交易日覆蓋歷史。
+            "inst_history": {date: dict(values) for date, values in
+                             [(d, m[code]) for d, m in days if code in m]},
             "source": "TWSE T86 / TPEx 官方三大法人",
             "source_date": latest_date,
             "days_used": len(series),
         })
         payload["stocks"][code] = rec
+        # 個股明細 API 會優先使用 detail:{code}；法人快取重建時必須
+        # 同步覆蓋其中的單日／5日／20日欄位，避免舊的部分窗口殘留。
+        detail_key = f"detail:{code}"
+        detail = dict(payload["stocks"].get(detail_key) or {})
+        for field in (
+            "foreign_net_d", "trust_net_d", "dealer_net_d",
+            "inst_net_d_lots", "dealer_self_d", "dealer_hedge_d", "foreign_net_3d",
+            "trust_net_3d", "inst_net_3d_lots", "foreign_net_5d",
+            "trust_net_5d", "dealer_net_5d", "dealer_self_net_5d",
+            "dealer_hedge_net_5d", "inst_net_5d_lots",
+            "foreign_net_20d", "trust_net_20d", "dealer_net_20d",
+            "dealer_self_net_20d", "dealer_hedge_net_20d",
+            "inst_net_20d_lots", "inst_streak", "trust_streak",
+            "institution_streak", "foreign_abs_avg_20d",
+            "foreign_abnormal_threshold", "foreign_abnormal_buy",
+            "foreign_abnormal_sell",
+            "source", "source_date", "days_used",
+        ):
+            if field in rec:
+                detail[field] = rec[field]
+        payload["stocks"][detail_key] = detail
         ok += 1
 
     tmp = CACHE_FILE.with_suffix(".tmp")

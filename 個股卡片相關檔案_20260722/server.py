@@ -35,7 +35,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -57,6 +57,7 @@ import money_health_api
 import opportunity_ledger_api  # 機會分層觀察榜:唯讀讀 production opportunity_snapshot,不計分
 import line_b_ledger_api  # Line B 觀察 ledger:唯讀,盤中即時合成/盤後讀已落地 ledger,不計分不影響既有 gate
 import explain  # 說明語意層:後台算白話,前台只印(見 說明語意層規格.md)
+import eod_snapshot  # 盤後固定資料快照:頁面只讀本地檔
 import intraday_note  # 淘汰名單「今日盤中說明」:淘汰理由 × 今日盤中資金流/漲跌 → 背離/確認
 
 TW_TZ = timezone(timedelta(hours=8))
@@ -70,6 +71,30 @@ _ma20_cache_date = ""
 _ma20_cache_status = "未建立"
 
 INTRADAY_DAILY_DB_PATH = Path(__file__).resolve().parent.parent / "intraday_eod.db"
+
+# Static HTML pages contain an older sidebar.  This late style block is appended
+# after their inline CSS, so the navigation contract stays shared without a
+# runtime dependency on a source-only module directory.
+_STATIC_TOP_NAV_CSS = """
+<style data-mls-navigation-runtime>
+html,body{max-width:100%;overflow-x:hidden}body{padding:0 0 40px!important}.mls-nav{position:sticky!important;top:0!important;z-index:100!important;display:flex!important;align-items:center!important;gap:6px 10px!important;width:100vw!important;max-width:100vw!important;min-width:0!important;min-height:72px!important;margin-left:calc(50% - 50vw)!important;margin-right:calc(50% - 50vw)!important;box-sizing:border-box!important;padding:12px 28px!important;overflow-x:auto!important;overflow-y:hidden!important;flex-wrap:nowrap!important;overscroll-behavior-x:contain!important;-webkit-overflow-scrolling:touch!important;scrollbar-width:none!important;background:#fff!important;border:0!important;border-bottom:1px solid #e5e9f2!important;box-shadow:0 2px 10px rgba(23,35,63,.04)!important}.mls-nav::-webkit-scrollbar{display:none}.mls-nav-label{display:block!important;flex:none!important;margin-right:8px!important;padding:0!important;color:#8a96aa!important;font-size:14px!important;font-weight:850!important;letter-spacing:.04em!important}.mls-nav-link{display:inline-flex!important;align-items:center!important;gap:7px!important;width:auto!important;max-width:none!important;min-height:40px!important;margin:0!important;padding:9px 12px!important;border-radius:8px!important;color:#65718a!important;background:transparent!important;font-size:16px!important;font-weight:800!important;line-height:1.2!important;text-decoration:none!important;white-space:nowrap!important;flex:0 0 auto!important}.mls-nav-link.active{background:#17233f!important;color:#fff!important;box-shadow:none!important}.mls-nav-count{padding:3px 7px!important;font-size:12px!important}.mls-nav-link.active .mls-nav-count{background:#dff7ec!important;color:#087f5b!important}@media(max-width:1100px){.mls-nav{min-height:64px!important;padding:10px 14px!important;gap:5px 7px!important}.mls-nav-label{display:none!important}.mls-nav-link{min-height:44px!important;padding:9px 10px!important;font-size:14px!important}}@media(max-width:560px){.mls-nav{min-height:58px!important;padding:7px 12px!important;gap:4px!important}.mls-nav-link{min-height:44px!important;padding:9px 10px!important;font-size:13px!important}}
+</style>
+"""
+
+_STATIC_TOP_NAV_MOBILE_WRAP_CSS = """
+<style data-mls-navigation-mobile-wrap>
+@media(max-width:560px){
+  .mls-nav{flex-wrap:wrap!important;overflow-x:visible!important;overflow-y:visible!important;align-content:center!important}
+}
+</style>
+"""
+
+_STATIC_TOP_NAV_LABEL_CSS = """
+<style data-mls-navigation-label>
+.mls-nav-label{display:inline-flex!important;align-items:center!important;text-decoration:none!important;cursor:pointer!important}
+.mls-nav-label:hover{color:#17233f!important}
+</style>
+"""
 
 
 def _intraday_daily_conn():
@@ -130,10 +155,15 @@ _last_sector_snapshot = 0.0
 _did_reverify = ""                 # 已執行開盤重驗的日期
 _did_afterhours = ""               # 已執行盤後複查的日期
 _did_eod_stamp = ""                # 已完成盤後歷史蓋章的日期
+_did_chip_force_rebuild = ""       # 已執行盤後強制籌碼重建的日期(與 _did_afterhours 分開,
+                                    # 避免 state_for_eod 一直缺失時每 60 秒重打一次 TWSE)
+_did_eod_snapshot = ""             # 已產出盤後 EOD 快照的日期
+_eod_snapshot_stage = ""           # 該日快照階段 preliminary / final
 _last_full_state = None            # 收盤前最後一輪(供盤後複查)
 LIVE_STATE = None                  # 最後一次有效盤中 live state
 LIVE_STATE_UPDATE = 0.0            # LIVE_STATE 寫入時間
 INTRADAY_SNAPSHOT_PATH = Path(__file__).resolve().parent.parent / "intraday_live_snapshot.json"
+EOD_SNAPSHOT_PATH = eod_snapshot.snapshot_path(Path(__file__).resolve().parent.parent)
 
 
 def _persist_intraday_snapshot(state, trade_date):
@@ -172,6 +202,128 @@ def _persist_intraday_snapshot(state, trade_date):
         print(f"[snapshot] ✅ 保存盤中凍結快照 rows={len(rows)} date={trade_date}", flush=True)
     except Exception as exc:
         print(f"[snapshot] 保存盤中凍結快照失敗: {exc}", flush=True)
+
+
+def _eod_market_block(trade_date):
+    """盤後排程取得官方大盤與三大法人資料，HTTP 請求不走頁面。"""
+    import official_source as source
+    from datetime import date as date_type, timedelta as delta
+
+    day = date_type.fromisoformat(trade_date)
+    index_now, index_day = {}, None
+    for offset in range(8):
+        got = source.market_index(day - delta(days=offset)) or {}
+        if got.get("taiex") is not None:
+            index_now, index_day = got, day - delta(days=offset)
+            break
+    prev_index = {}
+    if index_day is not None:
+        for offset in range(1, 8):
+            got = source.market_index(index_day - delta(days=offset)) or {}
+            if got.get("taiex") is not None:
+                prev_index = got
+                break
+    institutional = {}
+    for offset in range(8):
+        got = source.institutional_net(day - delta(days=offset)) or {}
+        if got.get("total_100m") is not None:
+            institutional = got
+            break
+    return {"date": trade_date, "index": index_now, "institutional": institutional,
+            "prev": prev_index, "index_date": index_now.get("date"),
+            "official_date": institutional.get("date") or index_now.get("date")}
+
+
+def _load_frozen_intraday_result(trade_date):
+    if not INTRADAY_SNAPSHOT_PATH.exists():
+        return {}
+    payload = json.loads(INTRADAY_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    if payload.get("trade_date") != trade_date:
+        return {}
+    return payload.get("result") or {}
+
+
+def _upgrade_legacy_eod_payload(payload):
+    """把部署前產生的 EOD 快照補上四 Gate 欄位，避免舊判讀覆蓋新邏輯。
+
+    舊快照仍保留原始行情與 A-FLOW；只在缺少 decision_status 時重跑同一個
+    vps_intraday_test._row，並回寫分類／判讀欄位。這不會刪除固定池成員，
+    也不會把候選池的「保留觀察」誤改成永久淘汰。
+    """
+    if not isinstance(payload, dict):
+        return payload, False
+    rows = payload.get("rows") or []
+    if not rows or all(row.get("decision_status") for row in rows):
+        return payload, False
+    try:
+        import vps_intraday_test as _vit
+        upgraded = []
+        for old in rows:
+            raw = dict(old)
+            raw.setdefault("buy_volume", old.get("buy_volume"))
+            raw.setdefault("sell_volume", old.get("sell_volume"))
+            raw.setdefault("total_volume", old.get("total_volume", old.get("volume")))
+            raw.setdefault("avg_price", old.get("avg_price"))
+            raw.setdefault("high", old.get("high"))
+            raw.setdefault("low", old.get("low"))
+            raw.setdefault("volume_ratio", old.get("volume_ratio"))
+            if old.get("aflow_status") == "UNAVAILABLE":
+                raw["_aflow_unavailable"] = True
+            fresh = _vit._row(raw)
+            # 舊快照可能含有新的盤中極值／PA 疊加，升級時保留它們，不回退資料。
+            for key in ("pre_activation", "pre_activation_stage", "foreign_net_d",
+                        "foreign_net_20d", "foreign_source", "foreign_source_date"):
+                if old.get(key) is not None:
+                    fresh[key] = old[key]
+            upgraded.append(fresh)
+        payload = dict(payload)
+        payload["rows"] = upgraded
+        payload["count"] = len(upgraded)
+        payload["category_counts"] = {}
+        payload["decision_category_counts"] = {}
+        for row in upgraded:
+            group = row.get("group") or "觀察"
+            status = row.get("decision_status") or "資料不足"
+            payload["category_counts"][group] = payload["category_counts"].get(group, 0) + 1
+            payload["decision_category_counts"][status] = payload["decision_category_counts"].get(status, 0) + 1
+        payload["legacy_upgraded_at"] = datetime.now(TW_TZ).isoformat(timespec="seconds")
+        return payload, True
+    except Exception as exc:
+        print(f"[eod_snapshot] 舊快照升級略過: {exc}", flush=True)
+        return payload, False
+
+
+def bootstrap_eod_snapshot():
+    """重啟後若已收盤且有盤中凍結檔，補出 preliminary 快照。"""
+    try:
+        if EOD_SNAPSHOT_PATH.exists() or _live_session_open() or not INTRADAY_SNAPSHOT_PATH.exists():
+            return
+        payload = json.loads(INTRADAY_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+        day = payload.get("trade_date")
+        if not day:
+            return
+        built = eod_snapshot.build(
+            trade_date=day, stage=eod_snapshot.STAGE_PRELIMINARY,
+            load_rows=lambda: _load_frozen_intraday_result(day),
+            load_market=lambda: _eod_market_block(day),
+            generated_at=datetime.now(TW_TZ).isoformat(timespec="seconds"),
+            trading_day=_is_trade_day(),
+        )
+        if eod_snapshot.write(EOD_SNAPSHOT_PATH, built):
+            print(f"[eod_snapshot] 開機補建 {day} 快照 rows={built.get('count')}", flush=True)
+    except Exception as exc:
+        print(f"[eod_snapshot] 開機補建失敗: {exc}", flush=True)
+
+
+def refresh_eod_snapshot(trade_date, stage):
+    payload = eod_snapshot.build(
+        trade_date=trade_date, stage=stage,
+        load_rows=lambda: _load_frozen_intraday_result(trade_date),
+        load_market=lambda: _eod_market_block(trade_date),
+        generated_at=datetime.now(TW_TZ).isoformat(timespec="seconds"),
+        trading_day=_is_trade_day(),
+    )
+    return payload if eod_snapshot.write(EOD_SNAPSHOT_PATH, payload) else None
 SHARED_STATE_PATH = Path(__file__).with_name("live_state.json")
 MA20_CACHE_PATH = Path(__file__).with_name("ma20_cache.json")
 _sig_watch = {}                    # code → {"stop":x, "failed":bool} 今日訊號追蹤
@@ -540,11 +692,13 @@ def handle_sector_locks(state):
 
 def scheduler_loop():
     global STATE, _did_reverify, _did_afterhours, _did_eod_stamp, \
+           _did_chip_force_rebuild, _did_eod_snapshot, _eod_snapshot_stage, \
            _last_sector_snapshot, _last_full_state, _pushed_lock_sectors, \
            LIVE_STATE, LIVE_STATE_UPDATE
 
     print(f"[diag][scheduler] start ts={datetime.now().astimezone().isoformat(timespec='milliseconds')}", flush=True)
     load_today_watchlist()
+    bootstrap_eod_snapshot()
     try:
         prefetch_chips_cache()       # 開機補一次，盤中才讀得到法人資料
     except Exception as exc:
@@ -687,6 +841,17 @@ def scheduler_loop():
                 time.sleep(C.SCAN_INTERVAL_SEC)
                 continue
 
+            # 盤後快照只在排程建立；HTTP 端點只讀這份固定檔案。
+            if hm >= "15:05":
+                want_stage = (eod_snapshot.STAGE_FINAL if hm >= "18:00"
+                              else eod_snapshot.STAGE_PRELIMINARY)
+                if (_did_eod_snapshot, _eod_snapshot_stage) != (today, want_stage):
+                    try:
+                        refresh_eod_snapshot(today, want_stage)
+                        _did_eod_snapshot, _eod_snapshot_stage = today, want_stage
+                    except Exception as exc:
+                        print(f"[eod_snapshot] 產出失敗,下一輪重試: {exc}", flush=True)
+
             # ── 18:00 官方盤後資料完成後複查(一天一次;state 為空時兜底重抓) ──
             if hm >= "18:00" and _did_afterhours != today:
                 state_for_eod = _last_full_state
@@ -734,10 +899,17 @@ def scheduler_loop():
                             print("[server] 兜底失敗:今日無任何盤中快照，明日觀察沿用最近名單")
                     except Exception as e:
                         print(f"[server] 兜底組裝失敗:{e}")
-                try:
-                    prefetch_chips_cache(force=True)   # 官方籌碼定案後重建快取
-                except Exception as exc:
-                    print(f"[chips] 盤後快取重建失敗:{exc}")
+                if _did_chip_force_rebuild != today:
+                    # 獨立於 state_for_eod 之外用自己的旗標蓋章：state_for_eod
+                    # 若持續兜底失敗，下面 if 永遠不會設 _did_afterhours，
+                    # 這個 18:00 區塊就會每 60 秒重進來一次；沒有這個旗標會
+                    # 讓 force=True 每 60 秒重打一次 TWSE(2026-08-31 事故：
+                    # 連續重試把官方站打到對近期以外的日期回 307)。
+                    try:
+                        prefetch_chips_cache(force=True)   # 官方籌碼定案後重建快取
+                    except Exception as exc:
+                        print(f"[chips] 盤後快取重建失敗:{exc}")
+                    _did_chip_force_rebuild = today
                 if state_for_eod is not None:
                     _op_started = time.time()
                     print("[diag][scheduler] after_hours.begin", flush=True)
@@ -1150,6 +1322,23 @@ def api_funnel(date: str = None):
                              "note": f"名單讀取失敗:{e}"})
 
 
+@app.get("/api/eod/snapshot")
+def api_eod_snapshot():
+    """盤後固定快照，只讀本地檔案，不在請求內抓行情或法人資料。"""
+    payload = eod_snapshot.read(EOD_SNAPSHOT_PATH, db.today())
+    if payload is None:
+        return JSONResponse(
+            {"ok": False, "rows": [], "count": 0, "trade_date": db.today(),
+             "error": "盤後快照尚未產出(每交易日 15:05 排程建立)"},
+            headers={"Cache-Control": "no-store, max-age=0"})
+    payload, upgraded = _upgrade_legacy_eod_payload(payload)
+    if upgraded:
+        eod_snapshot.write(EOD_SNAPSHOT_PATH, payload)
+    return JSONResponse(
+        json.loads(json.dumps(payload, default=str, ensure_ascii=False)),
+        headers={"Cache-Control": "public, max-age=60"})
+
+
 @app.get("/api/market/official")
 def api_market_official(date: str = None):
     """官方三大法人買賣超 + 大盤(給首頁 banner;有官方不自算)。"""
@@ -1164,6 +1353,191 @@ def api_market_official(date: str = None):
         return JSONResponse({"error": f"官方源讀取失敗:{e}"})
 
 
+# TWSE 官方端點 2026-09 起大量請求會被 CDN 判定異常流量、回 307 空轉址頁擋掉
+# （見 [[report]]：單一 IP 一小時打了 444 次官方端點）。以下三支歷史 API 原本
+# 每次 cache miss 就用 8 個並行 worker 把整個日期區間重抓一次——同一段歷史
+# 過去日期不會變，這是白白製造請求量的根因。改成「抓過且成功的日期永久寫入
+# 本地檔案，之後只補抓還沒有的日期」，把重複性請求砍到接近零，不必等 TWSE
+# 解除封鎖也能讓已經抓到的資料留住、不再因為 6 小時快取到期就整批消失。
+def _twse_hist_cache_path(name):
+    return Path(__file__).resolve().parent.parent / f"twse_{name}_history_cache.json"
+
+
+def _twse_hist_cache_load(name):
+    try:
+        return json.loads(_twse_hist_cache_path(name).read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _twse_hist_cache_save(name, cache):
+    try:
+        _twse_hist_cache_path(name).write_text(
+            json.dumps(cache, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+_TWSE_RETRY_COOLDOWN_SEC = 60 * 60  # 抓失敗（可能是假日、也可能是 TWSE 暫時擋）1 小時後才重試一次
+
+
+def _twse_hist_needs_fetch(cache, key):
+    """True＝這個日期還沒有成功資料，且不在剛失敗的冷卻期內，值得再抓一次。
+
+    失敗一律標成待重試（不是「這天官方確定沒資料」的永久結論）——TWSE 現在的
+    307 是 CDN 判定異常流量擋下來的，不是真的假日／無資料，擋跟不擋會隨流量
+    起伏，錯把它當假日永久記死，之後就算解封也救不回那幾天的資料。"""
+    v = cache.get(key)
+    if isinstance(v, dict) and v.get("_pending"):
+        return (time.time() - v.get("_at", 0)) > _TWSE_RETRY_COOLDOWN_SEC
+    return v is None
+
+
+def _twse_hist_is_row(v):
+    """True 代表 v 是抓成功的真資料列，不是 None、也不是待重試標記。"""
+    return v is not None and not (isinstance(v, dict) and v.get("_pending"))
+
+
+# 公開區間補洞：FinMind 一次回傳整段資料，避免官方端點逐日請求造成
+# CDN 卡住。歷史日資料只在區間不足或超過 6 小時才補一次，成功後永久留在
+# 本機 JSON；官方快取已有的列優先保留，公開資料只補缺列。
+_PUBLIC_HISTORY_CACHE_PATH = Path(__file__).resolve().parent.parent / "public_market_history_cache.json"
+_PUBLIC_HISTORY_TTL_SEC = 6 * 60 * 60
+_PUBLIC_HISTORY_URL = "https://api.finmindtrade.com/api/v4/data"
+
+
+def _public_history_load():
+    try:
+        value = json.loads(_PUBLIC_HISTORY_CACHE_PATH.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except Exception:
+        return {}
+
+
+def _public_history_save(value):
+    try:
+        _PUBLIC_HISTORY_CACHE_PATH.write_text(
+            json.dumps(value, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _history_key(value):
+    text = str(value or "").strip().replace("-", "").replace("/", "")
+    return text if len(text) == 8 and text.isdigit() else None
+
+
+def _public_finmind_history(kind, begin, end):
+    """一次抓取指定區間的公開資料；失敗只回既有快取，不阻塞頁面。"""
+    cache = _public_history_load()
+    section = cache.get(kind) if isinstance(cache.get(kind), dict) else {}
+    rows = section.get("rows") if isinstance(section.get("rows"), dict) else {}
+    start_key, end_key = begin.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+    fetched_at = float(section.get("fetched_at") or 0)
+    covered = (section.get("start") or "") <= start_key and (section.get("end") or "") >= end_key
+    fresh = time.time() - fetched_at < _PUBLIC_HISTORY_TTL_SEC
+    if not (covered and fresh):
+        params = {
+            "dataset": "TaiwanStockPrice" if kind == "market" else "TaiwanStockTotalInstitutionalInvestors",
+            "start_date": begin.isoformat(), "end_date": end.isoformat(),
+        }
+        if kind == "market":
+            params["data_id"] = "TAIEX"
+        url = _PUBLIC_HISTORY_URL + "?" + _urlparse.urlencode(params)
+        try:
+            req = _urlreq.Request(url, headers={"User-Agent": "Mozilla/5.0 MLS-public-history/1.0"})
+            with _urlreq.urlopen(req, timeout=12) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            raw_rows = payload.get("data") if isinstance(payload, dict) and payload.get("status") == 200 else []
+            if not isinstance(raw_rows, list):
+                raw_rows = []
+            parsed = {}
+            if kind == "market":
+                closes = {}
+                for raw in raw_rows:
+                    day = _history_key(raw.get("date"))
+                    close = raw.get("close")
+                    if day and close is not None:
+                        try:
+                            closes[day] = float(close)
+                        except (TypeError, ValueError):
+                            pass
+                for day, close in closes.items():
+                    ordered = sorted(closes)
+                    idx = ordered.index(day)
+                    previous = closes.get(ordered[idx - 1]) if idx else None
+                    spread = None
+                    for raw in raw_rows:
+                        if _history_key(raw.get("date")) == day:
+                            try:
+                                spread = float(raw.get("spread"))
+                            except (TypeError, ValueError):
+                                pass
+                            money = raw.get("Trading_money", raw.get("trading_money"))
+                            volume = raw.get("Trading_Volume", raw.get("trading_volume"))
+                            try:
+                                money = round(float(money) / 1e8, 2) if money is not None else None
+                            except (TypeError, ValueError):
+                                money = None
+                            parsed[day] = {"date": day, "index": close, "change": spread,
+                                           "change_pct": round((close / previous - 1) * 100, 2) if previous else None,
+                                           "turnover_100m": money, "volume": volume,
+                                           "source": "FinMind 公開區間資料",
+                                           "source_url": _PUBLIC_HISTORY_URL}
+                            break
+            else:
+                by_day = {}
+                for raw in raw_rows:
+                    day = _history_key(raw.get("date"))
+                    name = str(raw.get("name") or "")
+                    if not day or not name:
+                        continue
+                    try:
+                        net = float(raw.get("buy") or 0) - float(raw.get("sell") or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    bucket = by_day.setdefault(day, {"foreign": 0.0, "trust": 0.0,
+                                                     "dealer": 0.0, "total": None})
+                    if name == "total":
+                        bucket["total"] = net / 1e8
+                    elif "Foreign" in name:
+                        bucket["foreign"] += net / 1e8
+                    elif "Investment_Trust" in name:
+                        bucket["trust"] += net / 1e8
+                    elif "Dealer" in name:
+                        bucket["dealer"] += net / 1e8
+                for day, value in by_day.items():
+                    total = value["total"] if value["total"] is not None else sum(value[k] for k in ("foreign", "trust", "dealer"))
+                    parsed[day] = {"date": day, "foreign_100m": round(value["foreign"], 2),
+                                   "trust_100m": round(value["trust"], 2),
+                                   "dealer_100m": round(value["dealer"], 2),
+                                   "total_100m": round(total, 2),
+                                   "source": "FinMind 公開區間資料",
+                                   "source_url": _PUBLIC_HISTORY_URL}
+            if parsed:
+                rows.update(parsed)
+                section.update({"rows": rows, "start": min(rows), "end": max(rows),
+                                "fetched_at": time.time(), "source": "FinMind 公開區間資料"})
+                cache[kind] = section
+                _public_history_save(cache)
+        except Exception as exc:
+            # 保留舊資料，不讓歷史卡因公開來源瞬斷而變空白。
+            section["last_error"] = str(exc)
+            cache[kind] = section
+            _public_history_save(cache)
+    return rows
+
+
+def _merge_public_history(cache, kind, begin, end):
+    public_rows = _public_finmind_history(kind, begin, end)
+    changed = False
+    for key, row in public_rows.items():
+        if begin.strftime("%Y%m%d") <= key <= end.strftime("%Y%m%d") and not _twse_hist_is_row(cache.get(key)):
+            cache[key] = row
+            changed = True
+    return changed
+
+
 @app.get("/api/market/turnover-history")
 def api_market_turnover_history(days: int = 10):
     """近 N 日大盤成交金額歷史(給「與前天比較」卡展開)。
@@ -1175,35 +1549,46 @@ def api_market_turnover_history(days: int = 10):
         from concurrent.futures import ThreadPoolExecutor
         from datetime import date as _date, timedelta
         n = max(1, min(int(days), 30))
-        cache_key = n
-        cached = getattr(api_market_turnover_history, "_cache", {}).get(cache_key)
-        # 歷史成交量不是盤中即時資料；同一程序內快取 6 小時即可。
-        if cached and time.time() - cached["at"] < 6 * 60 * 60:
-            return JSONResponse(cached["payload"])
-
         today = _date.today()
         dates = [today - timedelta(days=k) for k in range(n + 5)]
+
+        cache = _twse_hist_cache_load("turnover")
+        # 先用 FinMind 一次區間補齊；歷史頁不再逐日並行轟 TWSE。
+        if _merge_public_history(cache, "market", dates[-1], dates[0]):
+            _twse_hist_cache_save("turnover", cache)
+        missing = []
 
         def fetch_day(d):
             try:
                 idx = o.market_index(d)
                 t = (idx or {}).get("turnover_100m")
                 if t is not None:
-                    return {"date": idx.get("date") or d.strftime("%Y%m%d"),
-                            "turnover_100m": t}
+                    return d.strftime("%Y%m%d"), {"date": idx.get("date") or d.strftime("%Y%m%d"),
+                                                    "turnover_100m": t}
             except Exception:
                 pass
-            return None
+            return d.strftime("%Y%m%d"), None
 
-        # TWSE 每日查詢彼此獨立，並行抓取避免假日逐筆等待。
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            fetched = list(pool.map(fetch_day, dates))
-        out = [row for row in fetched if row is not None][:n]
+        # 只補抓本地還沒有的日期；已成功抓過的歷史日不會變，不必每次都重抓。
+        if missing:
+            with ThreadPoolExecutor(max_workers=min(4, len(missing))) as pool:
+                fetched = list(pool.map(fetch_day, missing))
+            dirty = False
+            for key, row in fetched:
+                if row is not None:
+                    cache[key] = row
+                    dirty = True
+                else:
+                    cache[key] = {"_pending": True, "_at": time.time()}
+                    dirty = True
+            if dirty:
+                _twse_hist_cache_save("turnover", cache)
+
+        out = [cache[d.strftime("%Y%m%d")] for d in dates
+               if _twse_hist_is_row(cache.get(d.strftime("%Y%m%d")))][:n]
         out.sort(key=lambda x: x["date"], reverse=True)
-        payload = {"rows": out, "days": len(out), "note": None}
-        cache = getattr(api_market_turnover_history, "_cache", {})
-        cache[cache_key] = {"at": time.time(), "payload": payload}
-        api_market_turnover_history._cache = cache
+        payload = {"rows": out, "days": len(out), "source": "本地快取＋FinMind 公開區間補齊",
+                   "note": None}
         return JSONResponse(payload)
     except Exception as e:
         return JSONResponse({"rows": [], "days": 0, "error": f"成交金額歷史讀取失敗:{e}"})
@@ -1241,25 +1626,41 @@ def api_market_index_history(start: str = "2026-07-22"):
         while cursor <= end:
             dates.append(cursor)
             cursor += timedelta(days=1)
-        cache_key = begin.isoformat()
-        cached = getattr(api_market_index_history, "_cache", {}).get(cache_key)
-        if cached and cached["payload"].get("days", 0) > 1 and time.time() - cached["at"] < 6 * 60 * 60:
-            return JSONResponse(cached["payload"])
+
+        cache = _twse_hist_cache_load("index")
+        if _merge_public_history(cache, "market", begin, end):
+            _twse_hist_cache_save("index", cache)
+        missing = []
 
         def fetch_day(d):
             try:
                 idx = o.market_index(d) or {}
                 if idx.get("taiex") is not None:
-                    return {"date": idx.get("date") or d.strftime("%Y%m%d"),
+                    return d.strftime("%Y%m%d"), {"date": idx.get("date") or d.strftime("%Y%m%d"),
                             "index": idx.get("taiex"),
                             "change": idx.get("change"),
                             "change_pct": idx.get("change_pct")}
             except Exception:
                 pass
-            return None
+            return d.strftime("%Y%m%d"), None
 
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            rows = [row for row in pool.map(fetch_day, dates) if row is not None]
+        # 只補抓本地還沒有的日期；已成功寫入的歷史日不再重抓，大幅降低對 TWSE 的請求量。
+        if missing:
+            with ThreadPoolExecutor(max_workers=min(4, len(missing))) as pool:
+                fetched = list(pool.map(fetch_day, missing))
+            dirty = False
+            for key, row in fetched:
+                if row is not None:
+                    cache[key] = row
+                    dirty = True
+                elif key not in cache:
+                    cache[key] = None
+                    dirty = True
+            if dirty:
+                _twse_hist_cache_save("index", cache)
+
+        rows = [row for key, row in cache.items() if _twse_hist_is_row(row)
+                and begin.strftime("%Y%m%d") <= key <= end.strftime("%Y%m%d")]
         if len(rows) < 2:
             seed = [
                 {"date":"20260804","index":43360.66,"change":-25.75,"change_pct":-0.06},
@@ -1276,10 +1677,8 @@ def api_market_index_history(start: str = "2026-07-22"):
             rows = list({r["date"]: r for r in seed + rows}.values())
         rows = [row for row in rows if begin.strftime("%Y%m%d") <= row["date"] <= end.strftime("%Y%m%d")]
         rows.sort(key=lambda x: x["date"], reverse=True)
-        payload = {"rows": rows, "start": begin.isoformat(), "days": len(rows)}
-        cache = getattr(api_market_index_history, "_cache", {})
-        cache[cache_key] = {"at": time.time(), "payload": payload}
-        api_market_index_history._cache = cache
+        payload = {"rows": rows, "start": begin.isoformat(), "days": len(rows),
+                   "source": "本地快取＋FinMind 公開區間補齊"}
         return JSONResponse(payload)
     except Exception as e:
         return JSONResponse({"rows": [], "days": 0, "error": f"加權指數歷史讀取失敗:{e}"})
@@ -1299,26 +1698,41 @@ def api_market_institution_history(start: str = "2026-07-22"):
         while cursor <= end:
             dates.append(cursor)
             cursor += timedelta(days=1)
-        cache_key = begin.isoformat()
-        cached = getattr(api_market_institution_history, "_cache", {}).get(cache_key)
-        if cached and cached["payload"].get("days", 0) > 1 and time.time() - cached["at"] < 6 * 60 * 60:
-            return JSONResponse(cached["payload"])
+
+        cache = _twse_hist_cache_load("institution")
+        if _merge_public_history(cache, "institution", begin, end):
+            _twse_hist_cache_save("institution", cache)
+        missing = []
 
         def fetch_day(d):
             try:
                 inst = o.institutional_net(d) or {}
                 if inst.get("total_100m") is not None:
-                    return {"date": inst.get("date") or d.strftime("%Y%m%d"),
+                    return d.strftime("%Y%m%d"), {"date": inst.get("date") or d.strftime("%Y%m%d"),
                             "foreign_100m": inst.get("foreign_100m"),
                             "trust_100m": inst.get("trust_100m"),
                             "dealer_100m": inst.get("dealer_100m"),
                             "total_100m": inst.get("total_100m")}
             except Exception:
                 pass
-            return None
+            return d.strftime("%Y%m%d"), None
 
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            rows = [row for row in pool.map(fetch_day, dates) if row is not None]
+        if missing:
+            with ThreadPoolExecutor(max_workers=min(4, len(missing))) as pool:
+                fetched = list(pool.map(fetch_day, missing))
+            dirty = False
+            for key, row in fetched:
+                if row is not None:
+                    cache[key] = row
+                    dirty = True
+                elif key not in cache:
+                    cache[key] = None
+                    dirty = True
+            if dirty:
+                _twse_hist_cache_save("institution", cache)
+
+        rows = [row for key, row in cache.items() if _twse_hist_is_row(row)
+                and begin.strftime("%Y%m%d") <= key <= end.strftime("%Y%m%d")]
         if len(rows) < 2:
             seed = [
                 {"date":"20260804","foreign_100m":-57.32,"trust_100m":271.65,"dealer_100m":-194.29,"total_100m":20.05},
@@ -1335,10 +1749,8 @@ def api_market_institution_history(start: str = "2026-07-22"):
             rows = list({r["date"]: r for r in seed + rows}.values())
         rows = [row for row in rows if begin.strftime("%Y%m%d") <= row["date"] <= end.strftime("%Y%m%d")]
         rows.sort(key=lambda x: x["date"], reverse=True)
-        payload = {"rows": rows, "start": begin.isoformat(), "days": len(rows)}
-        cache = getattr(api_market_institution_history, "_cache", {})
-        cache[cache_key] = {"at": time.time(), "payload": payload}
-        api_market_institution_history._cache = cache
+        payload = {"rows": rows, "start": begin.isoformat(), "days": len(rows),
+                   "source": "本地快取＋FinMind 公開區間補齊"}
         return JSONResponse(payload)
     except Exception as e:
         return JSONResponse({"rows": [], "days": 0, "error": f"法人歷史讀取失敗:{e}"})
@@ -1701,7 +2113,13 @@ def api_nexora():
 
 # ══════════════════════════════════════════════════════════
 @app.get("/")
-def home():
+def home(view: str = ""):
+    filename = "intraday_decision_dataflow.html"
+    html = (Path(__file__).resolve().parent.parent / filename).read_text(encoding="utf-8")
+    return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
+
+@app.get("/review")
+def review_page():
     html = (Path(__file__).resolve().parent.parent / "intraday_decision_dataflow.html").read_text(encoding="utf-8")
     return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
 
@@ -1721,7 +2139,20 @@ def _read_html(filename: str) -> str:
         p = _os.path.join(base, filename)
         if _os.path.exists(p):
             with open(p, "r", encoding="utf-8") as f:
-                return f.read()
+                content = f.read()
+                # Static pages carry an older embedded nav.  Append the one
+                # shared contract after it so every page uses the top menu.
+                if "mls-nav" in content:
+                    content = content.replace('href="/?view=review"', 'href="/review"')
+                    content = content.replace(
+                        '<span class="mls-nav-label">盤中決策</span>',
+                        '<a class="mls-nav-label" href="/">盤中決策</a>',
+                    )
+                    content = content.replace(
+                        "</body>",
+                        _STATIC_TOP_NAV_CSS + _STATIC_TOP_NAV_MOBILE_WRAP_CSS + _STATIC_TOP_NAV_LABEL_CSS + "</body>",
+                    )
+                return content
     raise FileNotFoundError(f"{filename} 不在 {here} 或其上層目錄")
 
 
@@ -1763,8 +2194,12 @@ def api_chips(code: str, asof: str = None):
         if asof:
             source_groups = {
                 "source_date": ("foreign_net_d", "trust_net_d", "dealer_net_d",
+                                "inst_net_d_lots",
                                 "foreign_net_5d", "trust_net_5d", "dealer_net_5d",
+                                "inst_net_5d_lots",
+                                "dealer_self_net_5d", "dealer_hedge_net_5d",
                                 "foreign_net_20d", "trust_net_20d", "dealer_net_20d",
+                                "dealer_self_net_20d", "dealer_hedge_net_20d",
                                 "inst_streak"),
                 "margin_source_date": ("margin_change_d", "margin_change_5d", "margin_balance",
                                         "short_balance", "short_change_d", "short_change_5d",
@@ -1785,6 +2220,23 @@ def api_chips(code: str, asof: str = None):
         return JSONResponse({"ok": False, "code": str(code), "error": str(exc)}, status_code=500)
 
 
+@app.get("/api/volume-history/{code}")
+def api_volume_history(code: str, days: int = 30, asof: str = None):
+    """真實日 K 成交量；只回 broker.daily_kbars，絕不生成補值資料。"""
+    try:
+        days = max(1, min(int(days), 90))
+        bars = _extras.stock_card._bars(str(code), days=days)
+        items = [{"date": str(b.get("date") or "")[:10],
+                  "close": b.get("close"), "volume": b.get("volume")}
+                 for b in bars if b.get("date") and b.get("volume") is not None
+                 and (not asof or str(b.get("date"))[:10] <= str(asof)[:10])]
+        return JSONResponse({"ok": True, "code": str(code), "days": days,
+                             "asof": asof, "source": "broker.daily_kbars", "items": items,
+                             "data_date": items[-1]["date"] if items else None})
+    except Exception as exc:
+        return JSONResponse({"ok": False, "code": str(code), "error": str(exc)}, status_code=500)
+
+
 @app.get("/api/report")
 def api_report():
     """每日 / 昨日盤後報告資料。"""
@@ -1795,22 +2247,28 @@ def api_report():
 
 
 @app.get("/api/watchpool")
-def api_watchpool():
-    """51 檔觀察池全集 — 從 VPS Shioaji 訂閱 buffer 抓即時報價。"""
+def api_watchpool(mode: str = None):
+    """觀察池 API；``mode=chips`` 時只回傳盤後籌碼快取。"""
     try:
+        if mode == "chips":
+            return JSONResponse(
+                _extras.build_chip_watchpool(),
+                headers={"Cache-Control": "public, max-age=30"},
+            )
         return JSONResponse(_extras.build_watchpool())
     except Exception as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
 
 
 @app.get("/api/card_page")
-def api_card_page(code: str = "2337"):
+def api_card_page(code: str = None):
     """個股卡片 HTML — 給 NEXORA 決策頁的 openStock popup iframe 用。
     直接回傳正式個股決策 UI，避免舊 redirect 指向不存在的檔案。"""
     try:
-        p = _INTRADAY_ROOT / "5483_中美晶_個股決策UI.html"
-        with open(p, "r", encoding="utf-8") as f:
-            html = f.read()
+        if not code: return RedirectResponse("/watch-first-layer", status_code=307)
+        # 個股頁也必須走共用靜態頁包裝；直接 read_text 會跳過
+        # _STATIC_TOP_NAV_CSS，讓舊版左側選單重新接管版面。
+        html = _read_html("5483_中美晶_個股決策UI.html")
         return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
     except Exception as exc:
         return HTMLResponse(f"<h1>個股卡片載入失敗:{exc}</h1>", status_code=500)
@@ -1820,8 +2278,19 @@ def api_card_page(code: str = "2337"):
 def chips_page(code: str = None):
     """籌碼第一頁清單；帶 code 時保留舊連結相容，直接開單檔明細。"""
     try:
-        filename = "個股籌碼獨立UI.html" if code else "個股籌碼清單UI.html"
-        return HTMLResponse(_read_html(filename),
+        filename = "個股籌碼彈窗UI.html" if code else "個股籌碼清單UI.html"
+        html = _read_html(filename)
+        if not code:
+            # 收盤價、漲幅與法人買賣超都來自盤後固定快取；直接嵌入頁面，
+            # 開頁不必先顯示 loading 再等待一個不必要的即時 API round-trip。
+            bootstrap = json.dumps(_extras.build_chip_watchpool(),
+                                   ensure_ascii=False).replace("</", "<\\/")
+            html = html.replace(
+                "</head>",
+                f'<script>window.__CHIP_WATCHPOOL__={bootstrap};</script></head>',
+                1,
+            )
+        return HTMLResponse(html,
                             headers={"Cache-Control": "no-store, max-age=0"})
     except Exception as exc:
         return HTMLResponse(f"<h1>籌碼頁載入失敗:{exc}</h1>", status_code=500)
@@ -1837,9 +2306,101 @@ def chips_detail_page():
         return HTMLResponse(f"<h1>籌碼明細頁載入失敗:{exc}</h1>", status_code=500)
 
 
+def _reversal_local_html():
+    """在 8011 sidecar 暫時不可用時，直接用主站唯讀資料產出同一頁。
+
+    反轉頁是觀察工具，不應因獨立旁掛服務重啟就整頁消失。這個 fallback
+    只讀主站既有的 intraday-watchpool，不補造行情；若當下沒有資料，頁面
+    仍會顯示「目前沒有資料」而不是回傳空白 502。
+    """
+    from mls_v4_1_flow_chips_preview.mls_v4_1_flow_chips.live_bridge import (
+        build_live_view,
+    )
+    from mls_v4_1_flow_chips_preview.mls_v4_1_flow_chips.live_run import render_html
+    from mls_v4_1_flow_chips_preview.mls_v4_1_flow_chips.reversal_state import (
+        ReversalStateMachine,
+    )
+    import vps_intraday_test
+
+    payload = vps_intraday_test.intraday_watchpool()
+    if not isinstance(payload, dict):
+        raise RuntimeError("主站盤中觀察池回傳格式錯誤")
+    view = build_live_view(
+        payload,
+        state_machine=ReversalStateMachine(),
+    )
+    view["reversal_history_dates"] = []
+    return render_html(view)
+
+
+@app.get("/reversal-lab")
+def reversal_lab_page():
+    """以 8000 公開入口轉送 8011；旁掛重啟時回退主站唯讀資料。"""
+    try:
+        with _urlreq.urlopen("http://127.0.0.1:8011/", timeout=30) as response:
+            html = response.read().decode("utf-8")
+        return HTMLResponse(html, headers={"Cache-Control": "no-store, max-age=0"})
+    except Exception as _sidecar_exc:
+        try:
+            return HTMLResponse(_reversal_local_html(), headers={
+                "Cache-Control": "no-store, max-age=0",
+                "X-MLS-Reversal-Mode": "main-readonly-fallback",
+            })
+        except Exception as local_exc:
+            # 頁面本身仍可見，讓使用者能重新整理或回到其他模組；不把
+            # 8011 的內部例外直接暴露在 UI。
+            message = "反轉旁掛服務目前未連線，主站唯讀資料也尚未就緒。"
+            return HTMLResponse(
+                f"<!doctype html><html lang='zh-Hant'><head><meta charset='utf-8'>"
+                f"<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                f"<title>資金反轉驗證</title><style>"
+                f"*{{box-sizing:border-box}}body{{margin:0;padding:16px;background:#f6f8fc;"
+                f"color:#172033;font-family:-apple-system,BlinkMacSystemFont,'PingFang TC',sans-serif}}"
+                f".box{{max-width:720px;margin:10vh auto;padding:24px;border:1px solid #efd888;"
+                f"border-radius:16px;background:#fff8df;line-height:1.7}}h1{{font-size:22px}}"
+                f"a{{display:inline-block;margin-top:12px;color:#17233f;font-weight:800}}"
+                f"</style></head><body><main class='box'><h1>資金反轉驗證</h1>"
+                f"<p>{message}</p><p>請稍後重新整理，或先回到決策首頁。</p>"
+                f"<a href='/'>回到決策首頁</a></main></body></html>",
+                status_code=200,
+                headers={"Cache-Control": "no-store, max-age=0",
+                         "X-MLS-Reversal-Mode": "unavailable"},
+            )
+
+
+@app.get("/api/reversal-lab/history")
+def reversal_lab_history(date: str = ""):
+    """轉送 Reversal Lab 每日 TOP20 歷史，避免頁面點擊回首頁。"""
+    try:
+        target = "http://127.0.0.1:8011/api/reversal-lab/history"
+        if date:
+            from urllib.parse import quote
+            target += "?date=" + quote(date, safe="")
+        with _urlreq.urlopen(target, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        return JSONResponse(payload, headers={"Cache-Control": "no-store, max-age=0"})
+    except Exception as exc:
+        return JSONResponse({"ok": False, "rows": [], "dates": [], "error": str(exc)}, status_code=502)
+
+
+@app.get("/reversal-lab/history")
+def reversal_lab_history_page(date: str = ""):
+    """獨立中文歷史 UI；主反轉頁維持原本三個按鈕。"""
+    try:
+        target = "http://127.0.0.1:8011/history"
+        if date:
+            from urllib.parse import quote
+            target += "?date=" + quote(date, safe="")
+        with _urlreq.urlopen(target, timeout=30) as response:
+            page = response.read().decode("utf-8")
+        return HTMLResponse(page, headers={"Cache-Control": "no-store, max-age=0"})
+    except Exception as exc:
+        return HTMLResponse(f"<h1>反轉歷史紀錄載入失敗：{exc}</h1>", status_code=502)
+
+
 @app.get("/api/watch-history")
 def api_watch_history(date: str = None, days: int = 30):
-    """盯盤名單歷史與準確度：每日名單的收盤結果 + 命中率，用來回頭優化篩選。"""
+    """盯盤名單歷史與準確度：使用 canonical verdict，不改既有回應欄位。"""
     try:
         rows = db.load_watch_outcome(date, days)
         by_day = {}

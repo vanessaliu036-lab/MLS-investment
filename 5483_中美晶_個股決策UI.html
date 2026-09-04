@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NEXORA 個股決策報告 V3</title>
+<title>MLS 個股決策報告 V3</title>
 <style>
 :root{
   --bg:#f3f5f9;--panel:#fff;--line:#dfe5ee;--line2:#cfd7e5;
@@ -102,8 +102,21 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
 </style>
 </head>
 <body>
+<style data-mls-navigation-contract>
+html,body{min-height:100%}body{padding:0 0 40px!important}.topbar{display:none!important}.mls-nav{position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:6px 10px;width:100vw;min-height:72px;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);box-sizing:border-box;padding:12px 28px;background:#fff;border-bottom:1px solid #e5e9f2;box-shadow:0 2px 10px rgba(23,35,63,.04);overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:thin}.mls-nav-label{display:block;flex:none;margin-right:8px;padding:0;color:#8a96aa;font-size:14px;font-weight:850;letter-spacing:.04em}.mls-nav-link{display:inline-flex;align-items:center;gap:7px;width:auto;max-width:none;min-height:40px;margin:0;padding:9px 12px;border:0;border-radius:8px;color:#65718a;background:transparent;font:inherit;font-size:16px;font-weight:800;line-height:1.2;text-decoration:none;white-space:nowrap}.mls-nav-link:hover{background:#f4f6fb;color:#17233f}.mls-nav-link.active{background:#17233f;color:#fff;box-shadow:none}.mls-nav-count{flex:none;padding:3px 7px;border-radius:999px;background:#eef1f7;color:#65718a;font-size:12px;font-weight:850;line-height:1}.mls-nav-link.active .mls-nav-count{background:#dff7ec;color:#087f5b}.mls-nav-count.live{background:#dff7ec;color:#087f5b;border:1px solid #a9e8cc}@media(max-width:1100px){.mls-nav{min-height:64px;padding:10px 14px;gap:5px 7px}.mls-nav-label{display:none}.mls-nav-link{min-height:44px;padding:9px 10px;font-size:14px;flex:0 0 auto}}@media(max-width:560px){.mls-nav{min-height:58px;padding:7px 12px;gap:4px}.mls-nav-link{min-height:44px;padding:9px 10px;font-size:13px}}
+</style>
+<aside class="mls-nav" aria-label="主要選單"><span class="mls-nav-label">盤中決策</span><a class="mls-nav-link" href="/">決策首頁 <span class="mls-nav-count live">LIVE</span></a><a class="mls-nav-link" href="/?view=radar">機會雷達 <span class="mls-nav-count">51</span></a><a class="mls-nav-link active" href="/?view=watch" aria-current="page">觀察池 51 檔 <span class="mls-nav-count">51</span></a><a class="mls-nav-link" href="/chips">籌碼 <span class="mls-nav-count">51</span></a><a class="mls-nav-link" href="/reversal-lab">資金反轉驗證 <span class="mls-nav-count live">LIVE</span></a><a class="mls-nav-link" href="/?view=review">盤後驗證</a><a class="mls-nav-link" href="/opportunity-ledger">機會分層榜</a><a class="mls-nav-link" href="/line-b-ledger">買點監控</a><a class="mls-nav-link" href="/line-b-layers">七層交易狀態</a></aside>
+<section class="page-error" id="pageError" hidden role="alert" aria-live="polite">
+  <div class="page-error-mark" aria-hidden="true">!</div>
+  <div>
+    <div class="page-error-kicker">個股決策</div>
+    <h1 id="pageErrorTitle">尚未選擇股票</h1>
+    <p id="pageErrorMessage">請從觀察池選擇一檔股票，才能查看完整決策資料。</p>
+    <div class="page-error-actions"><a class="page-error-action primary" href="/?view=watch">回到觀察池</a><button class="page-error-action" id="pageErrorReload" type="button">重新整理</button></div>
+  </div>
+</section>
 <header class="topbar">
-  <div class="brand">NEXORA · 個股決策報告 V3</div>
+  <div class="brand">MLS · 個股決策報告 V3</div>
   <div style="display:flex;align-items:center;gap:14px">
     <div class="topnote" id="topnote">個股盤後決策報告</div>
     <button id="closeCard" title="關閉卡片" style="background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:7px 14px;font-size:13px;font-weight:850;cursor:pointer">✕ 關閉</button>
@@ -509,6 +522,20 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
     try{if(window.parent&&window.parent!==window){window.parent.postMessage({type:'closeStockCard',code},'*');const x=window.parent.document.getElementById('card-close')||window.parent.document.getElementById('card-close-btn');if(x){x.click();return;}}}catch(_){}
     if(history.length>1)history.back();else window.close();
   });
+  const pageError=document.getElementById('pageError');
+  const showPageError=(title,message)=>{
+    const wrap=document.querySelector('.wrap');
+    if(wrap)wrap.hidden=true;
+    if(pageError){pageError.hidden=false;document.getElementById('pageErrorTitle').textContent=title;document.getElementById('pageErrorMessage').textContent=message;}
+  };
+  document.getElementById('pageErrorReload')?.addEventListener('click',()=>location.reload());
+  const fetchJson=async url=>{
+    const response=await fetch(url,{cache:'no-store'});
+    let payload;
+    try{payload=await response.json()}catch(_){throw Error('資料服務暫時無法回應')}
+    if(!response.ok||payload?.ok===false)throw Error(payload?.error||'個股資料暫時無法載入');
+    return payload;
+  };
   function cardVals(sec,idx,vals,reason){
     const card=document.querySelectorAll(sec+' .card')[idx];if(!card)return;
     const vs=card.querySelectorAll('.rows .row .v');
@@ -516,9 +543,8 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
     if(reason!=null){const r=card.querySelector('.score-reason');if(r)r.textContent=reason}
   }
   try{
-    if(!code)throw Error('缺少股票代碼');
-    const d=await fetch(API+'/api/stock/'+code,{cache:'no-store'}).then(r=>r.json());
-    if(!d.ok)throw Error(d.error||'個股 API 失敗');
+    if(!code){location.replace(location.protocol==='file:'?'個股第一層ＵＩ.html':'/watch-first-layer');return;}
+    const d=await fetchJson(API+'/api/stock/'+code);
     const c=d.card||{},p=d.post_market||{},dec=c.decision||{},chip=c.chip||{},tech=c.tech||{},trade=c.trade||{};
     const f5=c.factors5||{},f5f=f5.factors||{},f5n=f5.notes||{};
     const score=dec.score??c.health_score;
@@ -645,9 +671,41 @@ footer{text-align:center;color:var(--muted);font-size:11px;padding:12px 0 28px}
     if(WC[2]){const vs=WC[2].querySelectorAll('.row .v');if(vs[0])vs[0].textContent=group}
     const foot=document.querySelector('footer');if(foot)foot.textContent=`資料來源：Shioaji K線／FinMind 盤後籌碼｜資料日 ${p.source_date||'—'}｜產出 ${d.updated_at||'—'}`;
   }catch(e){
-    const n=document.createElement('div');n.style='position:fixed;top:0;left:0;right:0;background:#fff0f2;color:#e6465a;padding:10px 16px;z-index:99;font-weight:800';n.textContent='真實資料載入失敗：'+e.message;document.body.prepend(n);
+    console.warn('stock detail load',e);
+    showPageError('個股資料暫時無法載入','資料服務目前沒有回傳完整內容，請稍後再試或先回到觀察池。');
   }
 })();
 </script>
+<style data-mls-mobile-ui-final>
+/* 2026-09-02：個股決策卡手機版統一卡片、工具列與資料表的內容邊界。 */
+html,body{width:100%;max-width:100%;min-width:0;overflow-x:hidden}
+.wrap,.hero,.hero-main,.hero-block,.hero-bottom,.toolbar,.quick-grid,.summary-grid,.data-grid,.card,
+.validation-grid,.module-grid,.plan-grid,.evidence,.funnel,.compare,.row{min-width:0;max-width:100%}
+.wrap{overflow:clip}
+.toolbar{overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.toolbar::-webkit-scrollbar{display:none}
+.card,.summary,.plan{overflow-wrap:anywhere}
+.page-error[hidden]{display:none}
+.page-error{max-width:760px;margin:72px auto;padding:30px;display:grid;grid-template-columns:52px minmax(0,1fr);gap:18px;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}
+.page-error-mark{width:52px;height:52px;display:grid;place-items:center;border-radius:16px;background:var(--amber-bg);color:var(--amber);font-size:24px;font-weight:950}
+.page-error-kicker{color:var(--blue);font-size:12px;font-weight:900;letter-spacing:.1em}
+.page-error h1{margin:5px 0 8px;font-size:24px;letter-spacing:-.03em}
+.page-error p{margin:0;color:var(--muted);font-size:14px;line-height:1.7}
+.page-error-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.page-error-action{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 16px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--text);font:inherit;font-weight:850;text-decoration:none;cursor:pointer}
+.page-error-action.primary{border-color:var(--navy);background:var(--navy);color:#fff}
+@media(max-width:820px){
+  .wrap{padding:12px 14px 28px}
+  .hero-block,.card,.plan{min-width:0}
+  .compare{display:block;overflow-x:auto;white-space:nowrap}
+}
+@media(max-width:560px){
+  .wrap{padding-inline:10px}
+  .page-error{margin:28px 10px;padding:22px;grid-template-columns:1fr;gap:12px}
+  .page-error-mark{width:44px;height:44px;border-radius:13px}
+  .toolbar button{min-height:44px}
+  .row{grid-template-columns:minmax(0,1fr) auto}
+}
+</style>
 </body>
 </html>

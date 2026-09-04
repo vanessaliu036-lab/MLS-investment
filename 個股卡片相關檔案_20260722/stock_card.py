@@ -19,6 +19,10 @@ MLS 模組 — stock_card.py(v2.3 新增)
 """
 
 from datetime import datetime, timezone, timedelta
+import os
+import urllib.parse
+import urllib.request
+import json
 
 import config as C
 import indicators as I
@@ -50,8 +54,63 @@ def _bars(code, days=80, injected=None):
         cl = r.get("close")
         out.append({"date": str(r.get("date") or r.get("ts") or r.get("index"))[:10], "close": cl,
                     "high": r.get("high"), "low": r.get("low"),
-                    "volume": r.get("volume", 0)})
+                    "volume": r.get("volume", 0), "amount": r.get("amount")})
     return out
+
+
+_MARKET_VWAP_CACHE = {}
+
+
+def _market_vwap_finmind(code, asof=None, days=20):
+    """用 FinMind 官方日行情的成交金額／成交量計算市場 20 日 VWAP。
+
+    TaiwanStockPrice 的 Trading_money 是元、Trading_Volume 是股；
+    不用收盤價、不用法人買賣超、不用 Shioaji 的張數欄位代替。
+    """
+    limit = str(asof or datetime.now(TW_TZ).date())[:10]
+    key = (str(code), limit, int(days))
+    if key in _MARKET_VWAP_CACHE:
+        return _MARKET_VWAP_CACHE[key]
+    try:
+        end = datetime.strptime(limit, "%Y-%m-%d").date()
+        start = (end - timedelta(days=90)).isoformat()
+        query = urllib.parse.urlencode({
+            "dataset": "TaiwanStockPrice", "data_id": str(code),
+            "start_date": start, "end_date": limit,
+        })
+        token = os.environ.get("FINMIND_TOKEN", "").strip()
+        if token:
+            query += "&" + urllib.parse.urlencode({"token": token})
+        req = urllib.request.Request(
+            "https://api.finmindtrade.com/api/v4/data?" + query,
+            headers={"User-Agent": "MLS/4 market-vwap"},
+        )
+        with urllib.request.urlopen(req, timeout=20) as response:
+            rows = json.loads(response.read().decode("utf-8")).get("data") or []
+        usable = []
+        for row in rows:
+            try:
+                date = str(row.get("date") or "")[:10]
+                amount = float(row.get("Trading_money"))
+                volume = float(row.get("Trading_Volume"))
+            except (TypeError, ValueError):
+                continue
+            if date <= limit and amount > 0 and volume > 0:
+                usable.append((date, amount, volume))
+        usable.sort(key=lambda item: item[0])
+        if len(usable) < days:
+            result = (None, len(usable), None, None)
+        else:
+            window = usable[-days:]
+            total_amount = sum(item[1] for item in window)
+            total_volume = sum(item[2] for item in window)
+            result = (round(total_amount / total_volume, 2), len(window),
+                      window[0][0], window[-1][0]) if total_volume else (None, 0, None, None)
+    except Exception as exc:
+        print(f"[stock_card] FinMind 市場成交均價 {code} 失敗: {exc}", flush=True)
+        result = (None, 0, None, None)
+    _MARKET_VWAP_CACHE[key] = result
+    return result
 
 
 def _flow_days(bars, n):
@@ -77,6 +136,8 @@ def build_card(code, snap=None, health=None, grade=None,
     name = C.NAME_MAP.get(code, code)
     sector, styp = C.SECTOR_MAP.get(code, ("其他", "attack"))
     bars = _bars(code, injected=injected_bars)
+    (market_vwap_20d, market_vwap_days, market_vwap_start,
+     market_vwap_end) = _market_vwap_finmind(code, chip_asof, 20)
     closes = [b["close"] for b in bars if b["close"] is not None]
     highs = [b["high"] if b["high"] is not None else b["close"] for b in bars]
     lows_raw = [b.get("low") for b in bars]
@@ -100,7 +161,10 @@ def build_card(code, snap=None, health=None, grade=None,
     if bars and bars[-1].get("date") == cd.get("source_date"):
         v = bars[-1].get("volume")
         if v:
-            today_vol_lots = v / 1000
+            # broker.daily_kbars 與 extras._authoritative_daily_bars 的 volume
+            # 邊界都已統一為「張」；不能再除以 1,000，否則法人佔量比會
+            # 被放大 1,000 倍。FinMind 只有在進入 adapter 時才以股表示。
+            today_vol_lots = v
     def _pct_of_volume(net_lots):
         if net_lots is None or not today_vol_lots:
             return None
@@ -120,6 +184,11 @@ def build_card(code, snap=None, health=None, grade=None,
         "inst_streak": cd.get("inst_streak"),
         "trust_streak": cd.get("trust_streak"),
         "inst_net_20d_lots": cd.get("inst_net_20d_lots"),
+        "market_vwap_20d": market_vwap_20d,
+        "market_vwap_20d_days": market_vwap_days,
+        "market_vwap_20d_start": market_vwap_start,
+        "market_vwap_20d_end": market_vwap_end,
+        "market_vwap_20d_source": "FinMind TaiwanStockPrice：Trading_money ÷ Trading_Volume",
         "foreign_net_20d": cd.get("foreign_net_20d"),
         "trust_net_20d": cd.get("trust_net_20d"),
         "dealer_net_20d": cd.get("dealer_net_20d"),

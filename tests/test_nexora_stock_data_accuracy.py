@@ -13,6 +13,8 @@ sys.path.insert(0, str(MODULE_DIR))
 import extras  # noqa: E402
 import money_health  # noqa: E402
 import money_health_api as mh  # noqa: E402
+import stock_card  # noqa: E402
+import eod_source  # noqa: E402
 
 
 def test_post_market_card_does_not_substitute_close_for_missing_vwap(monkeypatch):
@@ -159,6 +161,68 @@ def test_old_card_cache_is_not_served_after_data_contract_changes(tmp_path, monk
     assert extras._card_cache_read("2464", "2026-08-19") is None
 
 
+def test_card_daily_bars_use_official_volume_in_lots(monkeypatch):
+    """卡片的官方成交量是股，送進 UI 前必須只轉一次為張。"""
+    def official_rows(_code, _start_date, trade_date=None):
+        day = str(trade_date)[:10]
+        if day.startswith("2026-09"):
+            return [{"date": "2026-09-01", "close": 183.5, "max": 185,
+                     "min": 178, "Trading_Volume": 16192000,
+                     "source": "official_tpex"}]
+        if day.startswith("2026-08"):
+            return [{"date": "2026-08-31", "close": 178, "max": 180,
+                     "min": 176, "Trading_Volume": 12000000,
+                     "source": "official_tpex"}]
+        return []
+
+    monkeypatch.setitem(sys.modules, "eod_source", types.SimpleNamespace(
+        _price_rows=official_rows
+    ))
+    monkeypatch.setattr(extras.stock_card, "_bars", lambda *_args, **_kwargs: [])
+
+    bars, source = extras._authoritative_daily_bars("5483", "2026-09-01", days=80)
+
+    assert source == "TWSE/TPEx 官方日K"
+    assert bars[-1]["close"] == 183.5
+    assert bars[-1]["volume"] == 16192
+
+
+def test_tpex_history_query_uses_month_start_date(monkeypatch):
+    """TPEx 歷史月 K 必須使用新版 date 參數，不能退回目前月份。"""
+    seen = []
+
+    def fake_get(url, timeout=20):
+        seen.append(url)
+        return {"tables": [{"data": [["115/08/03", "1,000", "1", "10", "11", "9", "10", "0", "1"]]}]}
+
+    monkeypatch.setattr(eod_source, "_get", fake_get)
+    rows = eod_source._official_month_rows("5483", trade_date="2026-08-19")
+
+    assert rows and rows[0]["date"] == "2026-08-03"
+    assert "date=2026%2F08%2F01" in seen[-1]
+    assert "d=" not in seen[-1]
+
+
+def test_card_institutional_volume_ratio_keeps_lot_unit(monkeypatch):
+    """法人淨買賣超與日K成交量同為張，不可再縮小 1,000 倍。"""
+    monkeypatch.setattr(stock_card, "_market_vwap_finmind",
+                        lambda *_args, **_kwargs: (None, 0, None, None))
+    monkeypatch.setitem(sys.modules, "chips", types.SimpleNamespace(
+        get_chips_detail=lambda *_args, **_kwargs: {
+            "foreign_net_d": 1000, "trust_net_d": 0, "dealer_net_d": 0,
+            "source_date": "2026-09-01",
+        }
+    ))
+    card = stock_card.build_card(
+        "5483", injected_bars=[
+            {"date": "2026-08-31", "close": 178, "high": 180, "low": 176, "volume": 12000},
+            {"date": "2026-09-01", "close": 183.5, "high": 185, "low": 178, "volume": 16192},
+        ], chip_asof="2026-09-01"
+    )
+    assert card["chip"]["today_volume_lots"] == 16192
+    assert card["chip"]["foreign_pct_volume"] == round(1000 / 16192 * 100, 2)
+
+
 def test_intraday_quote_replaces_stale_eod_price_and_change(monkeypatch):
     """盤中卡片不得把前一日收盤跌幅當成今日現價漲跌。"""
     monkeypatch.setattr(extras, "_is_intraday_session", lambda: True)
@@ -184,6 +248,10 @@ def test_intraday_quote_replaces_stale_eod_price_and_change(monkeypatch):
 def test_report_daily_bars_fall_back_to_official_source_and_never_use_future_bars(tmp_path, monkeypatch):
     """歷史報告沒有 DB 日 K 時，取官方日 K 並截在報告日，不得偷看未來。"""
     monkeypatch.setattr(mh, "DB_PATH", tmp_path / "empty.db")
+    # 官方來源只有 2 根、低於 MA20 備援門檻，仍不能讓測試依賴真的連上 Yahoo
+    # 才過（沙箱裡有網路時會拿到真實歷史資料，測試就變成不穩定）；比照
+    # test_short_official_history_uses_full_history_fallback_for_ma20 一樣鎖住 Yahoo。
+    monkeypatch.setattr(mh, "_yahoo_daily_bars", lambda *_args, **_kwargs: [])
     monkeypatch.setitem(sys.modules, "eod_source", types.SimpleNamespace(
         _price_rows=lambda _code, _start_date, trade_date=None: [
             {"date": "2026-08-17", "close": 200, "max": 208, "min": 190,

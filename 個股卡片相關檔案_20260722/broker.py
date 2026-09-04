@@ -438,6 +438,8 @@ def daily_kbars(code, days=70):
             "low": g["Low"].min(),      # v2.4.1:補真實低點(六點50%回測/KD/ATR 轉精確)
             "open": g["Open"].first(),
             "volume": g["Volume"].sum(),
+            # Shioaji KBar 原生 Amount = 當日成交金額(元)，不可用收盤價代替。
+            "amount": g["Amount"].sum() if "Amount" in df.columns else None,
         }).tail(days)
         out = daily.reset_index().to_dict("records")
         with _CACHE_LOCK:
