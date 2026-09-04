@@ -13,8 +13,8 @@ NAV_ITEMS = (
     ("reversal", "資金反轉驗證", "/reversal-lab", "LIVE"),
     ("review", "盤後驗證", "/review", ""),
     ("opportunity", "機會分層榜", "/opportunity-ledger", ""),
-    ("line-b", "買點監控", "/line-b-ledger", ""),
-    ("layers", "七層交易狀態", "/line-b-layers", ""),
+    ("line-b", "Line B C1+C2 研究", "/line-b-ledger", ""),
+    ("layers", "買點監控｜七層", "/line-b-layers", ""),
 )
 
 
