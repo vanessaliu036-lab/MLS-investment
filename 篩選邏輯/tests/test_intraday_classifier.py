@@ -62,13 +62,8 @@ class IntradayClassifierSourceTests(unittest.TestCase):
         self.assertIn("_sort_display_rows(rows)", self.source)
 
     def test_bearish_chip_cannot_reach_actionable_group_even_if_score_passes(self):
-        """5483/6182 型態:盤中三因子達標(65%+),但法人籌碼明顯偏空(連賣/近月
-        賣超)→ 首頁不得直接判「可操作」,也不得直接排除,要落在反轉觀察
-        (Vanessa 2026-08-27 規格第七、八條)。用 AST 確認：可操作的賦值那一支
-        elif 有 chip_bearish 守門,且存在一支專門處理 bearish+達標的分支。"""
         self.assertIn("chip_bearish = (chip_streak is not None and chip_streak <= -3)", self.source)
         self.assertIn('group, subgroup = "觀察", "🔄 反轉候選（籌碼偏空）"', self.source)
-
         bearish_branch_pos = self.source.index(
             "elif not missing and pct is not None and pct >= 65 and chip_bearish:")
         actionable_branch_pos = self.source.index(
@@ -78,7 +73,6 @@ class IntradayClassifierSourceTests(unittest.TestCase):
                         "chip_bearish 分支必須排在「可操作」判定之前,否則籌碼偏空會漏判成可操作")
 
     def test_screen_passes_live_volume_and_aflow_sides_to_decision_view(self):
-        """決策首頁不可把昨日 daily_bar.volume 再當成今天盤中成交量。"""
         if not self.screen_source:
             raise unittest.SkipTest("screen_intraday.py is not installed in this tree")
         self.assertIn('"volume": it.get("volume")', self.screen_source)
@@ -91,6 +85,15 @@ class IntradayClassifierSourceTests(unittest.TestCase):
             raise unittest.SkipTest("screen_intraday.py is not installed in this tree")
         self.assertIn('conds["A-flow 轉正"] = na > 0', self.screen_source)
         self.assertNotIn('conds["主動買超"]', self.screen_source)
+
+    def test_screen_normalizes_live_lots_to_daily_bar_shares_before_volume_checks(self):
+        """Shioaji 盤中 volume=張；daily_bar volume/vol_ma20=股，實判不得直接相除。"""
+        if not self.screen_source:
+            raise unittest.SkipTest("screen_intraday.py is not installed in this tree")
+        self.assertIn("vol_shares = vol * 1000", self.screen_source)
+        self.assertIn("pace = vol_shares / max(1.0, y_vol * session_frac)", self.screen_source)
+        self.assertIn("vol_shares > y_vol * 0.8", self.screen_source)
+        self.assertNotIn("pace = vol / max(1.0, y_vol * session_frac)", self.screen_source)
 
 
 if __name__ == "__main__":
