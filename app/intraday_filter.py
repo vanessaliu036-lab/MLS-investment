@@ -33,8 +33,8 @@ EXTREME_PCT = 9.0
 # 一、主動買賣差 A-flow —— 兩種算法，互相對照
 # =====================================================================
 
-def aflow_official(bid_side_total_vol: int, ask_side_total_vol: int) -> int:
-    """官方累積成交側量算法。
+def aflow_from_sides(bid_side_total_vol: int, ask_side_total_vol: int) -> int:
+    """Canonical Shioaji side-volume formula.
 
     Shioaji 定義：bid_side_total_vol=買盤成交總量，ask_side_total_vol=賣盤成交總量。
     A-flow = 買盤成交總量 − 賣盤成交總量。
@@ -43,8 +43,18 @@ def aflow_official(bid_side_total_vol: int, ask_side_total_vol: int) -> int:
     return int(bid_side_total_vol) - int(ask_side_total_vol)
 
 
+def aflow_official(sell_side_total_vol: int, buy_side_total_vol: int) -> int:
+    """Legacy compatibility entry used by the existing 8000 service.
+
+    歷史 8000 呼叫端固定傳入 (sell, buy)，因此此函式暫時保留
+    buy - sell 的舊 positional contract，避免部署途中把正式頁 A-flow 方向翻轉。
+    新程式一律改用 aflow_from_sides(bid_side_total_vol, ask_side_total_vol)。
+    """
+    return int(buy_side_total_vol) - int(sell_side_total_vol)
+
+
 def aflow_ticktype(tick_type_stream) -> int:
-    """逐筆 TickType 累加，用來對照官方累積成交側量。
+    """逐筆 TickType 累加，用來對照 canonical side-volume 算法。
 
     tick_type == 1（外盤／買方主動）→ +volume
     tick_type == 2（內盤／賣方主動）→ -volume
