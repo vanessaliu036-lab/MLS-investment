@@ -229,6 +229,113 @@ def _canonical_trigger(market: dict, trigger: dict) -> tuple[float | None, str]:
     return (supplied if supplied is not None else prior_high), "structure_resistance"
 
 
+def _explicit_bool(value):
+    """Return True/False for an explicit quality flag, otherwise None.
+
+    Missing intraday 5-minute/VWAP history is not a negative trading result.
+    It is deliberately kept as ``None`` so the UI can say "待確認" rather
+    than turning an unavailable measurement into a false failure.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().upper()
+    if text in {"YES", "PASS", "TRUE", "1", "CONFIRMED"}:
+        return True
+    if text in {"NO", "FAIL", "FALSE", "0", "FAILED"}:
+        return False
+    return None
+
+
+def activation_view(market: dict, price, trigger_price,
+                    extension_high: bool = False) -> dict:
+    """Derive the public activation/entry state from independent facts.
+
+    Price activation is intentionally separate from volume confirmation and
+    acceptance.  A price trigger therefore cannot be displayed as
+    "尚未啟動", while it also cannot be promoted to ACTIVE until the latter
+    two confirmations are explicitly available.  Extension only overrides
+    the final trade action after ACTIVE; it never removes the activation fact.
+    """
+    price = _num(price)
+    trigger_price = _num(trigger_price)
+    price_triggered = (price is not None and trigger_price is not None and
+                       price >= trigger_price)
+    price_touched = _explicit_bool(market.get("price_touched"))
+    if price_touched is None:
+        high = _num(market.get("high"))
+        price_touched = (high is not None and trigger_price is not None and
+                         high >= trigger_price)
+
+    volume_confirmed = _explicit_bool(
+        market.get("volume_confirmed", market.get("volume_quality")))
+    acceptance_confirmed = _explicit_bool(
+        market.get("acceptance_confirmed", market.get("acceptance")))
+    flow_conflict = bool(market.get("aflow_conflict"))
+
+    if flow_conflict:
+        activation_state = "DATA_BLOCKED"
+        activation_label = "資料阻擋"
+        trade_state = "DATA_BLOCKED"
+        trade_label = "資料阻擋"
+        action_code = "DATA_BLOCKED"
+        action_label = "A-flow 衝突，暫不判定"
+    elif price_triggered and volume_confirmed is True and acceptance_confirmed is True:
+        activation_state = "ACTIVE"
+        activation_label = "已啟動"
+        if extension_high:
+            trade_state, trade_label = "EXTENDED", "已啟動／延伸過高"
+            action_code, action_label = "DO_NOT_CHASE", "不追，等回測"
+        else:
+            trade_state, trade_label = "ACTIVE", "已啟動"
+            action_code, action_label = "ENTRY_ELIGIBLE", "可評估進場"
+    elif price_triggered:
+        activation_state = "PRICE_TRIGGERED"
+        activation_label = "價格已觸發"
+        trade_state, trade_label = "TRIGGERED_WAIT_CONFIRMATION", "已觸發／待確認"
+        action_code, action_label = "WAIT_CONFIRMATION", "等量能／承接確認"
+    elif price_touched:
+        activation_state = "TRIGGER_FAILED"
+        activation_label = "觸發後失守"
+        trade_state, trade_label = "FAILED", "觸發後失守"
+        action_code, action_label = "WAIT_RECLAIM", "等重新站回關鍵價"
+    elif trigger_price is None or price is None:
+        activation_state = "WATCH"
+        activation_label = "待有效資料"
+        trade_state, trade_label = "WATCH", "觀察中"
+        action_code, action_label = "WAIT", "待有效資料"
+    else:
+        distance = (trigger_price - price) / trigger_price * 100
+        armed = distance <= 1.0
+        activation_state = "ARMED" if armed else "UNTRIGGERED"
+        activation_label = "接近觸發" if armed else "尚未觸發"
+        trade_state, trade_label = activation_state, activation_label
+        action_code, action_label = "WAIT", ("等突破" if armed else "續觀察")
+
+    return {
+        "price_triggered": price_triggered,
+        "price_touched": price_touched,
+        "volume_confirmed": volume_confirmed,
+        "acceptance_confirmed": acceptance_confirmed,
+        "aflow_conflict": flow_conflict,
+        "activation_state": activation_state,
+        "activation_state_label": activation_label,
+        "trade_state": trade_state,
+        "trade_state_label": trade_label,
+        "action_code": action_code,
+        "action_label": action_label,
+        "extension_high": bool(extension_high),
+        "status_sort_key": {
+            "ACTIVE": 0, "EXTENDED": 1, "PRICE_TRIGGERED": 2,
+            "TRIGGER_FAILED": 3, "ARMED": 4, "WATCH": 5,
+            "UNTRIGGERED": 6, "DATA_BLOCKED": 7,
+        }.get(activation_state, 9),
+    }
+
+
 def _summary(classification: str, market: dict, trigger_price) -> str:
     flow = _num(market.get("aflow_today"))
     close = _num(market.get("close"))
@@ -260,6 +367,12 @@ def build(classified: dict, market: dict | None, trigger: dict | None) -> dict:
     canonical_price, trigger_source = _canonical_trigger(market, trigger)
     canonical_trigger = {**trigger, "trigger_price": canonical_price}
     state, state_label, quality = _entry_state(classification, market, canonical_trigger)
+    extension_high = bool(market.get("extension_high")) or bool(market.get("is_limit_up")) or \
+        classification == layered_score.TIER_NO_CHASE
+    current_for_activation = _num(market.get("current_price"))
+    if current_for_activation is None:
+        current_for_activation = close
+    activation = activation_view(market, current_for_activation, canonical_price, extension_high)
     factors = ranking_factors(market)
     margin_label = margin_tag(market)
     institution = market.get("institution_label") or "法人 —"
@@ -283,6 +396,9 @@ def build(classified: dict, market: dict | None, trigger: dict | None) -> dict:
         "entry_quality": quality,
         "entry_state": state,
         "entry_state_label": state_label,
+        # New canonical state machine.  ``entry_state`` above remains as a
+        # compatibility alias for older clients; new UI uses these fields.
+        **activation,
         "trigger_price": canonical_price,
         "trigger_source": trigger_source,
         "entry_rule": next_upgrade,

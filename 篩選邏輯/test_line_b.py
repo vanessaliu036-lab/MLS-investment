@@ -23,6 +23,7 @@ import line_b_explain as explain
 import line_b_watch_ledger as ledger
 import line_b_live as live
 import line_b_ledger_view as view
+import line_b_monitor as monitor
 import run_line_b_ledger as runner
 
 FIXTURE_DB = os.environ.get(
@@ -85,11 +86,11 @@ def test_confirmed_status_hides_activation_prob():
               flow_class="OPEN_POSITIVE", flow_confirm_magnitude=500,
               watch_mode_activated=1)
     exp = explain.explain(row, is_eod=False)
-    assert exp["status"] == "CONFIRMED"
+    assert exp["status"] == "PRICE_TRIGGERED"
     assert exp["activation_prob"] is None
     assert "PRICE TRIGGER 已發生" in exp["system_sentence"]
     assert "待量能／承接確認" in exp["system_sentence"]
-    assert "已站上" in exp["system_sentence"]
+    assert "已站上關鍵價" not in exp["system_sentence"]
 
 
 def test_watch_closely_shows_live_calibrated_prob_not_mock():
@@ -97,7 +98,7 @@ def test_watch_closely_shows_live_calibrated_prob_not_mock():
               flow_class="OPEN_POSITIVE", flow_confirm_magnitude=820,
               watch_mode_activated=0)
     exp = explain.explain(row, is_eod=False)
-    assert exp["status"] == "WATCH_CLOSELY"
+    assert exp["status"] == "CONFIRMED"
     assert abs(exp["distance_pct"] - (-0.93)) < 0.01
     # distance -0.93% 落在 -1.5~-0.5% 格,confirmed=True → 0.139(13.9%),不是 mockup 的 35.3%
     assert exp["activation_prob"] == pytest.approx(0.139)
@@ -116,7 +117,7 @@ def test_flow_stale_flag_changes_display_not_underlying_state():
     assert "待更新" in stale["flow_display"]
     assert "待更新" not in fresh["flow_display"]
     # status/activation_prob 是已經凍結的 point-in-time 事實,不因為現在斷流而消失
-    assert stale["status"] == fresh["status"] == "WATCH_CLOSELY"
+    assert stale["status"] == fresh["status"] == "CONFIRMED"
     assert stale["activation_prob"] == fresh["activation_prob"]
 
 
@@ -165,9 +166,107 @@ def test_top3_is_pure_magnitude_rank():
     assert [r["code"] for r in ctx["flow_confirmed_top3"]] == ["Y", "X", "Z"]
 
 
+def test_monitor_buckets_keep_research_source_separate_and_cover_radar_layers():
+    assert monitor.classify({
+        "source": "C1C2_PASS", "flow_class": "OPEN_POSITIVE",
+        "watch_mode_activated": 1, "explain": {"distance_pct": 0.37},
+    }, is_eod=False) == "PRICE_TRIGGERED"
+    assert monitor.classify({
+        "source": "C1C2_PASS", "flow_class": "OPEN_POSITIVE",
+        "watch_mode_activated": 0, "explain": {"distance_pct": -4.0},
+    }, is_eod=False) == "CONFIRMED"
+    assert monitor.classify({
+        "source": "MONITOR_ONLY", "flow_class": "NO_FLIP",
+        "flow_improving": True, "watch_mode_activated": 0,
+        "explain": {"distance_pct": -0.8},
+    }, is_eod=False) == "APPROACHING"
+    assert monitor.classify({
+        "source": "MONITOR_ONLY", "c1_structure_intact": 1,
+        "flow_class": "NO_FLIP", "watch_mode_activated": 0,
+        "explain": {"distance_pct": -4.0},
+    }, is_eod=False) == "WAITING_FUNDS"
+    assert monitor.classify({
+        "source": "C1C2_PASS", "flow_class": "NO_FLIP",
+        "watch_mode_activated": 0, "explain": {"distance_pct": -4.0},
+    }, is_eod=True) == "FAILED"
+    assert monitor.classify({
+        "source": "INTRADAY_DISCOVERY", "flow_class": "OPEN_POSITIVE",
+        "watch_mode_activated": 1, "explain": {"distance_pct": 1.0},
+    }, is_eod=False) == "DISCOVERY"
+
+
+def test_confirmed_top3_uses_monitor_universe_not_only_c1_c2_rows():
+    rows = [
+        _row("C1", "WAIT", 100, -2.0),
+        _row("M1", "WAIT", 900, -4.0),
+    ]
+    rows[0]["flow_class"] = "NO_FLIP"
+    rows[0]["c1_structure_intact"] = 1
+    rows[1]["source"] = "MONITOR_ONLY"
+    rows[1]["flow_class"] = "OPEN_POSITIVE"
+    ctx = view._finalize(rows, "2026-08-27")
+    assert [r["code"] for r in ctx["flow_confirmed_top3"]] == ["M1"]
+    assert [r["code"] for r in ctx["monitoring_list"]] == ["M1", "C1"]
+    assert ctx["counts"]["monitor"] == 2
+
+
+def test_live_monitor_entry_keeps_non_candidate_radar_rows():
+    assert live.should_monitor(
+        c1=False, c2=False, activated=False, distance_pct=-0.8,
+        flow_class="NO_FLIP", flow_improving=True,
+    ) is True
+    assert live.should_monitor(
+        c1=True, c2=False, activated=False, distance_pct=-4.0,
+        flow_class="NO_FLIP", flow_improving=False,
+    ) is True
+    assert live.should_monitor(
+        c1=False, c2=False, activated=False, distance_pct=-4.0,
+        flow_class="NO_FLIP", flow_improving=False,
+    ) is False
+
+
+def test_card_badge_uses_monitor_bucket_as_single_display_status():
+    import line_b_ledger_render as render
+    card = render._stock_card({
+        "code": "2464", "source": "C1C2_PASS", "monitor_bucket": "CONFIRMED",
+        "flow_confirm_magnitude": 1442,
+        "explain": {"status": "WAIT", "status_label": "現在等",
+                     "system_sentence": "A-flow 已確認｜尚差關鍵價 1.20%",
+                     "current": 98.8, "resistance": 100.0, "distance_pct": -1.2,
+                     "chip_summary": "結構良好", "flow_display": "資金已轉強 ↑ +1,442",
+                     "activation_prob": None, "confirmed_so_far": True},
+    })
+    assert "A-flow 已確認" in card
+    assert "等待資金" not in card
+
+
+def test_explain_status_matches_monitor_bucket_for_confirmed_flow():
+    exp = explain.explain({
+        "source": "C1C2_PASS", "t1_prior_high": 222.0,
+        "current_price": 210.5, "flow_class": "OPEN_POSITIVE",
+        "flow_confirm_magnitude": 1442, "watch_mode_activated": 0,
+    }, is_eod=False)
+    assert exp["status"] == "CONFIRMED"
+    assert exp["status_label"] == "已確認"
+    assert exp["monitor_bucket"] == "CONFIRMED"
+    assert "A-flow 已確認" in exp["system_sentence"]
+
+
+def test_explain_status_splits_price_trigger_from_aflow_confirmation():
+    exp = explain.explain({
+        "source": "C1C2_PASS", "t1_prior_high": 545.0,
+        "current_price": 547.0, "flow_class": "OPEN_POSITIVE",
+        "flow_confirm_magnitude": 6326, "watch_mode_activated": 1,
+    }, is_eod=False)
+    assert exp["monitor_bucket"] == "PRICE_TRIGGERED"
+    assert exp["status"] == "PRICE_TRIGGERED"
+    assert exp["status_label"] == "PRICE TRIGGER 已發生"
+    assert exp["system_sentence"] == "PRICE TRIGGER 已發生｜待量能／承接確認"
+
+
 # ───────────────────────── 5. Intraday Discovery isolation ───────────────────
 
-def test_intraday_discovery_excluded_from_c1_c2_bucket_and_labels_fixed():
+def test_intraday_discovery_excluded_from_c1_c2_bucket_and_cumulative_label_not_frozen():
     rows = [
         _row("D1", "WAIT", 500, -1.0),
     ]
@@ -175,9 +274,10 @@ def test_intraday_discovery_excluded_from_c1_c2_bucket_and_labels_fixed():
     ctx = view._finalize(rows, "2026-08-27")
     assert ctx["c1_c2_list"] == []
     assert len(ctx["intraday_discovery"]) == 1
-    # 64.1%/89.9% 是固定歷史母體標籤,不因為畫面上有沒有 discovery 列而變動
+    # C1 remains a legacy reference; A-flow is now supplied by the cumulative
+    # persisted cohort when the page context is built.
     assert ctx["labels"]["c1_c2_rate"] == "64.1%"
-    assert ctx["labels"]["flow_confirmed_rate"] == "89.9%"
+    assert ctx["labels"]["flow_confirmed_rate"] == "資料累積中"
 
 
 # ───────────────────────── 6. ledger append-only guards ─────────────────────
@@ -231,7 +331,7 @@ def test_live_merge_runs_against_real_data_without_writing(db_copy):
     assert after == before, "live 合成層不准寫 DB"
     assert isinstance(result["rows"], list)
     for r in result["rows"]:
-        assert r["source"] in ("C1C2_PASS", "INTRADAY_DISCOVERY")
+        assert r["source"] in ("C1C2_PASS", "INTRADAY_DISCOVERY", "MONITOR_ONLY")
         assert "explain" in r
 
 
@@ -309,7 +409,7 @@ def test_confirmed_flow_card_does_not_say_if_aflow_completes():
 
 def test_confirmed_activated_card_shows_no_probability_number():
     import line_b_ledger_render as render
-    exp = dict(status="CONFIRMED", activation_prob=None, distance_pct=1.2,
+    exp = dict(status="PRICE_TRIGGERED", activation_prob=None, distance_pct=1.2,
               confirmed_so_far=True)
     block = render._prob_block(exp, discovery=False)
     assert "已站上" in block
@@ -372,9 +472,8 @@ def test_candidate_count_matches_independently_verified_sample(db_copy):
 
 # ─────────────── 七層交易狀態(獨立頁,DESCRIPTIVE ONLY)────────────────────
 
-def test_extension_does_not_block_active_but_overrides_action():
-    """2026-08-27 Vanessa 明確修正:漲太高不代表沒啟動。EXTENSION 不參與 ACTIVE
-    判定,只在 ACTIVE 成立後把 TRADE STATE 覆寫成 EXTENDED、ACTION 改禁追。"""
+def test_extension_does_not_block_active_but_scales_position():
+    """高位延伸不代表沒啟動；只縮小部位，不把主升續攻改成禁止追價。"""
     import line_b_layers as L
     trig = {"verdict": "YES", "hold_slots": 3}
     vol = {"verdict": "PASS"}
@@ -389,7 +488,7 @@ def test_extension_does_not_block_active_but_overrides_action():
     high = L.trade_state(chip, flow, trig, vol, acc,
                         {"verdict": "HIGH", "reasons": ["today +9.8%"]}, True, 1.0)
     assert high["state"] == "EXTENDED"
-    assert high["action_code"] == "NO_CHASE"
+    assert high["action_code"] == "SMALL_POSITION_CHASE"
     # 關鍵:啟動事實仍然成立,不因為不能買就說它沒啟動
     assert high.get("activated") is True
 

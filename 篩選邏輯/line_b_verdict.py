@@ -71,6 +71,51 @@ def _rate_block(rows: list[dict]) -> dict:
     }
 
 
+def cumulative_confirmed_rates(db_path: str = DB) -> dict:
+    """Calculate the cumulative hit rate for C2 + confirmed A-flow.
+
+    This is intentionally expanding, not a fixed rolling window: every new
+    settled trading day increases the sample instead of dropping the oldest
+    day. A hit means watch_mode_activated=1 for a C1C2_PASS row whose C2 flag
+    is true and whose flow class is OPEN_POSITIVE or FLOW_FLIP.
+    """
+    empty = {
+        "status": "CUMULATIVE",
+        "n_days": 0,
+        "data_dates": [],
+        "n": 0,
+        "hit_count": 0,
+        "no_hit_count": 0,
+        "hit_rate_pct": None,
+        "hit_definition": "C1+C2_PASS + OPEN_POSITIVE/FLOW_FLIP + watch_mode_activated",
+    }
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='line_b_watch_ledger'"
+        ).fetchone()
+        if table is None:
+            return empty
+        rows = [dict(r) for r in conn.execute(
+            "SELECT data_date,watch_mode_activated FROM line_b_watch_ledger "
+            "WHERE source='C1C2_PASS' AND c2_selling_weak_price_resp=1 "
+            "AND flow_class IN ('OPEN_POSITIVE','FLOW_FLIP') "
+            "ORDER BY data_date,code"
+        ).fetchall()]
+    finally:
+        conn.close()
+
+    dates = sorted({r["data_date"] for r in rows})
+    hits = sum(1 for r in rows if r["watch_mode_activated"])
+    empty.update(
+        n_days=len(dates), data_dates=dates, n=len(rows), hit_count=hits,
+        no_hit_count=len(rows) - hits,
+        hit_rate_pct=round(hits / len(rows) * 100, 1) if rows else None,
+    )
+    return empty
+
+
 def forward_rates(db_path: str = DB, since: Optional[str] = None) -> dict:
     """逐日累積重算(day-equal:每天先各自算一次,再看趨勢,不做加權平均掩蓋單日爆量)。
     只吃 source=C1C2_PASS 的列。since 為 None 時用全部已累積的交易日。

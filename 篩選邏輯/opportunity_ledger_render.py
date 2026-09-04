@@ -8,6 +8,8 @@ from __future__ import annotations
 import html as _html
 from typing import Optional
 
+from navigation import NAV_CSS, nav_html
+
 def _load_name_map() -> dict:
     """用檔案路徑明確載入 config.py 的 NAME,不用 `import config`。
 
@@ -129,44 +131,27 @@ _STYLE = '''
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
   :root{
-    --bg:#eef0eb; --surface:#ffffff; --surface-2:#e3e6dd;
-    --ink:#1c231d; --ink-soft:#57624f; --ink-faint:#8a9382;
-    --line:#cfd4c6; --line-strong:#a9b09b;
-    --accent:#8a6a35; --accent-soft:#d8c399; --accent-ink:#4a3616;
-    --avoid-wash:#e7e3dc;
-    --shadow: 0 1px 2px rgba(28,35,29,.06), 0 6px 20px -10px rgba(28,35,29,.18);
-  }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg:#161a15; --surface:#1e241d; --surface-2:#252b23;
-      --ink:#e8ece3; --ink-soft:#a9b39d; --ink-faint:#707a67;
-      --line:#333a30; --line-strong:#454d40;
-      --accent:#cfa85c; --accent-soft:#4a3d20; --accent-ink:#ecd8a4;
-      --avoid-wash:#20251f;
-      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.6);
-    }
-  }
-  :root[data-theme="dark"]{
-    --bg:#161a15; --surface:#1e241d; --surface-2:#252b23;
-    --ink:#e8ece3; --ink-soft:#a9b39d; --ink-faint:#707a67;
-    --line:#333a30; --line-strong:#454d40;
-    --accent:#cfa85c; --accent-soft:#4a3d20; --accent-ink:#ecd8a4;
-    --avoid-wash:#20251f;
-    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 28px -14px rgba(0,0,0,.6);
+    --bg:#f4f6fb; --surface:#ffffff; --surface-2:#f8f9fc;
+    --ink:#182033; --ink-soft:#65718a; --ink-faint:#8a96aa;
+    --line:#e5e9f2; --line-strong:#cfd7e5;
+    --accent:#c78313; --accent-soft:#fff6df; --accent-ink:#68551a;
+    --avoid-wash:#f3f5f8;
+    --shadow:0 12px 30px rgba(25,39,71,.08);
   }
   *{box-sizing:border-box}
+  html,body{max-width:100%; min-width:0; overflow-x:hidden}
   body{margin:0; background:var(--bg); color:var(--ink); font-family:"IBM Plex Sans",system-ui,sans-serif; line-height:1.5; padding:2.5rem 1.5rem 5rem}
-  .wrap{max-width:1180px; margin:0 auto}
+  .wrap{width:min(100%,1180px); margin:0 auto}
   h1,h2{font-family:"Source Serif 4",Georgia,serif; text-wrap:balance; margin:0}
   .kicker{font-family:"IBM Plex Mono",monospace; font-size:.72rem; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-faint)}
   header.page{margin-bottom:1.75rem}
   header.page h1{font-size:2rem; font-weight:600; margin-top:.35rem}
   header.page p{color:var(--ink-soft); max-width:62ch; margin:.6rem 0 0; font-size:.95rem}
   .live-strip{display:grid; grid-template-columns:repeat(4,1fr); background:var(--surface); border:1px solid var(--line); border-radius:8px; box-shadow:var(--shadow); margin:1.75rem 0 2.5rem; overflow:hidden}
-  .live-cell{padding:1rem 1.25rem; border-left:1px solid var(--line)}
+  .live-cell{min-width:0; padding:1rem 1.25rem; border-left:1px solid var(--line)}
   .live-cell:first-child{border-left:none}
   .live-cell .label{font-family:"IBM Plex Mono",monospace; font-size:.68rem; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-faint); display:block; margin-bottom:.35rem}
-  .live-cell .value{font-family:"IBM Plex Mono",monospace; font-size:1.15rem; font-weight:500; font-variant-numeric:tabular-nums}
+  .live-cell .value{font-family:"IBM Plex Mono",monospace; font-size:1.15rem; font-weight:500; font-variant-numeric:tabular-nums; overflow-wrap:anywhere}
   .live-cell .sub{display:block; font-size:.78rem; color:var(--ink-soft); margin-top:.2rem}
   .tier-section{margin-bottom:2.75rem}
   .tier-head{display:flex; align-items:baseline; gap:.85rem; padding-bottom:.6rem; border-bottom:2px solid var(--ink); margin-bottom:1.1rem}
@@ -201,19 +186,25 @@ _STYLE = '''
   .insufficient-note{font-size:.8rem; color:var(--ink-faint); font-style:italic; padding:.6rem 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line)}
   .why{font-size:.8rem; color:var(--ink-soft)}
   footer{margin-top:3rem; padding-top:1.25rem; border-top:1px solid var(--line); font-size:.78rem; color:var(--ink-faint); max-width:70ch}
-  @media (max-width:720px){ .live-strip{grid-template-columns:1fr 1fr} .live-cell:nth-child(3){border-left:none} .live-cell:nth-child(n+3){border-top:1px solid var(--line)} }
+  @media (max-width:720px){ body{padding:1rem .75rem 2rem} .live-strip{grid-template-columns:1fr 1fr} .live-cell:nth-child(3){border-left:none} .live-cell:nth-child(n+3){border-top:1px solid var(--line)} .live-cell .value{font-size:1rem} .card-id{align-items:flex-start; flex-wrap:wrap} .card-id .sector{margin-left:0; width:100%} }
 </style>'''
 
 
 def render_ledger_html(ctx: dict) -> str:
     if not ctx.get("data_date"):
-        return "<p>尚無 opportunity_snapshot 資料。</p>"
+        return f'''<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>機會分層觀察榜</title>{_STYLE}{NAV_CSS}</head><body>{nav_html("opportunity")}
+<main class="wrap"><p>尚無 opportunity_snapshot 資料。</p></main>
+</body></html>'''
 
     tiers_html = "".join(_tier_section_html(t) for t in ctx["tiers"])
     live_html = _live_evidence_html(ctx["live_evidence"])
 
-    return f'''<title>Opportunity Ledger</title>
-{_STYLE}
+    return f'''<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>機會分層觀察榜</title>{_STYLE}{NAV_CSS}</head><body>
+{nav_html("opportunity")}
 <div class="wrap">
   <header class="page">
     <span class="kicker">MLS · Opportunity Ledger · {_esc(ctx["data_date"])}</span>
@@ -224,4 +215,4 @@ def render_ledger_html(ctx: dict) -> str:
   </header>
   {live_html}
   {tiers_html}
-</div>'''
+</div></body></html>'''

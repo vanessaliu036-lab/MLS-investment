@@ -41,6 +41,35 @@ decisions autonomously until a genuine user decision is required.
 
 ---
 
+## 🔒 Canonical Risk-Adjusted Analysis Policy（2026-09-02 起）
+
+所有新的模型分析、個股解讀、排名、報告與 UI 文案，必須遵守
+`篩選邏輯/LINE_B_WATCH_MODE_SPEC.md` 第 11 節的風險調整後參與規範。
+這是分析層的全專案 canonical policy；不得在其他模組自行恢復「看到過熱就直接封殺」的判斷。
+
+1. **目標**：由「避錯優先」改為最大化扣除交易成本後的風險調整報酬；高風險不等於沒有機會。
+2. **維度分離**：生命週期使用 `WATCH → ARMED → ACTIVE → MOMENTUM`；風險覆寫使用
+   `NORMAL / EXTENDED / EXHAUSTED`；行動使用 `WAIT / ENTER / MOMENTUM_ENTRY / INVALIDATED`。
+3. **EXTENDED**：只能降低部位、提高確認門檻、禁止無條件追價；不得單獨轉成 `AVOID`、
+   `REJECTED` 或「禁止交易」。
+4. **EXHAUSTED**：只有在過熱同時伴隨資金轉弱、爆量不漲、失守 VWAP／Trigger 等實際耗竭證據時，
+   才能禁止新的追價進場。單一「連漲第 3 天」、乖離、RVOL 或創高訊號不足以封殺。
+5. **MOMENTUM**：族群強、A-flow 強、`RVOL > 1.5x`、Trigger 突破、Acceptance 足夠且有延續證據時，
+   即使已延伸也要保留參與方案；預設以正常部位 `1/3` 戰術起手，續強後才加碼。
+6. **評分**：能取得資料時分開呈現 `Opportunity Score`、`Risk Score` 與
+   `Edge = Opportunity − Risk`；不得用 Risk 高度直接代替 Edge，也不得用單一勝率作為刪除線。
+7. **交易語意**：主升段優先尋找第一次有效回撤／VWAP 守住重攻／帶 A-flow 加速的新高，
+   不要求所有股票完整回測原始突破價；但任何直接創高進場只能先開 `1/3`，不得無條件滿倉追價。
+8. **研究完整性**：這項政策不改寫凍結的 C1／C2 定義、歷史樣本、已完成回測或 frozen evidence；
+   新的 MOMENTUM／部位規則必須以獨立 forward data 驗證，缺資料時標示 `DATA_INCOMPLETE`，不得補造。
+9. **頁面責任**：`機會雷達` 負責當下判斷「這檔還能不能賺、怎麼進」；`盤後驗證` 只負責事後判斷
+   Momentum 訊號成功或失敗，並用於模型校正，不得反過來取代盤中交易判定。
+
+若舊文件、舊測試或歷史輸出出現「EXTENDED = 禁追／AVOID」等字樣，先判斷它是否是封存的
+歷史規則；對新的分析與現行解讀，一律以本節及 `LINE_B_WATCH_MODE_SPEC.md` 第 11 節為準。
+
+---
+
 ## Research Lead 章程（2026-08-24 定案）
 
 **你是這個台股預測系統的 Research Lead，不是等待逐步批准的執行助手。**

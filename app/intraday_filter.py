@@ -10,8 +10,8 @@ intraday_filter.py — 盤中篩選邏輯公式核心
 盤中可用欄位（來自 Shioaji 訂閱 tick / bidask）：
     price          即時成交價          (tick.close)
     change_rate    漲跌%               (tick.pct_chg)
-    bid_total_vol  內盤/成交在 bid 的累積量 (tick.bid_side_total_vol) → 主動賣
-    ask_total_vol  外盤/成交在 ask 的累積量 (tick.ask_side_total_vol) → 主動買
+    bid_total_vol  買盤成交總量 (tick.bid_side_total_vol) → 主動買
+    ask_total_vol  賣盤成交總量 (tick.ask_side_total_vol) → 主動賣
     tick_type      內外盤別 1外/2內/0無  (tick.tick_type)          → 逐筆自累加用
 
 盤前算好快取（非盤中即時，開盤前一次性算好）：
@@ -37,15 +37,24 @@ EXTREME_PCT = 9.0
 # 一、主動買賣差 aflow —— 兩種算法，互相對照
 # =====================================================================
 
-def aflow_official(bid_total_vol: int, ask_total_vol: int) -> int:
+def aflow_from_sides(bid_side_total_vol: int, ask_side_total_vol: int) -> int:
     """
-    算法 A：官方現成累積量相減（最穩，推薦主用）。
-    aflow = ask_side_total_vol − bid_side_total_vol
-    正 = 外盤/主動買較多（估流入）；負 = 內盤/主動賣較多（估流出）。
+    Canonical A-flow：官方買盤成交總量 − 官方賣盤成交總量。
+    正 = 主動買較多（估流入）；負 = 主動賣較多（估流出）。
 
     鐵律：這是「買賣盤積極度估算」，不是法人淨買賣，盤中流出 ≠ 派發。
     """
-    return int(ask_total_vol) - int(bid_total_vol)
+    return int(bid_side_total_vol) - int(ask_side_total_vol)
+
+
+def aflow_official(sell_side_total_vol: int, buy_side_total_vol: int) -> int:
+    """
+    舊 8000 相容入口。
+
+    歷史呼叫端已傳入 ``aflow_official(sell, buy)``；這裡保留參數順序，
+    但內部固定導向 canonical A-flow = buy - sell，避免部署時翻轉正式頁方向。
+    """
+    return aflow_from_sides(buy_side_total_vol, sell_side_total_vol)
 
 
 def aflow_ticktype(tick_type_stream) -> int:

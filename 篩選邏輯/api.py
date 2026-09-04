@@ -68,8 +68,7 @@ def _attach_intraday_note(dropped):
     try:
         q = {r["code"]: r for r in c.execute(
             "SELECT code,price,change_rate FROM quote_snap WHERE data_date=?", (td,))}
-        a = {r["code"]: r for r in c.execute(
-            "SELECT code,net_active FROM aflow WHERE data_date=?", (td,))}
+        a = store.read_aflow_date(td)
     finally:
         c.close()
     for row in dropped:
@@ -98,7 +97,7 @@ def _attach_t1_verify_flow(rows, pool_date):
     today = today_tw()
     verify_date = next_trading_day(pool_date)
     pending = verify_date > today
-    af = {} if pending else store.read_date("aflow", verify_date)
+    af = {} if pending else store.read_aflow_date(verify_date)
     quotes = {} if pending else store.read_date("quote_snap", verify_date)
     for row in rows:
         code = str(row.get("stock_id") or row.get("code") or "")

@@ -11,6 +11,7 @@
 | `mls-screen-api.service` | 常駐 | uvicorn 提供 `/api/watchlist` 唯一名單端點 |
 | `mls-screen-collect.timer` | 週一~五 13:40 | 盤後採集 51 檔 + 落地明日盤前名單 `watchlist_post` |
 | `mls-screen-feed.timer` | 週一~五 08:55 | 拉起盤中 Shioaji 訂閱,寫 `quote_snap`/`aflow`,收盤自停 |
+| `mls-screen-lineb-ledger.timer` | 週一~五 14:50 | 定案 Line B ledger,並在後台寫入 C2+A-flow 研究事件與可用的 T+1 結果 |
 | `mls-screen-calendar.timer` | 週一 06:00 | 更新 TWSE 官方假日 → `holidays.json`(跨年自動補) |
 
 ## 安裝(VPS,root)
@@ -37,6 +38,7 @@
    systemctl enable --now mls-screen-api.service
    systemctl enable --now mls-screen-collect.timer
    systemctl enable --now mls-screen-feed.timer
+   systemctl enable --now mls-screen-lineb-ledger.timer
    systemctl enable --now mls-screen-calendar.timer
    ```
 
@@ -46,6 +48,7 @@
 systemctl list-timers 'mls-screen-*'      # 看下次觸發時間
 journalctl -u mls-screen-collect -n 50    # 看盤後採集日誌
 journalctl -u mls-screen-feed -f          # 盤中即時看行情 flush
+journalctl -u mls-screen-lineb-ledger -n 50 # Line B 定案與研究回填
 curl -s localhost:8000/api/phase          # 看當下時段(休市會回 CLOSED)
 ```
 
@@ -54,7 +57,24 @@ curl -s localhost:8000/api/phase          # 看當下時段(休市會回 CLOSED)
 ```bash
 python3 collect.py --date 2026-07-24      # 補特定交易日盤後名單
 python3 intraday_feed.py --selftest       # 不連 Shioaji,驗證 quote/aflow 落地路徑
+python3 run_line_b_ledger.py               # 定案 ledger + 回填研究資料
 ```
+
+### C2 + A-flow 研究資料
+
+`run_line_b_ledger.py` 完成當日 ledger 後，會呼叫獨立的
+`line_b_research.py`。它只收錄 `source=C1C2_PASS` 且 A-flow 已確認
+(`OPEN_POSITIVE` / `FLOW_FLIP`) 的事件，不改寫既有決策欄位，也不送出交易。
+
+研究表 `line_b_research` 會持續累積：T+1 毛/淨報酬與勝率、15/30/60 分鐘及收盤
+MFE/MAE、成本假設、下一筆可觀測報價的滑移代理、市場 regime，以及 T+1 尚餘漲幅
+是否達到淨 3%。T+1 只在「緊接的下一交易日」日 K 已落地後回填，資料未到就保留
+NULL，不跨日猜測。
+
+目前沒有下單/成交回報接線，因此 `actual_slippage_bps` 會明確保持 NULL；
+`execution_lag_bps` 是確認價到下一筆 5 分鐘觀測價的代理值，不能冒充真實成交滑價。
+成本沿用既有定義：隔夜 47.1 bps、當沖 32.1 bps。唯讀摘要可查：
+`GET /line-b-research.json?since=YYYY-MM-DD`。
 
 ## 本機(macOS)開發
 

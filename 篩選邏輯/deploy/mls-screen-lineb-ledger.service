@@ -1,5 +1,5 @@
 [Unit]
-Description=MLS Line B 觀察 ledger 收盤後定案(C1/C2 + 盤中確認 + EOD 重算,append-only)
+Description=MLS Line B 觀察 ledger 收盤後定案與 C2+A-flow 研究回填(append-only)
 
 [Service]
 Type=oneshot

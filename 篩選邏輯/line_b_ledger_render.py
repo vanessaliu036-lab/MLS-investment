@@ -11,7 +11,7 @@
    **不是**憑感覺給的分數。它回答的唯一問題是「今天最終會不會進入
    WATCH MODE」,跟「啟動後會不會賺」是兩件不能混的事(2026-08-26 Vanessa
    明確區分)——後者要等 forward MFE/MAE 累積才能做,現在完全不顯示。
-   已確認(CONFIRMED)或盤中發現(INTRADAY_DISCOVERY,母體不同不能套用同一張
+   已確認(CONFIRMED)、PRICE TRIGGER 已發生或盤中發現(INTRADAY_DISCOVERY,母體不同不能套用同一張
    校準表)一律不顯示這個數字。有效樣本數是 77(stock-day)/11(day)層級,
    不是 1710——snapshot 之間同股同天高度相關,不當獨立樣本數用。
 """
@@ -19,6 +19,7 @@ from __future__ import annotations
 import html as _html
 
 from navigation import NAV_CSS, nav_html
+import line_b_monitor as _monitor
 
 
 def _load_name_map() -> dict:
@@ -36,9 +37,11 @@ def _load_name_map() -> dict:
 
 NAME = _load_name_map()
 
-STATUS_CSS = {"WAIT": "", "WATCH_CLOSELY": "watch", "CONFIRMED": "ok", "GIVE_UP": "give-up"}
+STATUS_CSS = {"WAIT": "", "WATCH_CLOSELY": "watch", "CONFIRMED": "ok",
+              "PRICE_TRIGGERED": "price-trigger", "GIVE_UP": "give-up"}
 STATUS_BADGE_TEXT = {"WAIT": "等待資金", "WATCH_CLOSELY": "接近確認",
-                     "CONFIRMED": "A-flow 已確認", "GIVE_UP": "暫時放棄"}
+                     "CONFIRMED": "A-flow 已確認", "PRICE_TRIGGERED": "PRICE TRIGGER 已發生",
+                     "GIVE_UP": "暫時放棄"}
 
 
 def _esc(s) -> str:
@@ -97,31 +100,51 @@ def _flow_display_html(r: dict) -> str:
     return f'<span{cls}>{_esc(exp["flow_display"])}</span>'
 
 
-def _prob_block(exp: dict, discovery: bool) -> str:
-    status = exp["status"]
+def _change_pct_html(exp: dict) -> str:
+    value = exp.get("change_pct")
+    if value is None:
+        return ""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return ""
+    direction = "up" if number > 0 else "down" if number < 0 else ""
+    cls = f' class="price-change {direction}"' if direction else ' class="price-change"'
+    return f'<span{cls}>漲跌 {number:+.2f}%</span>'
+
+
+def _prob_block(exp: dict, discovery: bool, monitor_bucket: str = "") -> str:
+    status = monitor_bucket or exp["status"]
     prob = exp.get("activation_prob")
+    bar_class = ""
 
     if discovery:
         prob_num_html = '<span class="prob-num">LIVE</span>'
         bar_pct = _bar_pct(exp.get("distance_pct"))
         ref_line = "INTRADAY DISCOVERY：不套用 64.1% / 89.9% 歷史參考(母體不同)"
         title = "距離關鍵價"
-    elif status == "CONFIRMED":
+    elif status in ("CONFIRMED", "PRICE_TRIGGERED"):
         # CONFIRMED 是 A-flow/Watch Mode 已確認,不自動代表價格站上關鍵價。
         # 價格低於 resistance 時,顯示仍差多少,避免把兩個 activation 混成一個。
         #
         # 2026-08-28 修:「已站上」是價格方向(站上關鍵價=漲),原本硬寫
         # var(--green) 違反台股漲紅跌綠。這個 span 跟下面的進度條(.bar)是同一
         # 塊「目前狀態」在講同一件事,兩者必須同色,不能一個紅一個綠自相矛盾。
-        price_above = exp.get("distance_pct") is not None and exp["distance_pct"] >= 0
-        prob_num_html = (('<span class="prob-num up">已站上</span>'
+        price_above = status == "PRICE_TRIGGERED"
+        prob_num_html = (('<span class="prob-num price-trigger up">已站上</span>'
                           if price_above else
-                          '<span class="prob-num up">A-flow 已確認</span>'))
+                          '<span class="prob-num flow-confirmed">A-flow 已確認</span>'))
         bar_pct = 100 if price_above else _bar_pct(exp.get("distance_pct"))
+        bar_class = "price-trigger" if price_above else "flow-confirmed"
         # 2026-08-28 修:原本每張 CONFIRMED 卡片都印「歷史參考 89.9%」,51 檔
         # 看起來就是「每一檔都有 89.9% 勝率」。89.9% 是整個歷史母體的一個數字,
         # 不是任何個股的勝率,依定案規則只保留在頁首總覽,個股卡片不再出現。
         ref_line = 'A-flow 已完成確認（歷史母體統計見頁首，非本檔勝率）'
+        title = "目前狀態"
+    elif status == "FAILED":
+        prob_num_html = '<span class="prob-num down">已失效</span>'
+        bar_pct = 0
+        ref_line = '今日資金／價格結構轉弱，保留在監控頁供複盤'
         title = "目前狀態"
     else:
         # 2026-08-27 修正:資金「已經」確認的卡片不得再寫「若 A-flow 完成確認」——
@@ -144,7 +167,7 @@ def _prob_block(exp: dict, discovery: bool) -> str:
 
     return f"""<div class="prob">
         <div class="prob-top"><span class="prob-title">{title}</span>{prob_num_html}</div>
-        <div class="bar"><i style="width:{bar_pct}%"></i></div>
+        <div class="bar {bar_class}"><i style="width:{bar_pct}%"></i></div>
         <div class="confirm-line">{ref_line}</div>
       </div>"""
 
@@ -153,24 +176,29 @@ def _stock_card(r: dict, discovery: bool = False) -> str:
     code = r["code"]
     name = NAME.get(code, code)
     exp = r["explain"]
+    bucket = r.get("monitor_bucket") or ("DISCOVERY" if discovery else "")
     status = exp["status"]
-    css = STATUS_CSS.get(status, "")
-    badge_text = ("INTRADAY DISCOVERY" if discovery
-                  else STATUS_BADGE_TEXT.get(status, exp["status_label"]))
-    card_css = "confirmed" if status == "CONFIRMED" else ""
-    action_css = "ok" if status == "CONFIRMED" else ""
+    css = {"PRICE_TRIGGERED": "price-trigger", "CONFIRMED": "ok", "APPROACHING": "watch", "WAITING_FUNDS": "",
+           "FAILED": "give-up", "DISCOVERY": "discovery"}.get(bucket,
+           STATUS_CSS.get(status, ""))
+    badge_text = _monitor.BUCKET_LABELS.get(bucket) or (
+        "INTRADAY DISCOVERY" if discovery else STATUS_BADGE_TEXT.get(status, exp["status_label"]))
+    card_css = ("price-triggered" if bucket == "PRICE_TRIGGERED" else
+                "confirmed" if bucket == "CONFIRMED" else "")
+    action_css = ("price-trigger" if bucket == "PRICE_TRIGGERED" else
+                  "ok" if bucket == "CONFIRMED" else "")
 
     return f"""
     <article class="stock-card {card_css}">
       <div class="stock-top">
-        <div class="stock-name"><small>{_esc(code)}</small>{_esc(name)}</div>
+        <div class="stock-name"><small>{_esc(code)}</small>{_esc(name)}{_change_pct_html(exp)}</div>
         <div class="status {'discovery' if discovery else css}">{_esc(badge_text)}</div>
       </div>
       <div class="action {action_css}">{_esc(exp["system_sentence"])}</div>
       <div class="quote">{_quote_line(exp)}</div>
       <div class="row"><span class="label">昨日</span><span class="value">{_esc(exp["chip_summary"])}</span></div>
       <div class="row"><span class="label">今日</span>{_flow_display_html(r)}</div>
-      {_prob_block(exp, discovery)}
+      {_prob_block(exp, discovery or bucket == "DISCOVERY", bucket)}
     </article>"""
 
 
@@ -204,6 +232,67 @@ def _discovery_row(r: dict) -> str:
           · {_esc(exp["system_sentence"])} · 收盤重算</div>
       </div>
     </div>"""
+
+
+_REQUESTED_TAB_LABELS = {
+    "PRICE_TRIGGERED": "PRICE TRIGGER 已發生",
+    "CONFIRMED": "A-flow 已確認",
+    "WAITING_FUNDS": "等待資金",
+    "DISCOVERY": "盤中發現",
+}
+_OPTIONAL_TAB_LABELS = {
+    "APPROACHING": "接近確認",
+    "FAILED": "失敗／轉弱",
+}
+
+
+def _monitor_tabs_html(sections: list[dict]) -> str:
+    present = {section.get("bucket") for section in sections}
+    buckets = [bucket for bucket in _REQUESTED_TAB_LABELS if bucket in present]
+    buckets += [bucket for bucket in _OPTIONAL_TAB_LABELS if bucket in present]
+    # Keep the controls available even when a bucket is empty today.
+    if not buckets:
+        buckets = list(_REQUESTED_TAB_LABELS)
+    counts = {section.get("bucket"): len(section.get("rows") or []) for section in sections}
+    active = next((bucket for bucket in buckets if counts.get(bucket, 0)), buckets[0])
+    labels = {**_REQUESTED_TAB_LABELS, **_OPTIONAL_TAB_LABELS}
+    buttons = "".join(
+        f'<button type="button" class="monitor-tab{" active" if bucket == active else ""}" '
+        f'role="tab" aria-selected="{"true" if bucket == active else "false"}" '
+        f'data-monitor-tab="{_esc(bucket)}">{_esc(labels[bucket])}'
+        f'<span>{counts.get(bucket, 0)}</span></button>'
+        for bucket in buckets
+    )
+    return f'''<div class="monitor-tabs" role="tablist" aria-label="買點監控分頁">
+      {buttons}
+    </div>
+    <script>
+      function selectMonitorTab(bucket) {{
+        document.querySelectorAll('[data-monitor-tab]').forEach(function (tab) {{
+          var selected = tab.dataset.monitorTab === bucket;
+          tab.classList.toggle('active', selected);
+          tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+        }});
+        document.querySelectorAll('[data-monitor-panel]').forEach(function (panel) {{
+          panel.hidden = panel.dataset.monitorPanel !== bucket;
+        }});
+      }}
+      document.querySelectorAll('[data-monitor-tab]').forEach(function (tab) {{
+        tab.addEventListener('click', function () {{ selectMonitorTab(tab.dataset.monitorTab); }});
+      }});
+    </script>'''
+
+
+def _monitor_section_html(section: dict, active_bucket: str) -> str:
+    rows = section.get("rows") or []
+    cards = "".join(_stock_card(r) for r in rows)
+    bucket = section.get("bucket")
+    hidden = "" if bucket == active_bucket else " hidden"
+    return f'''<section class="monitor-section" data-bucket="{_esc(bucket)}"
+      data-monitor-panel="{_esc(bucket)}" role="tabpanel"{hidden}>
+      <div class="section-title"><h3>{_esc(section.get("label"))}</h3><span>{len(rows)} 檔</span></div>
+      <div class="grid">{cards}</div>
+    </section>'''
 
 
 PAGE_CSS = """
@@ -242,14 +331,29 @@ text-decoration:none;font-size:13px}
 .section-title{display:flex;justify-content:space-between;align-items:end;margin:24px 0 12px}
 .section-title h2{font-size:14px;margin:0;font-weight:750}
 .section-title span{font-size:11px;color:var(--muted)}
+.monitor-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px;padding:4px;background:var(--panel);border:1px solid var(--line);border-radius:13px}
+.monitor-tab{border:0;border-radius:9px;padding:9px 13px;background:transparent;color:var(--muted);font:inherit;font-size:12px;font-weight:800;cursor:pointer}
+.monitor-tab span{display:inline-grid;place-items:center;min-width:22px;margin-left:6px;padding:2px 6px;border-radius:999px;background:var(--bg);font-size:10px}
+.monitor-tab:hover{background:var(--bg);color:var(--navy)}
+.monitor-tab.active{background:var(--navy);color:#fff;box-shadow:0 3px 8px #17233f22}
+.monitor-tab.active span{background:#dff7ec;color:#087f5b}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.monitor-radar{display:grid;gap:18px}
+.monitor-section{display:grid;gap:0}
+.monitor-section .section-title{margin:0 0 10px}
+.monitor-section h3{font-size:13px;margin:0;font-weight:750}
 .stock-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow)}
 .stock-card.confirmed{border-color:#9fd9c4;box-shadow:inset 0 0 0 1px #e8f7f1,var(--shadow)}
+.stock-card.price-triggered{border-color:#f0a0ae;box-shadow:inset 0 0 0 1px #fff0f3,var(--shadow)}
 .stock-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:15px}
 .stock-name{font-size:18px;font-weight:800;letter-spacing:.1px}
 .stock-name small{font-size:12px;color:var(--muted);font-weight:600;margin-right:7px}
+.price-change{display:inline-block;margin-left:9px;font-size:12px;font-weight:850;letter-spacing:0}
+.price-change.up{color:var(--red)}
+.price-change.down{color:var(--green)}
 .status{font-size:10px;font-weight:800;border:1px solid var(--line);border-radius:999px;padding:5px 8px;white-space:nowrap;color:var(--amber);background:var(--amber-soft)}
 .status.ok{color:var(--green);background:var(--green-soft);border-color:#9fd9c4}
+.status.price-trigger{color:#b52f4a;background:var(--red-soft);border-color:#f3bcc7}
 .status.watch{color:var(--blue);background:#eaf0fe;border-color:#b9ccf7}
 .status.give-up{color:var(--red);background:var(--red-soft);border-color:#f3bcc7}
 .status.discovery{color:var(--blue);background:#eaf0fe;border-color:#b9ccf7}
@@ -271,13 +375,17 @@ text-decoration:none;font-size:13px}
 .prob-title{font-size:12px;color:var(--muted)}
 .prob-num{font-size:19px;font-weight:850}
 .prob-num.up{color:var(--red)}
+.prob-num.flow-confirmed{color:var(--green)}
 .prob-state{font-size:11px;color:var(--muted);font-weight:700;margin-left:2px}
 .bar{height:6px;background:#e8ecf4;border-radius:999px;overflow:hidden}
 .bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#9fb0c4,var(--red))}
+.bar.price-trigger i{background:linear-gradient(90deg,#f3a7b6,var(--red))}
+.bar.flow-confirmed i{background:linear-gradient(90deg,#9fd9c4,var(--green))}
 .confirm-line{font-size:12px;color:var(--muted);margin-top:9px}
 .confirm-line b{color:var(--green);font-size:14px}
 .action{margin:0 0 14px;padding:11px 12px;border:1px solid #f0dcac;background:var(--amber-soft);color:#7a5406;border-radius:11px;font-size:14px;font-weight:780;line-height:1.55}
 .action.ok{border-color:#9fd9c4;background:var(--green-soft);color:#07714f}
+.action.price-trigger{border-color:#f3bcc7;background:var(--red-soft);color:#b52f4a}
 .top3{margin-top:10px;background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow-x:auto}
 .top3-row{display:grid;grid-template-columns:48px 1.3fr .9fr .9fr 1.4fr;gap:12px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--line);font-size:12px;min-width:620px}
 .top3-row:last-child{border-bottom:0}
@@ -366,12 +474,19 @@ def render(ctx: dict) -> str:
         f'{key_hold.get("n_days", 0)} 個交易日 · 同條件 C1+C2 母體'
         + (' · 單日初始統計' if key_hold.get("n_days", 0) <= 1 else '')
     ) if key_hold.get("scored", 0) else '尚無足夠的關鍵價觸發收盤資料'
-    observation_rows = ctx.get("observation_list", ctx["c1_c2_list"])
-    observation_html = "".join(
-        _stock_card(r, discovery=r.get("source") == "INTRADAY_DISCOVERY")
-        for r in observation_rows
-    ) or \
-        '<div class="empty-note">今晚無 C1+C2 通過名單。</div>'
+    monitor_sections = ctx.get("monitor_sections") or []
+    if monitor_sections:
+        active_bucket = next((section.get("bucket") for section in monitor_sections
+                              if section.get("rows")), monitor_sections[0].get("bucket"))
+        observation_html = (_monitor_tabs_html(monitor_sections) +
+                            "".join(_monitor_section_html(section, active_bucket)
+                                    for section in monitor_sections))
+    else:
+        observation_rows = ctx.get("observation_list", ctx["c1_c2_list"])
+        observation_html = "".join(
+            _stock_card(r, discovery=r.get("source") == "INTRADAY_DISCOVERY")
+            for r in observation_rows
+        ) or '<div class="empty-note">今晚無可監控資料。</div>'
     top3_rows = "".join(_top3_row(i + 1, r) for i, r in enumerate(ctx["flow_confirmed_top3"]))
     discovery_note = (
         '<section class="discovery discovery-note">'
@@ -399,9 +514,9 @@ def render(ctx: dict) -> str:
       <div class="summary-hint">C1 + C2 通過後的歷史參考 · {_esc(labels["sample_note"])}</div>
     </div>
     <div class="summary-card">
-      <div class="summary-label">A-flow 確認後歷史啟動率</div>
+      <div class="summary-label">{_esc(labels.get("flow_confirmed_label", "A-flow 確認後累積命中率"))}</div>
       <div class="summary-value" style="color:var(--green)">{_esc(labels["flow_confirmed_rate"])}</div>
-      <div class="summary-hint">OPEN_POSITIVE / FLOW_FLIP · NO_FLIP 僅 {_esc(labels["flow_no_flip_rate"])}</div>
+      <div class="summary-hint">OPEN_POSITIVE / FLOW_FLIP · {_esc(labels.get("flow_confirmed_hint", labels.get("flow_confirmed_sample_note", "資料累積中")))}</div>
     </div>
     <div class="summary-card">
       <div class="summary-label">關鍵價觸發後收盤守住率</div>
@@ -410,10 +525,10 @@ def render(ctx: dict) -> str:
     </div>
   </section>
 
-  <div class="section-title"><h2>今日重點觀察</h2><span>盤後候選 + 盤中已站上 · 依狀態與資金強度排序</span></div>
-  <section class="grid">{observation_html}</section>
+  <div class="section-title"><h2>今日買點雷達</h2><span>C1/C2 研究來源不變；監控呈現補上接近、等待、發現與失效</span></div>
+  <section class="monitor-radar">{observation_html}</section>
 
-  <div class="section-title"><h2>A-flow CONFIRMED TOP 3</h2><span>只看已確認，依 A-flow 幅度排序</span></div>
+  <div class="section-title"><h2>A-flow CONFIRMED TOP 3</h2><span>從全部監控列挑選，依 A-flow 幅度排序</span></div>
   <section class="top3">
     <div class="top3-row top3-head"><div>排名</div><div>股票</div><div>現價 / 壓力</div><div>A-flow</div><div>現在動作</div></div>
     {top3_rows or '<div class="empty-note" style="padding:16px">尚無確認候選。</div>'}

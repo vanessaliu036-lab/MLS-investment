@@ -66,6 +66,28 @@ def _judgment(r):
     return r.get("trade_judgment") or r.get("state") or {}
 
 
+def _failure_condition_texts(r, failures):
+    """顯示失敗規則的適用範圍與本列使用的動態價位。"""
+    trigger = (r.get("trigger") or {})
+    vwap = _f(trigger.get("vwap"))
+    key_price = _f(r.get("trigger_price"))
+    labels = {
+        "跌 VWAP": f"跌 VWAP（已啟動後現價 < VWAP {vwap}）",
+        "A-flow 翻負": "A-flow 翻負（net active < 0）",
+        "爆量滯漲": "爆量滯漲（RVOL ≥ 1.5x 且未站穩）",
+        "跌破關鍵價": f"跌破關鍵價（已啟動後現價 < 觸發價 {key_price}）",
+    }
+    return [labels.get(item, item) for item in failures]
+
+
+def _status_note(st, judgment, alerts):
+    if alerts:
+        return "目前警示：" + "、".join(alerts)
+    if st.get("state") in ("ARMED", "WATCH"):
+        return "目前：%s，不列為失敗" % (judgment.get("trend_stage") or "尚未啟動")
+    return ""
+
+
 def _chip_cell(c):
     """回傳已上色的 HTML —— 每個數字各自判斷正負。
 
@@ -114,8 +136,10 @@ def _row(r):
                if sec.get("breadth_pct") is not None else "—")
     change = ext.get("change_rate")
     failures = judgment.get("failure_conditions") or ("跌 VWAP", "A-flow 翻負", "爆量滯漲", "跌破關鍵價")
+    failure_texts = _failure_condition_texts(r, failures)
     alerts = judgment.get("failure_alerts") or []
-    return f"""<tr class="layer-row" data-state="{_esc(st['state'])}" data-stock-code="{_esc(r['code'])}" role="link" tabindex="0" title="點擊查看個股決策卡">
+    status_note = _status_note(st, judgment, alerts)
+    return f"""<tr class="layer-row" data-state="{_esc(st['state'])}">
   <td class="c-name"><b>{_esc(r['code'])}</b> {_esc(r['name'])}
     <div class="quote-line">
       <span>現價 <b class="{_tone(change)}">{_f(r['price'])}</b></span>
@@ -142,7 +166,7 @@ def _row(r):
   <td class="c-action"><b>{_esc(judgment.get('chase_permission') or st.get('action') or '—')}</b>
     <div class="sub judgment-stage">{_esc(judgment.get('trend_stage') or '—')} · {_esc(judgment.get('flow_state') or '—')}</div>
     <div class="sub">進場 {_esc(judgment.get('entry_method') or '—')}</div>
-    <div class="sub">失敗：{_esc('、'.join(failures))}{' · 目前：' + _esc('、'.join(alerts)) if alerts else ''}</div></td>
+    <div class="sub">失敗條件（已啟動後適用）：{_esc('、'.join(failure_texts))}{' · ' + _esc(status_note) if status_note else ''}</div></td>
 </tr>"""
 
 
@@ -173,8 +197,10 @@ def _mobile_card(r):
     state_cls = STATE_CSS.get(state, "")
 
     failures = judgment.get("failure_conditions") or ("跌 VWAP", "A-flow 翻負", "爆量滯漲", "跌破關鍵價")
+    failure_texts = _failure_condition_texts(r, failures)
     alerts = judgment.get("failure_alerts") or []
-    return f'''<article class="mobile-card" data-state="{_esc(state)}" data-stock-code="{_esc(r["code"])}" role="link" tabindex="0" title="點擊查看個股決策卡">
+    status_note = _status_note(st, judgment, alerts)
+    return f'''<article class="mobile-card" data-state="{_esc(state)}">
   <div class="mobile-card-top">
     <div class="mobile-identity"><b>{_esc(r["code"])}</b><span>{_esc(r["name"])}</span></div>
     <div class="mobile-quote"><b>{_f(r["price"])}</b><strong class="{_tone(change)}">{_signed_pct(change)}</strong></div>
@@ -203,9 +229,9 @@ def _mobile_card(r):
       {detail("SECTOR", f'{sec.get("verdict") or "—"} · {sec.get("group") or "—"} {_f(sec.get("breadth_pct"), 0, "%")}', sector_cls)}
       {detail("追價許可", judgment.get("chase_permission") or st.get("action") or "—")}
       {detail("進場方式", judgment.get("entry_method") or "—")}
-      {detail("失敗條件", "、".join(failures))}
+      {detail("失敗條件（已啟動後適用）", "、".join(failure_texts))}
     </div>
-    <div class="mobile-detail-note">{_esc(st.get("why") or "")} · 資金 {_esc(judgment.get("flow_state") or "—")}{' · 目前失敗：' + _esc('、'.join(alerts)) if alerts else ''} · MA5 {_f(ext.get("dist_ma5_pct"), 1, "%")} · MA20 {_f(ext.get("dist_ma20_pct"), 1, "%")} · Gap {_f(ext.get("gap_pct"), 2, "%")}</div>
+    <div class="mobile-detail-note">{_esc(st.get("why") or "")} · 資金 {_esc(judgment.get("flow_state") or "—")}{' · ' + _esc(status_note) if status_note else ''} · MA5 {_f(ext.get("dist_ma5_pct"), 1, "%")} · MA20 {_f(ext.get("dist_ma20_pct"), 1, "%")} · Gap {_f(ext.get("gap_pct"), 2, "%")}</div>
   </details>
 </article>'''
 
@@ -254,7 +280,8 @@ tr:last-child td{border-bottom:0}
 .layer-table th,.layer-table td{min-width:0}
 .c-name{min-width:0}
 .c-action{min-width:0;overflow-wrap:anywhere}
-.layer-row{cursor:pointer}.layer-row:hover td{background:#f8faff}.layer-row:focus-visible td{outline:2px solid var(--blue);outline-offset:-2px}
+.layer-row:hover td{background:#f8faff}
+.layer-table,.mobile-card,.mobile-detail-grid,.mobile-detail-note{-webkit-user-select:text;user-select:text;cursor:text}
 .layer-row.is-filtered,.mobile-card.is-filtered{display:none!important}
 .num{text-align:left;white-space:normal;font-variant-numeric:tabular-nums;line-height:1.45}
 .sub{font-size:10.5px;color:var(--muted);margin-top:3px;font-weight:600;line-height:1.5}
@@ -374,7 +401,7 @@ def render(ctx: dict) -> str:
         fresh = rows[0]["freshness"]
         body = f"""
   <div class="chips">{chips}</div>
-  <div class="desktop-hint" role="note">桌面版已固定欄寬，七層訊號可在同一視窗判讀；點擊列可開啟個股決策卡。</div>
+  <div class="desktop-hint" role="note">桌面版已固定欄寬；文字可反白選取複製，點擊列不會開啟個股資料。</div>
   <div class="tbl-wrap"><table class="layer-table">
     <colgroup>
       <col style="width:18%"><col style="width:9%"><col style="width:9%"><col style="width:7%">
@@ -434,19 +461,6 @@ def render(ctx: dict) -> str:
   const cards = [...document.querySelectorAll('.mobile-card[data-state]')];
   const tableWrap = document.querySelector('.tbl-wrap');
   if (tableWrap) tableWrap.scrollLeft = 0;
-  const openCard = code => {{
-    const match = String(code || '').match(/\\d{{4}}/);
-    const clean = match ? match[0] : '';
-    if (clean) window.location.href = '/api/card_page?code=' + encodeURIComponent(clean);
-  }};
-  document.querySelectorAll('[data-stock-code]').forEach(item => item.addEventListener('click', event => {{
-    // details 的 summary 要能展開，不應該被整張卡的導流事件攔截。
-    if (event.target.closest('summary, a, button, input, select')) return;
-    openCard(item.dataset.stockCode);
-  }}));
-  document.querySelectorAll('[data-stock-code]').forEach(item => item.addEventListener('keydown', event => {{
-    if (event.key === 'Enter' || event.key === ' ') {{ event.preventDefault(); openCard(item.dataset.stockCode); }}
-  }}));
   const applyFilter = (selected, button) => {{
     rows.forEach(row => {{
       const filtered = selected !== 'ALL' && row.dataset.state !== selected;

@@ -117,7 +117,7 @@ def build_snap(code, meta, prefetch):
                盤前算好快取 + 昨日盤後底本
     """
     buf = _aflow_buffer[code]
-    aflow_a = F.aflow_official(buf["bid"], buf["ask"])
+    aflow_a = F.aflow_from_sides(buf["bid"], buf["ask"])
     aflow_b = F.aflow_ticktype(buf["tickstream"])
     recon = F.aflow_reconcile(aflow_a, aflow_b)   # 背離 → UI 標校驗異常
 
@@ -171,8 +171,8 @@ def tick(api, universe, watch_pool, meta_of, prefetch_of, db=None):
 
     # 4) 象限分布
     quad_dist = M.quadrant_distribution(
-        [F.proxy_quadrant(F.aflow_official(_aflow_buffer[c]["bid"],
-                                           _aflow_buffer[c]["ask"]),
+        [F.proxy_quadrant(F.aflow_from_sides(_aflow_buffer[c]["bid"],
+                                             _aflow_buffer[c]["ask"]),
                           meta_of(c)["change_rate"]) for c in universe]
     )
 

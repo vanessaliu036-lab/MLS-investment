@@ -30,7 +30,7 @@ class FrontendLimitRowTests(unittest.TestCase):
     def test_individual_stock_rows_show_price_points_next_to_percent(self):
         self.assertIn("const chgFull=", self.html)
         self.assertIn("${chgFull(x.change_rate,x.price)}", self.html)
-        self.assertIn("${chgFull(ch,row.price)}", self.html)
+        self.assertIn("${esc(chgFull(row.change_rate,row.price))}", self.html)
 
     def test_first_layer_stock_cards_use_the_same_price_point_format(self):
         path = Path(__file__).resolve().parents[1].parent / "個股第一層ＵＩ.html"
@@ -109,9 +109,11 @@ class FrontendLimitRowTests(unittest.TestCase):
         self.assertNotIn("decision-source", decision_block)
 
     def test_decision_home_keeps_the_server_rank_contract(self):
-        # 排序由 8000 API 做，瀏覽器只渲染回傳的順位；避免不同頁面各自排序而漂移。
+        # 首頁不得另建一套獨立的資料排序（不重新賦值 data 本身），只能在既有
+        # 資料上做展示用的視覺排序：漲停置頂 → 盤中觸發燈強度 → 當日漲跌。
         self.assertNotIn("data.sort(", self.html)
-        self.assertIn("排序：盤中達標 → 分數 → 漲跌 → 資金", self.html)
+        self.assertIn("排序:漲停最強、一律置頂 → 再看盤中觸發強度(已站上>曾觸及) → 再依當日漲幅高到低。",
+                       self.html)
 
     def test_plain_reading_only_claims_real_buying_when_group_is_actionable(self):
         # 「量價同步走強，買氣真實」是對進場品質的斷言，只有後台已判「可操作」

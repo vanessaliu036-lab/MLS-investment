@@ -36,7 +36,7 @@ class IntradayClassifierSourceTests(unittest.TestCase):
         self.assertIn("is_limit_up", keys)
 
     def test_negative_institution_streak_is_labeled_as_selling(self):
-        self.assertIn('streak_detail = f"法人連賣 {abs(int(streak))} 日"', self.source)
+        self.assertIn('detail = f"法人連賣 {abs(int(streak))} 日"', self.source)
         self.assertNotIn('"detail": f"法人連買 {streak} 日"', self.source)
 
     def test_day_position_is_clamped_to_valid_percentile(self):
@@ -63,21 +63,26 @@ class IntradayClassifierSourceTests(unittest.TestCase):
 
     def test_bearish_chip_cannot_reach_actionable_group_even_if_score_passes(self):
         """5483/6182 型態:盤中三因子達標(65%+),但法人籌碼明顯偏空(連賣/近月
-        賣超)→ 首頁不得直接判「可操作」,也不得直接排除,要落在反轉觀察
-        (Vanessa 2026-08-27 規格第七、八條)。用 AST 確認：可操作的賦值那一支
-        elif 有 chip_bearish 守門,且存在一支專門處理 bearish+達標的分支。"""
-        self.assertIn("chip_bearish = (chip_streak is not None and chip_streak <= -3)", self.source)
-        self.assertIn('group, subgroup = "觀察", "🔄 反轉候選（籌碼偏空）"', self.source)
+        賣超)→ 首頁不得直接判「可操作」,也不得直接排除,要落在等待確認
+        (Vanessa 2026-08-27 規格第七、八條；2026-09-02 起依 CLAUDE.md
+        風險調整後參與規範，維度分離：chip_bearish 只擋 ENTRY gate、
+        不再單獨轉成排除/AVOID 的專屬分支)。"""
+        self.assertIn(
+            "chip_bearish = ((chip_streak is not None and chip_streak <= -3) or",
+            self.source)
 
-        # elif 鏈是循序短路的:chip_bearish 那支必須排在「可操作」那支的前面,
-        # 「可操作」才不會在籌碼明顯偏空時被賦值(兩支共用同一個 pct>=65 前提)。
-        bearish_branch_pos = self.source.index(
-            "elif not missing and pct is not None and pct >= 65 and chip_bearish:")
-        actionable_branch_pos = self.source.index(
-            'elif not missing and pct is not None and pct >= 65:\n'
-            '        group, subgroup = "可操作"')
-        self.assertLess(bearish_branch_pos, actionable_branch_pos,
-                        "chip_bearish 分支必須排在「可操作」判定之前,否則籌碼偏空會漏判成可操作")
+        # ENTRY 那支 elif 必須把 chip_bearish 納入守門條件，籌碼偏空時
+        # 不能被判「可操作」。
+        entry_branch = self.source.split(
+            'elif (money_nature["code"] == "TRUE_MOMENTUM" and core_entry and\n'
+            '          not chip_bearish and not entry_missing and pct is not None and pct >= 65):',
+            1)
+        self.assertEqual(len(entry_branch), 2,
+                          "ENTRY 分支必須以 not chip_bearish 守門，籌碼偏空時不得判可操作")
+        self.assertIn('group, subgroup = "可操作", "🟢 可進場"', entry_branch[1][:200])
+
+        # 落回等待確認時要點名「法人籌碼改善」，不能悄悄消失成沒有理由。
+        self.assertIn('wait_for.append("法人籌碼改善")', self.source)
 
 
 if __name__ == "__main__":

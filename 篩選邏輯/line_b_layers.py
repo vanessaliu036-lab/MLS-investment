@@ -504,7 +504,10 @@ def _trade_judgment(trig, vol, acc, ext, flow, state, distance_pct,
     if (triggered and vol.get("verdict", "").startswith("PASS")
             and acc.get("verdict") != "YES" and accel is not None and accel >= 1.2):
         alerts.append("爆量滯漲")
-    if state == "FAILED" or (not triggered and (trig.get("hold_slots") or 0) > 0):
+    # 尚未完成 Trigger + Volume + Acceptance 的 ARMED 只代表準備/確認中；
+    # 短暫碰到觸發價後回落不是「失敗」。只有真正曾 ACTIVE/EXTENDED 後
+    # 回落成 FAILED，才顯示跌破關鍵價警示。
+    if state == "FAILED" and not triggered:
         alerts.append("跌破關鍵價")
 
     return {

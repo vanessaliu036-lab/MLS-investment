@@ -52,6 +52,7 @@ TABLE_OWNER: dict[str, str] = {
     "b_snapshot": "b_snapshot",       # 盤中時序快照(每5分鐘)
     "b_discovery": "b_discover",      # 13:20 掃描標記
     "b_verified": "b_verify",         # 盤後法人驗證結果
+    "line_b_research": "line_b_research", # C2+A-flow forward outcomes, research-only
     # ---- 市場層級資料(TWSE/TPEx 官方,免費無上限) ----
     "market_breadth": "market",       # 指數、成交金額、漲跌家數
     "sector_index": "market",         # 類股指數與成交比重
@@ -410,6 +411,40 @@ def read_date(table: str, data_date: _dt.date | str,
     with conn(db_path) as c:
         rows = c.execute(f"SELECT * FROM {table} WHERE data_date=?", (d,)).fetchall()
     return {r["code"]: dict(r) for r in rows}
+
+
+def read_aflow_date(data_date: _dt.date | str,
+                    db_path: str = DB_PATH) -> dict[str, dict]:
+    """讀某一天 A-flow，保留多來源候選與衝突狀態。
+
+    aflow 可能同時存在 tick、snapshot 等 method。若多個 method 的
+    net_active 不同，這是資料衝突，不可任選一筆覆蓋；下游應看到
+    aflow_conflict=True 並暫停需要精準 A-flow 的判斷。
+    """
+    d = data_date.isoformat() if isinstance(data_date, _dt.date) else data_date
+    with conn(db_path) as c:
+        rows = c.execute(
+            "SELECT * FROM aflow WHERE data_date=? "
+            "ORDER BY code, updated_at DESC, method", (d,)
+        ).fetchall()
+
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        grouped.setdefault(row["code"], []).append(dict(row))
+
+    out: dict[str, dict] = {}
+    for code, candidates in grouped.items():
+        nets = {r.get("net_active") for r in candidates if r.get("net_active") is not None}
+        chosen = dict(candidates[0])
+        chosen["aflow_candidates"] = candidates
+        chosen["aflow_conflict"] = len(nets) > 1
+        if chosen["aflow_conflict"]:
+            chosen["active_buy"] = None
+            chosen["active_sell"] = None
+            chosen["net_active"] = None
+            chosen["method"] = "conflict"
+        out[code] = chosen
+    return out
 
 
 def read_recent(table: str, code: str, upto: _dt.date | str, n: int,

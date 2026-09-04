@@ -49,6 +49,8 @@ DB = "mls.db"
 # 不讓它更新 confirmed_so_far/啟動機率,只降級顯示,不假裝正常。
 STALE_AFLOW_AGE_SEC = 180
 STALE_GAP_SEC = 180
+MONITOR_DISTANCE_PCT = 1.5
+FLOW_CONFIRMED = frozenset(("OPEN_POSITIVE", "FLOW_FLIP"))
 
 
 def _parse_ts(s: Optional[str]):
@@ -76,6 +78,26 @@ def is_aflow_stale(quote_updated_at: Optional[str], aflow_updated_at: Optional[s
     if q is not None and abs((q - a).total_seconds()) > STALE_GAP_SEC:
         return True
     return False
+
+
+def should_monitor(*, c1: bool, c2: bool, activated: bool,
+                   distance_pct: Optional[float], flow_class: Optional[str],
+                   flow_improving: bool = False) -> bool:
+    """Admit a row to the live radar without changing the C1/C2 research gate."""
+    if (c1 and c2) or activated or flow_class in FLOW_CONFIRMED:
+        return True
+    near = distance_pct is not None and distance_pct >= -MONITOR_DISTANCE_PCT
+    return bool((near and flow_improving) or c1)
+
+
+def _flow_improving(snap_rows: list[dict]) -> bool:
+    rows = [r for r in snap_rows
+            if r.get("slot", "0000") >= _runner.BLIND_MIN_SLOT
+            and r.get("net_active") is not None]
+    if len(rows) < 2:
+        return False
+    previous, latest = rows[-2]["net_active"], rows[-1]["net_active"]
+    return latest > previous and latest > 0
 
 
 def live_buffer(db_path: str, T: str) -> dict[str, dict]:
@@ -211,13 +233,22 @@ def build_live_rows(db_path: str = DB, T: Optional[str] = None) -> dict:
             flow_class, confirm_mag, activated, act_slot, hi, lo, close_t = \
                 _runner._flow_and_activation(snap_rows, t1_ma20, t1_prior_high)
 
-        if not (c1 and c2) and not activated:
+        current_price = close_t if close_t is not None else tick.get("price")
+        distance_pct = None
+        if t1_prior_high and current_price is not None:
+            distance_pct = round((current_price / t1_prior_high - 1) * 100, 2)
+        improving = _flow_improving(snap_rows)
+        if not should_monitor(c1=c1, c2=c2, activated=activated,
+                              distance_pct=distance_pct, flow_class=flow_class,
+                              flow_improving=improving):
             continue
 
-        source = "C1C2_PASS" if (c1 and c2) else "INTRADAY_DISCOVERY"
-        current_price = close_t if close_t is not None else tick.get("price")
+        source = ("C1C2_PASS" if (c1 and c2) else
+                  "INTRADAY_DISCOVERY" if activated else "MONITOR_ONLY")
         row = dict(
             code=code, source=source,
+            c1_structure_intact=int(c1),
+            c2_selling_weak_price_resp=int(c2),
             t1_close=t1_fields.get("t1_close"),
             t1_ma20=t1_ma20, t1_prior_high=t1_prior_high,
             t1_inst_5d=t1_fields.get("t1_inst_5d"), t1_price_5d=t1_fields.get("t1_price_5d"),
@@ -225,6 +256,7 @@ def build_live_rows(db_path: str = DB, T: Optional[str] = None) -> dict:
             flow_class=flow_class, flow_confirm_magnitude=confirm_mag,
             watch_mode_activated=int(bool(activated)), activation_slot=act_slot,
             current_price=current_price,
+            flow_improving=improving,
         )
         row["explain"] = _explain.explain(row, is_eod=False, flow_stale=flow_stale)
         row["flow_confirm_magnitude"] = confirm_mag

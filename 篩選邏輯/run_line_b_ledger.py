@@ -152,6 +152,23 @@ def run(data_date: _dt.date | None = None, db_path: str = DB) -> dict:
     return {**result, "T": T, "T1": T1, "candidates": len(rows_out)}
 
 
+def _collect_research(db_path: str = DB) -> dict:
+    """Run the research-only forward collector after the ledger is settled."""
+    import line_b_research
+    return line_b_research.collect_and_backfill(db_path=db_path)
+
+
+def main() -> None:
+    result = run()
+    print(result)
+    # Research collection must never make the frozen ledger job fail.  The
+    # event table is independent and can catch up on the next scheduled run.
+    try:
+        print(f"[line-b-research] {_collect_research()}")
+    except Exception as exc:
+        print(f"[line-b-research] 收集失敗(不影響 ledger): {type(exc).__name__}: {exc}")
+
+
 def _universe() -> list[str]:
     from pathlib import Path
     ns: dict = {}
@@ -179,4 +196,4 @@ def _snapshot_rows(db_path: str, code: str, T: str) -> list[dict]:
 
 
 if __name__ == "__main__":
-    print(run())
+    main()

@@ -9,8 +9,8 @@
 輸出合約:
     { "resistance": float, "current": float, "distance_pct": float,
       "chip_summary": "一句白話", "flow_display": "一句白話+方向", "flow_stale": bool,
-      "status": "WAIT"|"WATCH_CLOSELY"|"CONFIRMED"|"GIVE_UP",
-      "status_label": "現在等"|"重點盯"|"已確認"|"放棄",
+      "status": "WAIT"|"WATCH_CLOSELY"|"CONFIRMED"|"PRICE_TRIGGERED"|"GIVE_UP",
+      "status_label": "現在等"|"重點盯"|"已確認"|"PRICE TRIGGER 已發生"|"放棄",
       "system_sentence": "一句系統結論",
       "activation_prob": float|None  # 校準過的「今天會不會啟動」機率(0~1),
         # 不是「啟動後會不會賺」——後者要等 forward MFE/MAE 累積才做,
@@ -22,7 +22,8 @@
     }
 
 status 判定(唯一規則來源,不得在別處重算):
-    CONFIRMED     : watch_mode_activated 為真(A-flow/Watch Mode 已確認;價格是否站上另行呈現)
+    PRICE_TRIGGERED: A-flow/Watch Mode 已確認且現價已站上結構關鍵價
+    CONFIRMED     : A-flow/Watch Mode 已確認,但現價尚未站上結構關鍵價
     WATCH_CLOSELY : 未啟動,但現價距壓力 <= WATCH_DISTANCE_PCT 且今日資金
                     已出現過確認(OPEN_POSITIVE 或 FLOW_FLIP)
     GIVE_UP       : 這一列是「已收盤」的完整一天(is_eod=True),整天 NO_FLIP
@@ -31,6 +32,8 @@ status 判定(唯一規則來源,不得在別處重算):
 """
 from __future__ import annotations
 from typing import Optional
+
+import line_b_monitor as _monitor
 
 WATCH_DISTANCE_PCT = 1.5  # 現價距壓力 <=1.5% 且資金已確認 → 重點盯(唯一調整過的呈現門檻,非研究門檻)
 
@@ -95,7 +98,8 @@ def activation_probability(distance_pct: Optional[float], confirmed_so_far: bool
 STATUS_LABEL = {
     "WAIT": "現在等", "WATCH_CLOSELY": "重點盯",
     "CONFIRMED": "已確認", "GIVE_UP": "放棄",
-    "DATA_BLOCKED": "資料阻擋",
+    "PRICE_TRIGGERED": "PRICE TRIGGER 已發生",
+    "DATA_BLOCKED": "資料阻擋", "DISCOVERY": "盤中發現", "FAILED": "失敗／轉弱",
 }
 
 
@@ -154,6 +158,9 @@ def explain(row: dict, is_eod: bool = True, flow_stale: bool = False) -> dict:
     distance_pct = None
     if resistance and current is not None:
         distance_pct = round((current / resistance - 1) * 100, 2)
+    previous_close = _num(row.get("t1_close"))
+    change_pct = (round((current / previous_close - 1) * 100, 2)
+                  if current is not None and previous_close else None)
 
     chip_summary = _chip_summary(_num(row.get("t1_price_5d")), _num(row.get("t1_close_position")),
                                  _num(row.get("t1_inst_5d")))
@@ -166,15 +173,13 @@ def explain(row: dict, is_eod: bool = True, flow_stale: bool = False) -> dict:
     confirmed_today = flow_class in ("OPEN_POSITIVE", "FLOW_FLIP")
 
     if flow_conflict:
+        monitor_bucket = "DATA_BLOCKED"
         status = "DATA_BLOCKED"
-    elif activated:
-        status = "CONFIRMED"
-    elif is_eod and flow_class == "NO_FLIP":
-        status = "GIVE_UP"
-    elif distance_pct is not None and distance_pct >= -WATCH_DISTANCE_PCT and confirmed_today:
-        status = "WATCH_CLOSELY"
     else:
-        status = "WAIT"
+        monitor_bucket = _monitor.classify(
+            {**row, "explain": {"distance_pct": distance_pct}}, is_eod=is_eod,
+        ) or "WAITING_FUNDS"
+        status = _monitor.STATUS_BY_BUCKET.get(monitor_bucket, "WAIT")
 
     bucket = bucket_label(distance_pct)
     activation_prob = (None if activated else
@@ -182,21 +187,20 @@ def explain(row: dict, is_eod: bool = True, flow_stale: bool = False) -> dict:
 
     if status == "DATA_BLOCKED":
         sentence = "A-flow 來源數值衝突｜暫不判定今日資金方向，等待一致資料"
-    elif status == "CONFIRMED":
+    elif status in ("CONFIRMED", "PRICE_TRIGGERED", "DISCOVERY"):
         # watch_mode_activated 代表 A-flow/Watch Mode 已成立,不等於價格已站上
         # 結構關鍵價。兩者必須分開,否則「現價低於壓力」仍會被說成已站上。
         if distance_pct is not None and distance_pct >= 0:
             # 已站上只證明 Price Trigger；正式 ACTIVE 還必須另有 Volume
             # Quality 與 Acceptance，不能把舊 Watch Mode activation 說成交易啟動。
-            sentence = (f"已站上關鍵價 {resistance:,.1f}｜PRICE TRIGGER 已發生，待量能／承接確認"
-                        if resistance else "PRICE TRIGGER 已發生，待量能／承接確認")
+            sentence = "PRICE TRIGGER 已發生｜待量能／承接確認"
         elif distance_pct is not None and resistance:
-            sentence = f"A-flow 已確認｜尚差關鍵價 {abs(distance_pct):.2f}%（{resistance:,.1f}）"
+            sentence = "A-flow 已確認｜價格尚未站上關鍵價"
         else:
             sentence = "A-flow 已確認｜待價格／量能／承接確認"
     elif status == "WATCH_CLOSELY":
         sentence = f"重點盯 {resistance:,.1f}，站穩 {resistance:,.1f} 且資金續強再看" if resistance else "重點盯，資金續強再看"
-    elif status == "GIVE_UP":
+    elif status in ("GIVE_UP", "FAILED"):
         sentence = f"今日資金未轉強，暫時放棄"
     else:
         d = f"還差 {abs(distance_pct):.1f}%" if distance_pct is not None else "距離未知"
@@ -204,9 +208,11 @@ def explain(row: dict, is_eod: bool = True, flow_stale: bool = False) -> dict:
 
     return dict(
         resistance=resistance, current=current, distance_pct=distance_pct,
+        change_pct=change_pct,
         chip_summary=chip_summary, flow_display=flow_display, flow_stale=flow_stale,
         status=status, status_label=STATUS_LABEL[status], system_sentence=sentence,
         activation_prob=activation_prob, calibration_bucket=bucket,
         calibration_version=CALIBRATION_VERSION if bucket is not None else None,
         confirmed_so_far=confirmed_today,
+        monitor_bucket=monitor_bucket,
     )
