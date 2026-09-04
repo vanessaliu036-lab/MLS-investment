@@ -7,6 +7,7 @@ MLS 標準版 — config.py
 # 主版號=名單來源改變（純抗跌→Radar 優先）；次版號=門檻/權重微調。
 # 每筆 watchlist / review_log / watch_reject 都蓋此章，供 Dashboard 分版比較。
 MODEL_VERSION = "v4.1"
+REVIEW_METRIC = "v4.1_A"       # 後驗 headline：A_突破成功/突破延續/抗跌成立
 
 # ── T+1 隔日驗證門檻（Phase 3 生效；先集中常數化，改版免動核心） ──
 # 可操作（Radar）隔日續強分級：A Success ≥ +2%、B Continue 0.5%~2%、其餘 Fail。

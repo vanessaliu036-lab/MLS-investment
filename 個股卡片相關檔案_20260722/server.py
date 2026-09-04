@@ -44,6 +44,7 @@ load_dotenv()
 import config as C
 import engine
 import db
+import review_metrics
 import notifier
 import after_hours
 import livermore
@@ -1847,28 +1848,43 @@ def api_watch_history(date: str = None, days: int = 30):
         daily = []
         for d in sorted(by_day, reverse=True):
             items = by_day[d]
-            hit = sum(1 for x in items if x.get("verdict") == "兌現")
-            rev = sum(1 for x in items if x.get("verdict") == "反向")
+            expected = len(db.load_watchlist(d)) or len(items)
+            metric = review_metrics.infer_metric(items)
+            summary = review_metrics.summarize(
+                items, metric=metric, expected_total=expected)
+            rev = sum(1 for x in items
+                      if review_metrics.is_reverse(x.get("verdict")))
             chs = [x["change_rate"] for x in items
                    if isinstance(x.get("change_rate"), (int, float))]
             daily.append({
-                "trade_date": d, "total": len(items), "hit": hit, "reverse": rev,
-                "hit_rate": round(hit / len(items) * 100, 1) if items else None,
+                "trade_date": d, "total": summary["total"],
+                "valid_total": summary["valid_total"],
+                "hit": summary["hit"], "reverse": rev,
+                "hit_rate": summary["hit_rate"], "status": summary["status"],
+                "metric": metric,
                 "avg_change": round(sum(chs) / len(chs), 2) if chs else None,
                 "items": items,
             })
         allc = [x["change_rate"] for x in rows
                 if isinstance(x.get("change_rate"), (int, float))]
-        total, hits = len(rows), sum(1 for x in rows if x.get("verdict") == "兌現")
+        total = sum(x["total"] for x in daily)
+        valid_total = sum(x["valid_total"] for x in daily)
+        hits = sum(x["hit"] for x in daily)
+        complete = bool(daily) and all(x["status"] == "VERIFIED" for x in daily)
+        overall_status = "VERIFIED" if complete else (
+            "DATA_INCOMPLETE" if total else "NO_WATCHLIST")
         return JSONResponse(json.loads(json.dumps({
             "ok": True, "days": len(daily), "daily": daily,
             "overall": {
-                "total": total, "hit": hits,
-                "hit_rate": round(hits / total * 100, 1) if total else None,
+                "total": total, "valid_total": valid_total, "hit": hits,
+                "hit_rate": round(hits / total * 100, 1)
+                if total and complete else None,
+                "status": overall_status,
+                "metric": (daily[0]["metric"] if daily else review_metrics.METRIC_V41_A),
                 "avg_change": round(sum(allc) / len(allc), 2) if allc else None,
             },
             "note": ("盯盤名單由前一晚 18:00 籌碼定案後產出；收盤 13:30 蓋章實際結果。"
-                     "兌現=盤中升級可操作或漲幅≥1.5%且資金流入；反向=觸發風險或跌幅≥1.5%。"),
+                     "v4.1_A= A_突破成功/突破延續/抗跌成立；資料不足不計為0%。"),
         }, default=str, ensure_ascii=False)))
     except Exception as e:
         return JSONResponse({"ok": False, "daily": [], "error": str(e)})

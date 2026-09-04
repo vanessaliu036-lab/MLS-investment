@@ -16,7 +16,7 @@ MLS 插件 — eod_pipeline.py
 import os
 import json
 import csv
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, date as date_type, timezone, timedelta
 
 import config as C
 import db
@@ -44,9 +44,12 @@ def _init_tables():
         );
         CREATE TABLE IF NOT EXISTS eod_qa_log(
           trade_date TEXT PRIMARY KEY,
-          passed INTEGER, coverage REAL, issues TEXT
+          passed INTEGER, coverage REAL, issues TEXT, status TEXT
         );
         """)
+        # 舊資料庫遷移：保留既有四欄並補上可機器判讀的狀態。
+        if not any(r["name"] == "status" for r in c.execute("PRAGMA table_info(eod_qa_log)")):
+            c.execute("ALTER TABLE eod_qa_log ADD COLUMN status TEXT")
 
 
 # ════════════════════════════════════════════════════════
@@ -149,8 +152,8 @@ def run_qa(snaps):
     with db._lock, db._conn() as c:
         n_null = c.execute("""SELECT COUNT(*) n FROM training_samples
           WHERE label IS NULL AND trade_date < ?""", (tdate,)).fetchone()["n"]
-    if n_null > len(uni):
-        issues.append(f"QA7 待回填 label 累積 {n_null} 筆(>1個交易日),回填鏈中斷")
+    if n_null > 0:
+        issues.append(f"QA7 待回填 label {n_null} 筆,回填鏈未完成")
 
     passed = len(issues) == 0
     return passed, coverage, issues
@@ -193,27 +196,65 @@ def write_features(snaps, sectors):
 
 
 def backfill_labels(snaps):
-    """用今日收盤,回填『最近一個未標記交易日』的 label。"""
+    """按日期由舊到新回填所有可判定的 label。
+
+    每個樣本只能使用其下一個已觀測交易日的收盤；若中間有觀測日缺少
+    training_samples，保留 NULL 等待補資料，不把更後面的收盤誤當成隔日。
+    """
     tdate = db.today()
     close = {s["code"]: s["price"] for s in snaps if s.get("price")}
+    coverage = len(set(close) & set(C.UNIVERSE)) / max(1, len(C.UNIVERSE))
     with db._lock, db._conn() as c:
-        prev = c.execute("""SELECT MAX(trade_date) d FROM training_samples
-          WHERE label IS NULL AND trade_date < ?""", (tdate,)).fetchone()["d"]
-        if not prev:
+        pending = [r["trade_date"] for r in c.execute(
+            """SELECT DISTINCT trade_date FROM training_samples
+               WHERE label IS NULL AND trade_date < ? ORDER BY trade_date""",
+            (tdate,)).fetchall()]
+        if not pending:
             return 0, None
-        rows = c.execute("""SELECT stock_id, close_price FROM training_samples
-          WHERE trade_date=? AND label IS NULL""", (prev,)).fetchall()
+        observed = {r["trade_date"] for r in c.execute(
+            """SELECT DISTINCT trade_date FROM signals
+               WHERE trade_date > ? AND trade_date <= ?
+               UNION SELECT DISTINCT trade_date FROM sector_daily
+               WHERE trade_date > ? AND trade_date <= ?""",
+            (pending[0], tdate, pending[0], tdate)).fetchall()}
         n = 0
-        for r in rows:
-            cl = close.get(r["stock_id"])
-            if cl is None or not r["close_price"]:
+        last_date = None
+        for prev in pending:
+            next_row = c.execute(
+                """SELECT MIN(trade_date) d FROM training_samples
+                   WHERE trade_date > ? AND trade_date <= ?""",
+                (prev, tdate)).fetchone()
+            target = next_row["d"] if next_row and next_row["d"] else None
+            target_close = {}
+            if target:
+                # 若 target 前仍有其他已觀測日，代表 training_samples 中間斷檔，
+                # 不可跨日套用較晚收盤。
+                between = any(prev < d < target for d in observed)
+                if between:
+                    continue
+                target_close = {r["stock_id"]: r["close_price"] for r in c.execute(
+                    """SELECT stock_id, close_price FROM training_samples
+                       WHERE trade_date=? AND close_price IS NOT NULL""", (target,))}
+            elif coverage >= 0.95 and not any(prev < d < tdate for d in observed):
+                # 最新 pending 日可用今天完整收盤；coverage 不足時整日等待。
+                if (date_type.fromisoformat(tdate)
+                        - date_type.fromisoformat(prev)).days <= 4:
+                    target, target_close = tdate, close
+            if not target or not target_close:
                 continue
-            label = 1 if cl > r["close_price"] * 1.003 else 0
-            c.execute("""UPDATE training_samples SET label=?, label_date=?
-              WHERE trade_date=? AND stock_id=?""",
-              (label, tdate, prev, r["stock_id"]))
-            n += 1
-    return n, prev
+            rows = c.execute("""SELECT stock_id, close_price FROM training_samples
+              WHERE trade_date=? AND label IS NULL""", (prev,)).fetchall()
+            for r in rows:
+                cl = target_close.get(r["stock_id"])
+                if cl is None or not r["close_price"]:
+                    continue
+                label = 1 if cl > r["close_price"] * 1.003 else 0
+                c.execute("""UPDATE training_samples SET label=?, label_date=?
+                  WHERE trade_date=? AND stock_id=?""",
+                  (label, target, prev, r["stock_id"]))
+                n += 1
+                last_date = prev
+    return n, last_date
 
 
 def export_training(path=None, min_rows=1):
@@ -250,13 +291,16 @@ def run(state=None, sectors=None, notify=None):
     n_label, prev_date = backfill_labels(snaps)
     n_feat = write_features(snaps, sectors)
     passed, coverage, issues = run_qa(snaps)
-    csv_path, n_export = export_training()
+    # QA 未通過時只保留 raw features 與 QA 紀錄，不發布訓練資料集。
+    csv_path, n_export = export_training() if passed else (None, 0)
 
     tdate = db.today()
     with db._lock, db._conn() as c:
-        c.execute("INSERT OR REPLACE INTO eod_qa_log VALUES(?,?,?,?)",
+        status = "VERIFIED" if passed else "DATA_INCOMPLETE"
+        c.execute("""INSERT OR REPLACE INTO eod_qa_log
+          (trade_date,passed,coverage,issues,status) VALUES(?,?,?,?,?)""",
                   (tdate, 1 if passed else 0, round(coverage, 3),
-                   json.dumps(issues, ensure_ascii=False)))
+                   json.dumps(issues, ensure_ascii=False), status))
 
     # QA 報告落檔
     os.makedirs(REPORT_DIR, exist_ok=True)
@@ -265,14 +309,15 @@ def run(state=None, sectors=None, notify=None):
              f"資料來源:{source}|快照覆蓋率:{coverage:.0%}",
              f"訓練樣本:今日寫入 {n_feat} 筆 features;"
              f"回填 {prev_date or '—'} 的 label {n_label} 筆",
-             f"可訓練資料集:{n_export} 筆" + (f" → {csv_path}" if csv_path else "(累積中)"),
+             f"資料狀態:{status}",
+             f"可訓練資料集:{n_export} 筆" + (f" → {csv_path}" if csv_path else "(QA未通過，未發布)"),
              "", "## QA 結果:" + ("✅ 全數通過" if passed else f"❌ {len(issues)} 項異常")]
     lines += [f"- {i}" for i in issues] or ["- 無異常"]
     qa_path = os.path.join(REPORT_DIR, f"EOD_QA_{d:%Y%m%d}.md")
     with open(qa_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
-    summary = (f"🧪 EOD管線|來源{source}|覆蓋{coverage:.0%}|"
+    summary = (f"🧪 EOD管線|狀態{status}|來源{source}|覆蓋{coverage:.0%}|"
                f"features+{n_feat}|label回填{n_label}|訓練集{n_export}筆|"
                + ("QA✅" if passed else f"QA❌{len(issues)}項"))
     if notify:
