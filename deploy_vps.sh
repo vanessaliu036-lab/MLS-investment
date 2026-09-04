@@ -67,6 +67,11 @@ ssh -p "${VPS_PORT_SSH}" "${VPS_USER}@${VPS_HOST}" \
 #    winning_model_backtest/ 是本機獨立的研究用 git repo(自己有 .git/.env)，
 #    8000 站程式只在註解裡引用它的凍結文件路徑，執行期不讀取；同步上去只會把
 #    160MB 研究資料與它自己的 .env 一起搬進正式站目錄，故排除。
+# 2026-09-04 事故:VPS 上人工留的回滾備份(.deploy-backups/、
+# .codex-post-validation-backup-*/、.claude-fix-backup/、deploy-backups/…)
+# 本機都沒有，曾被這支 rsync --delete 整批清空(靠當次全量備份救回)。
+# 一律排除，不管有沒有點開頭；ops/deploy_guard.py 的漂移檢查現在也會
+# 照樣把它們列進「線上獨有」提醒你，兩邊要一起改才不會又對不上。
 echo "===== 3/6 推送 8000 站源碼 (rsync) ====="
 rsync -avz --delete \
   -e "ssh -p ${VPS_PORT_SSH}" \
@@ -90,6 +95,13 @@ rsync -avz --delete \
   --exclude='reports/' \
   --exclude='篩選邏輯/' \
   --exclude='winning_model_backtest/' \
+  --exclude='eod_snapshot.json' \
+  --exclude='public_market_history_cache.json' \
+  --exclude='twse_index_history_cache.json' \
+  --exclude='twse_institution_history_cache.json' \
+  --exclude='twse_turnover_history_cache.json' \
+  --exclude='*backup*' \
+  --exclude='*rollback*' \
   "${LOCAL_SRC}/" \
   "${VPS_USER}@${VPS_HOST}:${VPS_DEPLOY_DIR}/"
 

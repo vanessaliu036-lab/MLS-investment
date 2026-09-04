@@ -38,19 +38,34 @@ ROOTS = [(".", "/opt/mls-intraday", ["篩選邏輯"]),
 # 資料與產出,不是源碼:不比對、不搬運。與 deploy_vps.sh 的 --exclude 對齊。
 SKIP_SUFFIX = (".db", ".db-wal", ".db-shm", ".log", ".pyc")
 SKIP_PARTS = {".git", "__pycache__", "card_cache", "reports", "node_modules",
-              ".venv", "venv", ".claude", "tests"}
+              ".venv", "venv", ".claude", "tests", "winning_model_backtest",
+              ".pytest_cache"}
 SKIP_NAMES = {".env", ".DS_Store", "live_state.json", "chips_cache.json",
               "ma20_cache.json", "intraday_live_snapshot.json",
               # 執行期狀態與產出,不是源碼:線上會有、repo 不該有。
-              "stage2-status.json", "source.manifest.sha256"}
+              "stage2-status.json", "source.manifest.sha256",
+              # 2026-09-04:執行期即時/歷史資料快取,線上持續累積、本機只有
+              # 部署那一刻的舊值;跟 chips_cache.json 同類,不比對、不搬運。
+              "eod_snapshot.json", "public_market_history_cache.json",
+              "twse_index_history_cache.json",
+              "twse_institution_history_cache.json",
+              "twse_turnover_history_cache.json"}
 
 
 def skip(rel: str) -> bool:
     p = Path(rel)
-    # 任何以 . 開頭的路徑段都跳過 —— 這條同時擋掉線上的 .venv-eod/
-    # (幾千個 site-packages 檔會把真正的漂移淹沒,讓這支工具沒人想看)。
-    if any(part.startswith(".") or part in SKIP_PARTS for part in p.parts):
+    # 2026-09-04 事故:舊規則「任何以 . 開頭的路徑段一律跳過」把
+    # .deploy-backups/、.codex-post-validation-backup-*/、.claude-fix-backup
+    # 這些線上專屬的人工回滾備份也一併蓋過去，deploy_guard 完全沒看到，
+    # 一次部署就被 rsync --delete 靜默清空(靠救回的全量備份才補回來)。
+    # 只挑真正吵雜、確定是工具產物的 dot 目錄跳過(.venv-eod 有數千個
+    # site-packages 檔會把真正的漂移淹沒)，backup/rollback 一律不跳過，
+    # 讓它們照樣被抓進「線上獨有」清單、部署前逼你看一眼。
+    if any(part in SKIP_PARTS or part.startswith(".venv") for part in p.parts):
         return True
+    if any("backup" in part.lower() or "rollback" in part.lower()
+           for part in p.parts):
+        return False
     # /opt/mls-screen 既有的 bak-* 是人工保留的部署備份，不是引擎源碼；
     # deploy_vps.sh 同樣排除它們，避免 rsync --delete 誤刪可回滾成果。
     if any(part.startswith("bak-") for part in p.parts):
