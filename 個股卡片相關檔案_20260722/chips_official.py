@@ -55,6 +55,18 @@ def _num(s):
         return None
 
 
+def _lots(s):
+    """Convert official share value to lots without turning missing into zero."""
+    value = _num(s)
+    return None if value is None else value / 1000
+
+
+def _complete_lots(*values):
+    """Return a complete lots sum; incomplete official rows stay unavailable."""
+    parsed = [_lots(value) for value in values]
+    return sum(parsed) if all(value is not None for value in parsed) else None
+
+
 def _twse_day(d):
     """TWSE T86：某日全市場個股三大法人。回 {code: {foreign, trust, dealer, total}}（張）。"""
     url = ("https://www.twse.com.tw/rwd/zh/fund/T86"
@@ -69,14 +81,17 @@ def _twse_day(d):
             continue
         # T86 欄位：[4]外陸資(不含自營) [7]外資自營商 [10]投信 [11]自營合計
         # [14]自營商自行買賣 [17]自營商避險 [-1]三大法人合計
-        foreign = ((_num(row[4]) or 0) + (_num(row[7]) or 0)) / 1000
+        values = [_lots(row[index]) for index in (4, 7, 10, 11, 14, 17, -1)]
+        if any(value is None for value in values):
+            continue
+        foreign = _complete_lots(row[4], row[7])
         out[code] = {
             "foreign": foreign,
-            "trust": (_num(row[10]) or 0) / 1000,
-            "dealer": (_num(row[11]) or 0) / 1000,
-            "dealer_self": (_num(row[14]) or 0) / 1000,
-            "dealer_hedge": (_num(row[17]) or 0) / 1000,
-            "total": (_num(row[-1]) or 0) / 1000,
+            "trust": values[2],
+            "dealer": values[3],
+            "dealer_self": values[4],
+            "dealer_hedge": values[5],
+            "total": values[6],
         }
     return out
 
@@ -104,13 +119,16 @@ def _tpex_day(d):
             code = str(row[0]).strip()
             if not code.isdigit() or len(code) != 4:
                 continue
+            values = [_lots(row[index]) for index in (10, 13, 22, 16, 19, -1)]
+            if any(value is None for value in values):
+                continue
             out[code] = {
-                "foreign": (_num(row[10]) or 0) / 1000,
-                "trust": (_num(row[13]) or 0) / 1000,
-                "dealer": (_num(row[22]) or 0) / 1000,
-                "dealer_self": (_num(row[16]) or 0) / 1000,
-                "dealer_hedge": (_num(row[19]) or 0) / 1000,
-                "total": (_num(row[-1]) or 0) / 1000,
+                "foreign": values[0],
+                "trust": values[1],
+                "dealer": values[2],
+                "dealer_self": values[3],
+                "dealer_hedge": values[4],
+                "total": values[5],
             }
         except Exception:
             continue
