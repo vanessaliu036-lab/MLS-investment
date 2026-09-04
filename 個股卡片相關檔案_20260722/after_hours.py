@@ -24,6 +24,7 @@ import chips
 import db
 import notifier
 import signal_pattern
+import review_metrics
 
 TW_TZ = timezone(timedelta(hours=8))
 
@@ -438,12 +439,18 @@ def verify_today(snaps, sectors, today_signals_codes, strong_codes):
             "max_return": round(max(returns), 2),
             "min_return": round(min(returns), 2),
         }
-    rate = db.write_review(tdate, len(wl), hit, missed,
-                           notes="T+1 分流驗證（headline=真實命中A）", stats=stats)
+    metric = getattr(C, "REVIEW_METRIC", review_metrics.METRIC_V41_A)
+    summary = review_metrics.summarize(
+        outcomes, metric=metric, expected_total=len(wl))
+    rate = db.write_review(
+        tdate, len(wl), summary["hit"], missed,
+        notes="T+1 分流驗證（headline=真實命中A）", stats=stats,
+        status=summary["status"], metric=metric)
     if outcomes:
         db.save_watch_outcome(tdate, outcomes)
-    return {"date": tdate, "total": len(wl), "hit": hit,
-            "rate": rate, "missed": missed, "stats": stats}
+    return {"date": tdate, "total": len(wl), "hit": summary["hit"],
+            "rate": rate, "status": summary["status"], "metric": metric,
+            "missed": missed, "stats": stats}
 
 
 # ══════════════════════════════════════════════════════
@@ -559,9 +566,14 @@ def run(last_state):
             if w["stock_id"] in sig_codes or w["stock_id"] in strong:
                 db.mark_watch_hit(tdate, w["stock_id"])
         missed0 = sorted(strong - {w["stock_id"] for w in wl0})
-        review = {"date": tdate, "total": len(wl0), "hit": hit0,
-                  "rate": db.write_review(tdate, len(wl0), hit0, missed0,
-                                          notes="回退舊判定"),
+        fallback_status = "NO_WATCHLIST" if not wl0 else "DATA_INCOMPLETE"
+        review = {"date": tdate, "total": len(wl0), "hit": 0,
+                  "rate": db.write_review(
+                      tdate, len(wl0), 0, missed0,
+                      notes="T+1 驗證失敗，等待完整收盤資料後重試",
+                      status=fallback_status,
+                      metric=getattr(C, "REVIEW_METRIC", review_metrics.METRIC_V41_A)),
+                  "status": fallback_status,
                   "missed": missed0, "stats": {}}
 
     # ⓪ ABAB 四象限輪動分析(使用者觀察定案)
@@ -598,40 +610,9 @@ def run(last_state):
     all_rejects = resilient_rejects + slot_lost
     db.save_watch_rejects(tomorrow, [r for r in all_rejects if r["code"] not in picked])
 
-    # ③ Airtable
-    _airtable_post("Review_Log", [{
-        "Date": review["date"], "Watch_Total": review["total"],
-        "Watch_Hit": review["hit"], "Hit_Rate": review["rate"],
-        "Missed_Stocks": json.dumps(review["missed"], ensure_ascii=False),
-    }])
-    _airtable_post("Daily_Watchlist", [{
-        "Date": tomorrow, "Stock_ID": w["code"], "Stock_Name": w["name"],
-        "Sector": w["sector"], "Reason": w["reason"],
-    } for w in wl])
-
-    # ⑤ 因子權重自學習:今日進場訊號 → 收盤成敗 → 30日權重更新
-    FACTOR_HIT = {"trend": 10, "volume": 10, "rs": 8, "chip": 10, "sector": 8}
+    # ③ 先記錄 legacy +0.3% 訊號結果，讓 EOD QA 能檢查 signal_outcomes。
+    # 這個結果只供歷史相容統計，不直接驅動 v4.1_A 命中率或門檻。
     close_map = {s["code"]: s["price"] for s in snaps}
-    frows = {}
-    for sig in db.today_buy_signals():
-        cl = close_map.get(sig["stock_id"])
-        if cl is None or not sig.get("price"):
-            continue
-        ok = cl > sig["price"] * 1.003          # 收盤高於訊號價0.3%=成功
-        try:
-            fs = json.loads(sig.get("factors") or "{}")
-        except Exception:
-            fs = {}
-        for f, thr in FACTOR_HIT.items():
-            if (fs.get(f) or 0) >= thr:          # 該因子有實質貢獻才計
-                r = frows.setdefault(f, {"factor": f, "triggered": 0, "success": 0})
-                r["triggered"] += 1
-                r["success"] += 1 if ok else 0
-    if frows:
-        db.record_factor_stats(list(frows.values()))
-    new_w = db.update_factor_weights(days=30)
-
-    # ⑥ 80%準度控制器:記錄訊號成敗 → rolling精度 → 調整進場門檻
     outcomes = []
     for sig in db.today_buy_signals():
         cl = close_map.get(sig["stock_id"])
@@ -642,16 +623,63 @@ def run(last_state):
                          "success": cl > sig["price"] * 1.003})
     if outcomes:
         db.record_outcomes(outcomes)
+
+    # ④ EOD QA 是調參硬閘門：失敗可留原始資料，但不得更新權重/門檻。
+    eod_out = None
+    try:
+        import eod_pipeline
+        eod_out = eod_pipeline.run(last_state, sectors=sectors,
+                                   notify=notifier.push_summary)
+    except Exception as e:
+        print(f"[plugin/eod] 失敗，鎖定本輪學習更新:{e}")
+    qa_passed = bool(eod_out and eod_out.get("passed"))
+    if not qa_passed:
+        print("[after_hours] EOD QA 未通過，本輪不更新因子權重/進場門檻")
+
+    # ⑤ Airtable
+    _airtable_post("Review_Log", [{
+        "Date": review["date"], "Watch_Total": review["total"],
+        "Watch_Hit": review["hit"], "Hit_Rate": review["rate"],
+        "Missed_Stocks": json.dumps(review["missed"], ensure_ascii=False),
+    }])
+    _airtable_post("Daily_Watchlist", [{
+        "Date": tomorrow, "Stock_ID": w["code"], "Stock_Name": w["name"],
+        "Sector": w["sector"], "Reason": w["reason"],
+    } for w in wl])
+
+    # ⑥ 因子權重自學習:只有 QA 通過才可更新
+    FACTOR_HIT = {"trend": 10, "volume": 10, "rs": 8, "chip": 10, "sector": 8}
+    frows = {}
+    if qa_passed:
+        for sig in db.today_buy_signals():
+            cl = close_map.get(sig["stock_id"])
+            if cl is None or not sig.get("price"):
+                continue
+            ok = cl > sig["price"] * 1.003  # legacy_0.3pct，只供相容統計
+            try:
+                fs = json.loads(sig.get("factors") or "{}")
+            except Exception:
+                fs = {}
+            for f, factor_thr in FACTOR_HIT.items():
+                if (fs.get(f) or 0) >= factor_thr:
+                    r = frows.setdefault(
+                        f, {"factor": f, "triggered": 0, "success": 0})
+                    r["triggered"] += 1
+                    r["success"] += 1 if ok else 0
+        if frows:
+            db.record_factor_stats(list(frows.values()))
+        new_w = db.update_factor_weights(days=30)
+    else:
+        new_w = {}
+
+    # ⑦ legacy_0.3pct 精度只報告、不再自動調整 v4.1 進場門檻。
     prec, n = db.rolling_precision(days=10)
     thr = float(db.kv_get("entry_score_min", 40))
-    if prec is not None and n >= 10:            # 樣本足才調
-        if prec < 0.80:
-            thr = min(70, thr + 3)              # 收緊:寧缺勿濫
-        elif prec > 0.85:
-            thr = max(35, thr - 2)              # 放寬:恢復進攻
-        db.kv_set("entry_score_min", thr)
     precision_report = {"rolling_precision": None if prec is None else round(prec, 3),
-                        "samples": n, "entry_score_min": thr}
+                        "samples": n, "entry_score_min": thr,
+                        "metric": review_metrics.METRIC_LEGACY,
+                        "auto_adjusted": False,
+                        "auto_adjust_reason": "v4.1_A 與 legacy_0.3pct 目標未統一"}
 
     # ④ Telegram 摘要(含四象限/ABAB 輪動報告)
     stats = db.today_stats()
@@ -679,15 +707,6 @@ def run(last_state):
         notifier.push_summary(nexora_out["summary"])
     except Exception as e:
         print(f"[plugin/nexora] 跳過:{e}")
-
-    # ── 插件掛鉤:EOD 數據驗證×訓練管線(失敗不影響主流程) ──
-    eod_out = None
-    try:
-        import eod_pipeline
-        eod_out = eod_pipeline.run(last_state, sectors=sectors,
-                                   notify=notifier.push_summary)
-    except Exception as e:
-        print(f"[plugin/eod] 跳過:{e}")
 
     # ── 插件掛鉤:李佛摩六欄紀錄(盤後選股中心,每日15:00後存檔) ──
     livermore_out = None

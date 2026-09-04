@@ -10,6 +10,8 @@ import sqlite3
 import threading
 from datetime import datetime, timezone, timedelta
 
+import review_metrics
+
 TW_TZ = timezone(timedelta(hours=8))
 DB_PATH = os.path.join(os.path.dirname(__file__), "mls.db")
 _lock = threading.Lock()
@@ -177,6 +179,8 @@ def init():
         _add_column(c, "review_log", "min_return", "REAL")
         _add_column(c, "review_log", "avg_holding_days", "REAL")
         _add_column(c, "review_log", "model_version", "TEXT")
+        _add_column(c, "review_log", "metric", "TEXT")
+        _add_column(c, "review_log", "data_status", "TEXT")
 
 
 def today():
@@ -417,25 +421,29 @@ def mark_watch_hit(trade_date, stock_id):
 
 
 # ── 收盤驗證 ──────────────────────────────────────────
-def write_review(trade_date, total, hit, missed, notes="", stats=None):
+def write_review(trade_date, total, hit, missed, notes="", stats=None,
+                 status=None, metric=None):
     """收盤驗證逐日彙總。stats（選填）帶報酬分布：
     {avg_return, median_return, max_return, min_return, avg_holding_days}。
     改用具名欄位 INSERT（不再靠欄位順序），相容遷移後新增的統計欄。"""
     import config as _C
-    rate = round(hit / total * 100, 1) if total else 0.0
+    metric = metric or review_metrics.METRIC_V41_A
+    status = status or ("NO_WATCHLIST" if not total else "VERIFIED")
+    rate = round(hit / total * 100, 1) if total and status == "VERIFIED" else None
     stats = stats or {}
     with _lock, _conn() as c:
         c.execute("""INSERT OR REPLACE INTO review_log
           (trade_date,watch_total,watch_hit,hit_rate,missed_stocks,notes,
            avg_return,median_return,max_return,min_return,avg_holding_days,
-           model_version)
-          VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+           model_version,metric,data_status)
+          VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
           (trade_date, total, hit, rate,
            json.dumps(missed, ensure_ascii=False), notes,
            stats.get("avg_return"), stats.get("median_return"),
            stats.get("max_return"), stats.get("min_return"),
            stats.get("avg_holding_days"),
-           stats.get("model_version", getattr(_C, "MODEL_VERSION", None))))
+           stats.get("model_version", getattr(_C, "MODEL_VERSION", None)),
+           metric, status))
     return rate
 
 
@@ -467,20 +475,66 @@ def latest_review_date_with_data():
 
 
 def recent_hit_rates(days=30):
-    """逐日命中率趨勢，含報酬分布（Phase 2 趨勢表用）。"""
+    """逐日命中率趨勢，只回傳有分母且驗證完成的日子。
+
+    舊 review_log 可能沒有 metric/status 欄位內容，因此每次讀取仍以
+    watch_outcome 重新計算，避免歷史錯誤值繼續進入趨勢。
+    """
     with _lock, _conn() as c:
-        return [dict(r) for r in c.execute(
-            """SELECT trade_date, hit_rate, avg_return, median_return,
-                      max_return, min_return, model_version
-               FROM review_log ORDER BY trade_date DESC LIMIT ?""", (days,))]
+        base = [dict(r) for r in c.execute(
+            """SELECT * FROM review_log
+               WHERE COALESCE(watch_total, 0) > 0
+               ORDER BY trade_date DESC LIMIT ?""", (days,))]
+        out = []
+        for r in base:
+            outcomes = [dict(x) for x in c.execute(
+                "SELECT * FROM watch_outcome WHERE trade_date=?",
+                (r["trade_date"],))]
+            watch_total = c.execute(
+                "SELECT COUNT(*) n FROM watchlist WHERE trade_date=?",
+                (r["trade_date"],)).fetchone()["n"]
+            metric = review_metrics.infer_metric(outcomes, r.get("metric"))
+            expected = watch_total or r.get("watch_total") or len(outcomes)
+            summary = review_metrics.summarize(
+                outcomes, metric=metric, expected_total=expected)
+            if summary["status"] != "VERIFIED":
+                continue
+            r.update({"hit_rate": summary["hit_rate"],
+                      "watch_total": summary["total"],
+                      "watch_hit": summary["hit"],
+                      "valid_total": summary["valid_total"],
+                      "metric": metric, "data_status": summary["status"]})
+            out.append(r)
+        return out
 
 
 def review_summary(trade_date):
-    """某交易日的驗證彙總（review_log 單列）；無則回 None。"""
+    """某交易日的驗證彙總；以逐檔 outcome 重算命中與資料狀態。"""
     with _lock, _conn() as c:
         r = c.execute("SELECT * FROM review_log WHERE trade_date=?",
                       (trade_date,)).fetchone()
-        return dict(r) if r else None
+        if not r:
+            return None
+        out = dict(r)
+        outcomes = [dict(x) for x in c.execute(
+            "SELECT * FROM watch_outcome WHERE trade_date=? ORDER BY stock_id",
+            (trade_date,))]
+        watch_total = c.execute(
+            "SELECT COUNT(*) n FROM watchlist WHERE trade_date=?",
+            (trade_date,)).fetchone()["n"]
+    metric = review_metrics.infer_metric(outcomes, out.get("metric"))
+    expected = watch_total or out.get("watch_total") or len(outcomes)
+    computed = review_metrics.summarize(
+        outcomes, metric=metric, expected_total=expected)
+    out.update({
+        "watch_total": computed["total"],
+        "watch_hit": computed["hit"],
+        "hit_rate": computed["hit_rate"],
+        "metric": metric,
+        "data_status": computed["status"],
+        "valid_total": computed["valid_total"],
+    })
+    return out
 
 
 def review_outcomes(trade_date):
