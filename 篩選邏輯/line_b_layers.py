@@ -648,7 +648,11 @@ _cache: dict = {}
 
 
 def compute(db_path: str = DB, T: Optional[str] = None, use_cache: bool = True) -> dict:
-    T = T or phase.today_tw().isoformat()
+    # 休市日(週末/國定假日)時鐘上的「今天」沒有任何 quote_snap/b_snapshot,
+    # 一律退回上一交易日死值——不然全部個股 price 抓不到就會判成全空 rows。
+    if T is None:
+        T = (phase.last_trading_day() if phase.get_phase() is phase.Phase.CLOSED
+             else phase.today_tw()).isoformat()
     key = (db_path, T)
     if use_cache:
         hit = _cache.get(key)
