@@ -12,6 +12,7 @@ from app.intraday_filter import (  # noqa: E402
     PASS,
     REGIME_ATTACK,
     StockSnap,
+    aflow_from_sides,
     aflow_official,
     is_extreme_price,
     passes_filters,
@@ -35,8 +36,10 @@ def snap(**kwargs):
 
 
 def test_v4_keeps_corrected_aflow_direction():
-    assert aflow_official(500, 300) == -200
-    assert aflow_official(100, 400) == 300
+    assert aflow_from_sides(500, 300) == 200
+    assert aflow_from_sides(100, 400) == -300
+    assert aflow_official(300, 500) == 200
+    assert aflow_official(400, 100) == -300
 
 
 def test_extreme_price_degrades_price_sensitive_checks_to_no_data():

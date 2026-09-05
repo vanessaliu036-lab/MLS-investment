@@ -46,10 +46,14 @@ DAILY_CHANGE_ALERT = 3.0       # 法人日變動 > 前日 300% → 強制人工�
 # 一、aflow —— 兩種算法對照
 # =====================================================================
 
-def aflow_official(bid_total_vol: int, ask_total_vol: int) -> int:
+def aflow_from_sides(bid_total_vol: int, ask_total_vol: int) -> int:
     """算法 A：官方買賣盤累積量相減（最穩，主用）。正=買方主動多，負=賣方主動多。
     鐵律：買賣盤積極度估算，非法人淨買賣，盤中流出 != 派發。"""
     return int(bid_total_vol) - int(ask_total_vol)
+
+
+def aflow_official(bid_total_vol: int, ask_total_vol: int) -> int:
+    return aflow_from_sides(bid_total_vol, ask_total_vol)
 
 
 def aflow_ticktype(tick_type_stream: List[Tuple[int, int]]) -> int:

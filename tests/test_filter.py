@@ -9,7 +9,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.intraday_filter import (
-    aflow_official, aflow_ticktype, aflow_reconcile,
+    aflow_from_sides, aflow_official, aflow_ticktype, aflow_reconcile,
     dist_ma20, volume_ratio, proxy_quadrant,
     cond_aflow_positive, cond_above_ma20, cond_quadrant_attack,
     passes_filters, StockSnap,
@@ -19,9 +19,12 @@ from app.intraday_filter import (
 
 # ---- aflow 兩種算法 ----
 def test_aflow_official():
-    # Shioaji: bid-side=主動賣、ask-side=主動買；正值代表主動買較多。
-    assert aflow_official(500, 300) == -200     # bid 500、ask 300 → -200
-    assert aflow_official(100, 400) == 300      # bid 100、ask 400 → +300
+    # Canonical: bid-side=主動買、ask-side=主動賣；正值代表主動買較多。
+    assert aflow_from_sides(500, 300) == 200
+    assert aflow_from_sides(100, 400) == -300
+    # 舊 8000 相容入口維持 aflow_official(sell, buy)。
+    assert aflow_official(300, 500) == 200
+    assert aflow_official(400, 100) == -300
 
 def test_aflow_ticktype():
     # Shioaji tick_type=1 ask(主動買), 2 bid(主動賣), 0 不計

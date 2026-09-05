@@ -61,7 +61,7 @@ def flow_snapshot(code):
         return None
     buf = _aflow_buffer[code]
     return {
-        "aflow": F.aflow_official(buf["bid"], buf["ask"]),
+        "aflow": F.aflow_from_sides(buf["bid"], buf["ask"]),
         "total_volume": sum(volume for _, volume in buf["tickstream"]),
         "fresh_sec": freshness_sec(code),
     }
@@ -158,7 +158,7 @@ def build_snap(code, meta, prefetch):
                盤前算好快取 + 昨日盤後底本
     """
     buf = _aflow_buffer[code]
-    aflow_a = F.aflow_official(buf["bid"], buf["ask"])
+    aflow_a = F.aflow_from_sides(buf["bid"], buf["ask"])
     aflow_b = F.aflow_ticktype(buf["tickstream"])
     recon = F.aflow_reconcile(aflow_a, aflow_b)   # 背離 → UI 標校驗異常
 
@@ -227,8 +227,8 @@ def tick(api, universe, watch_pool, meta_of, prefetch_of, db=None):
 
     # 4) 象限分布
     quad_dist = M.quadrant_distribution(
-        [F.proxy_quadrant(F.aflow_official(_aflow_buffer[c]["bid"],
-                                           _aflow_buffer[c]["ask"]),
+        [F.proxy_quadrant(F.aflow_from_sides(_aflow_buffer[c]["bid"],
+                                             _aflow_buffer[c]["ask"]),
                           meta_of(c)["change_rate"]) for c in universe]
     )
 
@@ -284,7 +284,7 @@ def _aggregate_sectors(universe, meta_of):
         meta = meta_of(code) or {}
         name = meta.get("sector") or meta.get("industry") or "市場總體"
         buf = _aflow_buffer[code]
-        sectors[name]["aflows"].append(F.aflow_official(buf["bid"], buf["ask"]))
+        sectors[name]["aflows"].append(F.aflow_from_sides(buf["bid"], buf["ask"]))
         if meta.get("change_rate") is not None:
             sectors[name]["changes"].append(float(meta["change_rate"]))
     return {

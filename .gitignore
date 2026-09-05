@@ -43,3 +43,13 @@ chips_cache.json
 *.bak.*
 個股卡片相關檔案_20260722/reports/
 篩選邏輯/opportunity_history.db
+
+# 盤中/盤後快照與外部資料快取（跑一次就會重生，不是原始碼）
+/PRICE
+/eod_snapshot.json
+/public_market_history_cache.json
+/twse_index_history_cache.json
+/twse_institution_history_cache.json
+/twse_turnover_history_cache.json
+個股卡片相關檔案_20260722/card_cache/
+個股卡片相關檔案_20260722/ma20_cache.json
