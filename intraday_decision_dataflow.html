@@ -603,7 +603,7 @@ function render(){let q=(document.querySelector('#search').value||'').toLowerCas
 // 重點觀察清單的「籌碼顧問」報告：只在 WATCHLIST_FOCUS 非空時啟用，取代表格列顯示。
 // 決策狀態/理由一律沿用 homeRowDecision()／ai.reasons 等後台已算好的欄位，這裡只負責
 // 把籌碼(法人/融資融券/外資持股)、技術(均線/KD/RSI/ATR)、盤中資金流組成一份可讀報告，
-// 不在前端重新發明判斷邏輯。董監持股全站尚無資料源，誠實標「資料無法取得」，不補造。
+// 不在前端重新發明判斷邏輯。
 async function renderAdvisorReports(){
   const box=document.querySelector('#advisorReports'),grid=document.querySelector('.dashboard-grid');
   if(!box)return;
@@ -642,13 +642,12 @@ function advisorCard(code,card){
         <dt>近20日合計</dt><dd class="${cls(chip.inst_net_20d_lots)}">${_advNum(chip.inst_net_20d_lots,'張')}</dd>
         <dt>連買／連賣</dt><dd>${chip.inst_streak==null?'—':`${chip.inst_streak>0?'連買':'連賣'}${Math.abs(chip.inst_streak)}日`}</dd>
       </dl></div>
-      <div class="advisor-sec"><h4>籌碼面 · 融資融券／董監</h4><dl>
+      <div class="advisor-sec"><h4>籌碼面 · 融資融券</h4><dl>
         <dt>融資餘額</dt><dd>${chip.margin_balance==null?'—':Number(chip.margin_balance).toLocaleString('en-US')+' 張'}</dd>
         <dt>融資今日變化</dt><dd class="${cls(chip.margin_change_d)}">${_advNum(chip.margin_change_d,'張')}</dd>
         <dt>融券餘額</dt><dd>${chip.short_balance==null?'—':Number(chip.short_balance).toLocaleString('en-US')+' 張'}</dd>
         <dt>券資比</dt><dd>${chip.short_margin_ratio==null?'—':(chip.short_margin_ratio*100).toFixed(2)+'%'}</dd>
         <dt>外資持股比</dt><dd>${chip.foreign_share_pct==null?'—':chip.foreign_share_pct+'%'}</dd>
-        <dt>董監持股</dt><dd style="color:var(--muted);font-style:italic;font-weight:600">資料無法取得</dd>
       </dl></div>
       <div class="advisor-sec"><h4>技術面</h4><dl>
         <dt>MA5／10／20</dt><dd>${esc(tech.ma5||'—')} ${esc(tech.ma10||'—')} ${esc(tech.ma20||'—')}</dd>
