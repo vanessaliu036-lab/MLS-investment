@@ -1,0 +1,21 @@
+[Unit]
+Description=MLS Reversal Lab live read-only sidecar
+After=network-online.target mls-intraday.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mls-reversal-lab
+Environment="PYTHONPATH=/opt/mls-reversal-lab"
+Environment="MLS_REVERSAL_SOURCE_URL=http://127.0.0.1:8000/api/intraday-watchpool"
+Environment="MLS_REVERSAL_FETCH_TIMEOUT=20"
+Environment="PORT=8011"
+ExecStart=/usr/bin/python3 -m mls_v4_1_flow_chips.live_server
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
