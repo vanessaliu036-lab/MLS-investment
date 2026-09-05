@@ -251,11 +251,41 @@ html,body{max-width:100%;overflow-x:hidden}
 <div class="sys-line muted">VPS Shioaji · API 延遲 <b id="latency">—</b> · 訂閱標的 <b id="subscribed">—</b> · 有效訊號 <b id="valid">—</b> · <b id="quality">資料完整度 —</b><i id="progress" class="sys-progress"></i><span id="notes" class="sys-notes"></span></div>
 
 <div class="section-head"><h2>今日決策雷達</h2><div class="filters"><button class="filter active" data-filter="全部">全部</button><button class="filter" data-filter="🟢 可進場">可進場</button><button class="filter" data-filter="🔵 等回測">等回測</button><button class="filter" data-filter="🟡 等待觀察">等待觀察</button><button class="filter" data-filter="🟠 承接觀察">承接觀察</button><button class="filter" data-filter="🔴 不進場">不進場</button></div></div><section id="cards" class="opportunity-grid" hidden></section>
-<section class="dashboard-grid"><div class="panel table-panel"><div class="table-head"><h3>盤中即時決策</h3><input id="search" class="search" placeholder="搜尋代碼 / 名稱"></div><table><thead><tr><th>決策</th><th>股票</th><th>價格</th><th>資金流(億)</th><th>價格 Gate</th><th>結構 Gate</th><th>即時判讀</th><th>行動</th></tr></thead><tbody id="rows"></tbody></table></div><div class="panel side-panel"><h3>盤中訊號時間軸</h3><div id="timeline" class="timeline"><div class="event"><time>—</time><strong>等待即時訊號</strong><p>資料更新後顯示目前觀察標的的分類與白話解讀。</p></div></div></div></section></main></div>
+<section class="dashboard-grid"><div class="panel table-panel"><div class="table-head"><h3>盤中即時決策</h3><input id="search" class="search" placeholder="搜尋代碼 / 名稱"></div><table><thead><tr><th>決策</th><th>股票</th><th>價格</th><th>資金流(億)</th><th>價格 Gate</th><th>結構 Gate</th><th>即時判讀</th><th>行動</th></tr></thead><tbody id="rows"></tbody></table></div><div class="panel side-panel"><h3>盤中訊號時間軸</h3><div id="timeline" class="timeline"><div class="event"><time>—</time><strong>等待即時訊號</strong><p>資料更新後顯示目前觀察標的的分類與白話解讀。</p></div></div></div></section>
+<section id="advisorReports" class="advisor-reports" hidden></section>
+<style>
+.advisor-reports{display:grid;gap:16px;margin-top:4px}
+.advisor-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px 22px}
+.advisor-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}
+.advisor-head h3{margin:0;font-size:20px}
+.advisor-head .adv-sub{color:var(--muted);font-size:12px;margin-top:3px}
+.advisor-price{text-align:right}
+.advisor-price .p{font-size:22px;font-weight:900}
+.advisor-verdict{margin-top:12px;padding:12px 14px;border-radius:12px;background:#f8f9fc;font-size:13px;line-height:1.6}
+.advisor-verdict b{display:block;margin-bottom:3px}
+.advisor-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:14px}
+.advisor-sec{padding:12px 13px;border:1px solid var(--line);border-radius:12px;background:#fbfcfe}
+.advisor-sec h4{margin:0 0 8px;font-size:12px;color:var(--muted);font-weight:800}
+.advisor-sec dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 8px;font-size:12.5px}
+.advisor-sec dt{color:var(--muted)}
+.advisor-sec dd{margin:0;text-align:right;font-weight:700}
+.advisor-sec.missing{color:var(--muted);font-style:italic;font-size:12px}
+.advisor-reasons{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px}
+.advisor-reasons span{font-size:11.5px;padding:4px 9px;border-radius:99px;background:#eef1f7;font-weight:700}
+.advisor-plan{margin-top:12px;font-size:12.5px;color:var(--muted)}
+.advisor-plan b{color:var(--text)}
+@media(max-width:1100px){.advisor-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.advisor-grid{grid-template-columns:1fr}}
+</style>
+</main></div>
 <aside id="reviewNav" class="mls-nav review-nav" aria-label="主要選單"><a class="mls-nav-link" href="/">決策首頁 <span id="homeStatusBadge" class="mls-nav-count">OFF</span></a><a class="mls-nav-link" href="/?view=radar">機會雷達 <span class="mls-nav-count">51</span></a><a class="mls-nav-link" href="/?view=watch">觀察池 51 檔 <span class="mls-nav-count">51</span></a><a class="mls-nav-link" href="/chips">籌碼 <span class="mls-nav-count">51</span></a><a class="mls-nav-link" href="/reversal-lab">資金反轉驗證 <span class="mls-nav-count">LIVE</span></a><a class="mls-nav-link active" href="/review" aria-current="page">盤後驗證</a><a class="mls-nav-link" href="/opportunity-ledger">機會分層榜</a><a class="mls-nav-link" href="/line-b-ledger">買點監控</a><a class="mls-nav-link" href="/line-b-layers">七層交易狀態</a></aside><section id="sidePanel" class="feature-panel" hidden><div class="feature-head"><div><h2 id="sideTitle">面板</h2><div id="sideStatus" class="muted">讀取中…</div></div><button class="btn" onclick="closePanel()">返回決策首頁</button></div><div id="sideBody"></div></section><section id="featurePanel" class="feature-panel" hidden><div class="feature-head"><div><h2 id="featureTitle">研究資料</h2><div id="featureStatus" class="muted">讀取中…</div></div><button class="btn" onclick="closeFeature()">返回決策首頁</button></div><div id="featureBody"></div></section>
 <section id="stockDetail" class="feature-panel" hidden><div class="feature-head"><div><h2 id="detailTitle">個股決策詳情</h2><div id="detailStatus" class="muted">讀取中…</div></div><button class="btn" onclick="closeStockDetail()">返回決策首頁</button></div><div id="detailBody"></div></section>
 <script>
-const API_BASE=(location.protocol==='file:'||location.hostname==='127.0.0.1'||location.hostname==='localhost')?'http://66.42.42.150:8000':'';document.documentElement.style.visibility='visible';let data=[],filter='全部',paused=false;const esc=s=>String(s??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));const cls=v=>Number(v)>0?'positive':Number(v)<0?'negative':'';const fmt=v=>v==null?'—':(Number(v)>0?'+':'')+Number(v).toLocaleString('en-US');
+const API_BASE=(location.protocol==='file:'||location.hostname==='127.0.0.1'||location.hostname==='localhost')?'http://66.42.42.150:8000':'';document.documentElement.style.visibility='visible';
+// 重點觀察白名單：只影響決策首頁「逐檔列表」顯示，51 檔母體統計(占比/資料完整度/badge)不受影響。
+// 留空陣列 [] = 顯示全部 51 檔；填入代碼 = 只列出這些代碼。
+const WATCHLIST_FOCUS=['3026','2327','3532','4979','2408'];
+let data=[],filter='全部',paused=false;const esc=s=>String(s??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));const cls=v=>Number(v)>0?'positive':Number(v)<0?'negative':'';const fmt=v=>v==null?'—':(Number(v)>0?'+':'')+Number(v).toLocaleString('en-US');
 const decisionLabel=x=>x?.decision_status||({'可操作':'可進場','觀察':'等待確認','排除':'風險警報'}[x?.group]||'資料不足');window.decisionLabel=decisionLabel;
 const homeDecisionLabel=x=>x?.home_decision_label||'🟡 等待觀察';window.homeDecisionLabel=homeDecisionLabel;
 const radarStatusLabel=x=>x?.radar_status?({'可進場':'🟢 可進場','等回測':'🔵 等回測','保留觀察':'🟡 保留觀察','尚未觸發':'⚪ 尚未觸發','不進場':'🔴 不進場'}[x.radar_status]||x.radar_status):homeDecisionLabel(x);
@@ -306,7 +336,7 @@ function loadCachedIntraday(){
   try{
     const cached=JSON.parse(localStorage.getItem('mls_intraday_rows')||'null');
     if(cached&&cached.trade_date===marketDate(0)&&Array.isArray(cached.rows)&&cached.rows.length){
-      data=cached.rows;render();updateFilterCounts();
+      data=cached.rows;render();updateFilterCounts();renderAdvisorReports();
       const age=cached.updated_at?` · 快取 ${cached.updated_at}`:'';
       document.querySelector('#conn').textContent='顯示今日暫存行情'+age;
     }else if(cached&&cached.trade_date!==marketDate(0)){
@@ -568,7 +598,78 @@ window.addEventListener('load',()=>{if(location.pathname==='/review'){openFeatur
 function homeRowDecision(x){return x.home_decision||{label:homeDecisionLabel(x),reading:x.home_intraday_reading||x.classification_reason||'等待盤中確認',action:x.home_action||'等待明確價格／資金／結構訊號',price_gate_label:x.home_price_gate_label||'—',structure_gate_label:x.home_structure_gate_label||'—'};}
 function moneyFlowText(x){if(x.home_money_flow_label)return x.home_money_flow_label;const v=numericValue(x.aflow),p=numericValue(x.price);if(v==null||p==null)return '—';const b=v*p*1000/100000000;return `${b>0?'+':''}${b.toFixed(2)} 億`}
 function card(x){let h=homeRowDecision(x),status=h.label,c=[status.includes('不進場')?'risk':status.includes('可進場')?'':'watch',exactLimitUp(x)?'limit-up':''].filter(Boolean).join(' ');return `<article class="panel stock-card ${c}" data-group="${esc(x.group)}" data-decision-status="${esc(status)}"><div class="stock-top"><div><div class="stock-code">${esc(x.code)} · ${esc(x.sector||'—')}</div><div class="stock-name">${esc(x.name)} <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span>${exactLimitUp(x)?'<span class="mr-card-limit" style="margin-left:6px">漲停</span>':''}</div></div></div><div class="signal"><span class="tag">${esc(status)}</span><b>${esc(h.reading||'等待盤中確認')}</b><small class="home-lifecycle">策略：${esc(h.action||'等待觀察')}</small></div><div class="price-row"><div class="price-box"><label>價格</label><strong class="${cls(x.change_rate)}">${chgFull(x.change_rate,x.price)}</strong></div><div class="price-box"><label>資金流</label><strong class="${cls(x.aflow)}">${esc(moneyFlowText(x))}</strong></div><div class="price-box"><label>Gate</label><strong>${esc(h.price_gate_label||'—')}</strong></div></div><div class="stock-foot"><span class="muted">查看解讀 →</span></div></article>`}
-function render(){let q=(document.querySelector('#search').value||'').toLowerCase();let rs=data.filter(x=>(filter==='全部'||homeDecisionLabel(x)===filter)&&(`${x.code}${x.name}`.toLowerCase().includes(q)));const cards=document.querySelector('#cards');if(cards){cards.hidden=true;cards.innerHTML=''}document.querySelector('#rows').innerHTML=rs.map(x=>{const h=homeRowDecision(x),s=h.label,level=x.home_decision_level_label?`<small>${esc(x.home_decision_level_label)}</small>`:'';return `<tr class="${[s.includes('可進場')?'actionable-row':s.includes('不進場')?'risk-row':'watch-row',exactLimitUp(x)?'limit-up-row':''].filter(Boolean).join(' ')}"><td class="home-state"><span class="pill">${esc(s)}</span></td><td class="home-stock"><div class="home-stock-line"><b>${esc(x.code)} ${esc(x.name||'—')}</b></div><small>${esc(x.sector||'—')}</small></td><td class="num ${cls(x.change_rate)}">${esc(x.price??'—')} / ${x.change_rate==null?'—':(Number(x.change_rate)>0?'+':'')+esc(x.change_rate)+'%'}</td><td class="num ${cls(x.aflow)}">${esc(moneyFlowText(x))}</td><td>${esc(h.price_gate_label||'—')}${level}</td><td>${esc(h.structure_gate_label||'—')}</td><td class="home-reading"><span class="home-plain">${esc(h.reading||'等待盤中確認')}</span></td><td class="home-reading"><span class="home-plain">${esc(h.action||'等待觀察')}</span></td></tr>`}).join('');document.querySelectorAll('#rows tr').forEach((el,i)=>el.dataset.code=String(rs[i].code));document.querySelector('#valid').textContent=rs.filter(x=>x.filter_no_data===false).length}
+function render(){let q=(document.querySelector('#search').value||'').toLowerCase();let rs=data.filter(x=>(filter==='全部'||homeDecisionLabel(x)===filter)&&(`${x.code}${x.name}`.toLowerCase().includes(q))&&(!WATCHLIST_FOCUS.length||WATCHLIST_FOCUS.includes(String(x.code))));const cards=document.querySelector('#cards');if(cards){cards.hidden=true;cards.innerHTML=''}document.querySelector('#rows').innerHTML=rs.map(x=>{const h=homeRowDecision(x),s=h.label,level=x.home_decision_level_label?`<small>${esc(x.home_decision_level_label)}</small>`:'';return `<tr class="${[s.includes('可進場')?'actionable-row':s.includes('不進場')?'risk-row':'watch-row',exactLimitUp(x)?'limit-up-row':''].filter(Boolean).join(' ')}"><td class="home-state"><span class="pill">${esc(s)}</span></td><td class="home-stock"><div class="home-stock-line"><b>${esc(x.code)} ${esc(x.name||'—')}</b></div><small>${esc(x.sector||'—')}</small></td><td class="num ${cls(x.change_rate)}">${esc(x.price??'—')} / ${x.change_rate==null?'—':(Number(x.change_rate)>0?'+':'')+esc(x.change_rate)+'%'}</td><td class="num ${cls(x.aflow)}">${esc(moneyFlowText(x))}</td><td>${esc(h.price_gate_label||'—')}${level}</td><td>${esc(h.structure_gate_label||'—')}</td><td class="home-reading"><span class="home-plain">${esc(h.reading||'等待盤中確認')}</span></td><td class="home-reading"><span class="home-plain">${esc(h.action||'等待觀察')}</span></td></tr>`}).join('');document.querySelectorAll('#rows tr').forEach((el,i)=>el.dataset.code=String(rs[i].code));document.querySelector('#valid').textContent=rs.filter(x=>x.filter_no_data===false).length}
+
+// 重點觀察清單的「籌碼顧問」報告：只在 WATCHLIST_FOCUS 非空時啟用，取代表格列顯示。
+// 決策狀態/理由一律沿用 homeRowDecision()／ai.reasons 等後台已算好的欄位，這裡只負責
+// 把籌碼(法人/融資融券/外資持股)、技術(均線/KD/RSI/ATR)、盤中資金流組成一份可讀報告，
+// 不在前端重新發明判斷邏輯。董監持股全站尚無資料源，誠實標「資料無法取得」，不補造。
+async function renderAdvisorReports(){
+  const box=document.querySelector('#advisorReports'),grid=document.querySelector('.dashboard-grid');
+  if(!box)return;
+  if(!WATCHLIST_FOCUS.length){box.hidden=true;if(grid)grid.hidden=false;return}
+  if(grid)grid.hidden=true;box.hidden=false;
+  if(!box.dataset.loaded)box.innerHTML=WATCHLIST_FOCUS.map(c=>`<div class="advisor-card muted">讀取 ${esc(c)} 籌碼／技術資料中…</div>`).join('');
+  const cards=await Promise.all(WATCHLIST_FOCUS.map(async code=>{
+    try{const j=await(await fetch(API_BASE+'/api/stock/'+encodeURIComponent(code),{cache:'no-store'})).json();return j&&j.ok?j.card:null}
+    catch(e){return null}
+  }));
+  const md=window._lastMarketD||{},regimeTxt=document.querySelector('#mode')?.textContent||md.regime||'—',adviceTxt=document.querySelector('#advice')?.textContent||'';
+  const banner=`<div class="advisor-card" style="background:#f8f9fc"><div class="advisor-head"><div><h3 style="font-size:15px">市場面 · 目前作戰模式</h3><div class="adv-sub">${esc(regimeTxt)}</div></div></div><div class="advisor-verdict" style="background:transparent;padding:0;margin-top:8px">${esc(adviceTxt)}</div></div>`;
+  box.dataset.loaded='1';
+  box.innerHTML=banner+WATCHLIST_FOCUS.map((code,i)=>advisorCard(code,cards[i])).join('');
+}
+function _advNum(v,unit){return v==null?'—':`${Number(v)>0?'+':''}${Number(v).toLocaleString('en-US')}${unit||''}`}
+function advisorCard(code,card){
+  const row=data.find(x=>String(x.code)===String(code))||{};
+  const h=homeRowDecision(row);
+  if(!card){
+    return `<article class="advisor-card"><div class="advisor-head"><div><h3>${esc(code)} ${esc(row.name||'—')}</h3><div class="adv-sub">${esc(row.sector||'—')}</div></div><div class="advisor-price"><div class="p ${cls(row.change_rate)}">${esc(row.price??'—')}</div><div class="${cls(row.change_rate)}">${row.change_rate==null?'—':(row.change_rate>0?'+':'')+row.change_rate+'%'}</div></div></div><div class="advisor-sec missing" style="margin-top:12px">籌碼／技術資料暫時無法取得，僅顯示即時報價。</div></article>`;
+  }
+  const chip=card.chip||{},tech=card.tech||{},flow=card.flow||{},trade=card.trade||{},ai=card.ai||{};
+  return `<article class="advisor-card">
+    <div class="advisor-head">
+      <div><h3>${esc(code)} ${esc(row.name||card.name||'—')}</h3><div class="adv-sub">${esc(row.sector||card.sector||'—')} · 籌碼資料日 ${esc(chip.source_date||'—')}</div></div>
+      <div class="advisor-price"><div class="p ${cls(row.change_rate)}">${esc(row.price??card.price??'—')}</div><div class="${cls(row.change_rate)}">${row.change_rate==null?'—':(row.change_rate>0?'+':'')+row.change_rate+'%'}</div></div>
+    </div>
+    <div class="advisor-verdict"><b>${esc(h.label||'—')} · ${esc(h.action||'等待觀察')}</b>${esc(h.reading||'等待盤中確認')}</div>
+    <div class="advisor-grid">
+      <div class="advisor-sec"><h4>籌碼面 · 三大法人</h4><dl>
+        <dt>外資單日</dt><dd class="${cls(chip.foreign)}">${_advNum(chip.foreign,'張')}</dd>
+        <dt>投信單日</dt><dd class="${cls(chip.trust)}">${_advNum(chip.trust,'張')}</dd>
+        <dt>自營單日</dt><dd class="${cls(chip.dealer)}">${_advNum(chip.dealer,'張')}</dd>
+        <dt>近5日合計</dt><dd class="${cls(chip.inst_net_5d_lots)}">${_advNum(chip.inst_net_5d_lots,'張')}</dd>
+        <dt>近20日合計</dt><dd class="${cls(chip.inst_net_20d_lots)}">${_advNum(chip.inst_net_20d_lots,'張')}</dd>
+        <dt>連買／連賣</dt><dd>${chip.inst_streak==null?'—':`${chip.inst_streak>0?'連買':'連賣'}${Math.abs(chip.inst_streak)}日`}</dd>
+      </dl></div>
+      <div class="advisor-sec"><h4>籌碼面 · 融資融券／董監</h4><dl>
+        <dt>融資餘額</dt><dd>${chip.margin_balance==null?'—':Number(chip.margin_balance).toLocaleString('en-US')+' 張'}</dd>
+        <dt>融資今日變化</dt><dd class="${cls(chip.margin_change_d)}">${_advNum(chip.margin_change_d,'張')}</dd>
+        <dt>融券餘額</dt><dd>${chip.short_balance==null?'—':Number(chip.short_balance).toLocaleString('en-US')+' 張'}</dd>
+        <dt>券資比</dt><dd>${chip.short_margin_ratio==null?'—':(chip.short_margin_ratio*100).toFixed(2)+'%'}</dd>
+        <dt>外資持股比</dt><dd>${chip.foreign_share_pct==null?'—':chip.foreign_share_pct+'%'}</dd>
+        <dt>董監持股</dt><dd style="color:var(--muted);font-style:italic;font-weight:600">資料無法取得</dd>
+      </dl></div>
+      <div class="advisor-sec"><h4>技術面</h4><dl>
+        <dt>MA5／10／20</dt><dd>${esc(tech.ma5||'—')} ${esc(tech.ma10||'—')} ${esc(tech.ma20||'—')}</dd>
+        <dt>MACD</dt><dd>${esc(tech.macd||'—')}</dd>
+        <dt>KD (K/D)</dt><dd>${tech.kd_k==null?'—':tech.kd_k}／${tech.kd_d==null?'—':tech.kd_d}</dd>
+        <dt>RSI</dt><dd>${tech.rsi==null?'—':tech.rsi}</dd>
+        <dt>ATR</dt><dd>${tech.atr==null?'—':tech.atr}</dd>
+        <dt>20日均價(VWAP)</dt><dd>${chip.market_vwap_20d==null?'—':chip.market_vwap_20d}</dd>
+      </dl></div>
+      <div class="advisor-sec"><h4>盤中資金流／交易計畫</h4><dl>
+        <dt>盤中 aflow</dt><dd class="${cls(row.aflow)}">${esc(moneyFlowText(row))}</dd>
+        <dt>近5日資金</dt><dd>${esc(flow.flow_5d||'—')}</dd>
+        <dt>近10日資金</dt><dd>${esc(flow.flow_10d||'—')}</dd>
+        <dt>買點</dt><dd>${trade.buy??'—'}</dd>
+        <dt>停損／目標一</dt><dd>${trade.stop??'—'} ／ ${trade.t1??'—'}</dd>
+      </dl></div>
+    </div>
+    <div class="advisor-reasons">${(ai.reasons||[]).map(r=>`<span>${esc(r)}</span>`).join('')}</div>
+    <div class="advisor-plan"><b>${esc(trade.advice||'—')}</b>${trade.breakout_status?`｜${esc(trade.breakout_status)}`:''}</div>
+  </article>`;
+}
 async function loadAfterHoursSnapshot(){
   setMonitoringOff();
   try{
@@ -592,7 +693,8 @@ async function loadAfterHoursSnapshot(){
     document.querySelector('#watchCount').textContent='51';
     const radarCount=document.querySelector('#navCount');if(radarCount){radarCount.textContent=data.length?String(data.length):'';radarCount.hidden=!data.length}
     if(typeof loadBreadth==='function')loadBreadth(d.breadth);
-    render();updateFilterCounts();setTimeout(()=>window.syncRegimeGate?.(),0);
+    window._lastMarketD=d;
+    render();updateFilterCounts();renderAdvisorReports();setTimeout(()=>window.syncRegimeGate?.(),0);
     const m=d.market||{},idx=m.index||{},inst=m.institutional||{},prev=m.prev||{};
     renderMarketOverview({a:idx,i:inst,t:idx.turnover_100m,pt:prev.turnover_100m,date:d.trade_date,official_date:m.official_date||idx.date});
     document.body.style.visibility='visible';
@@ -618,7 +720,7 @@ async function load(){if(paused||marketClosed())return;try{let r=await fetch(API
       const wpMap=new Map((wp.rows||[]).map(x=>[String(x.code),x.aflow]));
       data.forEach(x=>{if(x.aflow==null&&wpMap.has(String(x.code))){const v=wpMap.get(String(x.code));if(v!=null){x.aflow=v;x.aflow_stale=true;}}});
     }catch(e){}
-  }document.querySelector('#conn').textContent=`Shioaji 即時連線 · ${d.updated_at}`;document.querySelector('#homeStatusBadge').textContent='ON';document.querySelector('#time').textContent=`${d.updated_at||'—'} · 台股盤中`;document.querySelector('#latency').textContent=`${d.latency_ms} ms`;document.querySelector('#subscribed').textContent=d.quota?.subscribed??'—';let n=data.length,a=data.filter(x=>homeDecisionLabel(x).includes('可進場')).length,risk=data.filter(x=>homeDecisionLabel(x).includes('不進場')).length;document.querySelector('#actionable').textContent=a;document.querySelector('#risk').textContent=risk;document.querySelector('#sectors').textContent='—';document.querySelector('#mode').textContent=d.regime||'盤中判定';document.querySelector('#score').textContent=n?Math.round(a/n*100):'—';if(typeof loadBreadth==='function')loadBreadth(d.breadth);document.querySelector('#advice').textContent=a?`目前 ${a} 檔真正通過首頁進場 Gate；其餘只看資金、價格位置與結構，不把有資金誤標成買點。`:`目前沒有完整通過 Gate 的可進場標的；有資金也要等價格與結構確認。`;document.querySelector('#quality').textContent=`資料完整度 ${n?Math.round(data.filter(x=>x.price!=null).length/n*100):0}%`;document.querySelector('#progress').style.width=(n?Math.round(data.filter(x=>x.price!=null).length/n*100):0)+'%';document.querySelector('#notes').textContent=(d.notes||[]).join(' · ');document.querySelector('#watchCount').textContent='51';const radarCount=document.querySelector('#navCount');if(radarCount){radarCount.textContent=n?String(n):'';radarCount.hidden=!n}render();updateFilterCounts();setTimeout(()=>window.syncRegimeGate?.(),0);document.body.style.visibility='visible';
+  }document.querySelector('#conn').textContent=`Shioaji 即時連線 · ${d.updated_at}`;document.querySelector('#homeStatusBadge').textContent='ON';document.querySelector('#time').textContent=`${d.updated_at||'—'} · 台股盤中`;document.querySelector('#latency').textContent=`${d.latency_ms} ms`;document.querySelector('#subscribed').textContent=d.quota?.subscribed??'—';let n=data.length,a=data.filter(x=>homeDecisionLabel(x).includes('可進場')).length,risk=data.filter(x=>homeDecisionLabel(x).includes('不進場')).length;document.querySelector('#actionable').textContent=a;document.querySelector('#risk').textContent=risk;document.querySelector('#sectors').textContent='—';document.querySelector('#mode').textContent=d.regime||'盤中判定';document.querySelector('#score').textContent=n?Math.round(a/n*100):'—';if(typeof loadBreadth==='function')loadBreadth(d.breadth);document.querySelector('#advice').textContent=a?`目前 ${a} 檔真正通過首頁進場 Gate；其餘只看資金、價格位置與結構，不把有資金誤標成買點。`:`目前沒有完整通過 Gate 的可進場標的；有資金也要等價格與結構確認。`;document.querySelector('#quality').textContent=`資料完整度 ${n?Math.round(data.filter(x=>x.price!=null).length/n*100):0}%`;document.querySelector('#progress').style.width=(n?Math.round(data.filter(x=>x.price!=null).length/n*100):0)+'%';document.querySelector('#notes').textContent=(d.notes||[]).join(' · ');document.querySelector('#watchCount').textContent='51';const radarCount=document.querySelector('#navCount');if(radarCount){radarCount.textContent=n?String(n):'';radarCount.hidden=!n}window._lastMarketD=d;render();updateFilterCounts();renderAdvisorReports();setTimeout(()=>window.syncRegimeGate?.(),0);document.body.style.visibility='visible';
   }catch(e){console.error('load() err:',e);document.body.style.visibility='visible';document.querySelector('#conn').textContent='即時資料暫時無法載入 · 顯示最近可用固定資料';document.querySelector('#mode').textContent='資料服務暫時不可用';document.querySelector('#advice').textContent='目前無法取得最新行情，請稍後重新整理；不要依這個畫面作進場決策。';document.querySelector('#homeStatusBadge').textContent='OFF';}}
 // ── 模型紀錄 = Phase 1 量測報告 ────────────────────────────────────
 // 刻意跟「盤後驗證」分開：盤後驗證回答「今天該盯誰」，這裡回答「篩選模型本身準不準、
@@ -832,8 +934,9 @@ function closeHome(){
   document.querySelector('#stockDetail').hidden=true;
 }
 document.querySelector('.sidebar .nav-item.active .count')?.classList.add('live');window.updateFilterCounts=function(){
-  const n={'全部':data.length,'🟢 可進場':0,'🔵 等回測':0,'🟡 保留觀察':0,'⚪ 尚未觸發':0,'🔴 不進場':0};
-  for(const x of data){const s=homeDecisionLabel(x);if(n[s]!=null)n[s]++}
+  const scoped=WATCHLIST_FOCUS.length?data.filter(x=>WATCHLIST_FOCUS.includes(String(x.code))):data;
+  const n={'全部':scoped.length,'🟢 可進場':0,'🔵 等回測':0,'🟡 保留觀察':0,'⚪ 尚未觸發':0,'🔴 不進場':0};
+  for(const x of scoped){const s=homeDecisionLabel(x);if(n[s]!=null)n[s]++}
   const riskOff=window._regimeLevel==='risk_off';
   document.querySelectorAll('.filter').forEach(b=>{
     const k=b.dataset.filter,base=k;
@@ -3043,7 +3146,7 @@ async function loadBreadth(embedded){
 .radar-template .decision-group .feature-table table:not(.wt) th:last-child,
 .radar-template .decision-group .feature-table table:not(.wt) td:last-child{display:none}
 .radar-template .decision-group .feature-table table:not(.wt) th:nth-child(7),
-.radar-template .decision-group .feature-table table:not(.wt) td:nth-child(7){width:auto;min-width:420px;text-align:left;white-space:normal;word-break:break-word;line-height:1.6}
+.radar-template .decision-group .feature-table table:not(.wt) td:nth-child(7){width:160px;text-align:left;white-space:normal;word-break:break-word;line-height:1.6}
 .radar-template .decision-group .feature-table table:not(.wt) td.judge-cell{color:var(--muted)!important}
 </style>
 <style>
