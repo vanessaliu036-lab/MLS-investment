@@ -672,7 +672,9 @@ function advisorCard(code,card){
         <dt>券資比</dt><dd>${chip.short_margin_ratio==null?'—':(chip.short_margin_ratio*100).toFixed(2)+'%'}</dd>
         <dt>外資持股比</dt><dd>${chip.foreign_share_pct==null?'—':chip.foreign_share_pct+'%'}</dd>
       </dl></div>
-      <div class="advisor-sec"><h4>技術面</h4><dl>
+      <div class="advisor-sec"><h4>技術面</h4>
+        ${(()=>{const tv=window.techVerdict?window.techVerdict(tech,valuation):null;return tv?`<div class="full-detail-line" style="margin-bottom:8px"><b>結論：<span class="${tv.cls}">${esc(tv.label)}</span></b>　${esc(tv.note)}</div>`:''})()}
+        <dl>
         <dt>MA5／10／20</dt><dd>${esc(tech.ma5||'—')} ${esc(tech.ma10||'—')} ${esc(tech.ma20||'—')}</dd>
         <dt>MACD</dt><dd>${esc(tech.macd||'—')}</dd>
         <dt>KD (K/D)</dt><dd>${tech.kd_k==null?'—':tech.kd_k}／${tech.kd_d==null?'—':tech.kd_d}</dd>
@@ -2467,6 +2469,7 @@ document.querySelector('.sidebar .nav-item.active')?.classList.add('selected');
     }
     return{label,cls,note:bits.join('，')||'技術面訊號中性'};
   }
+  window.techVerdict=techVerdict;   // advisorCard(在這個IIFE外面)也要用同一套白話結論,不重寫一次
   function techModule(tech,valuation){
     if(!tech||(tech.ma5==null&&tech.rsi==null&&tech.kd_k==null)){
       return `<div class="dense-extra"><h3>📈 技術面</h3><div class="dense-note">⚠ 技術資料尚未取得，這一項不補造數字。</div></div>`;
