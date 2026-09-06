@@ -3852,14 +3852,14 @@ async function loadBreadth(embedded){
   const flowClass=row=>{const v=num(row?.home_money_flow_100m??row?.aflow);return v==null?'':v>0?'positive':v<0?'negative':'';};
   const rowClass=s=>s.includes('不進場')?'risk-row':s.includes('可進場')?'actionable-row':'watch-row';
   const sync=()=>{
-    const rows=allRows(),labels=['決策','股票','價格','資金流(億)','價格 Gate','結構 Gate','即時判讀','行動'];
+    const rows=allRows(),labels=['決策','股票','價格','資金流(億)','籌碼','價格 Gate','結構 Gate','即時判讀','行動'];
     document.querySelectorAll('.table-panel>table thead th').forEach((th,i)=>{if(labels[i])th.textContent=labels[i];});
     document.querySelectorAll('#rows>tr').forEach(tr=>{
       const code=tr.dataset.code||tr.querySelector('td')?.textContent.match(/\d{4}/)?.[0],row=rows.find(x=>codeOf(x)===String(code));if(!row)return;
       const selected=tr.classList.contains('selected-row'),s=row.__home_status;
       tr.classList.remove('actionable-row','risk-row','watch-row');tr.classList.add(rowClass(s));tr.dataset.code=codeOf(row);
       const level=row.home_decision_level_label?`<small>${esc(row.home_decision_level_label)}</small>`:'';
-      tr.innerHTML=`<td class="home-state"><span class="pill">${esc(s)}</span></td><td class="home-stock"><div class="home-stock-line"><b>${esc(row.code)} ${esc(row.name||'—')}</b></div><small>${esc(row.sector||'—')}</small></td><td class="num ${cls(row.change_rate)}">${esc(row.price??'—')} / ${row.change_rate==null?'—':(Number(row.change_rate)>0?'+':'')+esc(row.change_rate)+'%'}</td><td class="num home-flow ${flowClass(row)}">${esc(flowText(row))}</td><td>${esc(row.home_price_gate_label||row.home_decision?.price_gate_label||'—')}${level}</td><td>${esc(row.home_structure_gate_label||row.home_decision?.structure_gate_label||'—')}</td><td class="home-reading"><span class="home-plain">${esc(row.__home_reading||'等待盤中確認')}</span></td><td class="home-reading"><span class="home-plain">${esc(row.home_action||row.home_decision?.action||'等待觀察')}</span></td>`;
+      tr.innerHTML=`<td class="home-state"><span class="pill">${esc(s)}</span></td><td class="home-stock"><div class="home-stock-line"><b>${esc(row.code)} ${esc(row.name||'—')}</b></div><small>${esc(row.sector||'—')}</small></td><td class="num ${cls(row.change_rate)}">${esc(row.price??'—')} / ${row.change_rate==null?'—':(Number(row.change_rate)>0?'+':'')+esc(row.change_rate)+'%'}</td><td class="num home-flow ${flowClass(row)}">${esc(flowText(row))}</td><td class="num">${esc(typeof chipStreakText==='function'?chipStreakText(row):(row.institution_label||'—'))}</td><td>${esc(row.home_price_gate_label||row.home_decision?.price_gate_label||'—')}${level}</td><td>${esc(row.home_structure_gate_label||row.home_decision?.structure_gate_label||'—')}</td><td class="home-reading"><span class="home-plain">${esc(row.__home_reading||'等待盤中確認')}</span></td><td class="home-reading"><span class="home-plain">${esc(row.home_action||row.home_decision?.action||'等待觀察')}</span></td>`;
       if(selected)tr.classList.add('selected-row');
     });
     document.querySelectorAll('#cards .stock-card').forEach(card=>{
@@ -3888,9 +3888,9 @@ async function loadBreadth(embedded){
 .table-panel>table th,.table-panel>table td{overflow:visible!important;text-overflow:clip!important;white-space:normal!important}
 #rows .home-flow{font-variant-numeric:tabular-nums;font-weight:760;white-space:nowrap!important}
 #rows small{display:block;margin-top:4px;color:var(--muted);font-size:12px;line-height:1.35}
-.table-panel>table>thead>tr,#rows>tr{grid-template-columns:minmax(128px,.9fr) minmax(170px,1.2fr) minmax(118px,.8fr) minmax(118px,.82fr) minmax(150px,1fr) minmax(150px,1fr) minmax(230px,1.45fr) minmax(300px,1.9fr)!important}
+.table-panel>table>thead>tr,#rows>tr{grid-template-columns:minmax(128px,.9fr) minmax(170px,1.2fr) minmax(118px,.8fr) minmax(118px,.82fr) minmax(140px,.9fr) minmax(150px,1fr) minmax(150px,1fr) minmax(230px,1.45fr) minmax(300px,1.9fr)!important}
 .opportunity-grid .signal{height:116px!important}.opportunity-grid .price-row{grid-template-columns:repeat(3,minmax(0,1fr))!important}
 .stock-card.risk,.stock-card.watch{background:#fff!important;border-color:var(--line)!important}.stock-card.risk:before{background:var(--red)!important}.stock-card.watch:before{background:var(--amber)!important}.stock-card .signal b{font-size:12.5px!important;line-height:1.5!important}
-@media(max-width:900px){.table-panel>table>thead>tr,#rows>tr{grid-template-columns:minmax(112px,.85fr) minmax(155px,1.1fr) minmax(102px,.75fr) minmax(108px,.78fr) minmax(132px,.92fr) minmax(132px,.92fr) minmax(210px,1.35fr) minmax(260px,1.7fr)!important}}
+@media(max-width:900px){.table-panel>table>thead>tr,#rows>tr{grid-template-columns:minmax(112px,.85fr) minmax(155px,1.1fr) minmax(102px,.75fr) minmax(108px,.78fr) minmax(124px,.85fr) minmax(132px,.92fr) minmax(132px,.92fr) minmax(210px,1.35fr) minmax(260px,1.7fr)!important}}
 @media(max-width:650px){.table-panel>table>thead>tr,#rows>tr{grid-template-columns:1fr!important}.table-panel>table th,.table-panel>table td{grid-column:1!important;text-align:left!important}}
 </style>
