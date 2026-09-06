@@ -17,6 +17,7 @@ broker.batch_snapshots 的輸出,讓 engine.compute_sector_flow / money_health.a
 
 import json
 import os
+import ssl
 import time
 import urllib.parse
 import urllib.request
@@ -28,6 +29,13 @@ _TOKEN = os.environ.get("FINMIND_TOKEN", "").strip()
 
 _cache = {}          # {trade_date: [snaps]}
 
+# TPEx 憑證缺 Subject Key Identifier，新版 OpenSSL 會驗不過(跟
+# chips_official.py 踩到的是同一個官方端點已知問題)。這是公開唯讀的
+# 政府行情資料，且僅用於 tpex.org.tw；不放寬其他站台。
+_TPEX_CTX = ssl.create_default_context()
+_TPEX_CTX.check_hostname = False
+_TPEX_CTX.verify_mode = ssl.CERT_NONE
+
 
 def _today():
     return datetime.now(TW_TZ).strftime("%Y-%m-%d")
@@ -35,7 +43,8 @@ def _today():
 
 def _get(url, timeout=20):
     req = urllib.request.Request(url, headers={"User-Agent": "MLS/4 eod"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    ctx = _TPEX_CTX if "tpex.org.tw" in url else None
+    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
         return json.loads(r.read().decode("utf-8"))
 
 
@@ -233,6 +242,12 @@ def eod_snaps(codes=None, trade_date=None):
     start = (datetime.now(TW_TZ) - timedelta(days=25)).strftime("%Y-%m-%d")
     out = []
     fails = 0
+    # 前面幾檔成功、跑到一半才被官方端點爆量保護擋下來的話，舊邏輯的
+    # 「fails>=3 且 not out」不會生效(因為 out 已經非空)，會照樣逐檔
+    # 硬撐到底——51 檔每檔卡 15~20 秒的話整個請求會拖幾分鐘，還會擋住
+    # 同進程的其他請求(如個股卡片 API)。有資料可退可用時,超過時間預算
+    # 就停手,剩下的檔交給下一輪快取或 DB/livermore 備援。
+    deadline = time.time() + 25.0
     for i, code in enumerate(codes):
         rows = _price_rows(code, start, trade_date=tdate)
         snap = (_snap_from_rows(code, rows, C.NAME_MAP, C.SECTOR_MAP,
@@ -243,8 +258,14 @@ def eod_snaps(codes=None, trade_date=None):
             fails += 1
             if fails >= 3 and not out:      # FinMind 連掛(限流/休市)→ 別再空跑,直接走備援
                 break
-        if i % 10 == 9:
-            time.sleep(0.3)
+        if out and time.time() > deadline:
+            print(f"[eod] 已取得 {len(out)}/{len(codes)} 檔,超過時間預算先回傳,"
+                  f"剩餘檔交給下一輪", flush=True)
+            break
+        # 每檔都停一下:0.3s／10檔那組節流太鬆，51 檔幾乎背靠背打 TWSE/TPEx，
+        # 曾在開機重建快取時觸發官方端點的爆量保護(暫時對該 IP 回 308 導向
+        # 迴圈，51 檔要幾分鐘才跑完，期間會拖住同進程的其他請求)。
+        time.sleep(0.3)
     if out and len(out) >= max(5, len(codes) // 2):
         _cache[tdate] = out
         _persist_snaps(tdate, out)
