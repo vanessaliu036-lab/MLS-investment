@@ -67,16 +67,16 @@ body{visibility:visible!important}body.ready{visibility:visible!important}
 .opportunity-grid .price-row{margin-top:14px!important;grid-template-columns:repeat(2,minmax(0,1fr))!important}
 .opportunity-grid .stock-foot{margin-top:12px!important}
 .table-panel>table>thead>tr,#rows>tr{
-  grid-template-columns:minmax(92px,.75fr) minmax(175px,1.35fr) minmax(70px,.6fr) minmax(72px,.65fr) minmax(78px,.7fr) minmax(82px,.72fr) minmax(280px,2.2fr)!important;
+  grid-template-columns:minmax(92px,.75fr) minmax(175px,1.35fr) minmax(70px,.6fr) minmax(72px,.65fr) minmax(78px,.7fr) minmax(82px,.72fr) minmax(90px,.75fr) minmax(110px,.85fr) minmax(280px,2.2fr)!important;
 }
 .table-panel>table th:nth-child(n),.table-panel>table td:nth-child(n){text-align:left!important}
-.table-panel>table th:nth-child(n+3):nth-child(-n+6),#rows>tr>td.num{text-align:right!important}
+.table-panel>table th:nth-child(n+3):nth-child(-n+8),#rows>tr>td.num{text-align:right!important}
 #rows .home-state,#rows .home-stock,#rows .home-reading{text-align:left!important}
 #rows .home-state{display:flex;align-items:center;justify-content:flex-start;gap:5px;flex-wrap:nowrap}
 #rows .home-stock small{display:block;color:var(--muted);font-size:11px;margin-top:3px}
 #rows .home-reading .home-plain{font-weight:750}
 @media(max-width:900px){
-  .table-panel>table>thead>tr,#rows>tr{grid-template-columns:minmax(86px,.75fr) minmax(150px,1.2fr) minmax(64px,.55fr) minmax(70px,.6fr) minmax(74px,.65fr) minmax(78px,.7fr) minmax(220px,1.8fr)!important}
+  .table-panel>table>thead>tr,#rows>tr{grid-template-columns:minmax(86px,.75fr) minmax(150px,1.2fr) minmax(64px,.55fr) minmax(70px,.6fr) minmax(74px,.65fr) minmax(78px,.7fr) minmax(80px,.7fr) minmax(96px,.8fr) minmax(220px,1.8fr)!important}
 }
 @media(max-width:650px){
   .table-panel>table>thead>tr,#rows>tr{grid-template-columns:1fr!important}
@@ -251,7 +251,7 @@ html,body{max-width:100%;overflow-x:hidden}
 <div class="sys-line muted">VPS Shioaji · API 延遲 <b id="latency">—</b> · 訂閱標的 <b id="subscribed">—</b> · 有效訊號 <b id="valid">—</b> · <b id="quality">資料完整度 —</b><i id="progress" class="sys-progress"></i><span id="notes" class="sys-notes"></span></div>
 
 <div class="section-head"><h2>今日決策雷達</h2><div class="filters"><button class="filter active" data-filter="全部">全部</button><button class="filter" data-filter="🟢 可進場">可進場</button><button class="filter" data-filter="🔵 等回測">等回測</button><button class="filter" data-filter="🟡 等待觀察">等待觀察</button><button class="filter" data-filter="🟠 承接觀察">承接觀察</button><button class="filter" data-filter="🔴 不進場">不進場</button></div></div><section id="cards" class="opportunity-grid" hidden></section>
-<section class="dashboard-grid"><div class="panel table-panel"><div class="table-head"><h3>盤中即時決策</h3><input id="search" class="search" placeholder="搜尋代碼 / 名稱"></div><table><thead><tr><th>決策</th><th>股票</th><th>價格</th><th>資金流(億)</th><th>價格 Gate</th><th>結構 Gate</th><th>即時判讀</th><th>行動</th></tr></thead><tbody id="rows"></tbody></table></div><div class="panel side-panel"><h3>盤中訊號時間軸</h3><div id="timeline" class="timeline"><div class="event"><time>—</time><strong>等待即時訊號</strong><p>資料更新後顯示目前觀察標的的分類與白話解讀。</p></div></div></div></section>
+<section class="dashboard-grid"><div class="panel table-panel"><div class="table-head"><h3>盤中即時決策</h3><input id="search" class="search" placeholder="搜尋代碼 / 名稱"></div><table><thead><tr><th>決策</th><th>股票</th><th>價格</th><th>漲跌</th><th>漲幅</th><th>成交量</th><th>資金流(億)</th><th>籌碼</th><th>即時判讀</th></tr></thead><tbody id="rows"></tbody></table></div><div class="panel side-panel"><h3>盤中訊號時間軸</h3><div id="timeline" class="timeline"><div class="event"><time>—</time><strong>等待即時訊號</strong><p>資料更新後顯示目前觀察標的的分類與白話解讀。</p></div></div></div></section>
 <section id="advisorReports" class="advisor-reports" hidden></section>
 <style>
 .advisor-reports{display:grid;gap:16px;margin-top:4px}
@@ -597,6 +597,29 @@ window.addEventListener('load',()=>{if(location.pathname==='/review'){openFeatur
 // (2026-08-17 使用者提問「漲停也算可操作?為何上下不一樣」的根因)。
 function homeRowDecision(x){return x.home_decision||{label:homeDecisionLabel(x),reading:x.home_intraday_reading||x.classification_reason||'等待盤中確認',action:x.home_action||'等待明確價格／資金／結構訊號',price_gate_label:x.home_price_gate_label||'—',structure_gate_label:x.home_structure_gate_label||'—'};}
 function moneyFlowText(x){if(x.home_money_flow_label)return x.home_money_flow_label;const v=numericValue(x.aflow),p=numericValue(x.price);if(v==null||p==null)return '—';const b=v*p*1000/100000000;return `${b>0?'+':''}${b.toFixed(2)} 億`}
+// 籌碼連續買賣超:/ab/watchlist 才有(法人日資料，跟盤中 eod_snapshot 不同來源)，
+// 首頁列表原本沒有這個欄位，_mergeChipStreaks() 會把它併進 data 的每個 row。
+function chipStreakText(x){const s=x.inst_streak;if(s==null)return x.institution_label||'—';const n=Math.abs(Number(s));return `${esc(x.institution_label||(s>0?'法人買超':s<0?'法人賣超':'法人持平'))}${n?`(連${s>0?'買':'賣'}${n}日)`:''}`}
+let _chipStreakDate=null;
+async function _mergeChipStreaks(tradeDate){
+  if(_chipStreakDate===String(tradeDate||''))return;   // 同一天不重打
+  try{
+    const url=API_BASE+'/ab/watchlist'+(tradeDate?('?applies_date='+encodeURIComponent(tradeDate)):'');
+    const w=await fetch(url,{cache:'no-store'}).then(r=>r.json());
+    const items=Array.isArray(w?.items)?w.items:[];
+    if(!items.length)return;
+    const byCode=new Map(items.map(x=>[String(x.code),x]));
+    for(const row of data){
+      const m=byCode.get(String(row.code));
+      if(m){row.inst_streak=m.inst_streak;row.institution_label=m.institution_label}
+    }
+    _chipStreakDate=String(tradeDate||'');
+    // cleanRows() 是 cleanDecisionHome IIFE 內的閉包函式，這裡叫不到；
+    // render 在該 IIFE 執行後已被包成 window.render=oldRender+cleanRows+...，
+    // 呼叫它等於連動跑到 cleanRows()，不用另外把 cleanRows 暴露成全域。
+    if(typeof render==='function')render();
+  }catch(e){console.warn('chip streak merge',e)}
+}
 function card(x){let h=homeRowDecision(x),status=h.label,c=[status.includes('不進場')?'risk':status.includes('可進場')?'':'watch',exactLimitUp(x)?'limit-up':''].filter(Boolean).join(' ');return `<article class="panel stock-card ${c}" data-group="${esc(x.group)}" data-decision-status="${esc(status)}"><div class="stock-top"><div><div class="stock-code">${esc(x.code)} · ${esc(x.sector||'—')}</div><div class="stock-name">${esc(x.name)} <span class="current-price ${cls(x.change_rate)}">現價 ${esc(x.price??'—')}</span>${exactLimitUp(x)?'<span class="mr-card-limit" style="margin-left:6px">漲停</span>':''}</div></div></div><div class="signal"><span class="tag">${esc(status)}</span><b>${esc(h.reading||'等待盤中確認')}</b><small class="home-lifecycle">策略：${esc(h.action||'等待觀察')}</small></div><div class="price-row"><div class="price-box"><label>價格</label><strong class="${cls(x.change_rate)}">${chgFull(x.change_rate,x.price)}</strong></div><div class="price-box"><label>資金流</label><strong class="${cls(x.aflow)}">${esc(moneyFlowText(x))}</strong></div><div class="price-box"><label>Gate</label><strong>${esc(h.price_gate_label||'—')}</strong></div></div><div class="stock-foot"><span class="muted">查看解讀 →</span></div></article>`}
 function render(){let q=(document.querySelector('#search').value||'').toLowerCase();let rs=data.filter(x=>(filter==='全部'||homeDecisionLabel(x)===filter)&&(`${x.code}${x.name}`.toLowerCase().includes(q))&&(!WATCHLIST_FOCUS.length||WATCHLIST_FOCUS.includes(String(x.code))));const cards=document.querySelector('#cards');if(cards){cards.hidden=true;cards.innerHTML=''}document.querySelector('#rows').innerHTML=rs.map(x=>{const h=homeRowDecision(x),s=h.label,level=x.home_decision_level_label?`<small>${esc(x.home_decision_level_label)}</small>`:'';return `<tr class="${[s.includes('可進場')?'actionable-row':s.includes('不進場')?'risk-row':'watch-row',exactLimitUp(x)?'limit-up-row':''].filter(Boolean).join(' ')}"><td class="home-state"><span class="pill">${esc(s)}</span></td><td class="home-stock"><div class="home-stock-line"><b>${esc(x.code)} ${esc(x.name||'—')}</b></div><small>${esc(x.sector||'—')}</small></td><td class="num ${cls(x.change_rate)}">${esc(x.price??'—')} / ${x.change_rate==null?'—':(Number(x.change_rate)>0?'+':'')+esc(x.change_rate)+'%'}</td><td class="num ${cls(x.aflow)}">${esc(moneyFlowText(x))}</td><td>${esc(h.price_gate_label||'—')}${level}</td><td>${esc(h.structure_gate_label||'—')}</td><td class="home-reading"><span class="home-plain">${esc(h.reading||'等待盤中確認')}</span></td><td class="home-reading"><span class="home-plain">${esc(h.action||'等待觀察')}</span></td></tr>`}).join('');document.querySelectorAll('#rows tr').forEach((el,i)=>el.dataset.code=String(rs[i].code));document.querySelector('#valid').textContent=rs.filter(x=>x.filter_no_data===false).length}
 
@@ -698,6 +721,7 @@ async function loadAfterHoursSnapshot(){
     if(typeof loadBreadth==='function')loadBreadth(d.breadth);
     window._lastMarketD=d;
     render();updateFilterCounts();renderAdvisorReports();setTimeout(()=>window.syncRegimeGate?.(),0);
+    _mergeChipStreaks(d.trade_date);
     const m=d.market||{},idx=m.index||{},inst=m.institutional||{},prev=m.prev||{};
     renderMarketOverview({a:idx,i:inst,t:idx.turnover_100m,pt:prev.turnover_100m,date:d.trade_date,official_date:m.official_date||idx.date});
     document.body.style.visibility='visible';
@@ -723,7 +747,7 @@ async function load(){if(paused||marketClosed())return;try{let r=await fetch(API
       const wpMap=new Map((wp.rows||[]).map(x=>[String(x.code),x.aflow]));
       data.forEach(x=>{if(x.aflow==null&&wpMap.has(String(x.code))){const v=wpMap.get(String(x.code));if(v!=null){x.aflow=v;x.aflow_stale=true;}}});
     }catch(e){}
-  }document.querySelector('#conn').textContent=`Shioaji 即時連線 · ${d.updated_at}`;document.querySelector('#homeStatusBadge').textContent='ON';document.querySelector('#time').textContent=`${d.updated_at||'—'} · 台股盤中`;document.querySelector('#latency').textContent=`${d.latency_ms} ms`;document.querySelector('#subscribed').textContent=d.quota?.subscribed??'—';let n=data.length,a=data.filter(x=>homeDecisionLabel(x).includes('可進場')).length,risk=data.filter(x=>homeDecisionLabel(x).includes('不進場')).length;document.querySelector('#actionable').textContent=a;document.querySelector('#risk').textContent=risk;document.querySelector('#sectors').textContent='—';document.querySelector('#mode').textContent=d.regime||'盤中判定';document.querySelector('#score').textContent=n?Math.round(a/n*100):'—';if(typeof loadBreadth==='function')loadBreadth(d.breadth);document.querySelector('#advice').textContent=a?`目前 ${a} 檔真正通過首頁進場 Gate；其餘只看資金、價格位置與結構，不把有資金誤標成買點。`:`目前沒有完整通過 Gate 的可進場標的；有資金也要等價格與結構確認。`;document.querySelector('#quality').textContent=`資料完整度 ${n?Math.round(data.filter(x=>x.price!=null).length/n*100):0}%`;document.querySelector('#progress').style.width=(n?Math.round(data.filter(x=>x.price!=null).length/n*100):0)+'%';document.querySelector('#notes').textContent=(d.notes||[]).join(' · ');document.querySelector('#watchCount').textContent='51';const radarCount=document.querySelector('#navCount');if(radarCount){radarCount.textContent=n?String(n):'';radarCount.hidden=!n}window._lastMarketD=d;render();updateFilterCounts();renderAdvisorReports();setTimeout(()=>window.syncRegimeGate?.(),0);document.body.style.visibility='visible';
+  }document.querySelector('#conn').textContent=`Shioaji 即時連線 · ${d.updated_at}`;document.querySelector('#homeStatusBadge').textContent='ON';document.querySelector('#time').textContent=`${d.updated_at||'—'} · 台股盤中`;document.querySelector('#latency').textContent=`${d.latency_ms} ms`;document.querySelector('#subscribed').textContent=d.quota?.subscribed??'—';let n=data.length,a=data.filter(x=>homeDecisionLabel(x).includes('可進場')).length,risk=data.filter(x=>homeDecisionLabel(x).includes('不進場')).length;document.querySelector('#actionable').textContent=a;document.querySelector('#risk').textContent=risk;document.querySelector('#sectors').textContent='—';document.querySelector('#mode').textContent=d.regime||'盤中判定';document.querySelector('#score').textContent=n?Math.round(a/n*100):'—';if(typeof loadBreadth==='function')loadBreadth(d.breadth);document.querySelector('#advice').textContent=a?`目前 ${a} 檔真正通過首頁進場 Gate；其餘只看資金、價格位置與結構，不把有資金誤標成買點。`:`目前沒有完整通過 Gate 的可進場標的；有資金也要等價格與結構確認。`;document.querySelector('#quality').textContent=`資料完整度 ${n?Math.round(data.filter(x=>x.price!=null).length/n*100):0}%`;document.querySelector('#progress').style.width=(n?Math.round(data.filter(x=>x.price!=null).length/n*100):0)+'%';document.querySelector('#notes').textContent=(d.notes||[]).join(' · ');document.querySelector('#watchCount').textContent='51';const radarCount=document.querySelector('#navCount');if(radarCount){radarCount.textContent=n?String(n):'';radarCount.hidden=!n}window._lastMarketD=d;render();updateFilterCounts();renderAdvisorReports();setTimeout(()=>window.syncRegimeGate?.(),0);_mergeChipStreaks(null);document.body.style.visibility='visible';
   }catch(e){console.error('load() err:',e);document.body.style.visibility='visible';document.querySelector('#conn').textContent='即時資料暫時無法載入 · 顯示最近可用固定資料';document.querySelector('#mode').textContent='資料服務暫時不可用';document.querySelector('#advice').textContent='目前無法取得最新行情，請稍後重新整理；不要依這個畫面作進場決策。';document.querySelector('#homeStatusBadge').textContent='OFF';}}
 // ── 模型紀錄 = Phase 1 量測報告 ────────────────────────────────────
 // 刻意跟「盤後驗證」分開：盤後驗證回答「今天該盯誰」，這裡回答「篩選模型本身準不準、
@@ -2210,7 +2234,7 @@ window.renderTomorrowGroups=function(body,rows,fallback){
   const timelineNav=[...document.querySelectorAll('.sidebar .nav-item')].find(x=>x.textContent.includes('訊號時間軸'));
   if(timelineNav)timelineNav.remove();
   document.querySelector('.dashboard-grid .side-panel')?.remove();
-    const headings=['狀態','股票','現價','漲跌','漲幅','成交量','盤中判讀'];
+    const headings=['狀態','股票','現價','漲跌','漲幅','成交量','資金流','籌碼','盤中判讀'];
   // 白話解讀＝翻譯數字的「意義」：現在發生什麼＋所以怎麼看。
   // 分類／漲跌／aflow 各自已有欄位，這裡不再重抄，只給一句判讀（與個股卡片同一套用語）。
   function plain(row){
@@ -2296,6 +2320,8 @@ window.renderTomorrowGroups=function(body,rows,fallback){
         <td class="num ${cls(ch)}">${chgAmt(ch,row.price)}</td>
         <td class="num ${cls(ch)}">${ch==null?'—':(Number(ch)>0?'+':'')+ch+'%'}</td>
         <td class="num">${fmt(row.total_volume)}</td>
+        <td class="num ${cls(row.aflow)}">${esc(moneyFlowText(row))}</td>
+        <td class="num">${esc(chipStreakText(row))}</td>
         <td class="home-reading"><span class="home-plain">${esc(plain(row))}</span><small class="home-lifecycle">${esc(row.candidate_lifecycle||'保留觀察')}</small></td>`;
     });
     document.querySelectorAll('#cards .stock-card').forEach(card=>{
@@ -3739,7 +3765,7 @@ async function loadBreadth(embedded){
 .table-panel>table>thead,.table-panel>table>tbody{display:block;width:100%}
 .table-panel>table>thead>tr,#rows>tr{
   display:grid;width:100%;min-width:0;
-  grid-template-columns:minmax(56px,.35fr) minmax(140px,1.2fr) minmax(64px,.5fr) minmax(64px,.5fr) minmax(64px,.5fr) minmax(80px,.6fr) minmax(260px,2.2fr);
+  grid-template-columns:minmax(56px,.35fr) minmax(140px,1.2fr) minmax(64px,.5fr) minmax(64px,.5fr) minmax(64px,.5fr) minmax(80px,.6fr) minmax(84px,.65fr) minmax(100px,.75fr) minmax(260px,2.2fr);
   align-items:center;
 }
 .table-panel>table th,.table-panel>table td{
@@ -3748,7 +3774,7 @@ async function loadBreadth(embedded){
 }
 .table-panel>table th{font-size:11px;line-height:1.2;text-align:left!important}
 .table-panel>table td{font-size:12px;line-height:1.3}
-.table-panel>table th:nth-child(n+3):nth-child(-n+6),
+.table-panel>table th:nth-child(n+3):nth-child(-n+8),
 #rows>tr>td.num{text-align:right!important}
 #rows>tr{min-height:0;height:auto;border-bottom:1px solid var(--line)}
 #rows>tr:last-child{border-bottom:0}
@@ -3765,7 +3791,7 @@ async function loadBreadth(embedded){
 .table-panel>table th,.table-panel>table td{height:auto!important;min-height:0!important;padding:10px 12px!important;vertical-align:middle!important}
 #rows>tr>td{align-self:center!important}
 @media(max-width:900px){
-  .table-panel>table>thead>tr,#rows>tr{grid-template-columns:minmax(48px,.35fr) minmax(120px,1.1fr) minmax(56px,.5fr) minmax(56px,.5fr) minmax(56px,.5fr) minmax(70px,.6fr) minmax(200px,2fr)}
+  .table-panel>table>thead>tr,#rows>tr{grid-template-columns:minmax(48px,.35fr) minmax(120px,1.1fr) minmax(56px,.5fr) minmax(56px,.5fr) minmax(56px,.5fr) minmax(70px,.6fr) minmax(74px,.6fr) minmax(88px,.7fr) minmax(200px,2fr)}
 }
 @media(max-width:650px){
   .table-panel>table>thead>tr,#rows>tr{grid-template-columns:1fr}

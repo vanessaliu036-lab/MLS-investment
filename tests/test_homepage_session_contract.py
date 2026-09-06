@@ -9,8 +9,8 @@ DETAIL = (ROOT / "5483_中美晶_個股決策UI.html").read_text(encoding="utf-8
 SERVER = (ROOT / "個股卡片相關檔案_20260722" / "server.py").read_text(encoding="utf-8")
 
 
-def test_home_table_stays_seven_fixed_cells_after_post_render_cleanup():
-    assert "const headings=['狀態','股票','現價','漲跌','漲幅','成交量','盤中判讀']" in HOME
+def test_home_table_stays_nine_fixed_cells_after_post_render_cleanup():
+    assert "const headings=['狀態','股票','現價','漲跌','漲幅','成交量','資金流','籌碼','盤中判讀']" in HOME
     assert "tr.innerHTML=`<td class=\"home-state\"" in HOME
     assert "直接依表頭建立六欄" not in HOME
 
