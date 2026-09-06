@@ -912,10 +912,22 @@ def _home_decision(change, aflow, volume_ratio, price, vwap, ma20, money_nature,
             return pack("WAIT_CONFIRM", "🟡 等待觀察", "等待觀察",
                         "有資金，但價格 Gate 未完成",
                         "站回 VWAP 再判定，不追價")
+        # price_gate 在這裡已經 PASS(structure_gate 跟著同步為 PASS／
+        # 「突破／站穩」)，卡在這一步的不是結構、是 entry_ready 還沒到
+        # (money_state 未達 TRUE_MOMENTUM、core_entry、籌碼或分數未過65)；
+        # 文案不能再講「結構尚未形成」，否則跟上面 structure_gate_label
+        # 的「突破／站穩」自相矛盾(2026-09-06 使用者截圖抓到)。
         return pack("WAIT_CONFIRM", "🟡 等待觀察", "等待觀察",
-                    "有資金，但結構尚未形成有效進場點",
-                    "等待突破或回測承接確認")
+                    "價格已站穩，但資金強度或籌碼確認尚未到位",
+                    "等待資金轉強或籌碼確認後再進場")
 
+    # 同上：price_gate 若已 PASS，structure_gate_label 會是「突破／站穩」，
+    # 不能在 reading 又講「結構尚未同步」自相矛盾；只有 price_gate 真的
+    # 沒過(FAIL/NO_DATA，structure_gate 才會同步是 WAIT)才提「結構」。
+    if price_gate == "PASS":
+        return pack("WAIT_CONFIRM", "🟡 等待觀察", "等待觀察",
+                    "價格已站穩，但資金尚未轉正",
+                    "等待資金轉正後再判定")
     return pack("WAIT_CONFIRM", "🟡 等待觀察", "等待觀察",
                 "價格、資金與結構尚未同步",
                 "等待價格／資金／結構同步確認")
