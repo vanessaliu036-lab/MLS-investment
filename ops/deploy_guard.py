@@ -118,6 +118,19 @@ def seen_in_git(rel: str, digest: str) -> bool:
     return False
 
 
+def _repo_rel(local_root: str, rel: str) -> str:
+    """組出顯示／落地用的相對路徑。
+
+    2026-09-06 修正:原本用 `.lstrip("./")` 去掉 local_root="." 時多出來的
+    "./" 前綴,但 lstrip 是按「字元集合」刪，不是按前綴字串刪 —— 遇到
+    ".gitignore" 這種本身就以 "." 開頭的檔名，會把檔名自己的那個點也一起
+    吃掉，變成 "gitignore"。這會讓報告顯示錯檔名，--adopt 更會真的寫出一個
+    多餘的 "gitignore"(無點)檔案，而不是覆蓋 ".gitignore"。
+    """
+    joined = f"{local_root}/{rel}"
+    return joined[2:] if joined.startswith("./") else joined
+
+
 def check(adopt: bool) -> int:
     only_remote: list[tuple[str, str, str]] = []   # 線上獨有 → 部署會刪掉它
     ahead: list[tuple[str, str, str]] = []         # 線上有 git 沒見過的內容 → 會被抹掉
@@ -130,10 +143,10 @@ def check(adopt: bool) -> int:
         for rel, digest in sorted(remote.items()):
             target = base / rel
             if not target.exists():
-                only_remote.append((f"{local_root}/{rel}".lstrip("./"),
+                only_remote.append((_repo_rel(local_root, rel),
                                     f"{remote_dir}/{rel}", digest))
             elif local_hash(target) != digest:
-                repo_rel = f"{local_root}/{rel}".lstrip("./")
+                repo_rel = _repo_rel(local_root, rel)
                 if seen_in_git(repo_rel, digest):
                     behind.append(repo_rel)
                 else:
@@ -145,7 +158,7 @@ def check(adopt: bool) -> int:
             if skip(rel) or any(rel.startswith(f"{d}/") for d in prune):
                 continue
             if rel not in remote:
-                only_local.append(f"{local_root}/{rel}".lstrip("./"))
+                only_local.append(_repo_rel(local_root, rel))
 
     if only_local:
         print(f"ℹ️  本機獨有 {len(only_local)} 檔(部署會新增,正常):")
