@@ -248,6 +248,7 @@ def test_intraday_quote_replaces_stale_eod_price_and_change(monkeypatch):
 def test_report_daily_bars_fall_back_to_official_source_and_never_use_future_bars(tmp_path, monkeypatch):
     """歷史報告沒有 DB 日 K 時，取官方日 K 並截在報告日，不得偷看未來。"""
     monkeypatch.setattr(mh, "DB_PATH", tmp_path / "empty.db")
+    monkeypatch.setattr(mh, "_OFFICIAL_BARS_CACHE", {})
     # 官方來源只有 2 根、低於 MA20 備援門檻，仍不能讓測試依賴真的連上 Yahoo
     # 才過（沙箱裡有網路時會拿到真實歷史資料，測試就變成不穩定）；比照
     # test_short_official_history_uses_full_history_fallback_for_ma20 一樣鎖住 Yahoo。
@@ -272,6 +273,7 @@ def test_report_daily_bars_fall_back_to_official_source_and_never_use_future_bar
 def test_short_official_history_uses_full_history_fallback_for_ma20(tmp_path, monkeypatch):
     """官方備援不足 20 根時，必須改用完整歷史來源，不能產生空 MA20。"""
     monkeypatch.setattr(mh, "DB_PATH", tmp_path / "empty.db")
+    monkeypatch.setattr(mh, "_OFFICIAL_BARS_CACHE", {})
     monkeypatch.setitem(sys.modules, "eod_source", types.SimpleNamespace(
         _price_rows=lambda *_args, **_kwargs: [
             {"date": f"2026-08-{day:02d}", "close": 180, "max": 181, "min": 179,

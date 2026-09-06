@@ -34,6 +34,12 @@ except ImportError:
 TW_TZ = timezone(timedelta(hours=8))
 DB_PATH = Path(os.environ.get("MLS_DB_PATH", str(Path(__file__).with_name("mls.db"))))
 
+# DB 沒有 daily_bars 時每次都重打 TWSE/TPEx 官方日K，是個股卡片 API
+# 一路變慢的其中一段(沒有 DB 快取就等於每個 request 都是 cache miss)；
+# 比照 broker.py 的 _KBAR_CACHE 做同一天內的行程內快取，跨日自動失效。
+_OFFICIAL_BARS_CACHE: Dict[tuple, List[Dict]] = {}
+_OFFICIAL_BARS_CACHE_DAY: Optional[str] = None
+
 # ═══════════════════════════════════════════════════════════
 # 參數集中區（調權重／門檻就在這裡）
 # ═══════════════════════════════════════════════════════════
@@ -139,6 +145,14 @@ def _read_daily_bars(code: str, days: int = 70, asof: Optional[str] = None) -> L
 
     # DB 沒有日K時改讀 eod_source：優先 TWSE/TPEx 官方，受阻時退 FinMind 日K。
     # 不可改呼叫 Shioaji：VPS 盤後服務未持有交易 API 金鑰，失敗會靜默退成空資料。
+    global _OFFICIAL_BARS_CACHE_DAY
+    today_key = datetime.now(TW_TZ).strftime("%Y-%m-%d")
+    if _OFFICIAL_BARS_CACHE_DAY != today_key:
+        _OFFICIAL_BARS_CACHE.clear()
+        _OFFICIAL_BARS_CACHE_DAY = today_key
+    cache_key = (str(code), days, asof)
+    if cache_key in _OFFICIAL_BARS_CACHE:
+        return _OFFICIAL_BARS_CACHE[cache_key]
     try:
         import eod_source
         end = datetime.strptime(asof, "%Y-%m-%d") if asof else datetime.now(TW_TZ)
@@ -164,11 +178,16 @@ def _read_daily_bars(code: str, days: int = 70, asof: Optional[str] = None) -> L
             }
         official_bars = [by_date[date] for date in sorted(by_date)[-days:]]
         if len(official_bars) >= min(20, days):
+            _OFFICIAL_BARS_CACHE[cache_key] = official_bars
             return official_bars
-        yahoo_bars = _yahoo_daily_bars(code, days, asof)
-        return yahoo_bars or official_bars
+        result = _yahoo_daily_bars(code, days, asof) or official_bars
+        if result:
+            _OFFICIAL_BARS_CACHE[cache_key] = result
+        return result
     except Exception as e:
         print(f"[money_health_api] 官方日K讀取失敗 {code}: {e}")
+        # 不快取失敗結果:官方端點的失敗常是暫時性的(429/520 之類)，
+        # 快取空陣列會讓當天剩下的請求都拿不到資料，寧可讓下次請求重試。
         return []
 
 
