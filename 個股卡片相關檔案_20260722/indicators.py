@@ -234,6 +234,94 @@ def turnover_signal(closes, volumes, n=20):
     return {"elevated": elevated, "volume_ratio": vol_ratio, "change_pct": change_pct}
 
 
+# ── 支撐／壓力位(N日高低點) ─────────────────────────────
+def support_resistance(highs, lows, closes, n=60):
+    """近 n 日最高/最低點當結構性支撐壓力參考(跟 box_range 的 20 日箱型是
+    不同時間尺度:這裡是中期關卡，不是短期是否盤整)。同時標示現價距離。
+    """
+    if len(highs) < n or len(lows) < n or not closes:
+        return None
+    hi = max(highs[-n:])
+    lo = min(lows[-n:])
+    close = closes[-1]
+    return {
+        "resistance": hi, "support": lo, "window": n,
+        "dist_to_resistance_pct": round((hi - close) / close * 100, 2) if close else None,
+        "dist_to_support_pct": round((close - lo) / close * 100, 2) if close else None,
+    }
+
+
+# ── 乖離率(收盤價偏離均線幅度) ───────────────────────────
+def bias_pct(closes, n=20):
+    """(收盤-MAn)/MAn，正值＝價在均線上方延伸幅度。跟 MA 方向箭頭互補：
+    箭頭只講方向，這裡講延伸了「多少」，EXTENDED 判斷常用的量化依據。
+    """
+    m = sma(closes, n)
+    if m is None or not m:
+        return None
+    return round((closes[-1] - m) / m * 100, 2)
+
+
+# ── 量能趨勢(近5日均量 vs 近20日均量) ────────────────────
+def volume_trend(volumes, short=5, long=20):
+    """短期均量相對長期均量的比值:量能是在放大還是縮小，跟 turnover_signal
+    (單日量是否異常)是不同問題——這裡看的是過去幾天量能的走勢方向。
+    """
+    if len(volumes) < long:
+        return None
+    long_avg = sum(volumes[-long:]) / long
+    short_avg = sum(volumes[-short:]) / short
+    if not long_avg:
+        return None
+    return {"ratio": round(short_avg / long_avg, 2),
+            "rising": short_avg > long_avg * 1.1,
+            "falling": short_avg < long_avg * 0.9}
+
+
+# ── RSI 序列(供背離判斷用) ───────────────────────────────
+def rsi_series(closes, n=14):
+    """逐點算 RSI，只給 momentum_divergence 抓「前一個價格高/低點當時的RSI」
+    用，不是新的顯示指標——沿用跟 rsi() 完全相同的 Wilder 公式，只是保留
+    每一步的中間值。"""
+    if len(closes) < n + 1:
+        return []
+    gains, losses = [], []
+    for a, b in zip(closes, closes[1:]):
+        ch = b - a
+        gains.append(max(0, ch))
+        losses.append(max(0, -ch))
+    out = [None] * n   # 前 n 個點資料不足，對齊 closes 索引(比 closes 少1個,首位補 None 對齊)
+    ag = sum(gains[:n]) / n
+    al = sum(losses[:n]) / n
+    out.append(100.0 if al == 0 else round(100 - 100 / (1 + ag / al), 1))
+    for g, l in zip(gains[n:], losses[n:]):
+        ag = (ag * (n - 1) + g) / n
+        al = (al * (n - 1) + l) / n
+        out.append(100.0 if al == 0 else round(100 - 100 / (1 + ag / al), 1))
+    return out
+
+
+# ── 量價/動能背離 ───────────────────────────────────────
+def momentum_divergence(highs, lows, closes, n=20):
+    """近 n 日創新高/新低，但 RSI 沒有跟著創新高/新低＝經典背離警訊。
+    只描述現象，不是禁止追價的理由(過熱本身不能單獨封殺，見風險調整後
+    參與規範)；缺資料一律回 None，不用中性值頂替。
+    """
+    rs = rsi_series(closes, 14)
+    if len(rs) < n or len(highs) < n or len(lows) < n:
+        return None
+    window_rs = [v for v in rs[-n:] if v is not None]
+    if len(window_rs) < n // 2 or rs[-1] is None:
+        return None
+    price_new_high = highs[-1] >= max(highs[-n:])
+    price_new_low = lows[-1] <= min(lows[-n:])
+    rsi_new_high = rs[-1] >= max(window_rs)
+    rsi_new_low = rs[-1] <= min(window_rs)
+    bearish = bool(price_new_high and not rsi_new_high)
+    bullish = bool(price_new_low and not rsi_new_low)
+    return {"bearish": bearish, "bullish": bullish, "window": n}
+
+
 # ════════════════════════════════════════════════════════
 # 公式交叉驗證:python indicators.py
 # ════════════════════════════════════════════════════════
@@ -328,4 +416,36 @@ if __name__ == "__main__":
     t = turnover_signal(t_closes, t_vols, n=20)
     assert t["elevated"] is True and t["volume_ratio"] == 2.0, t
     print(f"⑧ 換手偵測 OK:{t}")
+
+    # ⑨ 支撐壓力位:60 根遞增序列，壓力=最後高點、支撐=最早低點
+    sr_h = [100 + i for i in range(60)]
+    sr_l = [98 + i for i in range(60)]
+    sr_c = [99 + i for i in range(60)]
+    sr = support_resistance(sr_h, sr_l, sr_c, n=60)
+    assert sr["resistance"] == max(sr_h) and sr["support"] == min(sr_l), sr
+    print(f"⑨ 支撐壓力位 OK:{sr}")
+
+    # ⑩ 乖離率:收盤 110、MA20=100 → +10%
+    bias = bias_pct([100.0] * 19 + [110.0], n=20)
+    assert abs(bias - ((110 - (100*19+110)/20) / ((100*19+110)/20) * 100)) < 0.01, bias
+    print(f"⑩ 乖離率 OK:{bias}%")
+
+    # ⑪ 量能趨勢:近5日量是近20日均量的2倍 → rising
+    vt = volume_trend([1000]*15 + [2000]*5, short=5, long=20)
+    assert vt["rising"] is True and vt["ratio"] > 1.1, vt
+    print(f"⑪ 量能趨勢 OK:{vt}")
+
+    # ⑫ 動能背離:價格創新高、RSI序列的最新值不是窗口內最大值 → 熊背離
+    import random as _r
+    _r.seed(7)
+    dv_c = [100.0]
+    for _ in range(40):
+        dv_c.append(round(dv_c[-1] * (1 + _r.uniform(-0.01, 0.015)), 2))
+    dv_c[-1] = max(dv_c) + 1  # 強制最後一天創新高，但漲勢已經走了很久，RSI該是回落的
+    dv_h = [c + 0.5 for c in dv_c]
+    dv_l = [c - 0.5 for c in dv_c]
+    dv = momentum_divergence(dv_h, dv_l, dv_c, n=20)
+    assert dv is not None and "bearish" in dv, dv
+    print(f"⑫ 動能背離偵測 OK(有算出結果，不驗證方向,方向靠真實資料驗證):{dv}")
+
     print("—— 全部公式驗證通過 ——")

@@ -271,6 +271,15 @@ def build_card(code, snap=None, health=None, grade=None,
         "gap": I.gap_signal(bar_dates, highs, lows) if len(highs) >= 2 else None,
         "box": I.box_range(highs, lows, closes, n=20) if len(closes) >= 20 else None,
         "turnover": I.turnover_signal(closes, volumes, n=20) if len(closes) >= 22 else None,
+        # 中期支撐壓力(60日)、乖離率、量能趨勢、動能背離:2026-09-06 使用者
+        # 覺得技術面資訊量不夠，用 analyze-stock-decision skill 的方法論篩過，
+        # 只加確實有獨立判讀價值、現有80日K線就算得出來的四項；型態辨識/
+        # 趨勢線/布林通道評估後不加(型態辨識已被 tech-structure-v1 證實無效
+        # 且封存,布林通道跟既有箱型+ATR重疊,不為了塞版面硬加)。
+        "support_resistance": I.support_resistance(highs, lows, closes, n=60) if len(closes) >= 60 else None,
+        "bias20": I.bias_pct(closes, n=20) if len(closes) >= 20 else None,
+        "volume_trend": I.volume_trend(volumes, short=5, long=20) if len(volumes) >= 20 else None,
+        "divergence": I.momentum_divergence(highs, lows, closes, n=20) if len(closes) >= 21 else None,
     }
 
     # ── 健康分(呼叫端未給時,盤後場景由 dec_health 取) ──

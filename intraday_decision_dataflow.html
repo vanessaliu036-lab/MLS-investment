@@ -683,6 +683,10 @@ function advisorCard(code,card){
         <dt>箱型位置</dt><dd>${tech.box?.is_box?`${tech.box.position}(近${tech.box.window}日${tech.box.box_low}~${tech.box.box_high})`:'非箱型盤整'}</dd>
         <dt>換手</dt><dd>${tech.turnover?.elevated?`量比${tech.turnover.volume_ratio}倍,漲跌${tech.turnover.change_pct}%(疑似換手)`:'—'}</dd>
         <dt>本益比／淨值比</dt><dd>${valuation?.pe_ratio==null?'—':`${valuation.pe_ratio}倍／${valuation.pb_ratio??'—'}倍`}</dd>
+        <dt>支撐／壓力</dt><dd>${tech.support_resistance?`${tech.support_resistance.support}／${tech.support_resistance.resistance}`:'—'}</dd>
+        <dt>乖離率(20日)</dt><dd>${tech.bias20==null?'—':`${tech.bias20>0?'+':''}${tech.bias20}%`}</dd>
+        <dt>量能趨勢</dt><dd>${tech.volume_trend?`${tech.volume_trend.ratio}倍${tech.volume_trend.rising?'(放大)':tech.volume_trend.falling?'(縮小)':''}`:'—'}</dd>
+        <dt>動能背離</dt><dd>${tech.divergence?.bearish?'熊背離':tech.divergence?.bullish?'牛背離':'—'}</dd>
       </dl></div>
       <div class="advisor-sec"><h4>盤中資金流／交易計畫</h4><dl>
         <dt>盤中 aflow</dt><dd class="${cls(row.aflow)}">${esc(moneyFlowText(row))}</dd>
@@ -2435,10 +2439,48 @@ document.querySelector('.sidebar .nav-item.active')?.classList.add('selected');
     if(c.short_change_d>0)bits.push('融券增加');
     return{label,cls,note:bits.join('，')||'訊號不足以判斷方向'};
   }
+  function techVerdict(tech,valuation){
+    const arrows=[tech.ma5,tech.ma10,tech.ma20].filter(Boolean);
+    const upN=arrows.filter(a=>a==='↑').length,downN=arrows.filter(a=>a==='↓').length;
+    const label=arrows.length&&upN===arrows.length?'多方排列':arrows.length&&downN===arrows.length?'空方排列':'均線不一致';
+    const cls=upN===arrows.length&&arrows.length?'up':downN===arrows.length&&arrows.length?'down':'';
+    const bits=[];
+    const rsi=tech.rsi,kdK=tech.kd_k;
+    // 過熱本身不是禁止追價的理由(見 CLAUDE.md 風險調整後參與規範)，只描述現況。
+    if((rsi!=null&&rsi>=70)||(kdK!=null&&kdK>=80))bits.push('動能偏熱，留意追價風險');
+    else if((rsi!=null&&rsi<=30)||(kdK!=null&&kdK<=20))bits.push('動能偏弱');
+    const box=tech.box||{};
+    if(box.is_box&&box.position==='箱底')bits.push('位於箱型下緣');
+    else if(box.is_box&&box.position==='箱頂')bits.push('位於箱型上緣');
+    const gapLatest=(tech.gap||{}).latest;
+    if(gapLatest&&gapLatest.type==='up')bits.push('留有向上跳空未回補');
+    else if(gapLatest&&gapLatest.type==='down')bits.push('留有向下跳空未回補');
+    const sr=tech.support_resistance;
+    if(sr&&sr.dist_to_resistance_pct!=null&&sr.dist_to_resistance_pct<=2)bits.push(`逼近${sr.window}日壓力${sr.resistance}`);
+    else if(sr&&sr.dist_to_support_pct!=null&&sr.dist_to_support_pct<=2)bits.push(`逼近${sr.window}日支撐${sr.support}`);
+    const dv=tech.divergence;
+    if(dv&&dv.bearish)bits.push('價格創高但動能未跟上(熊背離)');
+    else if(dv&&dv.bullish)bits.push('價格破底但動能未跟破(牛背離)');
+    if(valuation&&valuation.pe_ratio!=null){
+      if(valuation.pe_ratio>=60)bits.push(`估值偏貴(P/E ${valuation.pe_ratio}倍)`);
+      else if(valuation.pe_ratio>0&&valuation.pe_ratio<=15)bits.push(`估值偏低(P/E ${valuation.pe_ratio}倍)`);
+    }
+    return{label,cls,note:bits.join('，')||'技術面訊號中性'};
+  }
   function techModule(tech,valuation){
     if(!tech||(tech.ma5==null&&tech.rsi==null&&tech.kd_k==null)){
       return `<div class="dense-extra"><h3>📈 技術面</h3><div class="dense-note">⚠ 技術資料尚未取得，這一項不補造數字。</div></div>`;
     }
+    const tv=techVerdict(tech,valuation);
+    const sr=tech.support_resistance,vt=tech.volume_trend,dv=tech.divergence;
+    const srLine=sr
+      ?`<div class="full-detail-line">近${sr.window}日支撐壓力：壓力 <b>${sr.resistance}</b>（距現價${sr.dist_to_resistance_pct}%）　支撐 <b>${sr.support}</b>（距現價${sr.dist_to_support_pct}%）</div>`:'';
+    const biasLine=tech.bias20!=null
+      ?`<div class="full-detail-line">乖離率(20日)：<b class="${cls(tech.bias20)}">${tech.bias20>0?'+':''}${tech.bias20}%</b></div>`:'';
+    const volTrendLine=vt
+      ?`<div class="full-detail-line">量能趨勢：近5日均量為近20日均量 <b>${vt.ratio}</b> 倍${vt.rising?'（放大中）':vt.falling?'（縮小中）':'（持平）'}</div>`:'';
+    const divLine=(dv&&(dv.bearish||dv.bullish))
+      ?`<div class="dense-note">${dv.bearish?'⚠ 熊背離：價格創近'+dv.window+'日新高，但RSI動能沒有同步創高，留意動能減弱':'⚠ 牛背離：價格創近'+dv.window+'日新低，但RSI動能沒有同步破底，留意賣壓減緩'}（描述性訊號，不是進出場判斷）</div>`:'';
     const gap=tech.gap||{},box=tech.box||{},turnover=tech.turnover||{},latest=gap.latest;
     const gapLine=latest
       ?`<div class="full-detail-line">缺口：<b class="${latest.type==='up'?'dense-positive':'dense-negative'}">${latest.type==='up'?'向上跳空':'向下跳空'} ${escFull(String(latest.gap_pct))}%</b>（${escFull(latest.date)}，缺口尚未回補）</div>`
@@ -2455,8 +2497,13 @@ document.querySelector('.sidebar .nav-item.active')?.classList.add('selected');
       ?`<div class="full-detail-line">估值（官方 ${escFull(valuation.valuation_source_date||'—')}）：本益比 <b>${valuation.pe_ratio}</b> 倍　股價淨值比 <b>${valuation.pb_ratio??'—'}</b> 倍　殖利率 ${valuation.dividend_yield??'—'}%</div>`
       :`<div class="dense-note">⚠ 尚無官方估值資料</div>`;
     return `<div class="dense-extra"><h3>📈 技術面</h3>
+      <div class="full-detail-line"><b>技術面結論：<span class="${tv.cls}">${escFull(tv.label)}</span></b>　${escFull(tv.note)}</div>
       <div class="full-detail-line">均線：MA5 ${escFull(tech.ma5||'—')}　MA10 ${escFull(tech.ma10||'—')}　MA20 ${escFull(tech.ma20||'—')}　MACD ${escFull(tech.macd||'—')}</div>
       <div class="full-detail-line">RSI14 <b>${val(tech.rsi)}</b>　KD(K/D) <b>${val(tech.kd_k)}/${val(tech.kd_d)}</b>　ATR <b>${val(tech.atr)}</b>${tech.approx?'　<span class="muted">(low缺值,近似)</span>':''}</div>
+      ${srLine}
+      ${biasLine}
+      ${volTrendLine}
+      ${divLine}
       ${gapLine}
       ${openGapLine}
       ${boxLine}
