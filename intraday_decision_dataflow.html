@@ -650,12 +650,14 @@ function advisorCard(code,card){
     return `<article class="advisor-card"><div class="advisor-head"><div><h3>${esc(code)} ${esc(row.name||'—')}</h3><div class="adv-sub">${esc(row.sector||'—')}</div></div><div class="advisor-price"><div class="p ${cls(row.change_rate)}">${esc(row.price??'—')}</div><div class="${cls(row.change_rate)}">${row.change_rate==null?'—':(row.change_rate>0?'+':'')+row.change_rate+'%'}</div></div></div><div class="advisor-sec missing" style="margin-top:12px">籌碼／技術資料暫時無法取得，僅顯示即時報價。</div></article>`;
   }
   const chip=card.chip||{},tech=card.tech||{},valuation=card.valuation||{},flow=card.flow||{},trade=card.trade||{},ai=card.ai||{};
+  const rn=window.reboundNote?window.reboundNote(h,tech,chip):null;
   return `<article class="advisor-card">
     <div class="advisor-head">
       <div><h3>${esc(code)} ${esc(row.name||card.name||'—')}</h3><div class="adv-sub">${esc(row.sector||card.sector||'—')} · 籌碼資料日 ${esc(chip.source_date||'—')}</div></div>
       <div class="advisor-price"><div class="p ${cls(row.change_rate)}">${esc(row.price??card.price??'—')}</div><div class="${cls(row.change_rate)}">${row.change_rate==null?'—':(row.change_rate>0?'+':'')+row.change_rate+'%'}</div></div>
     </div>
-    <div class="advisor-verdict"><b>${esc(h.label||'—')} · ${esc(h.action||'等待觀察')}</b>${esc(h.reading||'等待盤中確認')}</div>
+    <div class="advisor-verdict"><b>${esc(rn?rn.label:h.label||'—')} · ${esc(h.action||'等待觀察')}</b>${esc(rn?rn.reading:(h.reading||'等待盤中確認'))}</div>
+    ${(()=>{const fs=card.foreign_signal;if(!fs)return'';const q=fs.quality_up?`<div style="margin-top:4px">${esc(fs.quality_note)}</div>`:'';return `<div class="tech-verdict-box up" style="margin-top:10px"><b>🔔 ${esc(fs.label)}</b><div style="margin-top:4px">${esc(fs.note)}</div>${q}</div>`})()}
     <div class="advisor-grid">
       <div class="advisor-sec"><h4>籌碼面 · 三大法人</h4><dl>
         <dt>外資單日</dt><dd class="${cls(chip.foreign)}">${_advNum(chip.foreign,'張')}</dd>
@@ -680,12 +682,12 @@ function advisorCard(code,card){
         <dt>KD (K/D)</dt><dd>${tech.kd_k==null?'—':tech.kd_k}／${tech.kd_d==null?'—':tech.kd_d}</dd>
         <dt>RSI</dt><dd>${tech.rsi==null?'—':tech.rsi}</dd>
         <dt>ATR</dt><dd>${tech.atr==null?'—':tech.atr}</dd>
-        <dt>20日均價(VWAP)</dt><dd>${chip.market_vwap_20d==null?'—':chip.market_vwap_20d}</dd>
+        <dt>20日均價(金額÷量,非MA20)</dt><dd>${chip.market_vwap_20d==null?'—':chip.market_vwap_20d}</dd>
         <dt>缺口</dt><dd>${tech.gap?.latest?`${tech.gap.latest.type==='up'?'向上':'向下'}跳空 ${tech.gap.latest.gap_pct}%(未回補)`:'近期無跳空'}</dd>
         <dt>箱型位置</dt><dd>${tech.box?.is_box?`${tech.box.position}(近${tech.box.window}日${tech.box.box_low}~${tech.box.box_high})`:'非箱型盤整'}</dd>
-        <dt>換手</dt><dd>${tech.turnover?.elevated?`量比${tech.turnover.volume_ratio}倍,漲跌${tech.turnover.change_pct}%(疑似換手)`:'—'}</dd>
+        <dt>換手</dt><dd>${tech.turnover?(tech.turnover.elevated?`量比${tech.turnover.volume_ratio}倍,漲跌${tech.turnover.change_pct}%(疑似換手)`:'今日無明顯換手訊號'):'資料不足(需≥22日K線)'}</dd>
         <dt>本益比／淨值比</dt><dd>${valuation?.pe_ratio==null?'—':`${valuation.pe_ratio}倍／${valuation.pb_ratio??'—'}倍`}</dd>
-        <dt>支撐／壓力</dt><dd>${tech.support_resistance?`${tech.support_resistance.support}／${tech.support_resistance.resistance}`:'—'}</dd>
+        <dt>支撐／壓力${tech.support_resistance?`(${tech.support_resistance.window}日)`:''}</dt><dd>${tech.support_resistance?`${tech.support_resistance.support}／${tech.support_resistance.resistance}`:'—'}</dd>
         <dt>乖離率(20日)</dt><dd>${tech.bias20==null?'—':`${tech.bias20>0?'+':''}${tech.bias20}%`}</dd>
         <dt>量能趨勢</dt><dd>${tech.volume_trend?`${tech.volume_trend.ratio}倍${tech.volume_trend.rising?'(放大)':tech.volume_trend.falling?'(縮小)':''}`:'—'}</dd>
         <dt>動能背離</dt><dd>${tech.divergence?.bearish?'熊背離':tech.divergence?.bullish?'牛背離':'—'}</dd>
@@ -2471,6 +2473,29 @@ document.querySelector('.sidebar .nav-item.active')?.classList.add('selected');
     return{label,cls,note:bits.join('，')||'技術面訊號中性'};
   }
   window.techVerdict=techVerdict;   // advisorCard(在這個IIFE外面)也要用同一套白話結論,不重寫一次
+  // 首頁決策層(_home_decision)刻意不吃日線技術指標(見 vps_intraday_test.py
+  // docstring:雷達可以說變強,首頁只在價格/資金/結構/風險都過了才准可進場)。
+  // 這裡不改那層的判定,只在「等待觀察」且技術面已出現牛背離＋量能/外資佐證時,
+  // 把顯示文字換成機會優先的敘述;WAIT_CONFIRM 的實質語意(還要等確認)不變,
+  // 只是把等什麼、機會在哪裡講清楚,而不是講「均線不一致」這種聽起來像沒救的話。
+  // 2026-09-06 使用者要求:弱勢訊號要講機會+下一個確認點,不能只回等待觀察。
+  function reboundNote(h,tech,chip){
+    if(!h||h.code!=='WAIT_CONFIRM')return null;
+    const dv=tech&&tech.divergence;
+    if(!dv||!dv.bullish)return null;
+    const support=[];
+    if(tech.volume_trend&&tech.volume_trend.rising)support.push('量能回升');
+    if(chip&&chip.foreign>0)support.push('外資單日轉買');
+    if(!support.length)return null;
+    const foreignNote=(chip&&chip.inst_streak>=2)
+      ?`外資已連買${chip.inst_streak}日`:'外資買盤仍需延續才能確認';
+    return{
+      label:'🟡 低位反彈候選',
+      reading:`價格破底但動能未同步轉弱，牛背離與${support.join('、')}使修復空間增加；`
+             +`${foreignNote}，若價格收復短線關鍵位，反彈訊號將進一步確認。`
+    };
+  }
+  window.reboundNote=reboundNote;
   function techModule(tech,valuation){
     if(!tech||(tech.ma5==null&&tech.rsi==null&&tech.kd_k==null)){
       return `<div class="dense-extra"><h3>📈 技術面</h3><div class="dense-note">⚠ 技術資料尚未取得，這一項不補造數字。</div></div>`;
