@@ -626,6 +626,13 @@ def prefetch_chips_cache(force=False):
             print(f"[chips] FinMind 備援失敗:{exc}")
     CHIPS_PREFETCH_DONE = today
     print(f"[chips] ✅ 籌碼快取建立 {ok}/{len(codes)} 檔（{today}）", flush=True)
+    # 估值(P/E／P/B)同一週期一起更新:TWSE/TPEx 官方免費資料,跟法人
+    # 快取用同一支排程,不必另開一組時間點。
+    try:
+        import valuation_official
+        valuation_official.build_cache(codes)
+    except Exception as exc:
+        print(f"[valuation] 官方估值快取建立失敗:{exc}", flush=True)
     return ok
 
 

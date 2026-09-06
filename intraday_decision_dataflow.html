@@ -626,7 +626,7 @@ function advisorCard(code,card){
   if(!card){
     return `<article class="advisor-card"><div class="advisor-head"><div><h3>${esc(code)} ${esc(row.name||'—')}</h3><div class="adv-sub">${esc(row.sector||'—')}</div></div><div class="advisor-price"><div class="p ${cls(row.change_rate)}">${esc(row.price??'—')}</div><div class="${cls(row.change_rate)}">${row.change_rate==null?'—':(row.change_rate>0?'+':'')+row.change_rate+'%'}</div></div></div><div class="advisor-sec missing" style="margin-top:12px">籌碼／技術資料暫時無法取得，僅顯示即時報價。</div></article>`;
   }
-  const chip=card.chip||{},tech=card.tech||{},flow=card.flow||{},trade=card.trade||{},ai=card.ai||{};
+  const chip=card.chip||{},tech=card.tech||{},valuation=card.valuation||{},flow=card.flow||{},trade=card.trade||{},ai=card.ai||{};
   return `<article class="advisor-card">
     <div class="advisor-head">
       <div><h3>${esc(code)} ${esc(row.name||card.name||'—')}</h3><div class="adv-sub">${esc(row.sector||card.sector||'—')} · 籌碼資料日 ${esc(chip.source_date||'—')}</div></div>
@@ -656,6 +656,10 @@ function advisorCard(code,card){
         <dt>RSI</dt><dd>${tech.rsi==null?'—':tech.rsi}</dd>
         <dt>ATR</dt><dd>${tech.atr==null?'—':tech.atr}</dd>
         <dt>20日均價(VWAP)</dt><dd>${chip.market_vwap_20d==null?'—':chip.market_vwap_20d}</dd>
+        <dt>缺口</dt><dd>${tech.gap?.latest?`${tech.gap.latest.type==='up'?'向上':'向下'}跳空 ${tech.gap.latest.gap_pct}%(未回補)`:'近期無跳空'}</dd>
+        <dt>箱型位置</dt><dd>${tech.box?.is_box?`${tech.box.position}(近${tech.box.window}日${tech.box.box_low}~${tech.box.box_high})`:'非箱型盤整'}</dd>
+        <dt>換手</dt><dd>${tech.turnover?.elevated?`量比${tech.turnover.volume_ratio}倍,漲跌${tech.turnover.change_pct}%(疑似換手)`:'—'}</dd>
+        <dt>本益比／淨值比</dt><dd>${valuation?.pe_ratio==null?'—':`${valuation.pe_ratio}倍／${valuation.pb_ratio??'—'}倍`}</dd>
       </dl></div>
       <div class="advisor-sec"><h4>盤中資金流／交易計畫</h4><dl>
         <dt>盤中 aflow</dt><dd class="${cls(row.aflow)}">${esc(moneyFlowText(row))}</dd>
@@ -2405,6 +2409,35 @@ document.querySelector('.sidebar .nav-item.active')?.classList.add('selected');
     if(c.short_change_d>0)bits.push('融券增加');
     return{label,cls,note:bits.join('，')||'訊號不足以判斷方向'};
   }
+  function techModule(tech,valuation){
+    if(!tech||(tech.ma5==null&&tech.rsi==null&&tech.kd_k==null)){
+      return `<div class="dense-extra"><h3>📈 技術面</h3><div class="dense-note">⚠ 技術資料尚未取得，這一項不補造數字。</div></div>`;
+    }
+    const gap=tech.gap||{},box=tech.box||{},turnover=tech.turnover||{},latest=gap.latest;
+    const gapLine=latest
+      ?`<div class="full-detail-line">缺口：<b class="${latest.type==='up'?'dense-positive':'dense-negative'}">${latest.type==='up'?'向上跳空':'向下跳空'} ${escFull(String(latest.gap_pct))}%</b>（${escFull(latest.date)}，缺口尚未回補）</div>`
+      :`<div class="full-detail-line">缺口：近期無跳空</div>`;
+    const openGaps=gap.open_gaps||[];
+    const openGapLine=openGaps.length
+      ?`<div class="dense-note">未回補缺口：${openGaps.map(g=>`${escFull(g.date)} ${g.type==='up'?'向上':'向下'} ${g.gap_low}~${g.gap_high}（${g.gap_pct}%）`).join('，')}——常被視為潛在支撐／壓力，不是進場訊號</div>`:'';
+    const boxLine=box.is_box
+      ?`<div class="full-detail-line">箱型整理：近${box.window}日區間 <b>${box.box_low}~${box.box_high}</b>（寬${box.range_pct}%），現價位於<b>${escFull(box.position)}</b>（${box.position_pct}%位置）</div>`
+      :`<div class="full-detail-line">箱型整理：目前非箱型盤整（近${box.window||20}日區間寬度 > 15%）</div>`;
+    const turnoverLine=turnover.elevated
+      ?`<div class="dense-note">換手訊號：今日量為近20日均量 <b>${turnover.volume_ratio}</b> 倍，但漲跌僅 ${turnover.change_pct}%——量大不漲不跌，疑似籌碼換手（承接或出貨要搭配箱型位置判斷，本身不是可否進場的訊號）</div>`:'';
+    const valLine=(valuation&&valuation.pe_ratio!=null)
+      ?`<div class="full-detail-line">估值（官方 ${escFull(valuation.valuation_source_date||'—')}）：本益比 <b>${valuation.pe_ratio}</b> 倍　股價淨值比 <b>${valuation.pb_ratio??'—'}</b> 倍　殖利率 ${valuation.dividend_yield??'—'}%</div>`
+      :`<div class="dense-note">⚠ 尚無官方估值資料</div>`;
+    return `<div class="dense-extra"><h3>📈 技術面</h3>
+      <div class="full-detail-line">均線：MA5 ${escFull(tech.ma5||'—')}　MA10 ${escFull(tech.ma10||'—')}　MA20 ${escFull(tech.ma20||'—')}　MACD ${escFull(tech.macd||'—')}</div>
+      <div class="full-detail-line">RSI14 <b>${val(tech.rsi)}</b>　KD(K/D) <b>${val(tech.kd_k)}/${val(tech.kd_d)}</b>　ATR <b>${val(tech.atr)}</b>${tech.approx?'　<span class="muted">(low缺值,近似)</span>':''}</div>
+      ${gapLine}
+      ${openGapLine}
+      ${boxLine}
+      ${turnoverLine}
+      ${valLine}
+    </div>`;
+  }
   function chipModule(chip,flow,rel){
     if(chip.has_data===false||(chip.foreign==null&&chip.trust==null&&chip.dealer==null)){
       return `<div class="dense-extra"><h3>💼 籌碼面</h3><div class="dense-note">⚠ 目前籌碼來源沒有回傳資料，這一項不補造數字。</div></div>`;
@@ -2444,7 +2477,7 @@ document.querySelector('.sidebar .nav-item.active')?.classList.add('selected');
       const row=(state.stocks||[]).find(x=>String(x.code)===String(code))||{};
       const sec=(state.sectors||[]).find(x=>x.name===row.sector)||{};
       const market=state.market||{}, factors=row.factors||{}, notes=row.factor_notes||{}, health=row.health||{};
-      const chip={...(row.chip||{}),...(card.chip||{})}, flow=card.flow||{}, tech=card.tech||{}, trade=card.trade||{}, ai=card.ai||{}, decision=card.decision||{}, sectorMembers=Array.isArray(card.sector_members)?card.sector_members:[], instToday=['foreign','trust','dealer'].every(k=>chip[k]!=null)?Number(chip.foreign)+Number(chip.trust)+Number(chip.dealer):null;
+      const chip={...(row.chip||{}),...(card.chip||{})}, flow=card.flow||{}, tech=card.tech||{}, valuation=card.valuation||{}, trade=card.trade||{}, ai=card.ai||{}, decision=card.decision||{}, sectorMembers=Array.isArray(card.sector_members)?card.sector_members:[], instToday=['foreign','trust','dealer'].every(k=>chip[k]!=null)?Number(chip.foreign)+Number(chip.trust)+Number(chip.dealer):null;
       const change=row.change_rate??card.change_rate,rel=sec.pct==null||change==null?null:Number(change)-Number(sec.pct);
       const action=row.action||'obs',label={buy:'進場訊號',watch:'高潛力觀察',sell:'出場/風險',obs:'僅觀察'}[action]||action;
       const reason=action==='buy'?'站上均價、量價同向,符合進場條件。':action==='watch'?'結構到位,等量能與法人蓋章。':action==='sell'?'跌破停損 / 假紅背離,紀律出場。':'無明顯訊號,持續觀察。';
@@ -2457,6 +2490,7 @@ document.querySelector('.sidebar .nav-item.active')?.classList.add('selected');
       <div class="dense-extra"><h3>📌 最終結論</h3><div class="full-detail-line"><b>${escFull(label)}</b></div><div class="full-detail-line">${escFull(reason)}</div><div class="full-detail-line">個股決策分 <b>${val(decision.score)}</b> / 100 ｜ 可計分 ${val(decision.score_available)} / 100 ｜ 可信度 <b>${val(decision.confidence)}</b></div><div class="dense-note">${escFull(decision.rule||'資料缺值只影響可信度，不當作 0 分。')} 操作：${escFull(row.operation||trade.advice||'列入觀察,等量能與法人蓋章再進場。')}</div></div>
       <div class="dense-extra"><h3>🛡 執行紀律</h3><div class="full-detail-line">建議停損　<b>${val(row.suggested_stop??trade.stop)}</b>　　內外盤 BS　<b>${val(row.bs)}${row.bs!=null?'%':''}</b></div><div class="dense-note">跌破停損代表進場理由失效，依紀律出場。買進參考 ${val(trade.buy)}｜T1 ${val(trade.t1)}｜T2 ${val(trade.t2)}｜RR ${val(trade.rr)}</div></div>
       <div class="dense-extra"><h3>💡 為何上漲</h3><div class="full-detail-line">${escFull(ai.reasons?.join(' ｜ ')||row.classification_reason||reason)}</div></div>
+      ${techModule(tech,valuation)}
       ${chipModule(chip,flow,rel)}
       <div class="dense-extra"><h3>🧩 族群成分</h3><div class="full-detail-line">${escFull(card.sector_aggregation||'固定觀察池成分股等權平均')}</div><details><summary>展開 ${sectorMembers.length} 檔成分</summary><div class="dense-note">${sectorMembers.map(m=>escFull(m.code+' '+m.name)).join(' ｜ ')||'成分資料未回傳'}</div></details></div>
       <div class="dense-extra"><h3>🔺 三角交叉驗證</h3><div class="full-detail-line"><b>${escFull(row.triangulation?.verdict||'等待確認')}</b>　${escFull(row.triangulation?.conflict||'')}</div><div class="full-detail-line">${escFull([...(row.triangulation?.log?.positive||[]),...(row.triangulation?.log?.negative||[]),...(row.triangulation?.log?.neutral||[])].join(' ｜ ')||'尚無三角驗證資料')}</div></div>

@@ -138,6 +138,102 @@ def atr(highs, lows, closes, n=14):
     return round(a, 2)
 
 
+# ── 缺口(跳空)偵測 ─────────────────────────────────────
+def gap_signal(dates, highs, lows, lookback=20):
+    """掃描最近 lookback 根K棒，抓每一個跳空缺口(今日低>昨高＝向上跳空；
+    今日高<昨低＝向下跳空)，並檢查後續K棒有沒有把缺口區間填掉(缺口回補)。
+
+    回傳 dict：
+      latest      最後一根K棒是否本身就是跳空(今天/最新一天才有意義)，
+                  無則 None；有則 {date, type, gap_pct, filled(=False,
+                  因為它是序列最後一根，還沒有「之後」可以驗證回補)
+      open_gaps   目前仍未回補、離現價最近的未回補缺口清單(最多 3 個)，
+                  每筆含 date/type/low/high/gap_pct，可讀成潛在支撐/壓力
+    """
+    n = len(highs)
+    if n < 2 or len(lows) != n or len(dates) != n:
+        return {"latest": None, "open_gaps": []}
+    start = max(1, n - lookback)
+    events = []
+    for i in range(start, n):
+        prev_h, prev_l = highs[i - 1], lows[i - 1]
+        hi, lo = highs[i], lows[i]
+        if lo > prev_h:
+            events.append({"idx": i, "date": dates[i], "type": "up",
+                           "gap_low": prev_h, "gap_high": lo,
+                           "gap_pct": round((lo - prev_h) / prev_h * 100, 2)})
+        elif hi < prev_l:
+            events.append({"idx": i, "date": dates[i], "type": "down",
+                           "gap_low": hi, "gap_high": prev_l,
+                           "gap_pct": round((prev_l - hi) / prev_l * 100, 2)})
+
+    open_gaps = []
+    for ev in events:
+        filled = False
+        for j in range(ev["idx"] + 1, n):
+            if highs[j] >= ev["gap_low"] and lows[j] <= ev["gap_high"]:
+                filled = True
+                break
+        if not filled and ev["idx"] != n - 1:
+            open_gaps.append({k: ev[k] for k in ("date", "type", "gap_low", "gap_high", "gap_pct")})
+
+    latest = None
+    if events and events[-1]["idx"] == n - 1:
+        ev = events[-1]
+        latest = {"date": ev["date"], "type": ev["type"],
+                  "gap_pct": ev["gap_pct"], "filled": False}
+        if latest["type"] not in ("up", "down"):
+            latest = None  # 防禦:理論上不會發生
+
+    return {"latest": latest, "open_gaps": open_gaps[-3:]}
+
+
+# ── 箱型整理偵測 ───────────────────────────────────────
+def box_range(highs, lows, closes, n=20):
+    """近 n 根K棒的高低區間；區間寬度(以箱底為分母)在 BOX_MAX_RANGE_PCT
+    以內才算「箱型整理」，並回報現價落在箱子的位置(箱底/箱中/箱頂)。
+
+    這是「近 n 日高低已知」的描述性統計，不是型態辨識(不會判斷是否
+    已經走完一個箱型的時間長度)；箱底不等於買進訊號，只是位置描述，
+    要不要進場仍看其他門檻(量能/資金/風險層)。
+    """
+    BOX_MAX_RANGE_PCT = 15.0
+    if len(closes) < n or len(highs) < n or len(lows) < n:
+        return None
+    hi = max(highs[-n:])
+    lo = min(lows[-n:])
+    if lo <= 0:
+        return None
+    range_pct = round((hi - lo) / lo * 100, 2)
+    close = closes[-1]
+    pos_pct = 50.0 if hi == lo else round((close - lo) / (hi - lo) * 100, 1)
+    position = "箱底" if pos_pct <= 33 else ("箱頂" if pos_pct >= 67 else "箱中")
+    return {"box_high": hi, "box_low": lo, "range_pct": range_pct,
+            "position": position, "position_pct": pos_pct,
+            "is_box": range_pct <= BOX_MAX_RANGE_PCT, "window": n}
+
+
+# ── 換手(量大不漲不跌)偵測 ─────────────────────────────
+def turnover_signal(closes, volumes, n=20):
+    """今日量 ÷ 前 n 日均量(不含今日)≥ 1.5 倍，但今日漲跌幅在 ±3% 內，
+    視為「量大價滯」的換手訊號——描述性標記(可能是承接、也可能是出貨，
+    方向要搭配箱型位置一起看)，不是可不可以進場的判斷。
+    """
+    if len(closes) < n + 2 or len(volumes) < n + 2:
+        return None
+    base = volumes[-(n + 1):-1]
+    avg_vol = sum(base) / len(base) if base else None
+    if not avg_vol:
+        return None
+    vol_ratio = round(volumes[-1] / avg_vol, 2)
+    prev_close = closes[-2]
+    if not prev_close:
+        return None
+    change_pct = round((closes[-1] - prev_close) / prev_close * 100, 2)
+    elevated = vol_ratio >= 1.5 and abs(change_pct) <= 3.0
+    return {"elevated": elevated, "volume_ratio": vol_ratio, "change_pct": change_pct}
+
+
 # ════════════════════════════════════════════════════════
 # 公式交叉驗證:python indicators.py
 # ════════════════════════════════════════════════════════
@@ -200,4 +296,36 @@ if __name__ == "__main__":
     m = macd(up)
     assert m["dif"] > 0 and m["cross"] in ("多方", "黃金交叉")
     print(f"⑤ MACD 趨勢一致性 OK:{m}")
+
+    # ⑥ 缺口偵測:手動埋一個向上跳空(今低102 > 昨高100)
+    gdates = [f"d{i}" for i in range(10)]
+    ghighs = [100, 100, 100, 100, 100, 100, 100, 100, 100, 105]
+    glows  = [95,  95,  95,  95,  95,  95,  95,  95,  95,  102]
+    g = gap_signal(gdates, ghighs, glows, lookback=10)
+    assert g["latest"] and g["latest"]["type"] == "up", g
+    assert abs(g["latest"]["gap_pct"] - 2.0) < 0.01, g
+    print(f"⑥ 缺口偵測(向上跳空)OK:{g['latest']}")
+
+    # ⑥b 缺口回補:第 11 根跌破缺口下緣 → open_gaps 應為空
+    ghighs2 = ghighs + [104]
+    glows2 = glows + [99]   # 99 < 缺口下緣100 → 回補
+    gdates2 = gdates + ["d10"]
+    g2 = gap_signal(gdates2, ghighs2, glows2, lookback=11)
+    assert g2["open_gaps"] == [], g2
+    print("⑥b 缺口回補判斷 OK:回補後 open_gaps 清空")
+
+    # ⑦ 箱型偵測:20 根收盤在 [95,105] 內來回(區間 10.5% < 15% 門檻)
+    box_c = [100, 103, 96, 104, 97, 102, 95, 105, 98, 101] * 2
+    box_h = [c + 1 for c in box_c]
+    box_l = [c - 1 for c in box_c]
+    b = box_range(box_h, box_l, box_c, n=20)
+    assert b["is_box"] is True and b["position"] in ("箱底", "箱中", "箱頂"), b
+    print(f"⑦ 箱型偵測 OK:{b}")
+
+    # ⑧ 換手偵測:今量是均量 2 倍、但漲幅只有 1% → 應標 elevated
+    t_closes = [100.0] * 21 + [101.0]
+    t_vols = [1000] * 21 + [2000]
+    t = turnover_signal(t_closes, t_vols, n=20)
+    assert t["elevated"] is True and t["volume_ratio"] == 2.0, t
+    print(f"⑧ 換手偵測 OK:{t}")
     print("—— 全部公式驗證通過 ——")

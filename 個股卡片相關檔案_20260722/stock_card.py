@@ -53,7 +53,7 @@ def _bars(code, days=80, injected=None):
     for r in raw:
         cl = r.get("close")
         out.append({"date": str(r.get("date") or r.get("ts") or r.get("index"))[:10], "close": cl,
-                    "high": r.get("high"), "low": r.get("low"),
+                    "open": r.get("open"), "high": r.get("high"), "low": r.get("low"),
                     "volume": r.get("volume", 0), "amount": r.get("amount")})
     return out
 
@@ -144,6 +144,8 @@ def build_card(code, snap=None, health=None, grade=None,
     low_approx = any(v is None for v in lows_raw) or not lows_raw
     lows = [(v if v is not None else b["close"])
             for v, b in zip(lows_raw, bars)]
+    bar_dates = [b["date"] for b in bars]
+    volumes = [b.get("volume") or 0 for b in bars]
 
     # ── 籌碼面 ──────────────────────────────────────────
     if chip_detail is None:
@@ -154,6 +156,15 @@ def build_card(code, snap=None, health=None, grade=None,
             print(f"[stock_card] 籌碼細項失敗:{e}", flush=True)
             chip_detail = {}
     cd = chip_detail or {}
+
+    # ── 估值(官方 TWSE/TPEx 本益比／淨值比,盤前/盤後排程更新) ──────
+    try:
+        import valuation_official
+        valuation_block = valuation_official.get_valuation(code)
+    except Exception as e:
+        print(f"[stock_card] 估值讀取失敗:{e}", flush=True)
+        valuation_block = None
+
     # 法人占成交量比:用法人當日淨買賣超(張)佔當日成交量(張)的比重,
     # 同樣 1,000 張買超,量 5,000 張跟量 100,000 張意義完全不同——這是量比後
     # 才看得出來的「力度」,不是另一個籌碼分數,純比例換算,查無成交量給 None。
@@ -255,6 +266,11 @@ def build_card(code, snap=None, health=None, grade=None,
         "rsi": I.rsi(closes) if closes else None,
         "atr": I.atr(highs, lows, closes) if closes else None,
         "approx": low_approx,   # low 補值 → KD/ATR 為近似,前端標「≈」
+        # 缺口/箱型/換手:純技術結構描述,不是可否進場的判斷,要搭配
+        # 籌碼/資金/風險層一起看(CLAUDE.md 風險調整後參與規範)。
+        "gap": I.gap_signal(bar_dates, highs, lows) if len(highs) >= 2 else None,
+        "box": I.box_range(highs, lows, closes, n=20) if len(closes) >= 20 else None,
+        "turnover": I.turnover_signal(closes, volumes, n=20) if len(closes) >= 22 else None,
     }
 
     # ── 健康分(呼叫端未給時,盤後場景由 dec_health 取) ──
@@ -335,8 +351,23 @@ def build_card(code, snap=None, health=None, grade=None,
              "技術多頭", "均線未全數翻多")
     if chip_block["foreign"] is not None:
         mark((chip_block["foreign"] or 0) > 0, "外資買超", "外資未進")
-    if chip_block["main_force"] is None:
-        reasons.append("✕ 籌碼尚未完全集中(分點資料待接)")
+    # 缺口/箱型/換手:結構描述,不套用單一門檻當作可否進場——箱底/箱頂、
+    # 跳空方向只決定用哪句話講,實際部位仍由風險層(EXTENDED/EXHAUSTED)決定。
+    gap = tech_block.get("gap")
+    if gap and gap.get("latest"):
+        mark(gap["latest"]["type"] == "up",
+             f"跳空向上{gap['latest']['gap_pct']}%(缺口未回補)",
+             f"跳空向下{gap['latest']['gap_pct']}%(缺口未回補)")
+    box = tech_block.get("box")
+    turnover = tech_block.get("turnover")
+    if box and box.get("is_box") and box.get("position") in ("箱底", "箱頂"):
+        if turnover and turnover.get("elevated"):
+            mark(box["position"] == "箱底",
+                 f"箱底放量換手(量比{turnover['volume_ratio']}倍,疑似承接)",
+                 f"箱頂放量換手(量比{turnover['volume_ratio']}倍,疑似出貨)")
+        else:
+            reasons.append(f"◦ 位於近{box['window']}日箱型{box['position']}"
+                            f"(區間{box['box_low']}~{box['box_high']})")
     ai_pct = hs
 
     # chip_quality：法人近月淨額/連買天數一律以本卡新鮮 chip_block（FinMind/官方
@@ -365,6 +396,7 @@ def build_card(code, snap=None, health=None, grade=None,
         "health_stars": (health or {}).get("stars") if health else None,
         "chip_quality": chip_quality,
         "chip": chip_block, "flow": flow_block, "tech": tech_block,
+        "valuation": valuation_block,
         "trade": trade_block,
         "ai": {"pct": ai_pct, "reasons": reasons},
         "generated": datetime.now(TW_TZ).isoformat(timespec="seconds"),

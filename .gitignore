@@ -22,6 +22,7 @@ mls.db
 mls.db-journal
 intraday_eod.db
 chips_cache.json
+valuation_cache.json
 
 # Backups
 *.bak
