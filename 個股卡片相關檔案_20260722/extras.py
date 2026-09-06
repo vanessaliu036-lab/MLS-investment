@@ -326,10 +326,20 @@ def _five_factors(snap, chip, sector_avg, market_pct, sector_name):
 
 
 def _post_market_asof() -> tuple[str, bool]:
-    """盤後資料的有效日期：每日 18:00 前固定看前一交易日。"""
+    """盤後資料的有效日期：每日 18:00 前固定看前一交易日。
+
+    純日曆算法(今天-1)在週末會算出「昨天」是週六/週日，但當天最新的
+    真實資料日(data_date)其實是上週五——兩者對不上，個股卡片檔案快取
+    (_card_cache_read/_card_cache_write)用這個值當 key，週末永遠寫一個
+    讀不到的 key，等於整個週末每次都 cache miss，重算一次卡片。這裡只
+    跳過週六日，國定假日目前沒有處理(頻率低很多，之後有需要再補完整
+    交易日曆)。
+    """
     now = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8)))
     ready = now.hour >= 18
     limit = now.date() if ready else (now.date() - _dt.timedelta(days=1))
+    while limit.weekday() >= 5:      # 5=Sat, 6=Sun
+        limit -= _dt.timedelta(days=1)
     return limit.isoformat(), ready
 
 
