@@ -42,6 +42,7 @@ SKIP_PARTS = {".git", "__pycache__", "card_cache", "reports", "node_modules",
               ".pytest_cache"}
 SKIP_NAMES = {".env", ".DS_Store", "live_state.json", "chips_cache.json",
               "ma20_cache.json", "intraday_live_snapshot.json",
+              "valuation_cache.json",
               # 執行期狀態與產出,不是源碼:線上會有、repo 不該有。
               "stage2-status.json", "source.manifest.sha256",
               # 2026-09-04:執行期即時/歷史資料快取,線上持續累積、本機只有

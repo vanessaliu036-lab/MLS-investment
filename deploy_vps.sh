@@ -91,6 +91,7 @@ rsync -avz --delete \
   --exclude='intraday_live_snapshot.json' \
   --exclude='ma20_cache.json' \
   --exclude='chips_cache.json' \
+  --exclude='valuation_cache.json' \
   --exclude='card_cache/' \
   --exclude='reports/' \
   --exclude='篩選邏輯/' \
