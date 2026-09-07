@@ -264,6 +264,23 @@ def test_explain_status_splits_price_trigger_from_aflow_confirmation():
     assert exp["system_sentence"] == "PRICE TRIGGER 已發生｜待量能／承接確認"
 
 
+def test_explain_wait_sentence_matches_direction_when_price_already_crossed():
+    """2026-09-07 發現(5425台半/8358金居 live 案例):價格已越過壓力但資金未確認,
+    monitor.classify 落到 WAITING_FUNDS(status WAIT)。舊版 else 分支不分
+    distance_pct 正負,一律印「距 X（還差 Y%），現在等」,跟同卡片 _quote_line()
+    印出的「已站上 +Y%」直接自相矛盾。distance_pct>=0 時 sentence 不得再講
+    「還差／現在等」。"""
+    exp = explain.explain({
+        "source": "C1C2_PASS", "t1_prior_high": 93.5,
+        "current_price": 94.6, "flow_class": "NO_FLIP", "watch_mode_activated": 0,
+    }, is_eod=False)
+    assert exp["monitor_bucket"] == "WAITING_FUNDS"
+    assert exp["status"] == "WAIT"
+    assert exp["distance_pct"] >= 0
+    assert "還差" not in exp["system_sentence"]
+    assert "已站上" in exp["system_sentence"]
+
+
 # ───────────────────────── 5. Intraday Discovery isolation ───────────────────
 
 def test_intraday_discovery_excluded_from_c1_c2_bucket_and_cumulative_label_not_frozen():

@@ -202,6 +202,15 @@ def explain(row: dict, is_eod: bool = True, flow_stale: bool = False) -> dict:
         sentence = f"重點盯 {resistance:,.1f}，站穩 {resistance:,.1f} 且資金續強再看" if resistance else "重點盯，資金續強再看"
     elif status in ("GIVE_UP", "FAILED"):
         sentence = f"今日資金未轉強，暫時放棄"
+    elif distance_pct is not None and distance_pct >= 0:
+        # WAITING_FUNDS 涵蓋兩種情形:價格尚未到、或價格已站上但資金還沒確認
+        # (line_b_monitor.classify 對兩者一視同仁,見該檔註解)。distance_pct>=0
+        # 時不能再講「還差 X%，現在等」——那跟同張卡片 _quote_line() 印出的
+        # 「已站上 +X%」直接自相矛盾(2026-09-07 發現:現價已越過壓力,卡片卻同時
+        # 說「現在等」)。已站上時改成鏡射 CONFIRMED 分支的「A-flow 已確認｜價格
+        # 尚未站上關鍵價」講法,方向對調成「價格已站上｜待 A-flow 確認」。
+        sentence = (f"已站上 {resistance:,.1f}（+{distance_pct:.1f}%）｜待 A-flow 確認"
+                   if resistance else "價格已站上關鍵價｜待 A-flow 確認")
     else:
         d = f"還差 {abs(distance_pct):.1f}%" if distance_pct is not None else "距離未知"
         sentence = f"距 {resistance:,.1f}{'（' + d + '）' if resistance else ''}，現在等" if resistance else "現在等"
