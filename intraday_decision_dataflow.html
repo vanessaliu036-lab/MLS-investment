@@ -675,7 +675,7 @@ function advisorCard(code,card){
         <dt>外資持股比</dt><dd>${chip.foreign_share_pct==null?'—':chip.foreign_share_pct+'%'}</dd>
       </dl></div>
       <div class="advisor-sec"><h4>技術面</h4>
-        ${(()=>{const tv=window.techVerdict?window.techVerdict(tech,valuation):null;return tv?`<div class="full-detail-line" style="margin-bottom:8px"><b>結論：<span class="${tv.cls}">${esc(tv.label)}</span></b>　${esc(tv.note)}</div>`:''})()}
+        ${(()=>{const tv=window.techVerdict?window.techVerdict(tech,valuation):null;return tv?`<div class="tech-verdict-box ${tv.cls}"><b>結論：<span class="${tv.cls}">${esc(tv.label)}</span></b>　${esc(tv.note)}</div>`:''})()}
         <dl>
         <dt>MA5／10／20</dt><dd>${esc(tech.ma5||'—')} ${esc(tech.ma10||'—')} ${esc(tech.ma20||'—')}</dd>
         <dt>MACD</dt><dd>${esc(tech.macd||'—')}</dd>
@@ -2526,7 +2526,7 @@ document.querySelector('.sidebar .nav-item.active')?.classList.add('selected');
       ?`<div class="full-detail-line">估值（官方 ${escFull(valuation.valuation_source_date||'—')}）：本益比 <b>${valuation.pe_ratio}</b> 倍　股價淨值比 <b>${valuation.pb_ratio??'—'}</b> 倍　殖利率 ${valuation.dividend_yield??'—'}%</div>`
       :`<div class="dense-note">⚠ 尚無官方估值資料</div>`;
     return `<div class="dense-extra"><h3>📈 技術面</h3>
-      <div class="full-detail-line"><b>技術面結論：<span class="${tv.cls}">${escFull(tv.label)}</span></b>　${escFull(tv.note)}</div>
+      <div class="tech-verdict-box ${tv.cls}"><b>技術面結論：<span class="${tv.cls}">${escFull(tv.label)}</span></b>　${escFull(tv.note)}</div>
       <div class="full-detail-line">均線：MA5 ${escFull(tech.ma5||'—')}　MA10 ${escFull(tech.ma10||'—')}　MA20 ${escFull(tech.ma20||'—')}　MACD ${escFull(tech.macd||'—')}</div>
       <div class="full-detail-line">RSI14 <b>${val(tech.rsi)}</b>　KD(K/D) <b>${val(tech.kd_k)}/${val(tech.kd_d)}</b>　ATR <b>${val(tech.atr)}</b>${tech.approx?'　<span class="muted">(low缺值,近似)</span>':''}</div>
       ${srLine}

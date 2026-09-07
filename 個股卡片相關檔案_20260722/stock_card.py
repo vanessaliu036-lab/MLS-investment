@@ -241,6 +241,34 @@ def build_card(code, snap=None, health=None, grade=None,
                        "外資持股比=集保週資料,更新日獨立標示,不跟日資料比對新鮮度",
     }
 
+    # ── 外資連買訊號(2026-09-06 使用者拍板的框架，依 winning_model_backtest
+    # 的 indicator-lift-backtest 結果:外資連買>=5日在51檔母體 T+5 lift +4.28pp，
+    # n=2030，是目前唯一有獨立回測支持、可以標「過往勝率」的單一因子；不是
+    # 拍腦門湊的門檻。inst_streak 這個欄位名字誤導，實際算法只吃外資淨額
+    # (chips.py streak)，跟法人合計連買是兩回事，這裡才真的對得上這條規則。
+    # 融資/券資比同步走弱只作為「持有品質加強」附註，且目前只有當日方向可查
+    # (無逐日餘額歷史可驗證連續3日)，不假裝有更精確的天數。
+    # 「量比>=1.2+價跌量縮」使用者自己查過在外資>=5日母體內只剩18筆、
+    # PF 0.56，判定不支持提高勝率，故意不做——不要為了訊號好看硬湊一個
+    # 未經檢驗的組合規則(見 pa-trigger-no-edge-vs-baseline 同一個坑)。
+    foreign_streak = chip_block.get("inst_streak")
+    foreign_signal = None
+    if foreign_streak is not None and foreign_streak >= 5:
+        margin_d = chip_block.get("margin_change_d")
+        short_d = chip_block.get("short_change_d")
+        quality_up = bool(margin_d is not None and short_d is not None
+                          and margin_d < 0 and short_d < 0)
+        foreign_signal = {
+            "code": "FOREIGN_STREAK_5D",
+            "label": "外資連買≥5日觀察訊號",
+            "streak_days": int(foreign_streak),
+            "note": f"外資連買{int(foreign_streak)}日,根據歷史回測(51檔母體,n=2030)"
+                    f"T+1過往勝率50.5%、T+5 lift +4.28pp,僅供觀察,非進場保證",
+            "quality_up": quality_up,
+            "quality_note": ("今日融資與券資比同步走弱,持有品質加強訊號(僅當日方向,非3日趨勢驗證)"
+                             if quality_up else None),
+        }
+
     # ── 資金 ────────────────────────────────────────────
     bv = (snap or {}).get("buy_volume") or 0
     sv = (snap or {}).get("sell_volume") or 0
@@ -405,6 +433,7 @@ def build_card(code, snap=None, health=None, grade=None,
         "health_stars": (health or {}).get("stars") if health else None,
         "chip_quality": chip_quality,
         "chip": chip_block, "flow": flow_block, "tech": tech_block,
+        "foreign_signal": foreign_signal,
         "valuation": valuation_block,
         "trade": trade_block,
         "ai": {"pct": ai_pct, "reasons": reasons},
