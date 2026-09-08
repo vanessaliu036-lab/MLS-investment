@@ -88,6 +88,38 @@ _STATIC_TOP_NAV_LABEL_CSS = """
 </style>
 """
 
+# 手機導覽改漢堡選單：跟 intraday_decision_dataflow.html 的 #reviewNav 同一套收合邏輯，
+# 預設只留一顆按鈕，點開才攤開，不用橫向滑到底才找得到其他分頁。
+_STATIC_TOP_NAV_HAMBURGER_CSS = """
+<style data-mls-navigation-hamburger>
+.mls-nav-toggle{display:none}
+@media(max-width:560px){
+  .mls-nav.nav-collapsed{flex-wrap:nowrap!important;overflow:hidden!important}
+  .mls-nav.nav-collapsed .mls-nav-link{display:none!important}
+  .mls-nav.nav-collapsed .mls-nav-toggle{display:flex!important;align-items:center;justify-content:center;width:40px;height:40px;flex:0 0 auto;border:0;background:transparent;font-size:22px;line-height:1;color:#17233f;cursor:pointer;padding:0}
+  .mls-nav.nav-collapsed.nav-open{flex-wrap:wrap!important;height:auto!important;max-height:calc(100vh - 58px)!important;overflow-y:auto!important;overflow-x:hidden!important;align-items:stretch!important;box-shadow:0 12px 30px rgba(23,35,63,.18)}
+  .mls-nav.nav-collapsed.nav-open .mls-nav-link{display:flex!important;width:100%!important;justify-content:space-between!important}
+}
+</style>
+"""
+
+_STATIC_TOP_NAV_HAMBURGER_JS = """
+<script data-mls-navigation-hamburger>
+document.addEventListener('DOMContentLoaded',()=>{
+  document.querySelectorAll('.mls-nav').forEach(nav=>{
+    if(nav.dataset.hamburgerReady)return;nav.dataset.hamburgerReady='1';
+    nav.classList.add('nav-collapsed');
+    const toggle=document.createElement('button');
+    toggle.type='button';toggle.className='mls-nav-toggle';toggle.setAttribute('aria-label','選單');toggle.textContent='☰';
+    toggle.addEventListener('click',e=>{e.stopPropagation();nav.classList.toggle('nav-open')});
+    nav.appendChild(toggle);
+    document.addEventListener('click',e=>{if(!nav.contains(e.target))nav.classList.remove('nav-open')});
+    nav.querySelectorAll('.mls-nav-link').forEach(a=>a.addEventListener('click',()=>nav.classList.remove('nav-open')));
+  });
+});
+</script>
+"""
+
 
 def _intraday_daily_conn():
     import sqlite3
@@ -2149,7 +2181,8 @@ def _read_html(filename: str) -> str:
                     )
                     content = content.replace(
                         "</body>",
-                        _STATIC_TOP_NAV_CSS + _STATIC_TOP_NAV_LABEL_CSS + "</body>",
+                        _STATIC_TOP_NAV_CSS + _STATIC_TOP_NAV_LABEL_CSS
+                        + _STATIC_TOP_NAV_HAMBURGER_CSS + _STATIC_TOP_NAV_HAMBURGER_JS + "</body>",
                     )
                 return content
     raise FileNotFoundError(f"{filename} 不在 {here} 或其上層目錄")
