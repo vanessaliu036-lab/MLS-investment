@@ -577,11 +577,58 @@ def _card_cache_path(code: str, asof: str) -> Path:
     return _CARD_DIR / f"{asof}_{code}.json"
 
 
+_CHIP_DATE_KEYS = ("source_date", "margin_source_date",
+                   "lending_source_date", "foreign_share_source_date")
+_CHIP_DATE_CACHE: Dict[str, Any] = {"mtime": None, "map": {}}
+
+
+def _chip_source_dates(code: str) -> Dict[str, str]:
+    """chips_cache 目前四條籌碼來源鏈各自的資料日。"""
+    path = _BASE / "chips_cache.json"
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return {}
+    if _CHIP_DATE_CACHE["mtime"] != mtime:
+        built: Dict[str, Dict[str, str]] = {}
+        try:
+            import json
+            with path.open(encoding="utf-8") as fh:
+                stocks = (json.load(fh).get("stocks") or {})
+        except Exception:
+            return {}
+        for key, row in stocks.items():
+            if not isinstance(row, dict):
+                continue
+            code_key = key.split(":")[-1]
+            slot = built.setdefault(code_key, {})
+            for field in _CHIP_DATE_KEYS:
+                value = row.get(field)
+                if value:
+                    slot[field] = str(value)[:10]
+        _CHIP_DATE_CACHE["mtime"] = mtime
+        _CHIP_DATE_CACHE["map"] = built
+    return _CHIP_DATE_CACHE["map"].get(str(code), {})
+
+
+def _card_chip_outdated(data: Dict[str, Any], fresh: Dict[str, str]) -> bool:
+    """卡片快取裡的籌碼是不是已經被更新的來源日超車。
+
+    卡片快取以交易日為 key，當天只算一次；但籌碼四條來源鏈是當天稍晚才陸續
+    定案的，早上算好的卡片會把「還沒到的舊資料」凍結一整天（2026-09-08 首頁
+    籌碼顧問卡就一直寫著「籌碼資料日 2026-09-04」）。
+    """
+    cached = ((data.get("card") or {}).get("chip") or {})
+    return any(now > str(cached.get(field) or "")[:10]
+               for field, now in fresh.items())
+
+
 def _card_cache_read(code: str, asof: str) -> Optional[Dict[str, Any]]:
     key = f"{asof}_{code}"
+    fresh = _chip_source_dates(code)
     hit = _CARD_MEM.get(key)
     if hit is not None:
-        return hit
+        return None if _card_chip_outdated(hit, fresh) else hit
     path = _card_cache_path(code, asof)
     if not path.exists():
         return None
@@ -590,6 +637,8 @@ def _card_cache_read(code: str, asof: str) -> Optional[Dict[str, Any]]:
         with path.open(encoding="utf-8") as fh:
             data = json.load(fh)
         if data.get("_card_cache_version") != _CARD_CACHE_VERSION:
+            return None
+        if _card_chip_outdated(data, fresh):
             return None
         _CARD_MEM[key] = data
         return data
