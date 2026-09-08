@@ -26,6 +26,8 @@ CACHE_FILE = os.path.join(os.path.dirname(__file__), "chips_cache.json")
 
 _cache = {"date": "", "stocks": {}}
 _official_margin_cache = {}
+# 官方當日融資融券要收盤後才發布；只退到舊交易日的結果只快取這麼久（秒）。
+_MARGIN_PENDING_TTL = 900
 
 
 def _finmind(dataset, data_id, start_date):
@@ -103,23 +105,56 @@ def _official_number(value, shares=False):
         return None
 
 
-def _official_margin_snapshot(asof=None):
-    """Fetch official margin/SBL snapshots once for the requested asof date.
+def _trading_day_candidates(asof=None, back=8):
+    """由 asof 往回列出候選交易日（只跳週末，不含國定假日表）。
 
-    TWSE TWT93U and TPEx's two JSON reports are market-wide, so one request
-    covers every stock in the 51-stock pool.  This is the no-token fallback
-    when FinMind's per-stock margin dataset is unavailable.
+    官方融資融券／借券的當日檔要收盤後才發布，遇到國定假日則整天沒有檔；
+    只認 asof 當天會讓資料永遠卡在最後一次抓成功的日期，所以往前退到真的
+    有 rows 的那一天為止，並以那天當來源日。
     """
     limit = _asof_limit(asof)
     try:
-        d = datetime.strptime(limit, "%Y-%m-%d").date()
-        while d.weekday() >= 5:
-            d -= timedelta(days=1)
-        trade_date = d.isoformat()
+        day = datetime.strptime(limit, "%Y-%m-%d").date()
     except (TypeError, ValueError):
-        trade_date = limit
-    if trade_date in _official_margin_cache:
-        return _official_margin_cache[trade_date]
+        return [limit]
+    days = []
+    while len(days) < back:
+        if day.weekday() < 5:
+            days.append(day.isoformat())
+        day -= timedelta(days=1)
+    return days
+
+
+def _margn_rows(payload):
+    """從 MI_MARGN 回應取出個股明細表；第一張表是全市場統計，不是個股。"""
+    if not payload:
+        return []
+    for table in payload.get("tables") or []:
+        if len(table.get("data") or []) > 100:
+            return table["data"]
+    return payload.get("data") or []
+
+
+def _official_margin_snapshot(asof=None):
+    """Fetch official margin/SBL snapshots once for the requested asof date.
+
+    TWSE MI_MARGN (margin/short) + TWT93U (SBL) and TPEx's two JSON reports
+    are market-wide, so one request covers every stock in the 51-stock pool.
+    This is the no-token fallback when FinMind's per-stock margin dataset is
+    unavailable.
+
+    每個來源各自往前退到有資料的交易日，並帶回自己的 ``source_date``；
+    上游不得替它補上 asof，否則會把舊餘額當成今天的數字。
+    """
+    candidates = _trading_day_candidates(asof)
+    cache_key = candidates[0]
+    hit = _official_margin_cache.get(cache_key)
+    if hit:
+        cached_at, cached_out, complete = hit
+        # 抓到的就是 asof 當天 → 不會再變，長期有效；只抓到更早的交易日 →
+        # 表示官方今天還沒發布，短 TTL 讓晚間發布後能自動接上。
+        if complete or (datetime.now().timestamp() - cached_at) < _MARGIN_PENDING_TTL:
+            return cached_out
 
     out = {}
 
@@ -133,21 +168,22 @@ def _official_margin_snapshot(asof=None):
         with urllib.request.urlopen(req, timeout=20) as response:
             return json.loads(response.read().decode("utf-8"))
 
-    def _merge_credit(rows, shares=False):
+    def _merge_credit(rows, twse=False, date=None):
         for row in rows or []:
             code = str(row[0] if isinstance(row, list) else
                        row.get("股票代號") or row.get("代號") or "").strip()
             if not code:
                 continue
-            if isinstance(row, list) and shares:
-                # TWSE TWT93U: credit and SBL fields are shares.
+            if isinstance(row, list) and twse:
+                # TWSE MI_MARGN「融資融券彙總」: 融資前日/今日 = 5/6,
+                # 融券前日/今日 = 11/12，單位已是張。
+                # （舊版誤用 TWT93U 的 2/6 欄，那張表前半是「融券限額」、
+                #   後半是「借券賣出」，根本沒有融資餘額。）
                 values = {
-                    "margin_prev": _official_number(row[2], shares=True),
-                    "margin_balance": _official_number(row[6], shares=True),
-                    "short_prev": _official_number(row[8], shares=True),
-                    "short_balance": _official_number(row[12], shares=True),
-                    "sbl_prev": _official_number(row[8], shares=True),
-                    "sbl_balance": _official_number(row[12], shares=True),
+                    "margin_prev": _official_number(row[5]),
+                    "margin_balance": _official_number(row[6]),
+                    "short_prev": _official_number(row[11]),
+                    "short_balance": _official_number(row[12]),
                 }
             else:
                 # TPEx margin/balance: credit fields are already in lots.
@@ -165,9 +201,12 @@ def _official_margin_snapshot(asof=None):
                         row[14] if isinstance(row, list)
                         else row.get("券餘額") or row.get("融券今日餘額")),
                 }
-            out.setdefault(code, {}).update(values)
+            record = out.setdefault(code, {})
+            record.update(values)
+            if date:
+                record["source_date"] = date
 
-    def _merge_sbl(rows):
+    def _merge_sbl(rows, date=None):
         for row in rows or []:
             code = str(row[0] if isinstance(row, list) else
                        row.get("股票代號") or row.get("代號") or "").strip()
@@ -181,60 +220,100 @@ def _official_margin_snapshot(asof=None):
                 }
             else:
                 values = {}
-            out.setdefault(code, {}).update(values)
+            record = out.setdefault(code, {})
+            record.update(values)
+            if date and values:
+                record["sbl_source_date"] = date
 
-    try:
+    twse_date = None
+    for trade_date in candidates:
+        ymd = trade_date.replace("-", "")
+        margn = None
+        for margn_url in (
+            "https://www.twse.com.tw/rwd/zh/afterTrading/MI_MARGN"
+            f"?date={ymd}&selectType=ALL&response=json",
+            "https://www.twse.com.tw/exchangeReport/MI_MARGN"
+            f"?date={ymd}&selectType=ALL&response=json",
+        ):
+            try:
+                margn = _get(margn_url)
+                if _margn_rows(margn):
+                    break
+            except Exception:
+                continue
+        rows = _margn_rows(margn)
+        if rows:
+            _merge_credit(rows, twse=True, date=trade_date)
+            twse_date = trade_date
+            break
+    if not twse_date:
+        print(f"[chips] TWSE MI_MARGN 近 {len(candidates)} 個交易日都沒有資料，改用 OpenAPI")
+        try:
+            # OpenAPI 是上市融資融券的整市場備援；數值單位已是張。
+            # 它沒有帶資料日期，所以不標 source_date，寧可讓該欄顯示「—」也
+            # 不冒充今天的餘額。
+            twse_margin = _get(
+                "https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN")
+            _merge_credit(twse_margin)
+        except Exception as fallback_error:
+            print(f"[chips] TWSE OpenAPI 融資融券失敗: {fallback_error}")
+
+    for trade_date in candidates:
+        # TWT93U 前半是融券限額、後半(8..12 欄)才是借券賣出餘額，單位為股。
         ymd = trade_date.replace("-", "")
         twse = None
-        twse_urls = (
+        for twse_url in (
             "https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U"
             f"?date={ymd}&response=json",
             "https://www.twse.com.tw/rwd/zh/marginTrading/TWT93U"
             f"?response=json&date={ymd}&selectType=ALLBUT0999",
-        )
-        for twse_url in twse_urls:
+        ):
             try:
                 twse = _get(twse_url)
                 if twse.get("data"):
                     break
             except Exception:
                 continue
-        if not twse or not twse.get("data"):
-            raise ValueError("TWSE TWT93U 無資料")
-        _merge_credit(twse.get("data") or [], shares=True)
-    except Exception as exc:
-        print(f"[chips] TWSE 官方融資融券失敗: {exc}")
+        if twse and twse.get("data"):
+            _merge_sbl(twse.get("data") or [], date=trade_date)
+            break
+
+    for trade_date in candidates:
         try:
-            # OpenAPI 是上市融資融券的整市場備援；數值單位已是張。
-            twse_margin = _get(
-                "https://openapi.twse.com.tw/v1/exchangeReport/MI_MARGN")
-            _merge_credit(twse_margin, shares=False)
-        except Exception as fallback_error:
-            print(f"[chips] TWSE OpenAPI 融資融券失敗: {fallback_error}")
+            date_arg = urllib.parse.quote(trade_date.replace("-", "/"), safe="")
+            tpex_credit = _get(
+                "https://www.tpex.org.tw/www/zh-tw/margin/balance"
+                f"?date={date_arg}")
+            tables = tpex_credit.get("tables") or []
+            rows = (tables[0].get("data") if tables else []) or []
+        except Exception as exc:
+            print(f"[chips] TPEx 官方融資融券 {trade_date} 失敗: {exc}")
+            continue
+        if rows:
+            _merge_credit(rows, date=trade_date)
+            break
 
-    try:
-        date_arg = urllib.parse.quote(trade_date.replace("-", "/"), safe="")
-        tpex_credit = _get(
-            "https://www.tpex.org.tw/www/zh-tw/margin/balance"
-            f"?date={date_arg}")
-        tables = tpex_credit.get("tables") or []
-        _merge_credit(tables[0].get("data") if tables else [])
-    except Exception as exc:
-        print(f"[chips] TPEx 官方融資融券失敗: {exc}")
+    for trade_date in candidates:
+        try:
+            date_arg = urllib.parse.quote(trade_date.replace("-", "/"), safe="")
+            tpex_sbl = _get(
+                "https://www.tpex.org.tw/www/zh-tw/margin/sbl"
+                f"?date={date_arg}")
+            tables = tpex_sbl.get("tables") or []
+            rows = (tables[0].get("data") if tables else []) or []
+        except Exception as exc:
+            print(f"[chips] TPEx 官方借券餘額 {trade_date} 失敗: {exc}")
+            continue
+        if rows:
+            _merge_sbl(rows, date=trade_date)
+            break
 
-    try:
-        date_arg = urllib.parse.quote(trade_date.replace("-", "/"), safe="")
-        tpex_sbl = _get(
-            "https://www.tpex.org.tw/www/zh-tw/margin/sbl"
-            f"?date={date_arg}")
-        tables = tpex_sbl.get("tables") or []
-        _merge_sbl(tables[0].get("data") if tables else [])
-    except Exception as exc:
-        print(f"[chips] TPEx 官方借券餘額失敗: {exc}")
-
-    for record in out.values():
-        record["source_date"] = trade_date
-    _official_margin_cache[trade_date] = out
+    if not out:
+        # 空結果不進快取：官方稍晚才發布時，同一個 process 還要能重抓。
+        return out
+    dates = [r.get("source_date") for r in out.values() if r.get("source_date")]
+    complete = bool(dates) and max(dates) >= cache_key
+    _official_margin_cache[cache_key] = (datetime.now().timestamp(), out, complete)
     return out
 
 
@@ -521,6 +600,32 @@ def get_chips(code):
 # ════════════════════════════════════════════════════════
 # v2.3 新增:個股資訊卡細項籌碼(get_chips 保持不變,零影響)
 # ════════════════════════════════════════════════════════
+def _daily_source_floor(asof_limit):
+    """融資融券／借券這種每日資料，這一輪最低可接受的來源日。
+
+    當日檔要收盤後才發布，所以盤中只要求前一交易日；收盤後就要求當天，
+    落後的快取一律重抓。集保是週資料，不套這條。
+    """
+    days = _trading_day_candidates(asof_limit)
+    if asof_limit >= _today_key() and datetime.now().hour < 18:
+        return days[1] if len(days) > 1 else days[0]
+    return days[0]
+
+
+def _daily_sources_fresh(cached, asof_limit):
+    """快取裡的每日型籌碼來源日夠不夠新。
+
+    以前只比對法人 source_date 就整包命中，法人一更新就等於替融資融券、
+    借券的舊日期背書，讓它們永遠停在最後一次抓成功的那天。
+    """
+    floor = _daily_source_floor(asof_limit)
+    for field in ("margin_source_date", "lending_source_date"):
+        date = cached.get(field)
+        if not date or str(date)[:10] < floor:
+            return False
+    return True
+
+
 def get_chips_detail(code, asof=None):
     """
     資訊卡籌碼面。回傳 dict(查無資料的欄位為 None,不假造):
@@ -550,6 +655,7 @@ def get_chips_detail(code, asof=None):
             and "lending_source_date" in cached
             and "foreign_share_source_date" in cached
             and (not asof or cached.get("source_date") <= asof_limit)
+            and _daily_sources_fresh(cached, asof_limit)
             and (not official or cached.get("source_date") == official.get("source_date"))):
         return cached
 
@@ -777,7 +883,8 @@ def get_chips_detail(code, asof=None):
                 margin_prev = official_margin.get("margin_prev")
                 short_now = official_margin.get("short_balance")
                 short_prev = official_margin.get("short_prev")
-                result["margin_source_date"] = official_margin.get("source_date", asof_limit)
+                # 沒有可信的資料日就不標日期；寧可顯示「—」也不冒充 asof 當天。
+                result["margin_source_date"] = official_margin.get("source_date")
                 result["margin_balance"] = margin_now
                 result["margin_change_d"] = (
                     margin_now - margin_prev
@@ -844,7 +951,8 @@ def get_chips_detail(code, asof=None):
         if official_margin and official_margin.get("sbl_balance") is not None:
             bal = official_margin.get("sbl_balance")
             prev = official_margin.get("sbl_prev")
-            result["lending_source_date"] = official_margin.get("source_date", asof_limit)
+            result["lending_source_date"] = (official_margin.get("sbl_source_date")
+                                             or official_margin.get("source_date"))
             result["lending_balance"] = bal
             if bal is not None and prev is not None:
                 result["lending_balance_change_d"] = bal - prev
