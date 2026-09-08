@@ -676,6 +676,7 @@ def get_chips_detail(code, asof=None):
               "short_balance": None, "short_change_d": None,
               "short_change_5d": None, "short_margin_ratio": None,
               "lending_volume_d": None, "lending_source_date": None,
+              "lending_volume_source_date": None,
               "lending_balance": None, "lending_balance_change_d": None,
               "foreign_share_pct": None, "foreign_share_change": None,
               "foreign_share_remain_pct": None, "foreign_share_source_date": None}
@@ -687,6 +688,7 @@ def get_chips_detail(code, asof=None):
         "margin_change_d", "margin_change_5d", "margin_balance",
         "margin_source_date", "short_balance", "short_change_d",
         "short_change_5d", "short_margin_ratio", "lending_volume_d",
+        "lending_volume_source_date",
         "lending_source_date", "lending_balance", "lending_balance_change_d",
         "foreign_share_pct", "foreign_share_change",
         "foreign_share_remain_pct", "foreign_share_source_date",
@@ -694,6 +696,7 @@ def get_chips_detail(code, asof=None):
     for field in independent_fields:
         cached_date = cached.get(
             "foreign_share_source_date" if field.startswith("foreign_share")
+            else "lending_volume_source_date" if field == "lending_volume_d"
             else "lending_source_date" if field.startswith("lending")
             else "margin_source_date")
         if cached.get(field) is not None and (
@@ -942,7 +945,10 @@ def get_chips_detail(code, asof=None):
             by_date_vol[r["date"]] = by_date_vol.get(r["date"], 0) + (r.get("volume") or 0)
         if by_date_vol:
             latest_d = sorted(by_date_vol.keys())[-1]
-            result["lending_source_date"] = latest_d
+            # 借券「成交量」跟借券「賣出餘額」是兩個不同節奏的事實：成交量當天
+            # 就有、餘額要等官方收盤檔。共用一個 lending_source_date 會讓卡片
+            # 標著今天、顯示的卻是昨天的餘額，所以各記各的日期。
+            result["lending_volume_source_date"] = latest_d
             result["lending_volume_d"] = round(by_date_vol[latest_d] / 1000)  # 股→張
     except Exception as e:
         print(f"[chips] 借券成交 {code} 失敗: {e}")
@@ -967,6 +973,7 @@ def get_chips_detail(code, asof=None):
                 latest = rows[-1]
                 bal = latest.get("SBLShortSalesCurrentDayBalance")
                 prev = latest.get("SBLShortSalesPreviousDayBalance")
+                result["lending_source_date"] = latest.get("date")
                 result["lending_balance"] = round(bal / 1000) if bal is not None else None
                 if bal is not None and prev is not None:
                     result["lending_balance_change_d"] = round((bal - prev) / 1000)

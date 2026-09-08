@@ -9,11 +9,13 @@
 
 import importlib.util
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 
 
 MODULE_DIR = Path(__file__).resolve().parents[1] / "個股卡片相關檔案_20260722"
+sys.path.insert(0, str(MODULE_DIR))   # chips.py 自己會 import config 等同層模組
 # 直接從路徑載入並取獨立模組名：repo 裡有好幾支 chips.py，用 sys.path + import
 # 會被其他測試先 import 的那一支蓋掉(既有 chips 測試就是這樣整批 fail)。
 _SPEC = importlib.util.spec_from_file_location(
@@ -129,3 +131,34 @@ def test_after_close_requires_same_day_margin(monkeypatch):
     assert not chips._daily_sources_fresh(
         {"margin_source_date": "2026-09-07",
          "lending_source_date": "2026-09-07"}, "2026-09-08")
+
+
+def test_lending_volume_date_does_not_speak_for_the_balance(monkeypatch, tmp_path):
+    """借券成交量當天就有、賣出餘額要等官方收盤檔，兩者不得共用一個日期。"""
+    cache = tmp_path / "chips_cache.json"
+    cache.write_text('{"date":"","stocks":{}}', encoding="utf-8")
+    monkeypatch.setattr(chips, "CACHE_FILE", str(cache))
+    monkeypatch.setattr(chips, "_cache", {"date": "", "stocks": {}})
+    monkeypatch.setattr(chips, "_save_disk", lambda: None)
+    monkeypatch.setattr(chips, "_official_detail", lambda code, asof=None: {})
+    monkeypatch.setattr(chips, "_official_margin_snapshot", lambda asof=None: {
+        "3037": {"margin_prev": 35511, "margin_balance": 35134,
+                 "short_prev": 602, "short_balance": 429,
+                 "sbl_prev": 4426, "sbl_balance": 4144,
+                 "source_date": "2026-09-07", "sbl_source_date": "2026-09-07"},
+    })
+
+    def _finmind(dataset, code, start, **kwargs):
+        if dataset == "TaiwanStockSecuritiesLending":
+            return [{"date": "2026-09-08", "volume": 356}]
+        raise RuntimeError("FinMind 402")   # 免費額度用盡 → 走官方備援
+
+    monkeypatch.setattr(chips, "_finmind", _finmind)
+
+    r = chips.get_chips_detail("3037", asof="2026-09-08")
+
+    assert r["lending_source_date"] == "2026-09-07"        # 餘額日
+    assert r["lending_volume_source_date"] == "2026-09-08"  # 成交量日
+    assert r["lending_balance"] == 4144
+    assert r["margin_source_date"] == "2026-09-07"
+    assert r["margin_balance"] == 35134
