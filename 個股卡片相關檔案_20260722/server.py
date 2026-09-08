@@ -615,6 +615,32 @@ def stamp_watch_outcome(today):
 CHIPS_PREFETCH_DONE = ""
 
 
+def _refresh_daily_chip_sources(codes, budget_s=240):
+    """刷新 detail: 快取裡的融資融券／借券／集保（官方整市場快照只抓一次）。
+
+    給自己一個時間預算：外部來源慢或掛掉時寧可少刷幾檔，也不要把盤前／盤後
+    排程整個卡住。
+    """
+    try:
+        import chips as _chips
+    except Exception as exc:
+        print(f"[chips] 融資融券快取刷新失敗:{exc}", flush=True)
+        return 0
+    started, fresh = time.time(), 0
+    for code in codes:
+        if time.time() - started > budget_s:
+            print(f"[chips] ⚠️ 融資融券刷新逾時，只完成 {fresh}/{len(codes)} 檔", flush=True)
+            break
+        try:
+            if (_chips.get_chips_detail(code) or {}).get("margin_source_date"):
+                fresh += 1
+        except Exception:
+            pass
+    else:
+        print(f"[chips] ✅ 融資融券／借券快取刷新 {fresh}/{len(codes)} 檔", flush=True)
+    return fresh
+
+
 def prefetch_chips_cache(force=False):
     """盤前/盤後把 51 檔籌碼一次抓齊寫入 chips_cache.json。
 
@@ -650,6 +676,10 @@ def prefetch_chips_cache(force=False):
             print(f"[chips] FinMind 備援失敗:{exc}")
     CHIPS_PREFETCH_DONE = today
     print(f"[chips] ✅ 籌碼快取建立 {ok}/{len(codes)} 檔（{today}）", flush=True)
+    # 融資融券／借券／集保跟法人是不同節奏的來源，而且只有 get_chips_detail()
+    # 會寫 detail: 快取。不在這裡一起刷新，籌碼頁就得等使用者自己點開個股卡片
+    # 才更新 —— 2026-09-08 實測全池融資融券整整停在 09-04。
+    _refresh_daily_chip_sources(codes)
     # 估值(P/E／P/B)同一週期一起更新:TWSE/TPEx 官方免費資料,跟法人
     # 快取用同一支排程,不必另開一組時間點。
     try:

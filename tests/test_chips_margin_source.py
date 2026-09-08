@@ -7,16 +7,19 @@
    後半借券賣出)，沒有融資餘額；正確來源是 MI_MARGN 的融資融券彙總表。
 """
 
+import importlib.util
 import json
-import sys
 from datetime import datetime
 from pathlib import Path
 
 
 MODULE_DIR = Path(__file__).resolve().parents[1] / "個股卡片相關檔案_20260722"
-sys.path.insert(0, str(MODULE_DIR))
-
-import chips  # noqa: E402
+# 直接從路徑載入並取獨立模組名：repo 裡有好幾支 chips.py，用 sys.path + import
+# 會被其他測試先 import 的那一支蓋掉(既有 chips 測試就是這樣整批 fail)。
+_SPEC = importlib.util.spec_from_file_location(
+    "chips_stock_card_margin", MODULE_DIR / "chips.py")
+chips = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(chips)
 
 
 MARGN_ROWS = [["2330", "台積電", "715", "1,567", "12", "28,381", "27,517",
