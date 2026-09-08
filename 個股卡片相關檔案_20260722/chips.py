@@ -926,6 +926,13 @@ def get_chips_detail(code, asof=None):
                     (latest.get("ShortSaleTodayBalance") or 0)
                     - (rows[-6].get("ShortSaleTodayBalance") or 0)
                 )
+        # FinMind 拿得到、但只到更早的交易日時，同樣要改吃官方：抓得到資料不等於
+        # 抓到的是最新那天(2026-09-08 有 13 檔上櫃股就是這樣停在 09-04)。
+        floor = _daily_source_floor(asof_limit)
+        if str(result.get("margin_source_date") or "")[:10] < floor:
+            raise ValueError(
+                f"FinMind 融資融券只到 {result.get('margin_source_date')}，"
+                f"落後 {floor}")
     except Exception as e:
         print(f"[chips] 融資融券 {code} 失敗: {e}")
         try:

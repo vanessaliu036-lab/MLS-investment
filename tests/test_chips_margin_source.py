@@ -194,3 +194,37 @@ def test_official_shareholding_falls_back_and_dates_itself(monkeypatch):
     assert snap["3037"]["source_date"] == "2026-09-07"
     assert snap["3037"]["foreign_share_pct"] == 40.57
     assert snap["3037"]["foreign_share_remain_pct"] == 59.42
+
+
+def test_stale_finmind_margin_falls_back_to_official(monkeypatch, tmp_path):
+    """FinMind 抓得到，但只到更早的交易日 → 一樣要改吃官方。"""
+    cache = tmp_path / "chips_cache.json"
+    cache.write_text('{"date":"","stocks":{}}', encoding="utf-8")
+    monkeypatch.setattr(chips, "CACHE_FILE", str(cache))
+    monkeypatch.setattr(chips, "_cache", {"date": "", "stocks": {}})
+    monkeypatch.setattr(chips, "_save_disk", lambda: None)
+    monkeypatch.setattr(chips, "_official_detail", lambda code, asof=None: {})
+    monkeypatch.setattr(chips, "_official_shareholding_snapshot", lambda asof=None: {})
+    monkeypatch.setattr(chips, "_official_margin_snapshot", lambda asof=None: {
+        "1815": {"margin_prev": 41788, "margin_balance": 43912,
+                 "short_prev": 0, "short_balance": 0,
+                 "sbl_prev": 14000, "sbl_balance": 14247,
+                 "source_date": "2026-09-07", "sbl_source_date": "2026-09-07"},
+    })
+    _freeze_hour(monkeypatch, 11)   # floor = 2026-09-07
+
+    def _finmind(dataset, code, start, **kwargs):
+        if dataset == "TaiwanStockMarginPurchaseShortSale":
+            return [{"date": "2026-09-04",
+                     "MarginPurchaseTodayBalance": 41788,
+                     "MarginPurchaseYesterdayBalance": 41000,
+                     "ShortSaleTodayBalance": 0,
+                     "ShortSaleYesterdayBalance": 0}]
+        return []
+
+    monkeypatch.setattr(chips, "_finmind", _finmind)
+
+    r = chips.get_chips_detail("1815", asof="2026-09-08")
+
+    assert r["margin_source_date"] == "2026-09-07"
+    assert r["margin_balance"] == 43912
