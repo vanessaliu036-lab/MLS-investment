@@ -3976,9 +3976,15 @@ async function loadBreadth(embedded){
   .decision-group table:not(.wt),.decision-group table:not(.wt) thead,.decision-group table:not(.wt) tbody{display:block!important}
   .decision-group table:not(.wt) thead{display:none!important}
   .decision-group table:not(.wt) tr{display:block!important;padding:12px 4px;border-bottom:1px solid var(--line)}
-  .decision-group table:not(.wt) th,.decision-group table:not(.wt) td{display:flex!important;width:auto!important;gap:10px;padding:5px 4px!important;border:0!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;text-align:left!important}
-  .decision-group table:not(.wt) td::before{content:attr(data-th);flex:0 0 78px;color:var(--muted);font-size:11px;font-weight:800;padding-top:2px}
-  .decision-group table:not(.wt) td>b,.decision-group table:not(.wt) td>span.current-price{min-width:0}
+  /* td 內常有 <b>結論</b> 後面接一到兩個 <small> 附註(代理象限/價格位置/盤中判讀)；
+     display:flex 會把 label(::before)、<b>、每個 <small> 全部當成同一列的並排欄位，
+     擠成三欄窄字看不清楚。改回跟 #rows 一樣「label 一行、內容一行」的 block 疊法，
+     <small> 本來就是 display:block，疊在 <b> 下面剛好順順長。 */
+  .decision-group table:not(.wt) th,.decision-group table:not(.wt) td{display:block!important;width:auto!important;padding:5px 4px!important;border:0!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;text-align:left!important}
+  .decision-group table:not(.wt) td::before{content:attr(data-th);display:block;color:var(--muted);font-size:11px;font-weight:800;margin-bottom:3px}
+  /* 盤中判讀的結論句原本沒設字級，直接吃到跟股票名稱一樣的 14px 全粗體，
+     一整段長句視覺份量壓過名稱；比照 .home-reading 調小、減重。 */
+  .decision-group table:not(.wt) td.judge-cell>b{display:block;font-size:12.5px;font-weight:650;line-height:1.5}
 }
 /* #rows（盤中即時決策主表）手機版把 9 個表頭疊成單欄，thead 變成一整排
    9 個 64px 高的空白列，擋在資料前面看起來像「大空白」；直接隱藏 thead，
