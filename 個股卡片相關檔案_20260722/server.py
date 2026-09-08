@@ -81,14 +81,6 @@ html,body{max-width:100%;overflow-x:hidden}body{padding:0 0 40px!important}.mls-
 </style>
 """
 
-_STATIC_TOP_NAV_MOBILE_WRAP_CSS = """
-<style data-mls-navigation-mobile-wrap>
-@media(max-width:560px){
-  .mls-nav{flex-wrap:wrap!important;overflow-x:visible!important;overflow-y:visible!important;align-content:center!important}
-}
-</style>
-"""
-
 _STATIC_TOP_NAV_LABEL_CSS = """
 <style data-mls-navigation-label>
 .mls-nav-label{display:inline-flex!important;align-items:center!important;text-decoration:none!important;cursor:pointer!important}
@@ -2157,7 +2149,7 @@ def _read_html(filename: str) -> str:
                     )
                     content = content.replace(
                         "</body>",
-                        _STATIC_TOP_NAV_CSS + _STATIC_TOP_NAV_MOBILE_WRAP_CSS + _STATIC_TOP_NAV_LABEL_CSS + "</body>",
+                        _STATIC_TOP_NAV_CSS + _STATIC_TOP_NAV_LABEL_CSS + "</body>",
                     )
                 return content
     raise FileNotFoundError(f"{filename} 不在 {here} 或其上層目錄")
