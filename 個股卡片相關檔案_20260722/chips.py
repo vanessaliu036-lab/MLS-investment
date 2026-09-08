@@ -28,6 +28,7 @@ _cache = {"date": "", "stocks": {}}
 _official_margin_cache = {}
 # 官方當日融資融券要收盤後才發布；只退到舊交易日的結果只快取這麼久（秒）。
 _MARGIN_PENDING_TTL = 900
+_official_share_cache = {}
 
 
 def _finmind(dataset, data_id, start_date):
@@ -105,6 +106,63 @@ def _official_number(value, shares=False):
         return None
 
 
+def _official_json(url):
+    """官方站(TWSE/TPEx)的免 token JSON 讀取。"""
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                       "Chrome/120 Safari/537.36",
+        "Accept": "application/json",
+        "Referer": "https://www.twse.com.tw/zh/",
+    })
+    with urllib.request.urlopen(req, timeout=20) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _official_shareholding_snapshot(asof=None):
+    """TWSE MI_QFIIS 整市場外資持股比率（上市），FinMind 402 時的免費備援。
+
+    跟融資融券一樣往前退到真的有 rows 的交易日，並以那天當來源日。
+    """
+    candidates = _trading_day_candidates(asof)
+    cache_key = candidates[0]
+    hit = _official_share_cache.get(cache_key)
+    if hit:
+        cached_at, cached_out, complete = hit
+        if complete or (datetime.now().timestamp() - cached_at) < _MARGIN_PENDING_TTL:
+            return cached_out
+
+    out = {}
+    for trade_date in candidates:
+        ymd = trade_date.replace("-", "")
+        try:
+            payload = _official_json(
+                "https://www.twse.com.tw/rwd/zh/fund/MI_QFIIS"
+                f"?date={ymd}&selectType=ALLBUT0999&response=json")
+        except Exception as exc:
+            print(f"[chips] TWSE 外資持股 {trade_date} 失敗: {exc}")
+            continue
+        rows = payload.get("data") or []
+        if not rows:
+            continue
+        for row in rows:
+            try:
+                code = str(row[0]).strip()
+                out[code] = {
+                    "foreign_share_pct": float(row[7]),
+                    "foreign_share_remain_pct": float(row[6]),
+                    "source_date": trade_date,
+                }
+            except (TypeError, ValueError, IndexError):
+                continue
+        break
+
+    if not out:
+        return out
+    complete = max(r["source_date"] for r in out.values()) >= cache_key
+    _official_share_cache[cache_key] = (datetime.now().timestamp(), out, complete)
+    return out
+
+
 def _trading_day_candidates(asof=None, back=8):
     """由 asof 往回列出候選交易日（只跳週末，不含國定假日表）。
 
@@ -157,16 +215,7 @@ def _official_margin_snapshot(asof=None):
             return cached_out
 
     out = {}
-
-    def _get(url):
-        req = urllib.request.Request(url, headers={
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                           "Chrome/120 Safari/537.36",
-            "Accept": "application/json",
-            "Referer": "https://www.twse.com.tw/zh/",
-        })
-        with urllib.request.urlopen(req, timeout=20) as response:
-            return json.loads(response.read().decode("utf-8"))
+    _get = _official_json
 
     def _merge_credit(rows, twse=False, date=None):
         for row in rows or []:
@@ -998,6 +1047,23 @@ def get_chips_detail(code, asof=None):
                         result["foreign_share_pct"] - prev_pct, 2)
     except Exception as e:
         print(f"[chips] 外資持股 {code} 失敗: {e}")
+    if result.get("foreign_share_pct") is None:
+        # FinMind 免費額度用盡(402)時，上市檔改吃 TWSE 官方；抓不到就維持 None，
+        # 不要沿用上一輪的舊比率冒充今天。
+        try:
+            row = _official_shareholding_snapshot(asof_limit).get(str(code))
+            if row:
+                result["foreign_share_pct"] = row["foreign_share_pct"]
+                result["foreign_share_remain_pct"] = row["foreign_share_remain_pct"]
+                result["foreign_share_source_date"] = row["source_date"]
+                prev_days = _trading_day_candidates(row["source_date"])
+                prev = (_official_shareholding_snapshot(prev_days[1]).get(str(code))
+                        if len(prev_days) > 1 else None)
+                if prev and prev["source_date"] != row["source_date"]:
+                    result["foreign_share_change"] = round(
+                        row["foreign_share_pct"] - prev["foreign_share_pct"], 2)
+        except Exception as exc:
+            print(f"[chips] 官方外資持股 {code} 失敗: {exc}")
 
     # 法人、融資融券、借券、集保是不同發布節奏的資料集，分開採用各自
     # 的最新可用日期；某一來源落後時，只讓該來源缺少的欄位顯示「—」，

@@ -162,3 +162,35 @@ def test_lending_volume_date_does_not_speak_for_the_balance(monkeypatch, tmp_pat
     assert r["lending_balance"] == 4144
     assert r["margin_source_date"] == "2026-09-07"
     assert r["margin_balance"] == 35134
+
+
+QFIIS_ROWS = {
+    "2026-09-07": [["3037", "欣興", "TW0003037008", "1,641,291,596",
+                    "975,396,070", "665,895,526", 59.42, 40.57,
+                    "100.00", "100.00", "", "115/09/03"]],
+    "2026-09-04": [["3037", "欣興", "TW0003037008", "1,641,291,596",
+                    "976,381,000", "664,910,596", 59.48, 40.51,
+                    "100.00", "100.00", "", "115/09/03"]],
+}
+
+
+def test_official_shareholding_falls_back_and_dates_itself(monkeypatch):
+    """FinMind 402 時上市外資持股改吃 TWSE 官方，並標它自己的資料日。"""
+    def _open(req, timeout=None):
+        import re
+        import urllib.parse
+        url = urllib.parse.unquote(
+            req.full_url if hasattr(req, "full_url") else str(req))
+        ymd = re.search(r"date=(\d{8})", url)
+        day = (f"{ymd.group(1)[:4]}-{ymd.group(1)[4:6]}-{ymd.group(1)[6:]}"
+               if ymd else "")
+        return _Resp({"stat": "OK", "data": QFIIS_ROWS.get(day, [])})
+
+    monkeypatch.setattr(chips.urllib.request, "urlopen", _open)
+    monkeypatch.setattr(chips, "_official_share_cache", {})
+
+    snap = chips._official_shareholding_snapshot("2026-09-08")
+
+    assert snap["3037"]["source_date"] == "2026-09-07"
+    assert snap["3037"]["foreign_share_pct"] == 40.57
+    assert snap["3037"]["foreign_share_remain_pct"] == 59.42
