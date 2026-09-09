@@ -118,6 +118,7 @@ ssh -p "${VPS_PORT_SSH}" "${VPS_USER}@${VPS_HOST}" \
 rsync -avz --delete \
   -e "ssh -p ${VPS_PORT_SSH}" \
   --exclude='.git' \
+  --exclude='.env' \
   --exclude='.venv*' \
   --exclude='*.db' \
   --exclude='*.db-shm' \
