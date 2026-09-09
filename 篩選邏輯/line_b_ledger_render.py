@@ -340,6 +340,7 @@ text-decoration:none;font-size:13px}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .monitor-radar{display:grid;gap:18px}
 .monitor-section{display:grid;gap:0}
+.monitor-section[hidden]{display:none}
 .monitor-section .section-title{margin:0 0 10px}
 .monitor-section h3{font-size:13px;margin:0;font-weight:750}
 .stock-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow)}
