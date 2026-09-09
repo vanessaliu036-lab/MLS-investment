@@ -828,129 +828,14 @@ def _fmt_price(value):
     return f"{number:.1f}" if number < 1000 else f"{number:.0f}"
 
 
-def _pct_gap(price, ref):
-    if price is None or ref is None or float(ref) == 0:
-        return None
-    return (float(price) / float(ref) - 1) * 100
-
-
-def _price_gate_label(price, vwap, ma20):
-    if price is not None and vwap is not None and vwap > 0:
-        return (("PASS", f"VWAP 上 {_fmt_price(vwap)}") if price >= vwap
-                else ("FAIL", f"VWAP 下 {_fmt_price(vwap)}"))
-    if price is not None and ma20 is not None and float(ma20) > 0:
-        return (("PASS", f"MA20 上 {_fmt_price(ma20)}") if price >= float(ma20)
-                else ("FAIL", f"MA20 下 {_fmt_price(ma20)}"))
-    return ("NO_DATA", "價格位置缺資料")
-
-
-def _home_decision(change, aflow, volume_ratio, price, vwap, ma20, money_nature,
-                   data_missing, risk_gate, extreme_up, core_entry,
-                   chip_bearish, entry_missing, pct):
-    """首頁交易決策層：只回答「現在做什麼」。
-
-    這層刻意和機會雷達分開。雷達可以說某檔正在變強；首頁只有在
-    價格、資金、結構、風險都確認後，才允許顯示「可進場」。
-    """
-    price_gate, price_gate_label = _price_gate_label(price, vwap, ma20)
-    structure_gate = "PASS" if price_gate == "PASS" else ("NO_DATA" if price_gate == "NO_DATA" else "WAIT")
-    structure_label = {
-        "PASS": "突破／站穩",
-        "WAIT": "尚未確認",
-        "NO_DATA": "結構缺資料",
-    }[structure_gate]
-
-    money_code = money_nature.get("code")
-    money_state = {
-        "TRUE_MOMENTUM": "攻擊 ↑",
-        "HEALTHY_ROTATION": "承接 ↑",
-        "DIP_ABSORPTION": "承接 ↑",
-        "FAKE_RED_DISTRIBUTION": "假訊號 ⚠",
-        "CAPITAL_EXIT": "轉弱 ↓",
-    }.get(money_code, "未確認")
-
-    def pack(code, label, decision, reading, action):
-        return {
-            "code": code,
-            "label": label,
-            "decision": decision,
-            "money_state": money_state,
-            "price_gate": price_gate,
-            "price_gate_label": price_gate_label,
-            "structure_gate": structure_gate,
-            "structure_gate_label": structure_label,
-            "reading": reading,
-            "action": action,
-        }
-
-    if risk_gate or money_code in ("FAKE_RED_DISTRIBUTION", "CAPITAL_EXIT"):
-        if money_code == "FAKE_RED_DISTRIBUTION":
-            return pack("NO_ENTRY", "🔴 不進場", "不進場",
-                        "紅盤但主動資金流出，疑似假紅誘高",
-                        "不追價，等資金翻正並站回 VWAP")
-        return pack("NO_ENTRY", "🔴 不進場", "不進場",
-                    "資金或結構轉弱，買點失效",
-                    "暫停進場，等止跌與資金修復")
-
-    if change is not None and change < 0 and aflow is not None and aflow > 0:
-        absorption_action = ("等止跌＋守住 VWAP，不搶反彈"
-                             if price_gate == "PASS"
-                             else "等止跌＋收復 VWAP，不搶反彈")
-        return pack("ABSORPTION_WATCH", "🟠 承接觀察", "有承接，不等於買點",
-                    "價跌但 A-flow 為正，有資金承接",
-                    absorption_action)
-
-    entry_ready = bool(money_code == "TRUE_MOMENTUM" and core_entry and
-                       not chip_bearish and not entry_missing and
-                       pct is not None and pct >= 65)
-    if entry_ready and not extreme_up and not (change is not None and change >= 6.0):
-        return pack("ENTRY", "🟢 可進場", "可進場",
-                    "資金、價格與結構同步確認",
-                    "依計畫進場，嚴守停損")
-
-    if entry_ready:
-        return pack("WAIT_PULLBACK", "🔵 等回測", "等回測，不追價",
-                    "多方成立但漲幅偏高，追價風險上升",
-                    "等回測 VWAP／關鍵價後再評估")
-
-    if data_missing:
-        missing = "、".join(dict.fromkeys(data_missing))
-        return pack("WAIT_CONFIRM", "🟡 等待觀察", "等待觀察",
-                    f"訊號不足：{missing}",
-                    "等資料補齊後再判定")
-
-    if aflow is not None and aflow > 0:
-        if price_gate == "FAIL":
-            return pack("WAIT_CONFIRM", "🟡 等待觀察", "等待觀察",
-                        "有資金，但價格 Gate 未完成",
-                        "站回 VWAP 再判定，不追價")
-        # price_gate 在這裡已經 PASS(structure_gate 跟著同步為 PASS／
-        # 「突破／站穩」)，卡在這一步的不是結構、是 entry_ready 還沒到
-        # (money_state 未達 TRUE_MOMENTUM、core_entry、籌碼或分數未過65)；
-        # 文案不能再講「結構尚未形成」，否則跟上面 structure_gate_label
-        # 的「突破／站穩」自相矛盾(2026-09-06 使用者截圖抓到)。
-        return pack("WAIT_CONFIRM", "🟡 等待觀察", "等待觀察",
-                    "價格已站穩，但資金強度或籌碼確認尚未到位",
-                    "等待資金轉強或籌碼確認後再進場")
-
-    # 同上：price_gate 若已 PASS，structure_gate_label 會是「突破／站穩」，
-    # 不能在 reading 又講「結構尚未同步」自相矛盾；只有 price_gate 真的
-    # 沒過(FAIL/NO_DATA，structure_gate 才會同步是 WAIT)才提「結構」。
-    if price_gate == "PASS":
-        return pack("WAIT_CONFIRM", "🟡 等待觀察", "等待觀察",
-                    "價格已站穩，但資金尚未轉正",
-                    "等待資金轉正後再判定")
-    return pack("WAIT_CONFIRM", "🟡 等待觀察", "等待觀察",
-                "價格、資金與結構尚未同步",
-                "等待價格／資金／結構同步確認")
-
-
 def _attach_home_decision_levels(rows):
-    """把首頁決策補上可執行價位，避免只寫「站穩／回測」的空語意。"""
+    """把首頁決策補上可執行價位(VWAP／MA20／關鍵價)，避免只寫「站穩／回測」的空語意。
+
+    只算 row["home_decision_level"]／row["home_decision_level_label"]：這是唯一
+    在 _attach_radar_execution_overlay() 之後還會保留下來給前台用的欄位；
+    其餘 home_* 欄位一律由 overlay 覆寫，這裡不重算。
+    """
     for row in rows:
-        home = row.get("home_decision")
-        if not isinstance(home, dict):
-            continue
         price = _optional_float(row.get("price"))
         vwap = _optional_float(row.get("avg_price"))
         ma20 = _optional_float(row.get("ma20"))
@@ -960,60 +845,9 @@ def _attach_home_decision_levels(rows):
         if ref is None:
             ref = trigger
             ref_name = "關鍵價"
-        gap = _pct_gap(price, ref)
-        gap_text = "" if gap is None else f"，目前距離 {gap:+.1f}%"
-        code = home.get("code")
-
-        if row.get("home_money_flow_label"):
-            home["money_flow_label"] = row["home_money_flow_label"]
         if ref is not None:
-            home["decision_level"] = round(float(ref), 2)
             row["home_decision_level"] = round(float(ref), 2)
             row["home_decision_level_label"] = f"{ref_name} {_fmt_price(ref)}"
-
-        if code == "WAIT_CONFIRM" and ref is not None:
-            if home.get("price_gate") == "FAIL":
-                home["reading"] = f"有資金，但價格還在 {ref_name} {_fmt_price(ref)} 下方"
-                home["action"] = f"站回 {ref_name} {_fmt_price(ref)} 後再判定{gap_text}；不追價"
-                home["structure_gate_label"] = f"尚未站回 {_fmt_price(ref)}"
-            else:
-                level = f"{ref_name} {_fmt_price(ref)}" if ref is not None else "關鍵價"
-                home["reading"] = f"有資金，但還缺有效買點確認"
-                home["action"] = f"等突破或回測 {level} 有承接再看{gap_text}"
-        elif code == "ABSORPTION_WATCH" and ref is not None:
-            if home.get("price_gate") == "PASS":
-                home["action"] = f"守住 {ref_name} {_fmt_price(ref)} 並止跌；未連續站穩不搶"
-                home["structure_gate_label"] = f"守住 {_fmt_price(ref)}"
-            else:
-                home["action"] = f"收復 {ref_name} {_fmt_price(ref)} 再看；未站回不搶"
-                home["structure_gate_label"] = f"尚未站回 {_fmt_price(ref)}"
-            home["reading"] = "價跌但資金流入，先看承接是否守得住"
-        elif code == "WAIT_PULLBACK":
-            pullback = trigger if trigger is not None else ref
-            pullback_name = "回測價" if trigger is not None else ref_name
-            if pullback is not None:
-                gap = _pct_gap(price, pullback)
-                gap_text = "" if gap is None else f"，目前距離 {gap:+.1f}%"
-                home["decision_level"] = round(float(pullback), 2)
-                row["home_decision_level"] = round(float(pullback), 2)
-                row["home_decision_level_label"] = f"{pullback_name} {_fmt_price(pullback)}"
-                home["reading"] = f"方向成立，但現價離 {pullback_name} {_fmt_price(pullback)} 太遠"
-                home["action"] = f"等回測 {pullback_name} {_fmt_price(pullback)} 附近有承接再看{gap_text}"
-        elif code == "ENTRY" and ref is not None:
-            home["action"] = f"可依計畫進場；跌破 {ref_name} {_fmt_price(ref)} 轉弱"
-
-        for key in ("reading", "action", "price_gate_label", "structure_gate_label"):
-            row_key = {
-                "reading": "home_intraday_reading",
-                "action": "home_action",
-                "price_gate_label": "home_price_gate_label",
-                "structure_gate_label": "home_structure_gate_label",
-            }[key]
-            if key == "reading":
-                row[row_key] = f"{home.get('label')}｜{home.get(key)}"
-            elif home.get(key):
-                row[row_key] = home[key]
-        row["home_decision"] = home
     return rows
 
 
@@ -1317,12 +1151,6 @@ def _seven_factor_score(raw, ma20, chip):
             wait_for.append("法人籌碼改善")
         reason = "等待確認｜尚未通過多方進場條件：" + "、".join(wait_for or ["突破／承接確認"]) + "｜不買。"
 
-    home_decision = _home_decision(
-        change, aflow, volume_ratio, price, vwap, ma20, money_nature,
-        data_missing, risk_gate, extreme_up, core_entry, chip_bearish,
-        entry_missing, pct)
-    home_reading = f"{home_decision['label']}｜{home_decision['reading']}"
-
     return {
         "score": round(points, 1), "score_max": 100,
         "score_pct": round(pct, 1) if pct is not None else None,
@@ -1349,25 +1177,14 @@ def _seven_factor_score(raw, ma20, chip):
             "money": "PASS" if flow_gate else "FAIL",
             "structure": "PASS" if structure_confirmed else "FAIL",
         },
-        "home_decision": home_decision,
-        "home_decision_code": home_decision["code"],
-        "home_decision_label": home_decision["label"],
-        "home_decision_text": home_decision["decision"],
-        "home_money_state": home_decision["money_state"],
         "home_money_flow_100m": money_flow_100m,
         "home_money_flow_label": ("—" if money_flow_100m is None
                                   else f"{money_flow_100m:+.2f} 億"),
-        "home_price_gate": home_decision["price_gate"],
-        "home_price_gate_label": home_decision["price_gate_label"],
-        "home_structure_gate": home_decision["structure_gate"],
-        "home_structure_gate_label": home_decision["structure_gate_label"],
-        "home_action": home_decision["action"],
         "intraday_money_nature": money_nature,
         "intraday_money_nature_label": money_nature["label"],
         "intraday_money_nature_code": money_nature["code"],
         "intraday_money_nature_reason": money_nature["reason"],
         "intraday_money_evidence": money_evidence,
-        "home_intraday_reading": home_reading,
         "potential_grade": "A" if decision_status == "可進場" else "B",
         "entry_status": "可進場" if decision_status == "可進場" else ("暫不進場" if decision_status == "風險警報" else "等待確認"),
         "is_limit_up": extreme_up,
@@ -1508,24 +1325,15 @@ def _row(raw):
         "candidate_lifecycle": seven["candidate_lifecycle"],
         "candidate_retained": seven["candidate_retained"],
         "decision_gates": seven["decision_gates"],
-        "home_decision": seven["home_decision"],
-        "home_decision_code": seven["home_decision_code"],
-        "home_decision_label": seven["home_decision_label"],
-        "home_decision_text": seven["home_decision_text"],
-        "home_money_state": seven["home_money_state"],
+        # home_decision／home_decision_label／home_action 等首頁可見欄位不在這裡算：
+        # _attach_radar_execution_overlay() 之後一律會覆寫成雷達判讀，這裡先算了也是白算。
         "home_money_flow_100m": seven["home_money_flow_100m"],
         "home_money_flow_label": seven["home_money_flow_label"],
-        "home_price_gate": seven["home_price_gate"],
-        "home_price_gate_label": seven["home_price_gate_label"],
-        "home_structure_gate": seven["home_structure_gate"],
-        "home_structure_gate_label": seven["home_structure_gate_label"],
-        "home_action": seven["home_action"],
         "intraday_money_nature": seven["intraday_money_nature"],
         "intraday_money_nature_label": seven["intraday_money_nature_label"],
         "intraday_money_nature_code": seven["intraday_money_nature_code"],
         "intraday_money_nature_reason": seven["intraday_money_nature_reason"],
         "intraday_money_evidence": seven["intraday_money_evidence"],
-        "home_intraday_reading": seven["home_intraday_reading"],
         "score": seven["score"],
         "score_max": seven["score_max"],
         "score_available": seven["score_available"],
