@@ -266,7 +266,7 @@ html,body{max-width:100%;overflow-x:hidden}
 </section>
 <div class="sys-line muted">VPS Shioaji · API 延遲 <b id="latency">—</b> · 訂閱標的 <b id="subscribed">—</b> · 有效訊號 <b id="valid">—</b> · <b id="quality">資料完整度 —</b><i id="progress" class="sys-progress"></i><span id="notes" class="sys-notes"></span></div>
 
-<div class="section-head"><h2>今日決策雷達</h2><div class="filters"><button class="filter active" data-filter="全部">全部</button><button class="filter" data-filter="🟢 可進場">可進場</button><button class="filter" data-filter="🔵 等回測">等回測</button><button class="filter" data-filter="🟡 保留觀察">保留觀察</button><button class="filter" data-filter="⚪ 尚未觸發">尚未觸發</button><button class="filter" data-filter="🔴 不進場">不進場</button></div></div><section id="cards" class="opportunity-grid" hidden></section>
+<div class="section-head"><h2>今日決策雷達</h2><div class="filters"><button class="filter active" data-filter="全部">全部</button><button class="filter" data-filter="🟢 可進場">可進場</button><button class="filter" data-filter="🔵 等回測">等回測</button><button class="filter" data-filter="🟡 等待觀察">等待觀察</button><button class="filter" data-filter="🟠 承接觀察">承接觀察</button><button class="filter" data-filter="🔴 不進場">不進場</button></div></div><section id="cards" class="opportunity-grid" hidden></section>
 <section class="dashboard-grid"><div class="panel table-panel"><div class="table-head"><h3>盤中即時決策</h3><input id="search" class="search" placeholder="搜尋代碼 / 名稱"></div><table><thead><tr><th>決策</th><th>股票</th><th>價格</th><th>漲跌</th><th>漲幅</th><th>成交量</th><th>資金流(億)</th><th>籌碼</th><th>即時判讀</th></tr></thead><tbody id="rows"></tbody></table></div><div class="panel side-panel"><h3>盤中訊號時間軸</h3><div id="timeline" class="timeline"><div class="event"><time>—</time><strong>等待即時訊號</strong><p>資料更新後顯示目前觀察標的的分類與白話解讀。</p></div></div></div></section>
 <section id="advisorReports" class="advisor-reports" hidden></section>
 <style>
@@ -300,10 +300,10 @@ html,body{max-width:100%;overflow-x:hidden}
 const API_BASE=(location.protocol==='file:'||location.hostname==='127.0.0.1'||location.hostname==='localhost')?'http://66.42.42.150:8000':'';document.documentElement.style.visibility='visible';
 // 重點觀察白名單：只影響決策首頁「逐檔列表」顯示，51 檔母體統計(占比/資料完整度/badge)不受影響。
 // 留空陣列 [] = 顯示全部 51 檔；填入代碼 = 只列出這些代碼。
-const WATCHLIST_FOCUS=[];
+const WATCHLIST_FOCUS=['3026','2327','3532','4979','2408'];
 let data=[],filter='全部',paused=false;const esc=s=>String(s??'—').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));const cls=v=>Number(v)>0?'positive':Number(v)<0?'negative':'';const fmt=v=>v==null?'—':(Number(v)>0?'+':'')+Number(v).toLocaleString('en-US');
 const decisionLabel=x=>x?.decision_status||({'可操作':'可進場','觀察':'等待確認','排除':'風險警報'}[x?.group]||'資料不足');window.decisionLabel=decisionLabel;
-const homeDecisionLabel=x=>x?.home_decision_label||'🟡 保留觀察';window.homeDecisionLabel=homeDecisionLabel;
+const homeDecisionLabel=x=>x?.home_decision_label||'🟡 等待觀察';window.homeDecisionLabel=homeDecisionLabel;
 const radarStatusLabel=x=>x?.radar_status?({'可進場':'🟢 可進場','等回測':'🔵 等回測','保留觀察':'🟡 保留觀察','尚未觸發':'⚪ 尚未觸發','不進場':'🔴 不進場'}[x.radar_status]||x.radar_status):homeDecisionLabel(x);
 const radarMoneyText=x=>x?.intraday_money_nature_label||x?.home_money_state||'主動資金待確認';
 const radarWaitText=x=>x?.radar_next_step||x?.radar_wait_signal||x?.home_action||'等待明確價格／資金／結構訊號';
@@ -3947,7 +3947,7 @@ async function loadBreadth(embedded){
     return parts.join('｜');
   };
   const statusOf=row=>{
-    let s=window.homeDecisionLabel?window.homeDecisionLabel(row):(row?.home_decision_label||'🟡 保留觀察');
+    let s=window.homeDecisionLabel?window.homeDecisionLabel(row):(row?.home_decision_label||'🟡 等待觀察');
     const ch=num(row?.change_rate),flow=num(row?.aflow);
     // 舊 EOD 快照可能仍帶「等待確認」；已知價跌＋資金流出必須在前台守住風險 Gate。
     if(ch!=null&&flow!=null&&ch<=-4&&flow<0)s='🔴 不進場';
