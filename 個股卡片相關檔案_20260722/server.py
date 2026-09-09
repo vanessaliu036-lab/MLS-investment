@@ -1395,6 +1395,21 @@ def api_eod_snapshot():
     payload, upgraded = _upgrade_legacy_eod_payload(payload)
     if upgraded:
         eod_snapshot.write(EOD_SNAPSHOT_PATH, payload)
+    # home_action / home_structure_gate_label / home_decision_label 等首頁可見欄位
+    # 是當初凍結快照當下算出來就寫死存檔的；_upgrade_legacy_eod_payload() 只在
+    # 整批缺 decision_status 才會重跑，平常這些欄位就一直是快照當時的舊字彙/舊文案，
+    # 跟 /api/intraday-test（每次回應都用 _with_pre_activation 重新套用同一份
+    # overlay）對不起來——2026-09-09 使用者截圖抓到收盤後首頁行動欄還在講
+    # 「站回 VWAP」卻沒帶數字，就是這批凍結存檔沒跟著今天的判讀文案修正走。
+    # 這裡在回應前一律重跑同一份 overlay，確保跟即時 API 顯示同一套文字。
+    try:
+        import vps_intraday_test as _vit
+        rows = payload.get("rows") or []
+        if rows:
+            _vit._attach_home_decision_levels(rows)
+            _vit._attach_radar_execution_overlay(rows)
+    except Exception as exc:
+        print(f"[eod_snapshot] home_decision 重算略過: {exc}", flush=True)
     return JSONResponse(
         json.loads(json.dumps(payload, default=str, ensure_ascii=False)),
         headers={"Cache-Control": "public, max-age=60"})
