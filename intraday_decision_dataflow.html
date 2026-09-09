@@ -4018,6 +4018,7 @@ async function loadBreadth(embedded){
   .decision-group table:not(.wt),.decision-group table:not(.wt) thead,.decision-group table:not(.wt) tbody{display:block!important}
   .decision-group table:not(.wt) thead{display:none!important}
   .decision-group table:not(.wt) tr{display:block!important;padding:12px 4px;border-bottom:1px solid var(--line)}
+  .decision-group table:not(.wt) tr[hidden]{display:none!important}
   /* td 內常有 <b>結論</b> 後面接一到兩個 <small> 附註(代理象限/價格位置/盤中判讀)；
      display:flex 會把 label(::before)、<b>、每個 <small> 全部當成同一列的並排欄位，
      擠成三欄窄字看不清楚。改回跟 #rows 一樣「label 一行、內容一行」的 block 疊法，
