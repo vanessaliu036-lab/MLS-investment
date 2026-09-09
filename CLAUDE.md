@@ -181,3 +181,30 @@ forward evidence chain；**現在進入純觀察期**。
 （`.claude-fix-backup/`、`.codex-post-validation-backup-*/`、多餘的重複 `server.py` 等），
 且 2026-09-04 一次部署曾因為 `ops/deploy_guard.py` 的漂移檢查漏掃隱藏目錄，
 差點把這些殘留備份跟著 `rsync --delete` 一起誤刪（靠當次全量備份才救回）。
+
+---
+
+## 🔒 決策首頁「今日決策雷達」重點觀察名單規則（2026-09-09 定案）
+
+`intraday_decision_dataflow.html` 決策首頁的「今日決策雷達」逐檔列表（`WATCHLIST_FOCUS`
+常數），**一律只顯示 Vanessa 明確指定要重點觀察的標的，預設就是這份白名單，不是 51 檔母體**。
+
+1. **不得清空 `WATCHLIST_FOCUS`**。任何 AI 都不准以「51 檔觀察池才是完整母體」
+   （見上方 Research Lead 章程）為理由，把這個常數改回 `[]` 或擴大成全 51 檔。
+   51 檔母體 canonical 的適用範圍是研究/驗證/回測，不等於決策首頁這張逐檔列表要顯示誰。
+2. **要新增或移除標的，只能由 Vanessa 明確要求**；改動前不確定就先問，不要自己判斷「這樣比較完整」
+   就動這份名單。
+3. **51 檔母體統計不受影響**：占比、資料完整度、badge 這類母體層級的數字本來就不吃
+   `WATCHLIST_FOCUS`，維持算全 51 檔；只有「逐檔列表」這一層要收斂到白名單。
+4. **改動這個區塊前，先確認資料來源正確**：`home_decision_label`／`home_decision`／
+   `structure_gate_label` 等首頁可見欄位，實際值一律來自 `_attach_radar_execution_overlay()`
+   （`vps_intraday_test.py`）寫回的 radar 判讀（可進場／等回測／保留觀察／尚未觸發／不進場），
+   `_home_decision()` 那份舊版五態（等待觀察／承接觀察）已經被無條件覆寫、不會出現在任何
+   前台欄位。前端 filter 按鈕、`updateFilterCounts()`、`homeDecisionLabel()` fallback 都要用
+   前者的字彙對齊，不要照字面兩個函式名字去猜該用哪套。
+
+**Why:** 2026-09-09 一次 fix commit 誤把這份白名單清空回 51 檔（連同修正 filter 按鈕文案
+一起做），11 分鐘後被 revert；revert 保住了白名單範圍，但連帶把 filter 按鈕文案改回錯誤字彙，
+導致「今日決策雷達」分類按鈕計數對不起來（例如 5 檔母體只有 4 檔落在可見分類、1 檔卡在
+沒有對應按鈕的狀態）。同時發現「站回 VWAP／MA20」這句判讀文字在多處只有文字沒有實際關鍵價
+數字，一併修正。

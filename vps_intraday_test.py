@@ -230,6 +230,13 @@ def _radar_judgment(row, *, ma20=None, base_status=None, data_missing=None,
     flow = _optional_float(row.get("aflow"))
     vwap = _optional_float(row.get("avg_price"))
     ma20_value = _optional_float(ma20 if ma20 is not None else row.get("ma20"))
+    # 「站回 VWAP／MA20」不能是空話；有值就帶實際關鍵價，沒有才退回文字描述。
+    if vwap is not None:
+        structure_ref = f"VWAP {vwap:g}"
+    elif ma20_value is not None:
+        structure_ref = f"MA20 {ma20_value:g}"
+    else:
+        structure_ref = "VWAP／MA20"
     if structure_confirmed is None:
         structure_confirmed = bool(
             (price is not None and vwap is not None and price >= vwap)
@@ -277,7 +284,7 @@ def _radar_judgment(row, *, ma20=None, base_status=None, data_missing=None,
     elif change is not None and change <= 0:
         wait_for.append("價格止跌並與資金同步")
     if not structure_confirmed:
-        wait_for.append("站回 VWAP／MA20")
+        wait_for.append(f"站回 {structure_ref}")
     wait_for = list(dict.fromkeys(wait_for))
 
     if risk:
@@ -306,11 +313,11 @@ def _radar_judgment(row, *, ma20=None, base_status=None, data_missing=None,
     elif true_attack and not structure_confirmed:
         status = "保留觀察"
         reason = "觀察｜攻擊訊號出現，但結構或進場條件尚未完整確認。"
-        next_step = "等待：" + "、".join(wait_for or ["站回 VWAP／MA20", "確認承接"]) + "。"
+        next_step = "等待：" + "、".join(wait_for or [f"站回 {structure_ref}", "確認承接"]) + "。"
     elif flow_positive and change is not None and change <= 0:
         status = "保留觀察"
         reason = "觀察｜主動資金流入但價格尚未止穩，先確認是健康換手而非反彈失敗。"
-        next_step = "等待：價格止跌、收復 VWAP／MA20，且 A-flow 維持正值；未確認前不搶反彈。"
+        next_step = f"等待：價格止跌、收復 {structure_ref}，且 A-flow 維持正值；未確認前不搶反彈。"
     elif flow_positive or (change is not None and change > 0):
         status = "尚未觸發"
         reason = "候選｜尚未出現完整攻擊訊號。"
@@ -564,7 +571,12 @@ def _attach_radar_execution_overlay(rows):
             price_gate_label = "FAIL｜跌破關鍵價"
         else:
             price_gate_label = "WAIT｜關鍵價／進場區待確認"
-        structure_gate_label = "PASS｜站穩 VWAP／MA20" if radar["structure_gate"] else "WAIT｜站回 VWAP／MA20"
+        # 「結構Gate」不能只寫 VWAP／MA20 卻不帶數字；有值就顯示實際關鍵價。
+        ma20_val = _optional_float(row.get("ma20"))
+        gate_ref = (f"VWAP {vwap:g}" if vwap is not None
+                    else f"MA20 {ma20_val:g}" if ma20_val is not None else "VWAP／MA20")
+        structure_gate_label = (f"PASS｜站穩 {gate_ref}" if radar["structure_gate"]
+                                else f"WAIT｜站回 {gate_ref}")
 
         row.update({
             "extension_risk": extension_risk,
@@ -1096,6 +1108,14 @@ def _seven_factor_score(raw, ma20, chip):
     volume = number(raw.get("total_volume"))
     vwap = number(raw.get("avg_price"))
     low = number(raw.get("low"))
+    # 「站回 VWAP／MA20」不能是空話；有值就帶實際關鍵價，沒有才退回文字描述。
+    _ma20_num = number(ma20)
+    if vwap is not None:
+        structure_ref = f"VWAP {vwap:g}"
+    elif _ma20_num is not None:
+        structure_ref = f"MA20 {_ma20_num:g}"
+    else:
+        structure_ref = "VWAP／MA20"
     high = number(raw.get("high"))
     aflow_unavailable = bool(raw.get("_aflow_unavailable"))
     if aflow_unavailable:
@@ -1263,7 +1283,7 @@ def _seven_factor_score(raw, ma20, chip):
         if aflow is not None and aflow < 0:
             details.append(f"主動資金 {aflow:+,.0f} 張")
         if not structure_confirmed:
-            details.append("價格未站回 VWAP／MA20")
+            details.append(f"價格未站回 {structure_ref}")
         lifecycle_note = ("結構尚未達淘汰門檻，仍保留觀察"
                           if candidate_lifecycle != "淘汰" else "結構失效，淘汰")
         reason = (f"風險警報（{risk_layer or 'D'}級）｜" + "、".join(details) +
@@ -1292,7 +1312,7 @@ def _seven_factor_score(raw, ma20, chip):
         if not flow_gate:
             wait_for.append("主動資金翻正")
         if not structure_confirmed:
-            wait_for.append("站回 VWAP／MA20")
+            wait_for.append(f"站回 {structure_ref}")
         if chip_bearish:
             wait_for.append("法人籌碼改善")
         reason = "等待確認｜尚未通過多方進場條件：" + "、".join(wait_for or ["突破／承接確認"]) + "｜不買。"
