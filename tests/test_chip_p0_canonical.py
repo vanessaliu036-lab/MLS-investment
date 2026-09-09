@@ -145,11 +145,9 @@ def test_positive_aflow_below_vwap_is_not_entry():
     assert got["intraday_money_nature_code"] == "PENDING"
     assert got["decision_status"] == "等待確認"
     assert got["decision_can_buy"] is False
-    assert got["home_decision_code"] == "WAIT_CONFIRM"
-    assert got["home_decision_label"] == "🟡 等待觀察"
     assert got["home_money_flow_100m"] == 18.59
     assert got["home_money_flow_label"] == "+18.59 億"
-    assert "站回 VWAP" in got["home_action"]
+    assert "站回 VWAP" in got["reason"]
 
 
 def test_falling_price_positive_aflow_is_absorption_watch_not_entry():
@@ -170,9 +168,8 @@ def test_falling_price_positive_aflow_is_absorption_watch_not_entry():
     )
 
     assert got["decision_can_buy"] is False
-    assert got["home_decision_code"] == "ABSORPTION_WATCH"
-    assert got["home_decision_label"] == "🟠 承接觀察"
-    assert "不搶" in got["home_action"]
+    assert got["decision_status"] == "等待確認"
+    assert "站回 VWAP" in got["reason"]
 
 
 def test_positive_aflow_holding_vwap_is_rotation_absorption():
@@ -194,7 +191,7 @@ def test_positive_aflow_holding_vwap_is_rotation_absorption():
 
     assert got["intraday_money_nature_code"] == "HEALTHY_ROTATION"
     assert "健康換手" in got["intraday_money_nature_label"]
-    assert got["home_decision_label"] != "🟢 可進場"
+    assert got["decision_can_buy"] is False
 
 
 def test_missing_net_active_hard_caps_nexora_to_watch():

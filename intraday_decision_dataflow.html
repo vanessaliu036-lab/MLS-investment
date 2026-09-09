@@ -2396,7 +2396,11 @@ window.renderTomorrowGroups=function(body,rows,fallback){
     }
   }
   const oldRender=window.render;
-  if(oldRender)window.render=function(){oldRender();cleanRows();fitSignals();const advice=document.querySelector('#advice');const actionable=data.filter(x=>window.homeDecisionLabel?window.homeDecisionLabel(x).includes('可進場'):x.group==='可操作').length;if(advice)advice.textContent=actionable?`目前 ${actionable} 檔真正通過首頁進場 Gate；其餘只看資金、價格位置與結構，不把有資金誤標成買點。`:'目前沒有完整通過 Gate 的可進場標的；有資金也要等價格與結構確認。'};
+  // 2026-09-09：cleanRows() 曾在這裡跟後面 sync() 疊加寫同一批 <tr>，兩邊字彙/欄位不一致
+  // (cleanRows 用舊版 decisionLabel/現價漲跌漲幅欄；sync 用新版 homeDecisionLabel/價格Gate欄)，
+  // 造成畫面偶發「跳回舊版」。sync() 是更完整、字彙正確的版本，故只保留它，
+  // 不再呼叫 cleanRows() 覆寫同一批列（cleanRows 函式本身保留，只是不接進這條鏈）。
+  if(oldRender)window.render=function(){oldRender();fitSignals();const advice=document.querySelector('#advice');const actionable=data.filter(x=>window.homeDecisionLabel?window.homeDecisionLabel(x).includes('可進場'):x.group==='可操作').length;if(advice)advice.textContent=actionable?`目前 ${actionable} 檔真正通過首頁進場 Gate；其餘只看資金、價格位置與結構，不把有資金誤標成買點。`:'目前沒有完整通過 Gate 的可進場標的；有資金也要等價格與結構確認。'};
   let rz;addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{cleanRows();fitSignals()},150)});
   cleanRows();fitSignals();
 })();
@@ -4034,6 +4038,12 @@ async function loadBreadth(embedded){
    9 個 64px 高的空白列，擋在資料前面看起來像「大空白」；直接隱藏 thead，
    改用 ::before 在每個儲存格前面顯示欄名（順序對應 sync() 產生的固定 9 欄）。 */
 @media(max-width:650px){
+  /* .table-panel>table 在桌機被強制 min-width:1320px(避免欄位擠壓)；手機版
+     td 已經 display:block 疊成單欄，若不解除這個 min-width，table 本身還是
+     撐成 1320px 寬，整段內容被推到需要橫向捲動才看得到，跟「已經疊成單欄」
+     自相矛盾(2026-09-09 使用者截圖抓到：字級雖已縮小，但判讀要往右滑才看得到)。 */
+  .table-panel>table{min-width:0!important;width:100%!important}
+  .table-panel{overflow-x:hidden!important}
   .table-panel>table>thead{display:none!important}
   #rows>tr{padding:10px 0!important}
   #rows>tr>td{display:block!important;padding:4px 12px!important}
