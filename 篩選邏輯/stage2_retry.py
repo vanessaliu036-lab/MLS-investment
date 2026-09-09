@@ -188,8 +188,20 @@ def default_success_check(app_dir: Path) -> bool:
         print("[stage2-retry] market closed; completeness check skipped", flush=True)
         return True
     data_date = resolve_data_date().isoformat()
-    ok, detail = tables_complete(app_dir / "mls.db", data_date, set(config.UNIVERSE))
-    print(f"[stage2-retry] data_date={data_date} {detail}", flush=True)
+    # margin 的官方定案時間比 daily_bar/inst_flow 晚很多,常常收盤當天 17:30
+    # 都還沒發布(FinMind 落後官方一天以上)。若把它也放進成功門檻,stage2 在
+    # 那種日子會逼到 3 次重試上限、天天誤發「最終失敗」告警,但其實 daily_bar/
+    # inst_flow 早就齊了。門檻只看這兩張,margin 覆蓋率照樣查、照樣印,不影響
+    # 回傳值 —— collect.py 自己的 chg_date_to==dd 護欄已經在擋錯值,這裡不必
+    # 為了等它而製造假告警。
+    ok, detail = tables_complete(
+        app_dir / "mls.db", data_date, set(config.UNIVERSE),
+        tables=("daily_bar", "inst_flow"),
+    )
+    _, margin_detail = tables_complete(
+        app_dir / "mls.db", data_date, set(config.UNIVERSE), tables=("margin",),
+    )
+    print(f"[stage2-retry] data_date={data_date} {detail} {margin_detail}", flush=True)
     return ok
 
 

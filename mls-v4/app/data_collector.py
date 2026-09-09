@@ -22,6 +22,9 @@ os.makedirs(CACHE_DIR, exist_ok=True)
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 TIMEOUT = 10
 FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data"
+# 免費註冊 token 把匿名配額(易 402)換成 600 次/小時；未設就沿用舊的匿名呼叫。
+FINMIND_TOKEN = os.environ.get("FINMIND_TOKEN", "")
+_FINMIND_TOKEN_QS = f"&token={FINMIND_TOKEN}" if FINMIND_TOKEN else ""
 
 
 def _http(url, headers=None, timeout=TIMEOUT):
@@ -288,7 +291,7 @@ def fetch_finmind_price(code: str, days: int = 30) -> list:
 
     end = datetime.now().strftime("%Y-%m-%d")
     start = (datetime.now() - timedelta(days=days + 10)).strftime("%Y-%m-%d")
-    url = f"{FINMIND_BASE}?dataset=TaiwanStockPrice&data_id={code}&start_date={start}&end_date={end}"
+    url = f"{FINMIND_BASE}?dataset=TaiwanStockPrice&data_id={code}&start_date={start}&end_date={end}{_FINMIND_TOKEN_QS}"
     try:
         raw = _http(url)
         d = json.loads(raw)
@@ -314,7 +317,7 @@ def fetch_finmind_inst(code: str, days: int = 30) -> list:
 
     end = datetime.now().strftime("%Y-%m-%d")
     start = (datetime.now() - timedelta(days=days + 10)).strftime("%Y-%m-%d")
-    url = f"{FINMIND_BASE}?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id={code}&start_date={start}&end_date={end}"
+    url = f"{FINMIND_BASE}?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id={code}&start_date={start}&end_date={end}{_FINMIND_TOKEN_QS}"
     try:
         raw = _http(url)
         d = json.loads(raw)
@@ -340,7 +343,7 @@ def fetch_finmind_margin(code: str, days: int = 10) -> list:
 
     end = datetime.now().strftime("%Y-%m-%d")
     start = (datetime.now() - timedelta(days=days + 5)).strftime("%Y-%m-%d")
-    url = f"{FINMIND_BASE}?dataset=TaiwanStockMarginPurchaseShortSale&data_id={code}&start_date={start}&end_date={end}"
+    url = f"{FINMIND_BASE}?dataset=TaiwanStockMarginPurchaseShortSale&data_id={code}&start_date={start}&end_date={end}{_FINMIND_TOKEN_QS}"
     try:
         raw = _http(url)
         d = json.loads(raw)

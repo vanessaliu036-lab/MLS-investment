@@ -705,12 +705,29 @@ def build(universe: list[str], db_path: str = "mls.db",
         "bar": lambda: store.read_date("daily_bar", d, db_path),
         "quote": lambda: store.read_date("quote_snap", d, db_path),
         "inst": lambda: store.read_date("inst_flow", d, db_path),
-        "margin": lambda: store.read_date("margin", d, db_path),
+        # margin(FinMind)結構性慢一個交易日公布,同日 read_date 常年是空的
+        # (2026-09-09 驗證:17:47 台北時間仍只到 09-08)。d 優先、缺的用前一
+        # 交易日補,一旦來源真的有同日資料會自動蓋過,不用再改。
+        "margin": lambda: {**store.read_date("margin", prev_trading_day(d), db_path),
+                            **store.read_date("margin", d, db_path)},
         "health": lambda: store.read_date("money_health", d, db_path),
         "absorb": lambda: store.read_date("absorption", d, db_path),
         "aflow_today": lambda: store.read_date("aflow", d, db_path),
         "aflow_previous": lambda: store.read_date("aflow", prev_trading_day(d), db_path),
     }, phase=Phase.POST)
+
+    # 覆蓋率標記(2026-09-09)— run_plugin 的 OK/NO_DATA 是二元的,只要非空就是
+    # OK,42/51 跟 51/51 在 plugin_status 表裡看起來一樣「健康」,稽核時看不出
+    # 漏了幾檔(2026-09-08 法人漏 9 檔,當天 plugin_status 卻整個寫 OK,詳見
+    # inst-flow-stale-date-trap)。不改 status(避免動到其他呼叫端只認 .ok 的
+    # 邏輯),覆蓋不足時把缺口附進 reason,給稽核/健康頁看得到。
+    for _name in ("bar", "inst", "margin"):
+        _env = envs[_name]
+        if _env.ok:
+            _n = len(_env.value or {})
+            if _n < len(universe):
+                _env.reason = f"COVERAGE {_n}/{len(universe)}"
+
     persist_status(envs, db_path)
 
     b = envs["bar"].get({}) or {}
@@ -1204,7 +1221,8 @@ def _decorate_saved_items(items: list[dict], d: _dt.date, db_path: str) -> list[
     bars_previous = store.read_date("daily_bar", previous, db_path)
     flows = store.read_date("aflow", d, db_path)
     flows_previous = store.read_date("aflow", previous, db_path)
-    margins = store.read_date("margin", d, db_path)
+    margins = {**store.read_date("margin", previous, db_path),
+               **store.read_date("margin", d, db_path)}
     institutions = store.read_date("inst_flow", d, db_path)
     for item in items:
         code = item.get("code")

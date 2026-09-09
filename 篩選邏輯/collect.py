@@ -261,13 +261,21 @@ def collect_one(code: str, d: _dt.date) -> dict:
         print(f"  ⚠ {code}: 跳過 inst_flow(法人最新僅到 {tinst.get('date')},無 {dd} 蓋章,待公布後補)")
 
     # margin(死值)
-    if not mgn.get("data_incomplete"):
+    #
+    # 護guard(2026-09-09)— 跟 inst_flow 同一個病灶:FinMind 融資餘額比官方
+    # 收盤慢一天,_margin_trend() 只取 rows[-1] 不管日期,若照寫 = 把前一日
+    # 融資數字蓋上今天標籤且 margin 不可變、事後永遠蓋不掉(2026-09-08 51/51
+    # 全部被誤標成 09-08 但實為 09-07 數值)。chg_date_to 就是 FinMind 最新那筆
+    # 的實際日期,只在它 == 資料日才寫,否則跳過標 NO_DATA,等公布後補跑。
+    if not mgn.get("data_incomplete") and mgn.get("chg_date_to") == dd:
         out["margin"] = {
             "code": code, "data_date": dd,
             "margin_balance": mgn["balance"], "margin_change": mgn["chg_5d"],
-            "short_balance": None, "short_change": None,
+            "short_balance": mgn.get("short_balance"), "short_change": mgn.get("short_chg_5d"),
             "source": "finmind", "fetched_at": now,
         }
+    elif not mgn.get("data_incomplete"):
+        print(f"  ⚠ {code}: 跳過 margin(FinMind 最新僅到 {mgn.get('chg_date_to')},無 {dd} 蓋章,待公布後補)")
 
     # money_health(可重算)
     si, quad = _scoring_input(code, code, close, prev, chg, inst, brk, mgn, tech)

@@ -241,17 +241,22 @@ def _margin_trend(code: str) -> dict:
     明示起算日避免口徑差"""
     rows = dc.fetch_finmind_margin(code, days=10)
     if not rows:
-        return {"balance": 0, "chg_5d": 0, "chg_date_from": "—", "chg_date_to": "—", "data_incomplete": True}
+        return {"balance": 0, "chg_5d": 0, "chg_date_from": "—", "chg_date_to": "—",
+                "short_balance": None, "short_chg_5d": None, "data_incomplete": True}
     today = rows[-1]
     balance = int(today.get("MarginPurchaseTodayBalance", 0))
+    short_balance = int(today.get("ShortSaleTodayBalance", 0))
     # 取第 5 個有資料的 FinMind 日（非 calendar 5 日）
     idx_5d = max(0, len(rows) - 6)
     bal_5d_row = rows[idx_5d]
     bal_5d_ago = int(bal_5d_row.get("MarginPurchaseTodayBalance", 0))
+    short_5d_ago = int(bal_5d_row.get("ShortSaleTodayBalance", 0))
     chg = balance - bal_5d_ago
     return {
         "balance": balance,
         "chg_5d": chg,
+        "short_balance": short_balance,
+        "short_chg_5d": short_balance - short_5d_ago,
         "chg_date_from": bal_5d_row.get("date", "—"),
         "chg_date_to": today.get("date", "—"),
         "data_incomplete": False,

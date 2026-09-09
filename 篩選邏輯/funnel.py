@@ -356,7 +356,11 @@ def run(universe: list[str], code_group: dict[str, str],
         "bar_today": lambda: store.read_date("daily_bar", d, db_path),
         "aflow_y": lambda: store.read_date("aflow", y, db_path),
         "inst": lambda: store.read_date("inst_flow", d, db_path),
-        "margin": lambda: store.read_date("margin", d, db_path),
+        # margin(FinMind)結構性慢一個交易日公布,同日 read_date 常年是空的
+        # (2026-09-09 驗證:17:47 台北時間仍只到 09-08)。d 優先、缺的用 y 補,
+        # 一旦來源真的有同日資料(例如換付費層)會自動蓋過 y,不用再改。
+        "margin": lambda: {**store.read_date("margin", y, db_path),
+                            **store.read_date("margin", d, db_path)},
     }, phase=Phase.POST if with_chips else Phase.INTRADAY)
     persist_status(envs, db_path)
 
