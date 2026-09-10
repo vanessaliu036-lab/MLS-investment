@@ -260,6 +260,11 @@ def _margin_trend(code: str) -> dict:
         "chg_date_from": bal_5d_row.get("date", "—"),
         "chg_date_to": today.get("date", "—"),
         "data_incomplete": False,
+        # 5 天前的比較基準本身不受「FinMind 今天還沒更新」影響,額外曝露出來
+        # 讓呼叫端在 balance/short_balance 被官方即時快照取代時,還能算出正確
+        # 的 5 日變化,不必重抓一次。
+        "bal_5d_ago": bal_5d_ago,
+        "short_5d_ago": short_5d_ago,
     }
 
 

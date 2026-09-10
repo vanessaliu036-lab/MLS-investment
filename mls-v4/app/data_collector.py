@@ -26,10 +26,21 @@ FINMIND_BASE = "https://api.finmindtrade.com/api/v4/data"
 FINMIND_TOKEN = os.environ.get("FINMIND_TOKEN", "")
 _FINMIND_TOKEN_QS = f"&token={FINMIND_TOKEN}" if FINMIND_TOKEN else ""
 
+# TPEx 站台的憑證鏈在部分 OpenSSL 版本上會炸「Missing Subject Key Identifier」
+# (系統預設信任庫的嚴格度問題,不是憑證真的有問題),導致上櫃股法人/融資長期
+# 抓不到卻只留在錯誤訊息裡沒人注意。certifi 的信任庫驗證得過,改用它建 context
+# (只是換一份信任庫,不會放寬驗證);certifi 不在時退回系統預設,行為不變。
+try:
+    import ssl as _ssl
+    import certifi as _certifi
+    _SSL_CTX = _ssl.create_default_context(cafile=_certifi.where())
+except Exception:
+    _SSL_CTX = None
+
 
 def _http(url, headers=None, timeout=TIMEOUT):
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Referer": "https://www.twse.com.tw/", **(headers or {})})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as r:
         return r.read().decode("utf-8", errors="ignore")
 
 
@@ -125,7 +136,16 @@ def fetch_tpex_inst_today(date_yyyymmdd: str) -> dict:
     url = (f"https://www.tpex.org.tw/web/stock/3insti/daily_trade/"
            f"3itrade_hedge_result.php?l=zh-tw&o=json&se=EW&t=D&d={ymd}&s=0,asc")
     try:
-        raw = _http(url, headers={"Referer": "https://www.tpex.org.tw/"})
+        # TPEx 負載平衡有部分節點憑證缺 Subject Key Identifier,間歇性驗證
+        # 失敗(見 fetch_official_margin_snapshot 的同一發現);重試換節點。
+        raw = None
+        for attempt in range(3):
+            try:
+                raw = _http(url, headers={"Referer": "https://www.tpex.org.tw/"})
+                break
+            except Exception as e:
+                if attempt == 2:
+                    raise
         d = json.loads(raw)
         tables = d.get("tables", [])
         if not tables:
@@ -355,6 +375,145 @@ def fetch_finmind_margin(code: str, days: int = 10) -> list:
     except Exception as e:
         print(f"[data] finmind_margin {code} fail: {e}")
         return []
+
+
+def _trading_day_candidates(asof=None, back=8):
+    """由 asof 往回列出候選交易日(只跳週末,不含國定假日表)。
+
+    官方融資融券當日檔要收盤後才發布,遇到國定假日就整天沒有檔;只認 asof
+    當天會讓資料永遠卡在最後一次抓成功的日期,所以往前退到真的有 rows 的
+    那一天為止,並以那天當來源日(移植自個股卡片 chips.py 同名函式)。
+    """
+    limit = str(asof or datetime.now().strftime("%Y-%m-%d"))[:10]
+    try:
+        day = datetime.strptime(limit, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        return [limit]
+    days = []
+    while len(days) < back:
+        if day.weekday() < 5:
+            days.append(day.isoformat())
+        day -= timedelta(days=1)
+    return days
+
+
+def _official_number(value):
+    if value in (None, ""):
+        return None
+    try:
+        return round(float(str(value).replace(",", "").strip()))
+    except (TypeError, ValueError):
+        return None
+
+
+def _margn_rows(payload):
+    """MI_MARGN 回應第一張 rows>100 的表才是個股明細表,不是全市場統計表。"""
+    if not payload:
+        return []
+    for table in payload.get("tables") or []:
+        if len(table.get("data") or []) > 100:
+            return table["data"]
+    return payload.get("data") or []
+
+
+def fetch_official_margin_snapshot(asof: str = None) -> dict:
+    """整市場融資融券官方快照(TWSE MI_MARGN + TPEx balance),一次涵蓋全池,
+    是 FinMind 個股融資餘額結構性落後一天以上時的免 token 備援(移植自個股
+    卡片 chips.py 的 _official_margin_snapshot,已驗證可用 — 見
+    篩選邏輯/collect.py 及 chips-margin-source-date-trap 記憶)。
+
+    回傳 {code: {margin_balance, margin_prev, short_balance, short_prev,
+    source_date}}。往前退到真的有資料的交易日,用那天當 source_date;呼叫端
+    自行比對是否等於想要的資料日,不在這裡補成 asof — 退到舊日就代表官方
+    今天還沒發布,不能冒充今天的餘額。
+
+    ⚠ TWSE MI_MARGN 前 7 欄是「融券限額」、8..12 欄才是借券賣出,完全沒有
+    融資餘額;融資融券彙總表才有(rows>100 那張,融資前日/今日=5/6、
+    融券前日/今日=11/12,單位張)。不要改用 TWT93U。
+    """
+    candidates = _trading_day_candidates(asof)
+    key = f"official_margin_{candidates[0]}"
+    cached = _cache_get(key, 900)
+    if cached is not None:
+        return cached
+
+    out: dict = {}
+
+    def _merge(rows, twse=False, date=None):
+        for row in rows or []:
+            code = str(row[0] if isinstance(row, list) else
+                       row.get("股票代號") or row.get("代號") or "").strip()
+            if not code:
+                continue
+            if isinstance(row, list) and twse:
+                values = {
+                    "margin_prev": _official_number(row[5]),
+                    "margin_balance": _official_number(row[6]),
+                    "short_prev": _official_number(row[11]),
+                    "short_balance": _official_number(row[12]),
+                }
+            else:
+                values = {
+                    "margin_prev": _official_number(
+                        row[2] if isinstance(row, list)
+                        else row.get("前資餘額(張)") or row.get("融資前日餘額")),
+                    "margin_balance": _official_number(
+                        row[6] if isinstance(row, list)
+                        else row.get("資餘額") or row.get("融資今日餘額")),
+                    "short_prev": _official_number(
+                        row[10] if isinstance(row, list)
+                        else row.get("前券餘額(張)") or row.get("融券前日餘額")),
+                    "short_balance": _official_number(
+                        row[14] if isinstance(row, list)
+                        else row.get("券餘額") or row.get("融券今日餘額")),
+                }
+            record = out.setdefault(code, {})
+            record.update(values)
+            if date:
+                record["source_date"] = date
+
+    for trade_date in candidates:
+        ymd = trade_date.replace("-", "")
+        payload = None
+        for url in (
+            f"https://www.twse.com.tw/rwd/zh/afterTrading/MI_MARGN?date={ymd}&selectType=ALL&response=json",
+            f"https://www.twse.com.tw/exchangeReport/MI_MARGN?date={ymd}&selectType=ALL&response=json",
+        ):
+            try:
+                payload = json.loads(_http(url))
+                if _margn_rows(payload):
+                    break
+            except Exception:
+                continue
+        rows = _margn_rows(payload)
+        if rows:
+            _merge(rows, twse=True, date=trade_date)
+            break
+
+    for trade_date in candidates:
+        date_arg = urllib.parse.quote(trade_date.replace("-", "/"), safe="")
+        url = f"https://www.tpex.org.tw/www/zh-tw/margin/balance?date={date_arg}"
+        rows = []
+        # TPEx 站台後面是多台主機的負載平衡,其中一部分節點的憑證缺 Subject
+        # Key Identifier 擴充欄位驗證會過不了,是伺服器端間歇性問題(換一台
+        # 節點通常就過);實測連續打 3 次成功率遠高於打 1 次,不是靠放寬驗證
+        # 過關,純粹重試換節點。
+        for attempt in range(3):
+            try:
+                payload = json.loads(_http(url))
+                tables = payload.get("tables") or []
+                rows = (tables[0].get("data") if tables else []) or []
+                break
+            except Exception as e:
+                if attempt == 2:
+                    print(f"[data] TPEx 官方融資融券 {trade_date} 失敗(重試 3 次): {e}")
+        if rows:
+            _merge(rows, date=trade_date)
+            break
+
+    if out:
+        _cache_set(key, out)
+    return out
 
 
 # ══════════════════════════════════════════════════════════════
