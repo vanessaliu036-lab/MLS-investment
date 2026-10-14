@@ -35,7 +35,7 @@ class FastTurnWatchTest(unittest.TestCase):
         self.assertEqual(result["evidence_status"], "DISCOVERY ONLY")
 
     def test_long_lower_shadow_without_institution_buy(self):
-        result = discover_eod(base(close=102,prev_close=100,high=104,low=94))
+        result = discover_eod(base(close=101,prev_close=100,high=104,low=94))
         self.assertIn("LONG_LOWER_SHADOW", result["signals"])
 
     def test_flow_price_divergence_needs_correct_asof(self):
