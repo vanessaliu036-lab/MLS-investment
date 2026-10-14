@@ -114,6 +114,11 @@ def intraday_review(candidate, quote, now):
     """
     if candidate.get("status") != "WATCH":
         return _result("NOT_ELIGIBLE", reasons=["NO_TMINUS1_WATCH"])
+    sessions = _number(quote.get("sessions_since_candidate"))
+    if sessions is None:
+        return _result("NO_DATA", reasons=["TRADING_SESSION_AGE_MISSING"])
+    if sessions not in (1.0, 2.0):
+        return _result("EXPIRED", reasons=["OUTSIDE_TPLUS1_TPLUS2_WINDOW"])
     if not _fresh(quote.get("quote_ts"), now, MAX_QUOTE_AGE_SECONDS):
         return _result("NO_DATA", reasons=["STALE_OR_MISSING_QUOTE"])
     if str(quote.get("data_date")) != str(_timestamp(now).date()):
