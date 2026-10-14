@@ -133,9 +133,9 @@ def intraday_review(candidate, quote, now):
         return _result("NO_DATA", reasons=["INCOMPLETE_LIVE_CONFIRMATION"])
 
     p = facts["price"]
-    if p < candidate["tminus1_low"] or quote.get("market_regime") == "RISK_OFF":
-        return _result("INVALIDATED" if p < candidate["tminus1_low"] else "RISK_BLOCK",
-                       reasons=["PREVIOUS_LOW_BROKEN" if p < candidate["tminus1_low"]
+    if (p < candidate["tminus1_low"] or facts["session_low"] < candidate["tminus1_low"]\n            or quote.get("market_regime") == "RISK_OFF"):
+        return _result("INVALIDATED" if (p < candidate["tminus1_low"] or facts["session_low"] < candidate["tminus1_low"]) else "RISK_BLOCK",
+                       reasons=["PREVIOUS_LOW_BROKEN" if (p < candidate["tminus1_low"] or facts["session_low"] < candidate["tminus1_low"])
                                 else "MARKET_RISK_OFF"])
     if facts["change_pct"] >= 6 or p >= facts["resistance"]:
         return _result("NO_CHASE", reasons=["EXTENDED_OR_AT_RESISTANCE"])
@@ -156,7 +156,7 @@ def intraday_review(candidate, quote, now):
         if not volume_ok: missing.append("LIVE_VOLUME_NOT_ACCELERATING")
         if not (rebound or breakout): missing.append("PRICE_REVERSAL_NOT_CONFIRMED")
         return _result("WATCH", candidate.get("signals"), missing)
-    stop = min(candidate["tminus1_low"], facts["session_low"])
+    stop = max(candidate["tminus1_low"], facts["session_low"])
     risk = p - stop
     reward = facts["resistance"] - p
     if risk <= 0 or reward / risk < 1.5:
