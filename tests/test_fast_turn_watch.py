@@ -16,7 +16,7 @@ def base(**updates):
     return row
 
 def live(**updates):
-    row = dict(data_date="2026-10-14", quote_ts="2026-10-14T10:06:30+08:00",
+    row = dict(data_date="2026-10-14", sessions_since_candidate=1, quote_ts="2026-10-14T10:06:30+08:00",
                aflow_ts="2026-10-14T10:06:25+08:00",
                sector_ts="2026-10-14T10:06:20+08:00",
                price=95, open=94, vwap=94.5, session_low=93.5,
@@ -87,6 +87,11 @@ class FastTurnWatchTest(unittest.TestCase):
     def test_insufficient_reward_to_risk(self):
         c = discover_eod(base())
         self.assertEqual(intraday_review(c,live(resistance=96),NOW)["status"],"NO_CHASE")
+
+    def test_expired_candidate_and_missing_session_age(self):
+        c=discover_eod(base())
+        self.assertEqual(intraday_review(c,live(sessions_since_candidate=3),NOW)["status"],"EXPIRED")
+        self.assertEqual(intraday_review(c,live(sessions_since_candidate=None),NOW)["status"],"NO_DATA")
 
     def test_future_timestamp_rejected(self):
         c=discover_eod(base())
